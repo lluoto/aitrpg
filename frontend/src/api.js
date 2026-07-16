@@ -79,3 +79,10 @@ export async function npcChat(sessionId, npc, message) {
   if (!res.ok) throw new Error((await res.json()).error || 'NPC 对话失败')
   return res.json()
 }
+
+export async function getSuggestions(sessionId) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/suggestions`)
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.suggestions ?? []
+}

@@ -23,7 +23,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       { level: 3,  name: "蛮荒追踪", description: "在荒野中可精准追踪猎物痕迹，追踪检定时获得优势，且不会因移动速度而承受侦查惩罚", type: "passive", effects: { skillAdvantage: ["survival"] } },
       { level: 6,  name: "狂野之力", description: "狂暴状态下力量检定和力量豁免额外获得+2加值，且近战攻击可附加力量调整值双倍伤害", type: "passive", effects: { saveBonus: { strength: 2 }, damageBonus: 0, tags: ["rage_enhance"] } },
       { level: 10, name: "荒野主宰", description: "在自然环境（森林、山地、沙漠、沼泽、冻土）中获得全域优势，隐藏、先攻、察觉均获得加值", type: "supernatural", effects: { skillAdvantage: ["stealth", "perception"] } },
-      { level: 14, name: "致命猎杀", description: "指定一个目标为猎杀对象，对其攻击必定命中且重击范围扩大至17-20，持续1分钟", type: "active", usesPerDay: "1次/长休", effects: { attackBonus: 5, tags: ["crit_range_up"] } },
+      { level: 14, name: "致命猎杀", description: "指定一个目标为猎杀对象，对其攻击检定获得+10加值且重击范围扩大至17-20，持续1分钟", type: "active", usesPerDay: "1次/长休", effects: { attackBonus: 10, tags: ["crit_range_up"] } },
       { level: 18, name: "洪荒之怒", description: "狂暴状态下免疫魅惑和恐惧，且每回合可额外进行一次近战攻击", type: "supernatural", effects: { immunities: ["charmed", "frightened"], extraAttack: 1 } }
     ],
     featChoices: [
@@ -157,6 +157,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       { level: 6,  name: "死灵引擎", description: "骨械仆从获得扩展火力模式，以附赠动作释放死灵能量冲击波，对15尺锥形内敌人造成2d8黯蚀伤害", type: "passive" },
       { level: 10, name: "血肉魔像", description: "以动作制造一台大型血肉魔像为你作战，魔像持续1小时或直到被摧毁", type: "active", usesPerDay: "1次/长休" },
       { level: 14, name: "机械死域", description: "展开机械死域光环，60尺内骨械和魔像攻击附带1d6黯蚀伤害且移动速度+20尺，持续10分钟", type: "supernatural", usesPerDay: "1次/长休" },
+      { level: 18, name: "魂炉过载", description: "以动作超载所有构装仆从的核心，60尺内构装体AC+2、伤害骰翻倍、获得30点临时生命值，持续1分钟", type: "supernatural", usesPerDay: "1次/长休" },
     ],
     featChoices: [
       {
@@ -200,7 +201,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
     levelFeatures: [
       { level: 3, name: "灵魂感知", description: "能够感知周围60尺范围内的灵魂存在，识破隐形与灵体生物", type: "passive" },
       { level: 6, name: "生命汲取", description: "对目标造成暗蚀伤害并回复等量生命值，对亡灵无效", type: "active", usesPerDay: "感知调整值次/长休" },
-      { level: 10, name: "灵魂形态", description: "化为灵魂形态，可穿越实体障碍，免疫非魔法物理伤害，持续1分钟", type: "supernatural", usesPerDay: "1次/短休" },
+      { level: 10, name: "灵魂形态", description: "化为灵魂形态，可穿越实体障碍，对非魔法物理伤害获得抗性，持续1分钟", type: "supernatural", usesPerDay: "1次/短休" },
       { level: 14, name: "灵魂链接", description: "与一个自愿生物建立灵魂链接，分担伤害并共享感知", type: "active", usesPerDay: "1次/长休" },
       { level: 18, name: "灵魂主宰", description: "可强行抽取目标灵魂，目标需进行感知豁免，失败则灵魂被暂时剥离", type: "supernatural", usesPerDay: "1次/长休" }
     ],
@@ -293,7 +294,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       { level: 6,  name: "刀刃华尔兹", description: "以动作发起优雅的剑舞连击，对周围10尺内所有敌人各进行一次攻击", type: "active", usesPerDay: "3次/短休" },
       { level: 10, name: "流影闪避", description: "以反应动作进行一次敏捷豁免，成功则完全闪避一次攻击或范围效果", type: "active", usesPerDay: "1次/短休" },
       { level: 14, name: "死亡华尔兹", description: "进入全神贯注的剑舞状态，每回合可发动两次反应攻击，持续1分钟", type: "supernatural", usesPerDay: "1次/长休" },
-      { level: 18, name: "终幕绝剑", description: "以动作对单一目标发动致命一击，若目标生命值低于100则立即死亡", type: "supernatural", usesPerDay: "1次/长休" },
+      { level: 18, name: "终幕绝剑", description: "以动作对单一目标发动致命一击，目标需通过DC20体质豁免否则受到10d10力场伤害，豁免成功则受到半额伤害", type: "supernatural", usesPerDay: "1次/长休" },
     ],
     featChoices: [
       {
@@ -388,12 +389,12 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       { level: 6, name: "鬼魂附杖", description: "召唤幽灵附于法杖之上，法杖获得额外暗蚀伤害，命中时可恐惧目标", type: "active", usesPerDay: "1次/短休" },
       { level: 10, name: "杖灵觉醒", description: "法杖产生自主意识，可独立施展一个戏法，并警告持有者周围的危险", type: "passive" },
       { level: 14, name: "死亡波纹", description: "以法杖为中心释放死亡能量波，对周围所有敌人造成暗蚀伤害并施加诅咒", type: "supernatural", usesPerDay: "1次/短休" },
-      { level: 18, name: "万鬼朝宗", description: "召唤大量幽灵附着于法杖形成鬼魂风暴，对区域内所有敌人进行多次攻击", type: "supernatural", usesPerDay: "1次/长休" }
+      { level: 18, name: "万鬼朝宗", description: "召唤5只幽灵附着于法杖形成鬼魂风暴，每只幽灵每回合可攻击一次造成2d6黯蚀伤害，持续1分钟", type: "supernatural", usesPerDay: "1次/长休" }
     ],
     featChoices: [
       {
         level: 4, pick: 1, options: [
-          { name: "噬魂杖击", description: "法杖近战攻击命中时吸取目标少量生命值回复自身", type: "passive" },
+          { name: "噬魂杖击", description: "法杖近战攻击命中时吸取1d6+智力调整值点生命值回复自身", type: "passive" },
           { name: "鬼火环绕", description: "法杖周围萦绕三团鬼火，可发射鬼火对敌人造成暗蚀伤害", type: "active" },
           { name: "幽灵斥候", description: "从法杖中释放幽灵侦察前方区域，持续10分钟", type: "active" },
         ]
@@ -503,7 +504,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
         level: 12, pick: 1, options: [
           { name: "跨界召唤", description: "召唤来自不同位面的混合生物，同时拥有两种异界生物特性", type: "active" },
           { name: "永恒契约", description: "与一个召唤生物签订永久契约成为永久同伴，不消耗法术位", type: "supernatural" },
-          { name: "万兽奔腾", description: "一次性召唤大量野兽践踏战场，对直线区域所有敌人造成碾压伤害", type: "active" },
+          { name: "万兽奔腾", description: "一次性召唤5只野兽践踏战场，对直线60尺内所有敌人造成4d10钝击伤害（敏捷豁免减半）", type: "active" },
         ]
       },
     ],
@@ -548,7 +549,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       },
       {
         level: 12, pick: 1, options: [
-          { name: "维度切割", description: "以空间裂隙斩断目标与现实的联系，目标部分身体暂时消失受到巨额伤害", type: "supernatural" },
+          { name: "维度切割", description: "以空间裂隙斩断目标与现实的联系，目标部分身体暂时消失受到8d10力场伤害", type: "supernatural" },
           { name: "空间镜像", description: "创造多个空间镜像分身，可在任意分身之间瞬间切换位置", type: "active" },
           { name: "虚空领域", description: "将战场拖入虚空夹层，所有生物无法传送离开而你获得全域传送自由", type: "supernatural" },
         ]
@@ -629,7 +630,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       {
         level: 4, pick: 1, options: [
           { name: "回音施法", description: "施展的法术在下一回合自动重复一次（伤害减半），不消耗法术位", type: "passive" },
-          { name: "魔音贯耳", description: "吟唱声附带心灵伤害，周围敌人每回合受到少量伤害且专注检定不利", type: "passive" },
+          { name: "魔音贯耳", description: "吟唱声附带心灵伤害，周围敌人每回合受到1d4心灵伤害且专注检定具有劣势", type: "passive" },
           { name: "群体咒文", description: "单目标法术在快速吟唱时可改为影响两个相邻目标", type: "passive" },
         ]
       },
@@ -637,14 +638,14 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
         level: 8, pick: 1, options: [
           { name: "咒文编织", description: "可同时吟唱两个法术的咒文，在同一回合完成两次施法", type: "active" },
           { name: "禁言领域", description: "展开沉默光环内所有生物无法发声，但你的心灵施法不受影响", type: "supernatural" },
-          { name: "魔力共鸣", description: "吟唱时与魔力产生共鸣，所有法术的豁免DC在吟唱期间+2", type: "passive" },
+          { name: "咒文共鸣", description: "吟唱时与魔力产生共鸣，所有法术的豁免DC在吟唱期间+2", type: "passive" },
         ]
       },
       {
         level: 12, pick: 1, options: [
           { name: "真言术", description: "说出词语化为绝对律令（死亡、臣服、静止三选一），目标须通过豁免", type: "supernatural" },
           { name: "永恒吟唱", description: "一个吟唱法术的效果永久持续直到你主动结束", type: "supernatural" },
-          { name: "言灵化身", description: "自身化为纯粹的言灵能量体，免疫物理伤害，所有法术变为瞬发", type: "supernatural" },
+          { name: "言灵化身", description: "自身化为纯粹的言灵能量体，对非魔法物理伤害获得抗性，所有法术施法时间缩短为附赠动作（每回合限一次）", type: "supernatural" },
         ]
       },
     ],
@@ -654,7 +655,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
   {
     id: "wizard_overcast_singer",
     label: "法师·阴天歌者",
-    description: "能够催生大量死气阴云的死灵法师，死气浓度极高，能够创造特殊的死灵乐园",
+    description: "能够催生高浓度死气的死灵法师，死气浓度极高，能够创造特殊的死灵乐园",
     minAttributes: { intelligence: 16, wisdom: 14, charisma: 14 },
     priorityAttributes: ["intelligence", "wisdom", "charisma"],
     skills: ["arcana", "religion", "performance"],
@@ -690,8 +691,8 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       {
         level: 12, pick: 1, options: [
           { name: "亡者大军", description: "死灵乐园内击败的敌人自动转化为亡灵为你作战，持续到战斗结束", type: "passive" },
-          { name: "冥月当空", description: "在空中召唤一轮冥月，冥月照耀下所有死灵生物获得极大强化", type: "supernatural" },
-          { name: "死之绝唱", description: "以自身大量生命值为代价消灭视野内所有低于你等级的生物", type: "supernatural" },
+          { name: "冥月当空", description: "在空中召唤一轮冥月，冥月照耀下所有盟友死灵生物攻击检定获得+2加值、伤害骰+1d6黯蚀，持续1分钟", type: "supernatural" },
+          { name: "死之绝唱", description: "消耗50点生命值释放死亡冲击波，60尺内敌人需通过DC20体质豁免否则受到10d10黯蚀伤害，豁免成功减半", type: "supernatural" },
         ]
       },
     ],
@@ -714,10 +715,10 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
     baseClassId: "wizard",
     levelFeatures: [
       { level: 3, name: "龙炎吐息", description: "喷吐龙炎对前方锥形区域造成火焰伤害，伤害随等级提升", type: "active", usesPerDay: "体质调整值次/长休" },
-      { level: 6, name: "烈焰再生", description: "每回合开始时恢复生命值，恢复量等于体质调整值，火焰伤害免疫", type: "passive" },
+      { level: 6, name: "烈焰再生", description: "每回合开始时恢复3+体质调整值点生命值，获得火焰伤害抗性", type: "passive" },
       { level: 10, name: "龙鳞护体", description: "皮肤覆盖龙鳞，获得额外护甲等级，且每回合可吸收一定量的伤害", type: "passive" },
       { level: 14, name: "龙化", description: "部分化为龙形，获得飞行能力、龙爪攻击和恐惧光环，持续1分钟", type: "supernatural", usesPerDay: "1次/长休" },
-      { level: 18, name: "龙神降临", description: "完全转化为远古龙神形态，获得巨额生命值加成和毁灭性的龙息攻击", type: "supernatural", usesPerDay: "1次/长休" }
+      { level: 18, name: "龙神降临", description: "以动作转化为远古龙神形态1分钟，获得50点临时生命值，龙息对60尺锥形造成12d10火焰伤害（敏捷豁免减半），获得60尺飞行速度", type: "supernatural", usesPerDay: "1次/长休" }
     ],
     featChoices: [
       {
@@ -737,7 +738,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       {
         level: 12, pick: 1, options: [
           { name: "永恒龙炎", description: "火焰无视火焰抗性和免疫，对火免疫生物造成半额伤害", type: "passive" },
-          { name: "龙神之躯", description: "永久获得龙族体质，生命上限大幅提升且免疫毒素与疾病，不再衰老", type: "supernatural" },
+          { name: "龙神之躯", description: "永久获得龙族体质，生命值上限+30，对毒素和疾病豁免获得优势，不再衰老", type: "supernatural" },
           { name: "焚天灭地", description: "消耗所有法术位释放终极龙炎吐息覆盖超大面积，伤害无法被减免", type: "supernatural" },
         ]
       },
@@ -763,6 +764,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       { level: 6,  name: "青碧之梦", description: "投掷迷幻毒气瓶，15尺半径内敌人需通过DC15体质豁免否则陷入沉睡1分钟", type: "active", usesPerDay: "2次/长休" },
       { level: 10, name: "灵魂精华", description: "击杀敌人时可提取灵魂精华，用于强化下一次炼金药剂，使效果翻倍", type: "passive" },
       { level: 14, name: "亡灵大釜", description: "召唤炼金大釜将尸体投入炼制强力亡灵生物，亡灵生物持续作战1小时", type: "supernatural", usesPerDay: "1次/长休" },
+      { level: 18, name: "贤者之石", description: "以动作消耗灵魂精华制造贤者之石，60尺内所有盟友恢复4d10+智力调整值生命值并移除一项负面状态，敌人受6d10黯蚀伤害（感知豁免减半）", type: "supernatural", usesPerDay: "1次/长休" },
     ],
     featChoices: [
       {
@@ -827,7 +829,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       {
         level: 12, pick: 1, options: [
           { name: "猎魔专家", description: "恶魔克星使用次数+1，且目标豁免检定具有劣势", type: "passive" },
-          { name: "圣痕烙印", description: "圣裁之印持续期间你对该目标攻击必定优势且每回合额外2d6伤害", type: "passive" },
+          { name: "圣痕烙印", description: "圣裁之印持续期间你对该目标攻击检定获得优势且每回合额外2d6伤害", type: "passive" },
         ],
       },
     ],
@@ -848,8 +850,8 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
     levelFeatures: [
       { level: 3,  name: "铁壁装甲", description: "穿着重甲时获得+1额外AC，且受到的非魔法钝击、穿刺和挥砍伤害减少3点", type: "passive" },
       { level: 6,  name: "不可阻挡", description: "冲锋时可穿过敌人所在空间，被穿过的敌人须通过力量豁免否则被击退10尺并倒地", type: "passive" },
-      { level: 10, name: "移动要塞", description: "你和你坐骑周围10尺内的盟友获得+2AC，且免疫恐惧效果", type: "supernatural" },
-      { level: 14, name: "铁蹄践踏", description: "以动作指挥坐骑发起践踏冲锋，直线60尺内所有敌人受大量伤害且须通过敏捷豁免否则倒地", type: "active", usesPerDay: "1次/短休" },
+      { level: 10, name: "移动要塞", description: "你和你坐骑周围10尺内的盟友获得+2AC，且对恐惧豁免获得优势", type: "supernatural" },
+      { level: 14, name: "铁蹄践踏", description: "以动作指挥坐骑发起践踏冲锋，直线60尺内所有敌人受6d10钝击伤害且须通过敏捷豁免否则倒地（DC=8+力量调整值+熟练加值）", type: "active", usesPerDay: "1次/短休" },
       { level: 18, name: "不朽防线", description: "以动作化为战场上的铜墙铁壁，自身和30尺内盟友获得临时生命值等于你的战士等级×5，持续10分钟", type: "supernatural", usesPerDay: "1次/长休" },
     ],
     featChoices: [
@@ -895,7 +897,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       { level: 6,  name: "惩罚光环", description: "以附赠动作展开惩罚光环，10尺内敌人攻击你的盟友时受到等同于你魅力调整值的光耀伤害", type: "supernatural", usesPerDay: "3次/长休" },
       { level: 10, name: "天谴之锤", description: "以动作召唤神圣战锤轰击目标，造成6d10光耀伤害，目标为邪恶阵营时伤害直接取最大值", type: "supernatural", usesPerDay: "1次/短休" },
       { level: 14, name: "净化烈焰", description: "以自身为中心爆发神圣烈焰，30尺内所有敌人受8d6光耀伤害，范围内盟友恢复等量生命值", type: "supernatural", usesPerDay: "1次/长休" },
-      { level: 18, name: "神罚化身", description: "化为神罚天使形态1分钟，获得飞行、免疫非魔法武器伤害，每次攻击附带额外4d8光耀伤害", type: "supernatural", usesPerDay: "1次/长休" }
+      { level: 18, name: "神罚化身", description: "化为神罚天使形态1分钟，获得60尺飞行速度、对非魔法物理伤害获得抗性，每次攻击附带额外4d8光耀伤害", type: "supernatural", usesPerDay: "1次/长休" }
     ],
     featChoices: [
       {
@@ -1063,11 +1065,11 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
     saveProficiencies: ["strength", "dexterity"],
     baseClassId: "monk",
     levelFeatures: [
-      { level: 3,  name: "剑道之眼", description: "以附赠动作进入剑道专注状态，近战攻击检定获得优势且重击范围扩大至19-20，持续1分钟", type: "active", usesPerDay: "3次/长休" },
-      { level: 6,  name: "居合斩", description: "以反应动作在被攻击前先发制人，对攻击者进行一次武器攻击，若命中则目标攻击自动失手", type: "active", usesPerDay: "2次/短休" },
+      { level: 3,  name: "剑道之眼", description: "消耗2点气以附赠动作进入剑道专注状态，近战攻击检定获得优势且重击范围扩大至19-20，持续1分钟", type: "active", usesPerDay: "3次/长休" },
+      { level: 6,  name: "居合斩", description: "消耗1点气以反应动作在被攻击前先发制人，对攻击者进行一次武器攻击，若命中则目标攻击失手", type: "active", usesPerDay: "2次/短休" },
       { level: 10, name: "剑气外放", description: "你的近战攻击可延伸至15尺，视作远程武器攻击，使用敏捷调整值进行攻击和伤害掷骰", type: "passive" },
-      { level: 14, name: "无明三段突", description: "以动作发动三段连续突刺，每段造成武器伤害+3d6力场伤害，第三段无法被防御或减免", type: "active", usesPerDay: "1次/长休" },
-      { level: 18, name: "剑圣降临", description: "进入剑圣境界1分钟，每次攻击自动重击，免疫所有非魔法伤害，移动速度翻倍", type: "supernatural", usesPerDay: "1次/长休" }
+      { level: 14, name: "无明三段突", description: "消耗3点气以动作发动三段连续突刺，每段造成武器伤害+3d6力场伤害，第三段无视目标伤害抗性", type: "active", usesPerDay: "1次/长休" },
+      { level: 18, name: "剑圣降临", description: "消耗5点气进入剑圣境界1分钟，攻击检定获得优势，重击范围扩至18-20，对非魔法物理伤害获得抗性，移动速度+30尺", type: "supernatural", usesPerDay: "1次/长休" }
     ],
     featChoices: [
       {
@@ -1108,16 +1110,16 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
     saveProficiencies: ["dexterity", "intelligence"],
     baseClassId: "rogue",
     levelFeatures: [
-      { level: 3,  name: "暗杀术", description: "在目标未察觉你时发动的攻击自动为重击，且偷袭伤害骰提升为d8", type: "passive" },
+      { level: 3,  name: "暗杀术", description: "在目标未察觉你时发动的攻击重击范围扩至15-20，且偷袭伤害骰提升为d8", type: "passive" },
       { level: 6,  name: "剧毒淬刃", description: "以附赠动作在武器上涂抹剧毒，下一次命中额外造成3d6毒素伤害，目标须通过体质豁免否则中毒1分钟", type: "active", usesPerDay: "3次/长休" },
       { level: 10, name: "死亡标记", description: "以附赠动作为目标施加死亡标记，你对标记目标的攻击忽略抗性和免疫力，持续1分钟", type: "active", usesPerDay: "1次/短休" },
       { level: 14, name: "一击必杀", description: "对生命值低于最大值一半的目标，你的偷袭伤害直接取满值", type: "passive" },
-      { level: 18, name: "无声死神", description: "以动作进入完美潜行状态，隐身且无法被任何方式侦测，下一次攻击造成5倍偷袭伤害", type: "supernatural", usesPerDay: "1次/长休" }
+      { level: 18, name: "无声死神", description: "以动作进入完美潜行状态，获得高等隐形术效果（无法被通常方式侦测），下一次攻击造成5倍偷袭伤害后将解除隐形", type: "supernatural", usesPerDay: "1次/长休" }
     ],
     featChoices: [
       {
         level: 4, pick: 1, options: [
-          { name: "暗影步", description: "潜行移动不触发借机攻击，潜行中移动速度不受减值", type: "passive" },
+          { name: "影步潜行", description: "潜行移动不触发借机攻击，潜行中移动速度不受减值", type: "passive" },
           { name: "致命毒药", description: "毒素伤害骰由d6提升至d8，无视目标毒素抗性", type: "passive" },
           { name: "无声处决", description: "击杀目标后不引发周边敌人警觉，保持潜行状态", type: "passive" },
         ],
@@ -1284,7 +1286,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       { level: 6,  name: "忍术·遁地", description: "以动作潜入地下，在地下可以半速移动，且地面上的生物无法感知你的存在", type: "supernatural", usesPerDay: "2次/短休" },
       { level: 10, name: "忍术·瞬身", description: "以反应动作在被攻击或受到范围效果前瞬间移动到60尺内可见的未占据空间", type: "supernatural", usesPerDay: "1次/短休" },
       { level: 14, name: "忍术·千变", description: "以动作完美伪装成任何你见过的生物，体型可以在中体型和小体型之间变化，持续8小时", type: "supernatural" },
-      { level: 18, name: "禁术·神隐", description: "以动作从现实中完全消失1分钟，期间无法被任何方式侦测或影响，你可观察世界但不能交互", type: "supernatural", usesPerDay: "1次/长休" }
+      { level: 18, name: "禁术·神隐", description: "以动作进入完全隐身状态1分钟，隐身期间无法被通常方式侦测，但仍可受到范围效果影响和感知检定对抗，不能攻击或施法", type: "supernatural", usesPerDay: "1次/长休" }
     ],
     featChoices: [
       {
@@ -1325,7 +1327,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
     levelFeatures: [
       { level: 3,  name: "远程狙击", description: "远程武器的短射程和长射程各增加50%，且攻击检定获得+2加值", type: "passive" },
       { level: 6,  name: "陷阱大师", description: "以动作布置捕兽陷阱、绊绳或毒镖陷阱，触发时造成3d6伤害并附加对应控制效果", type: "active", usesPerDay: "3次/长休" },
-      { level: 10, name: "森林隐蔽", description: "在自然环境中可以附赠动作隐藏，即使没有完全遮蔽也可尝试", type: "passive" },
+      { level: 10, name: "森林亲和", description: "在自然环境中可以附赠动作隐藏，即使没有完全遮蔽也可尝试，且自然环境中移动速度+10尺", type: "passive" },
       { level: 14, name: "致命冷枪", description: "在隐藏状态下的远程偷袭伤害取最大值，且目标无法通过豁免减少伤害", type: "passive" },
       { level: 18, name: "万兽无缰", description: "你在荒野中的远程攻击无视全掩蔽和全遮蔽，攻击可以反弹一次命中第二个目标", type: "supernatural" }
     ],
@@ -1339,14 +1341,14 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       },
       {
         level: 8, pick: 1, options: [
-          { name: "陷阱大师", description: "每次可同时布置两处陷阱，陷阱触发DC+2", type: "passive" },
+          { name: "连环陷阱", description: "每次可同时布置两处陷阱，陷阱触发DC+2", type: "passive" },
           { name: "巨兽猎手", description: "对大体型及以上生物的偷袭伤害额外+3d6", type: "passive" },
           { name: "踪迹追踪", description: "追踪检定额外优势，且追踪时移动速度不受减值", type: "passive" },
         ],
       },
       {
         level: 12, pick: 1, options: [
-          { name: "连环陷阱", description: "陷阱被触发时自动在10尺内生成一个同类型陷阱", type: "passive" },
+          { name: "陷阱连锁", description: "陷阱被触发时自动在10尺内生成一个同类型陷阱", type: "passive" },
           { name: "致命狙击", description: "远程攻击暴击范围扩大至18-20，暴击伤害翻倍", type: "passive" },
         ],
       },
@@ -1373,8 +1375,8 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       { level: 3,  name: "感化光环", description: "以附赠动作展开感化光环，20尺内敌对生物必须通过感知豁免否则无法对你发动攻击，持续1分钟", type: "supernatural", usesPerDay: "1次/短休" },
       { level: 6,  name: "神圣之血", description: "你的血液蕴含神圣力量，受到伤害时血液溅射对周围敌人造成光耀伤害，且可为盟友恢复生命值", type: "passive" },
       { level: 10, name: "群体赐福", description: "以动作为30尺内最多6个盟友施加神恩赐福，使其攻击检定和豁免检定获得优势，持续1分钟", type: "supernatural", usesPerDay: "1次/长休" },
-      { level: 14, name: "圣言术·愈", description: "以附赠动作释放强大治愈圣言，为60尺内所有盟友恢复大量生命值，并移除所有毒素和疾病", type: "supernatural", usesPerDay: "1次/短休" },
-      { level: 18, name: "神恩降临", description: "以动作呼唤神恩降临，自身化为神圣容器1分钟，每回合为盟友恢复生命值且免疫即死效果", type: "supernatural", usesPerDay: "1次/长休" }
+      { level: 14, name: "圣言术·愈", description: "以附赠动作释放强大治愈圣言，为60尺内所有盟友恢复8d8+感知调整值点生命值，并移除所有毒素和疾病", type: "supernatural", usesPerDay: "1次/短休" },
+      { level: 18, name: "神恩降临", description: "以动作呼唤神恩降临，自身化为神圣容器1分钟，每回合为30尺内盟友恢复3d8生命值，即死效果豁免获得优势", type: "supernatural", usesPerDay: "1次/长休" }
     ],
     featChoices: [
       {
@@ -1394,7 +1396,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       {
         level: 12, pick: 1, options: [
           { name: "逆转恩典", description: "将一次受到的伤害转化为等量的生命值恢复", type: "supernatural", usesPerDay: "1次/长休" },
-          { name: "神恩共鸣", description: "光环内盟友受到致命伤害时自动以1HP存活一次", type: "supernatural" },
+          { name: "恩典共鸣", description: "光环内盟友受到致命伤害时自动以1HP存活一次", type: "supernatural" },
         ],
       },
     ],
@@ -1508,7 +1510,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       { level: 3,  name: "狐火召唤", description: "以附赠动作召唤3团紫色狐火围绕自身，每团狐火可为一次攻击提供伤害加成或阻挡一次远程攻击", type: "supernatural", usesPerDay: "3次/长休" },
       { level: 6,  name: "稻荷神咒", description: "以动作释放稻荷神咒祝福盟友，30尺内所有盟友的下一次攻击检定获得优势且额外造成2d6光耀伤害", type: "supernatural", usesPerDay: "2次/短休" },
       { level: 10, name: "狐化身", description: "以附赠动作变形为九尾狐形态，获得敏捷优势、额外移动速度和黑暗视觉，持续1小时", type: "supernatural", usesPerDay: "1次/长休" },
-      { level: 14, name: "丰收恩赐", description: "以动作使30尺半径内的土地瞬间恢复生机，盟友恢复大量生命值并移除力竭等级，敌方亡灵受到驱散效果", type: "supernatural", usesPerDay: "1次/短休" },
+      { level: 14, name: "丰收恩赐", description: "以动作使30尺半径内的土地瞬间恢复生机，盟友恢复6d8+感知调整值点生命值并移除力竭等级，敌方亡灵受到驱散效果", type: "supernatural", usesPerDay: "1次/短休" },
       { level: 18, name: "稻荷显圣", description: "以动作召唤稻荷神虚影降临，60尺内盟友获得全豁免优势且每回合恢复生命值，持续1分钟", type: "supernatural", usesPerDay: "1次/长休" }
     ],
     featChoices: [
@@ -1620,7 +1622,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       },
       {
         level: 12, pick: 1, options: [
-          { name: "冰霜巨人", description: "永冻领域中可变形为冰霜巨人获得巨额属性加成", type: "supernatural" },
+          { name: "冰霜巨人", description: "永冻领域中可变形为冰霜巨人获得力量+6、体质+4的属性加成，持续1分钟", type: "supernatural" },
           { name: "极光庇护", description: "极光笼罩下盟友获得隐身和全部伤害抗性", type: "supernatural", usesPerDay: "1次/长休" },
         ],
       },
@@ -1638,15 +1640,13 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
     baseHp: 14,
     rulesets: ["dnd5e"],
     saveProficiencies: ["strength", "wisdom"],
-    spellcaster: true,
-    spellcastingType: "half",
     baseClassId: "barbarian",
     levelFeatures: [
-      { level: 3,  name: "兽魂图腾", description: "以附赠动作立下兽魂图腾柱，20尺内盟友获得你所选兽魂的一种增益（熊之力+2、鹰之眼+5先攻、狼之速+10移动）", type: "supernatural", usesPerDay: "感知调整值次/长休" },
+      { level: 3,  name: "兽魂图腾", description: "以附赠动作立下蕴含自然魔法的兽魂图腾柱，20尺内盟友获得你所选兽魂的一种增益（熊之力+2力量、鹰之眼+5先攻、狼之速+10移动速度），不可与法术叠加", type: "supernatural", usesPerDay: "感知调整值次/长休" },
       { level: 6,  name: "兽灵附体", description: "狂暴时可选择一个兽魂附体，获得对应能力：熊魂（AC+2）、鹰魂（飞行30尺）、狼魂（攻击优势）", type: "supernatural" },
       { level: 10, name: "先祖召唤", description: "以动作召唤兽灵先祖为你作战，先祖拥有你一半属性且每回合可进行一次攻击，持续1分钟", type: "supernatural", usesPerDay: "1次/短休" },
       { level: 14, name: "兽神变", description: "狂暴时可变形为所选兽魂的完全体形态（巨熊、巨鹰、恐狼），获得对应巨兽的全部属性", type: "supernatural", usesPerDay: "1次/长休" },
-      { level: 18, name: "万兽之灵", description: "同时获得所有兽魂的增益效果，狂暴时不受任何控制效果影响，免疫魅惑和恐惧", type: "supernatural" }
+      { level: 18, name: "万兽之灵", description: "同时获得所有兽魂的增益效果，狂暴时对魅惑和恐惧豁免获得优势，AC+1", type: "supernatural" }
     ],
     featChoices: [
       {
@@ -1707,7 +1707,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
         level: 8, pick: 1, options: [
           { name: "音波感知", description: "可精确感知墙壁和障碍物后方30尺内的生物", type: "passive" },
           { name: "无形箭矢", description: "远程攻击无视魔法护盾和防护法术效果", type: "passive" },
-          { name: "暗袭", description: "从完全黑暗中发动的首次远程攻击必定重击", type: "active", usesPerDay: "1次/短休" },
+          { name: "暗袭", description: "从完全黑暗中发动的首次远程攻击视为重击", type: "active", usesPerDay: "1次/短休" },
         ],
       },
       {
@@ -1735,7 +1735,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
     baseClassId: "ranger",
     levelFeatures: [
       { level: 3,  name: "魔箭术", description: "以附赠动作在箭矢上附加元素之力（火、冰、雷、毒任选），额外造成1d6对应元素伤害", type: "active", usesPerDay: "智力调整值次/长休" },
-      { level: 6,  name: "符文箭", description: "可在箭矢上铭刻符文，命中时触发特殊效果：爆炸（范围伤害）、束缚（限制移动）、追踪（必定命中）", type: "active", usesPerDay: "1次/短休" },
+      { level: 6,  name: "符文箭", description: "可在箭矢上铭刻符文，命中时触发特殊效果：爆炸（对10尺半径造成2d6火焰伤害）、束缚（目标需力量豁免否则束缚）、追踪（攻击检定获得优势）", type: "active", usesPerDay: "1次/短休" },
       { level: 10, name: "箭雨风暴", description: "以动作射出魔法箭雨，60尺半径内所有敌人受到武器伤害+3d8力场伤害", type: "active", usesPerDay: "1次/短休" },
       { level: 14, name: "次元箭", description: "射出穿透空间的次元箭，无视掩蔽和距离限制，可攻击同一纬度内的任何可见目标", type: "supernatural", usesPerDay: "1次/长休" },
       { level: 18, name: "终焉之箭", description: "以动作射出一支蕴含毁灭魔力的终极箭矢，命中后造成20d8力场伤害，目标为邪恶阵营时伤害翻倍", type: "supernatural", usesPerDay: "1次/长休" }
@@ -2104,7 +2104,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       { level: 6,  name: "焦土战场", description: "以动作诅咒一片土地使其寸草不生，30尺半径内地面变为困难地形，敌人每回合受到2d6暗蚀伤害", type: "supernatural", usesPerDay: "2次/长休" },
       { level: 10, name: "死气汲取", description: "每当你对敌人造成暗蚀伤害，恢复伤害量一半的生命值", type: "passive" },
       { level: 14, name: "地狱火风暴", description: "以动作召唤地狱黑炎风暴，60尺半径内所有敌人受到10d6暗蚀伤害，且无法被治疗1分钟", type: "supernatural", usesPerDay: "1次/长休" },
-      { level: 18, name: "邪焰领主", description: "化为地狱黑炎化身1分钟，免疫火焰和暗蚀伤害，每回合自动对周围敌人造成伤害，所有火焰法术免费瞬发", type: "supernatural", usesPerDay: "1次/长休" }
+      { level: 18, name: "邪焰领主", description: "化为地狱黑炎化身1分钟，获得火焰和暗蚀伤害抗性，每回合开始对10尺内敌人造成2d8黯蚀伤害，火焰法术施法时间缩短为附赠动作（每回合限一次）", type: "supernatural", usesPerDay: "1次/长休" }
     ],
     featChoices: [
       {
@@ -2195,8 +2195,8 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
       { level: 3,  name: "御剑术", description: "以附赠动作指挥飞剑在30尺内自动攻击敌人，使用你的敏捷调整值进行攻击和伤害掷骰", type: "active", usesPerDay: "感知调整值次/长休" },
       { level: 6,  name: "剑气纵横", description: "你的近战攻击可延伸至20尺，视作远程武器攻击但不承受远程攻击惩罚", type: "passive" },
       { level: 10, name: "御剑飞行", description: "以动作踏上飞剑获得60尺飞行速度，持续1小时，飞行期间可正常攻击", type: "supernatural", usesPerDay: "2次/长休" },
-      { level: 14, name: "万剑归宗", description: "以动作召唤10把灵剑组成剑阵，每把灵剑每回合自动攻击不同目标，持续1分钟", type: "supernatural", usesPerDay: "1次/长休" },
-      { level: 18, name: "剑仙降世", description: "以动作化身上古剑仙形态1分钟，获得飞行速度120尺、免疫非魔法伤害，所有攻击附带额外5d8力场伤害", type: "supernatural", usesPerDay: "1次/长休" }
+      { level: 14, name: "万剑归宗", description: "消耗3点气以动作召唤10把灵剑组成剑阵，每把灵剑每回合可攻击不同目标（攻击加值=感知调整值+熟练加值），造成1d8+感知调整值力场伤害，持续1分钟", type: "supernatural", usesPerDay: "1次/长休" },
+      { level: 18, name: "剑仙降世", description: "消耗5点气化身上古剑仙形态1分钟，获得60尺飞行速度、对非魔法物理伤害获得抗性，所有攻击附带额外5d8力场伤害", type: "supernatural", usesPerDay: "1次/长休" }
     ],
     featChoices: [
       {

@@ -1,11 +1,12 @@
 <script setup>
 import { ref, reactive, computed, watch, nextTick } from 'vue'
-import { createSession, sendAction, getArchetypes } from './api.js'
+import { createSession, sendAction, getArchetypes, getSuggestions } from './api.js'
 import KPDashboard from './KPDashboard.vue'
 import CombatGrid from './CombatGrid.vue'
 import ModuleEditor from './ModuleEditor.vue'
 import CharacterEditor from './CharacterEditor.vue'
 import NpcChat from './NpcChat.vue'
+import SceneOverview from './SceneOverview.vue'
 
 // ── State ──────────────────────────────────────────────
 const screen = ref('start')        // 'start' | 'game'
@@ -46,6 +47,13 @@ const messages = ref([])           // { id, type, speaker, content }
 const companions = ref([])         // from data.state.companions[]
 const npcs = ref([])               // from data.state.npcs[]
 const monsters = ref([])           // from data.state.monsters[]
+const suggestions = ref([])         // from getSuggestions API
+const logFilter = ref('all')        // 'all' | 'narration' | 'action' | 'system' | 'roll'
+
+const filteredMessages = computed(() => {
+  if (logFilter.value === 'all') return messages.value
+  return messages.value.filter(m => m.type === logFilter.value)
+})
 const companionsExpanded = ref(true) // collapsible toggle for narrow screens
 const selectedCompanion = ref(null)     // modal state
 const kpVisible = ref(false)            // KP dashboard toggle
@@ -296,6 +304,7 @@ async function submitAction(inputText, actingPc) {
     })
   } finally {
     loading.value = false
+    getSuggestions(session.id).then(s => suggestions.value = s).catch(() => {})
   }
 }
 
@@ -549,6 +558,30 @@ function recordHistory(cmd) {
         </div>
       </header>
 
+      <!-- ── Scene Overview ── -->
+      <SceneOverview
+        v-if="session.scene"
+        :scene="session.scene"
+        :npcs="npcs"
+        :monsters="monsters"
+        :companions="companions"
+        :combat-active="session.dead === false"
+        @chat="(n) => { chattingNpc = n; npcChatVisible = true }"
+        @inspect="(c) => { if (c._type === 'companion') openCharCard(c) }"
+      />
+
+      <!-- ── Suggestion Bar ── -->
+      <div v-if="session.id" class="suggestion-bar">
+        <span class="suggestion-bar__hint">💡 你可以：</span>
+        <button
+          v-for="s in suggestions"
+          :key="s"
+          class="suggestion-bar__chip"
+          :disabled="loading"
+          @click="submitAction(s)"
+        >{{ s }}</button>
+      </div>
+
       <!-- ── Combat Grid ── -->
       <CombatGrid
         v-if="companions.length > 0 || npcs.length > 0 || monsters.length > 0"
@@ -676,6 +709,17 @@ function recordHistory(cmd) {
           >
             <span v-if="msg.speaker" class="message__speaker">{{ msg.speaker }}</span>
             <p class="message__content">{{ msg.content }}</p>
+          </div>
+
+          <!-- Filter bar -->
+          <div class="log-filter">
+            <button
+              v-for="f in [{k:'all',l:'全部'},{k:'narration',l:'叙事'},{k:'action',l:'行动'},{k:'system',l:'系统'},{k:'roll',l:'骰子'}]"
+              :key="f.k"
+              class="log-filter__btn"
+              :class="{ 'log-filter__btn--active': logFilter === f.k }"
+              @click="logFilter = f.k"
+            >{{ f.l }}</button>
           </div>
 
           <!-- Loading indicator -->
@@ -1371,6 +1415,34 @@ function recordHistory(cmd) {
   flex-direction: column;
   gap: var(--space-md);
   padding-bottom: var(--space-sm);
+}
+
+/* Log filter */
+.log-filter {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.log-filter__btn {
+  padding: 3px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.log-filter__btn:hover {
+  color: var(--color-text);
+  border-color: var(--color-border-active);
+}
+.log-filter__btn--active {
+  background: var(--color-gold);
+  color: #1a1a2e;
+  border-color: var(--color-gold);
+  font-weight: 600;
 }
 
 /* ════════════════════════════════════════════════════════
