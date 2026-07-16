@@ -5,3 +5,9 @@ tmp/
 .env
 *.log
 .opencode/
+_find_false_npc.mjs
+start.ps1
+temp/
+tmp-build/
+tools/
+package-lock.json

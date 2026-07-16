@@ -303,15 +303,26 @@ export class GameSession {
     this.addMessage(speaker, content, type);
   }
   setPlayerSan(pid: string, value: number) {
-    const eng = this.sanityEngines.get(pid) ?? this.sanity;
+    let eng = this.sanityEngines.get(pid);
+    if (!eng) {
+      eng = new SanityEngine(value, Math.max(value, 50));
+      this.sanityEngines.set(pid, eng);
+    }
     eng.state.currentSAN = Math.max(0, Math.min(value, eng.state.maxSAN));
+    if (pid === this.activePlayerId) this.sanity = eng;
   }
   setPlayerHp(pid: string, value: number) {
     const ch = this.characters.get(pid);
     if (!ch) return;
     ch.hp = Math.max(0, Math.min(value, ch.maxHp ?? 99));
-    const ent = this.world.getEntity(pid);
-    if (ent) { ent.hp = ch.hp; this.world.upsertEntity(ent); }
+    // 同步世界实体（若不存在则创建）
+    let ent = this.world.getEntity(pid);
+    if (!ent) {
+      ent = { id: pid, name: ch.name ?? pid, type: "pc", hp: ch.hp, maxHp: ch.maxHp ?? 99, ac: ch.ac ?? 10, status: [], position: this.world.getCurrentState().scene ?? "tavern" };
+    } else {
+      ent.hp = ch.hp;
+    }
+    this.world.upsertEntity(ent);
   }
   applyDamage(entityId: string, damage: number) {
     this.world.applyDamage(entityId, Math.max(0, damage));
@@ -424,12 +435,60 @@ export class GameSession {
       const enemies = Object.values(state.entities).filter(e => (e.type === "monster" || e.type === "npc") && e.hp > 0);
       if (enemies.length > 0) {
         this.combatActive = true;
-        const target = enemies[0];
-        const dmg = Math.floor(Math.random() * 6) + 1;
-        target.hp = Math.max(0, target.hp - dmg);
-        this.world.upsertEntity(target);
-        turnMessages.push({ speaker: "系统", content: `⚔️ 你对 ${target.name} 造成了 ${dmg} 点伤害 (剩余 HP: ${target.hp})`, type: "system" });
-        if (target.hp <= 0) turnMessages.push({ speaker: "系统", content: `💀 ${target.name} 被击败了`, type: "system" });
+        const target = enemies[Math.floor(Math.random() * enemies.length)];
+
+        // 检定（简化版）
+        const skill = 50;
+        const roll = Math.floor(Math.random() * 100) + 1;
+        const success = roll <= skill;
+        const isCrit = roll <= skill * 0.05;
+        const isFumble = roll > 95;
+
+        let dmg = 0;
+        if (success) {
+          dmg = isCrit ? Math.floor(Math.random() * 12) + 6 : Math.floor(Math.random() * 6) + 1;
+          target.hp = Math.max(0, target.hp - dmg);
+          this.world.upsertEntity(target);
+        }
+
+        const hitMsg = isFumble ? "大失败！" : isCrit ? "暴击！" : success ? "命中" : "未命中";
+        turnMessages.push({
+          speaker: "系统",
+          content: `🎲 检定 d100=${roll} (目标=${skill}) ${hitMsg}${success ? `，对 ${target.name} 造成 ${dmg} 点伤害` : ""}`,
+          type: "system",
+        });
+        turnMessages.push({
+          speaker: "系统",
+          content: `${target.name} 剩余 HP: ${target.hp}/${target.maxHp}`,
+          type: "system",
+        });
+
+        // 同伴协作攻击
+        const comps = this.companionManager.getActiveCompanions();
+        for (const c of comps) {
+          if (c.hp > 0 && c.behavior !== "defensive") {
+            const cRoll = Math.floor(Math.random() * 100) + 1;
+            const cSkill = c.config.skills?.fight ?? 30;
+            if (cRoll <= cSkill && enemies.length > 0) {
+              const aliveEnemies = Object.values(state.entities).filter(e => (e.type === "monster" || e.type === "npc") && e.hp > 0);
+              if (aliveEnemies.length > 0) {
+                const cTarget = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+                const cDmg = Math.floor(Math.random() * 4) + 1;
+                cTarget.hp = Math.max(0, cTarget.hp - cDmg);
+                this.world.upsertEntity(cTarget);
+                turnMessages.push({ speaker: "系统", content: `👤 ${c.config.name} 协助攻击 ${cTarget.name}，造成 ${cDmg} 点伤害`, type: "system" });
+              }
+            }
+          }
+        }
+
+        // 检查战斗结束
+        const aliveEnemies = Object.values(state.entities).filter(e => (e.type === "monster" || e.type === "npc") && e.hp > 0);
+        if (aliveEnemies.length === 0) {
+          this.combatActive = false;
+          turnMessages.push({ speaker: "系统", content: "✋ 所有敌人已被击败，战斗结束", type: "system" });
+        }
+
         return this.buildActionResponse(turnMessages);
       }
     }
