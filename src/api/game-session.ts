@@ -398,8 +398,51 @@ export class GameSession {
     }
 
     turnMessages.push({ speaker: playerName, content: input, type: "action" });
-    // 简单叙事
-    this.lastNarrative = `${playerName}：${input}`;
+
+    // NPC/同伴指令检测
+    const inviteMatch = input.match(/^邀请\s+(.+)/);
+    const farewellMatch = input.match(/^告别\s+(.+)/);
+    const controlMatch = input.match(/^(?:控制|接管|手操)\s+(.+)/);
+    const autoMatch = input.match(/^(?:自动|放手|AI)\s+(.+)/);
+
+    if (inviteMatch) {
+      turnMessages.push({ speaker: "系统", content: `你向 ${inviteMatch[1].trim()} 发出了邀请`, type: "system" });
+      return this.buildActionResponse(turnMessages);
+    }
+    if (farewellMatch) {
+      turnMessages.push({ speaker: "系统", content: `${farewellMatch[1].trim()} 离开了队伍`, type: "system" });
+      return this.buildActionResponse(turnMessages);
+    }
+    if (controlMatch) {
+      turnMessages.push({ speaker: "系统", content: `你接管了 ${controlMatch[1].trim()} 的控制权`, type: "system" });
+      return this.buildActionResponse(turnMessages);
+    }
+
+    // 战斗检测：如果包含攻击关键词且 combatActive
+    if (this.combatActive || /^(攻击|射击|挥砍|向.+攻击|对.+使用)/.test(input)) {
+      const state = this.world.getCurrentState();
+      const enemies = Object.values(state.entities).filter(e => (e.type === "monster" || e.type === "npc") && e.hp > 0);
+      if (enemies.length > 0) {
+        this.combatActive = true;
+        const target = enemies[0];
+        const dmg = Math.floor(Math.random() * 6) + 1;
+        target.hp = Math.max(0, target.hp - dmg);
+        this.world.upsertEntity(target);
+        turnMessages.push({ speaker: "系统", content: `⚔️ 你对 ${target.name} 造成了 ${dmg} 点伤害 (剩余 HP: ${target.hp})`, type: "system" });
+        if (target.hp <= 0) turnMessages.push({ speaker: "系统", content: `💀 ${target.name} 被击败了`, type: "system" });
+        return this.buildActionResponse(turnMessages);
+      }
+    }
+
+    // LLM 叙事
+    try {
+      const narration = await this.kp.narrateOutcome(input, `玩家行动: ${input}`, turnMessages);
+      this.lastNarrative = narration;
+      turnMessages.push({ speaker: "守秘人", content: narration, type: "narration" });
+    } catch {
+      this.lastNarrative = `${playerName} 行动了：${input}`;
+      turnMessages.push({ speaker: "守秘人", content: `${playerName} 行动了：${input}`, type: "narration" });
+    }
     return this.buildActionResponse(turnMessages);
   }
 
