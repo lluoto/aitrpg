@@ -1,0 +1,261 @@
+// POC 核心类型定义
+
+export interface ActionIntent {
+  action: string;         // "attack" | "move" | "cast" | "skill_check" | "san_check" | "saving_throw" | "flee" | "unknown"
+  target?: string;        // 目标实体 ID
+  weapon?: string;        // 武器名
+  method?: string;        // "stealth" | "flank" | "charge" | "ranged" | "melee"
+  skill?: string;         // 技能名（非战斗行动）
+  ability?: string;       // 豁免属性名
+  dc?: number;            // 目标 DC
+  sanCost?: string;       // CoC SAN 损失格式 "1/1d6"
+  reason?: string;        // SAN 检定原因 / 豁免原因
+  spell?: string;         // D&D 法术名
+  /** CoC: 燃运点数（减少 d100 投骰） */
+  luckSpend?: number;
+  /** CoC: 当前使用的武器名（用于弹药消耗） */
+  weaponName?: string;
+  /** CoC: 瞄准攻击的目标部位（如 "头部"、"腿部"、"武器"） */
+  calledShot?: string;
+  /** 装备/卸下目标物品名 */
+  item?: string;
+  /** CoC: 格挡/反击标志 */
+  fightBack?: boolean;
+  /** 模组完成结算：结局 ID */
+  endingId?: string;
+  /** 模组完成结算：结局显示名 */
+  endingName?: string;
+  /** 模组完成结算：结局描述 */
+  endingDescription?: string;
+  /** 模组完成结算：额外 SAN 损失 */
+  extraSan?: number;
+  /** 模组完成结算：额外 CM 增长 */
+  extraCm?: number;
+  /** 模组完成结算：额外信誉变化 */
+  extraCr?: number;
+  /** 模组完成结算：获得的奖励规则 ID 列表 */
+  rewardIds?: string[];
+}
+
+/** CoC 武器定义 */
+export interface CoCWeaponDef {
+  ammoType: string | null;
+  capacity: number | null;
+  baseSkill: number;
+}
+
+/** CoC 武器运行状态 */
+export interface CoCWeaponState {
+  currentAmmo: number;
+  ammoType: string | null;
+  capacity: number | null;
+  /** 卡壳/故障中 */
+  malfunctioned?: boolean;
+  /** 当前耐久（从 maxDurability 初始化） */
+  currentDurability?: number;
+  /** 最大耐久（来自武器定义） */
+  maxDurability?: number;
+}
+
+export interface CombatResult {
+  hit: boolean;
+  crit: boolean;
+  roll: number;
+  bonuses: BonusEntry[];
+  total: number;
+  damage: number;
+  damage_type: string;
+  result: 'kill' | 'wound' | 'miss';
+  intensity: number;       // 0.0-1.0 → 动画演出强度
+  camera_hint: string;
+  sfx_hint: string;
+}
+
+export interface BonusEntry {
+  source: string;          // "熟练+2" | "敏捷+3" | "优势取高" | "惩罚骰"
+  value: number | string;
+}
+
+export interface WorldEntity {
+  id: string;
+  name: string;
+  type: 'pc' | 'npc' | 'monster' | 'item';
+  hp: number;
+  maxHp: number;
+  ac: number;
+  status: string[];        // ["sneaking", "poisoned", "concentrating"]
+  position: string;        // "melee_range" | "ranged" | "far"
+  faction?: string;        // "野兽", "怪物", "友善" 等——仅 npc/monster
+}
+
+export interface WorldState {
+  entities: Record<string, WorldEntity>;
+  active_effects: Effect[];
+  scene: string;
+  time: string;            // "combat_round_3" | "exploration" | "social"
+}
+
+export interface Effect {
+  id: string;
+  source: string;
+  target: string;
+  type: 'advantage' | 'disadvantage' | 'condition' | 'buff';
+  description: string;
+  duration: number;        // 剩余回合
+}
+
+export interface SaveResult {
+  ability: string;           // "strength" | "dexterity" | "constitution" | "intelligence" | "wisdom" | "charisma"
+  abilityLabel: string;      // 中文名
+  roll: number;
+  mod: number;               // 属性调整值
+  proficient: boolean;
+  proficiencyBonus: number;
+  total: number;             // roll + mod + (prof ? profBonus : 0)
+  dc: number;
+  success: boolean;
+  critical: boolean;         // 自然 20
+  fumble: boolean;           // 自然 1
+}
+
+export interface RuleDefinition {
+  id: string;
+  trigger: string;         // "attack_action" | "skill_check" | "saving_throw"
+  conditions: string[];    // ["has_advantage", "target_in_range"]
+  resolution: string;      // "d20+modifiers vs AC"
+  priority: number;        // 冲突优先级
+}
+
+/** 战斗导向的性格特质（1-10，5=普通人基准） */
+export interface CombatPersonalityTraits {
+  /** 勇气（高=悍不畏死，低=怯懦爱逃） */
+  courage: number;
+  /** 攻击性（高=优先攻击，低=被动防御） */
+  aggression: number;
+  /** 谨慎（高=考虑自保/闪避，低=莽撞冲锋） */
+  caution: number;
+  /** 忠诚（高=舍身保护队友，低=优先自保） */
+  loyalty: number;
+  /** 残忍（高=倾向全力攻击/追击，低=适可而止） */
+  cruelty: number;
+}
+
+/** 邀请入队条件（CoC 叙事友好） */
+export interface CompanionRecruit {
+  /** 招募剧情文本（在成功时展示） */
+  greeting: string;
+  /** 招募所需技能，如 "persuade" / "credit_rating" */
+  skill?: string;
+  /** 技能 DC（0-99），默认 50 */
+  dc?: number;
+  /** 检定失败时的替代文本 */
+  failGreeting?: string;
+}
+
+/** 离队触发条件 */
+export interface CompanionDeparture {
+  /** 触发条件类型 */
+  trigger: "hp_zero" | "morale_cower" | "motivation_done";
+  /** 条件描述（叙事用途） */
+  description: string;
+  /** 离队台词 */
+  farewell: string;
+  /** 是否可重新邀请（默认 true） */
+  canRejoin?: boolean;
+}
+
+/** AI 队友配置 */
+export interface CompanionConfig {
+  /** 唯一标识（用于命令） */
+  id: string;
+  /** 显示名 */
+  name: string;
+  type: WorldEntity["type"];  // 通常是 "npc"
+  hp: number;
+  maxHp: number;
+  ac: number;
+  /** 技能值，如 { fight: 60, dodge: 40, heal: 50 } */
+  skills: Record<string, number>;
+  /** 伤害骰，如 "1d6+1d4" */
+  damageDice: string;
+  /** 武器名（用于 combat 引擎） */
+  weapon?: string;
+  /** 战斗行为模式 */
+  behavior: "aggressive" | "defensive" | "support";
+  /** 阵营标记（如 "player_ally"） */
+  faction?: string;
+  /** 性格特质（影响战斗决策推导） */
+  traits?: CombatPersonalityTraits;
+  /** 初始物品（武器名/道具名，与 COC_WEAPONS_FULL 或道具表匹配） */
+  inventory?: string[];
+  /** 招募条件（叙事文本 + 可选检定） */
+  recruit?: CompanionRecruit;
+  /** 离队条件 */
+  departure?: CompanionDeparture[];
+  /** 入队动机（叙事用途） */
+  motivation?: string;
+}
+
+/** 队友运行状态 */
+export interface CompanionState {
+  config: CompanionConfig;
+  entityId: string;         // WorldEntity id
+  /** 当前行为模式 */
+  behavior: CompanionConfig["behavior"];
+  /** 是否在场景中 */
+  active: boolean;
+  /** 运行时背包（初始来自 config.inventory，可通过交互增减） */
+  inventory: string[];
+  /** 士气（0-10，起始 10，受创/恐惧会下降，归零触发离队） */
+  morale: number;
+  /** 是否已被邀请过（防止重复招募文本） */
+  invited: boolean;
+  /** 控制权：auto=AI自主，"player:userId"=指定玩家手操 */
+  control: "auto" | `player:${string}`;
+  /** 决心状态（暗黑地牢式 resolve check 结果） */
+  resolveState: "normal" | "steadfast" | "afflicted" | "berserk";
+  /** 当前 resolve 状态剩余回合数，0 表示 normal */
+  resolveTurnsLeft: number;
+}
+
+/** 决心检定结果 */
+export interface ResolveResult {
+  state: "steadfast" | "normal" | "afflicted" | "berserk";
+  turnsLeft: number;
+  description: string;  // 简短描述，非硬编码对话
+}
+
+/** 队友快照（用于副本记录/断线重连） */
+export interface CompanionSnapshot {
+  configId: string;
+  hp: number;
+  maxHp: number;
+  inventory: string[];
+  morale: number;
+  behavior: "aggressive" | "defensive" | "support";
+  control: "auto" | `player:${string}`;
+  entityId: string;
+  resolveState: "normal" | "steadfast" | "afflicted" | "berserk";
+  resolveTurnsLeft: number;
+}
+
+/** 副本记录（类似 WoW instance save — 记录一次副本探索的队伍+状态+进度） */
+export interface InstanceRecord {
+  id: string;
+  /** 副本名称/场景 ID */
+  instanceId: string;
+  createdAt: number;
+  lastUpdatedAt: number;
+
+  /** 队伍阵容 */
+  companions: CompanionSnapshot[];
+  /** 玩家列表（userId → characterName） */
+  players: Record<string, string>;
+
+  /** 进度 */
+  round: number;
+  currentScene: string;
+  completedScenes: string[];
+  /** 故事标志位（已触发的关键事件） */
+  flags: Record<string, boolean>;
+}

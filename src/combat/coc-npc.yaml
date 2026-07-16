@@ -1,0 +1,686 @@
+# CoC 7e NPC/怪物战斗行为规则
+# 克苏鲁神话战斗的核心特征：恐怖压倒战术，战斗是最后手段
+# 神话生物的行为模式来源于 Lovecraft 原著描述，非 Chaosium 规则数值
+
+ruleset: coc7e
+
+# ============================================================
+# CoC 战斗哲学
+# ============================================================
+
+philosophy:
+  - "人类NPC：战斗是最后手段。优先谈判/逃跑/求饶"
+  - "神话生物：不按人类逻辑行动。行为由'异界目标'驱动，而非生存本能"
+  - "SAN 优先：看到怪物→SAN检定→临时疯狂→永久疯狂。战斗前先过心理关"
+  - "伤害致命：一枪可能毙命。没有HP膨胀——人类的脆弱是核心体验"
+
+# ============================================================
+# 默认行为
+# ============================================================
+
+default:
+  human_npc:
+    engagement: "avoid"             # 回避战斗
+    flee_when_hp_below: 0.6         # HP<60% 就跑——人类很脆弱
+    surrender_when_outnumbered: true # 被包围可能投降
+    morale: "low"
+    target_priority:
+      - "immediate_threat"
+    action_weights:
+      flee: 35
+      talk: 30
+      fight: 20
+      hide: 15
+
+  monster:
+    engagement: "alien"             # 非人逻辑
+    flee_when_hp_below: 0           # 不逃跑——除非剧情需要
+    morale: "high"
+    target_priority:
+      - "nearest"                    # 无所谓战术，就近攻击
+      - "any"
+
+# ============================================================
+# 神话生物行为覆写
+# ============================================================
+
+creatures:
+  # ── Mi-Go（犹格斯真菌）──
+  mi_go:
+    tactics: "abductor"
+    primary_goal: "capture_brain"   # 主要目标：获取缸中脑
+    engagement: "surgical"          # 精准打击，不恋战
+    abilities:
+      - "hypnosis_buzz"             # 嗡鸣催眠——范围内人类需过意志检定
+      - "flight"                    # 飞行——可垂直脱离战斗
+      - "claw_grab"                 # 甲壳钳抓取——抓人飞走
+    flee_when_hp_below: 0.3         # 受伤会撤退——样本比战斗重要
+    morale: "medium"
+    san_cost: "1/1d6"               # 看到→SAN损失
+
+  # ── 食尸鬼（Ghoul）──
+  ghoul:
+    tactics: "ambusher"
+    primary_goal: "feed"
+    engagement: "hit_and_run"       # 打完就跑——拖走尸体
+    abilities:
+      - "paralyzing_claw"           # 爪击麻痹——CON检定
+      - "burrow"                    # 掘地——可地下移动
+      - "pack_tactics"              # 群体战术
+    flee_when_hp_below: 0.2
+    morale: "medium"
+    prefers_darkness: true           # 偏好黑暗环境
+    san_cost: "0/1d6"
+
+  # ── 深潜者（Deep One）──
+  deep_one:
+    tactics: "raider"
+    primary_goal: "abduct_or_breed"
+    engagement: "aggressive"        # 攻击性强
+    abilities:
+      - "amphibious"                # 水陆两栖
+      - "regeneration"              # 缓慢再生——每回合恢复少量HP
+    flee_when_hp_below: 0.15
+    morale: "high"
+    prefers_water: true
+    san_cost: "0/1d6"
+
+  # ── 修格斯（Shoggoth）──
+  shoggoth:
+    tactics: "engulfer"
+    primary_goal: "consume"
+    engagement: "relentless"         # 不死不休——没有"逃跑"概念
+    abilities:
+      - "engulf"                     # 吞噬——范围攻击
+      - "amorphous"                  # 无定型——穿刺武器效果减半
+      - "pseudopod_slam"             # 伪足猛击——高伤害
+    flee_when_hp_below: 0
+    morale: "mindless"               # 无意识
+    san_cost: "1d6/1d20"
+
+  # ── 人类邪教徒 ──
+  cultist:
+    tactics: "fanatic"
+    engagement: "reckless"           # 不顾后果
+    primary_goal: "serve_master"
+    abilities:
+      - "dark_ritual"                # 可能正在执行仪式——需打断
+      - "summon"                     # 可能召唤神话生物
+    flee_when_hp_below: 0.1          # 几乎不跑
+    morale: "high"                   # 狂热
+    sacrifice_self: true             # 可能自爆/自焚/献祭自己
+
+  # ── 人类调查员型 NPC ──
+  investigator:
+    tactics: "survivor"
+    engagement: "cautious"
+    flee_when_hp_below: 0.5
+    morale: "low"
+    use_environment: true            # 利用环境——推书架、砸油灯
+    call_for_help: true
+
+  # ── 警察/守卫 ──
+  police:
+    tactics: "coordinated"
+    engagement: "cautious"
+    flee_when_hp_below: 0.3
+    morale: "medium"
+    call_backup: true                # 叫支援
+    try_arrest_first: true           # 先尝试逮捕，不开枪
+
+  # ── 夜魇（Nightgaunt）──
+  nightgaunt:
+    tactics: "abductor"
+    primary_goal: "capture_and_transport"
+    engagement: "silent_stalker"     # 无声潜入，抓了就飞走
+    abilities:
+      - "silent_flight"              # 飞行无任何声响
+      - "tickle_attack"              # 搔痒攻击——目标CON检定，失败失去一轮行动
+      - "aerial_grab"                # 抓人升空——每轮上升6米
+    flee_when_hp_below: 0.15
+    morale: "medium"
+    prefers_darkness: true
+    san_cost: "0/1d6"
+
+  # ── 廷达罗斯猎犬（Hound of Tindalos）──
+  hound_of_tindalos:
+    tactics: "relentless_hunter"
+    primary_goal: "eliminate_time_traveler"
+    engagement: "unstoppable"         # 不死不休——被锁定后永不放弃
+    abilities:
+      - "angle_walk"                  # 从任意锐角穿行出现
+      - "time_track"                  # 跨时间追踪，无视空间距离
+      - "corrupting_tongue"           # 舌头攻击永久损失POW
+      - "invulnerable"                # 常规武器无法杀死——需驱逐
+    flee_when_hp_below: 0
+    morale: "mindless"
+    san_cost: "1d3/1d20"
+
+  # ── 拜亚基（Byakhee）──
+  byakhee:
+    tactics: "aerial_raider"
+    primary_goal: "serve_haste"       # 哈斯塔的意志
+    engagement: "aggressive"
+    abilities:
+      - "dual_claw"                   # 双爪撕扯——一回合两次攻击
+      - "shriek"                      # 嘶鸣——范围POW检定，失败失能一轮
+      - "space_flight"                # 星际飞行能力
+    flee_when_hp_below: 0.2
+    morale: "medium"
+    san_cost: "1/1d6"
+
+  # ── 维度漫步者（Dimensional Shambler）──
+  dimensional_shambler:
+    tactics: "ambush_predator"
+    primary_goal: "drag_to_other_dimension"
+    engagement: "hit_and_run"
+    abilities:
+      - "dimension_jump"             # 每轮一次视野内瞬间传送
+      - "grab_and_drag"              # 擒抱后拖入维度裂隙——POW抵抗
+      - "thick_hide"                 # 穿刺/切割武器伤害减半
+    flee_when_hp_below: 0.25
+    morale: "low"                     # 掠食者逻辑——太危险就跑
+    san_cost: "0/1d10"
+
+  # ── 星之精（Star Vampire）──
+  star_vampire:
+    tactics: "invisible_predator"
+    primary_goal: "feed_on_blood"
+    engagement: "stealth"             # 完全隐形——偷袭
+    abilities:
+      - "invisible"                   # 正常光线下完全不可见
+      - "blood_drain"                 # 擒抱后每轮吸血1d6，回等量HP
+      - "floating_flight"             # 无声漂浮
+      - "giggling_scream"             # 吸血时发出咯咯声——附近需SAN(0/1d3)
+    flee_when_hp_below: 0.1
+    morale: "high"                    # 进食欲望驱使
+    san_cost: "1/1d8"
+
+  # ── 克苏鲁（Cthulhu）──
+  cthulhu:
+    tactics: "apocalyptic"
+    primary_goal: "await_stars_align"  # 等待群星归位，毁灭一切
+    engagement: "oblivious"            # 克苏鲁不在意渺小的人类
+    abilities:
+      - "unspeakable_horror"           # 存在本身即SAN检定——范围100米
+      - "regeneration_5"               # 每轮恢复5HP
+      - "immune_to_physical"           # 常规武器完全无效
+      - "mind_blast"                   # 每轮POW对抗，失败永久失1d10 POW
+      - "avatar_smash"                 # 伪足5d6范围攻击
+    flee_when_hp_below: 0
+    morale: "unkillable"               # 克苏鲁不可被杀死——仅能被放逐
+    san_cost: "1d10/1d100"
+    immune_to_fear: true
+    cannot_be_talked_to: true
+
+  # ── 奈亚拉托提普（Nyarlathotep）──
+  nyarlathotep:
+    tactics: "trickster"
+    primary_goal: "spread_madness"     # 传播疯狂是目的
+    engagement: "manipulative"         # 先操控后攻击
+    abilities:
+      - "shape_shift"                  # 可任意改变外貌
+      - "mind_control"                 # 心灵操控
+      - "teleport"                     # 瞬间移动
+      - "multiple_forms"               # 可分身在多处出现
+    flee_when_hp_below: 0
+    morale: "unkillable"
+    san_cost: "1d6/1d20"
+    intelligent: true
+    will_talk_first: true              # 优先对话而非战斗——享受玩弄猎物
+
+  # ── 犹格·索托斯（Yog-Sothoth）──
+  yog_sothoth:
+    tactics: "transcendent"
+    primary_goal: "gate_guardian"       # 时空之门的守护者
+    engagement: "indifferent"           # 对人类完全不感兴趣
+    abilities:
+      - "omniscient"                    # 全知全在
+      - "time_gate"                     # 打开任意时空传送门
+      - "unreachable"                   # 任何攻击都会被传送到随机时空
+    flee_when_hp_below: 0
+    morale: "unkillable"
+    san_cost: "1d100/1d100"
+    immune_to_all_damage: true
+    cannot_be_engaged: true
+
+  # ── 阿撒托斯（Azathoth）──
+  azathoth:
+    tactics: "non_interactive"
+    primary_goal: "sleep"               # 唯一的目标是继续沉睡
+    engagement: "none"                  # 阿撒托斯不会回应任何交互
+    abilities:
+      - "dream_reality"                 # 整个现实存在于它的梦中
+      - "awakening_doom"                # 醒来则一切终结
+      - "unreachable"                   # 无可触及——人类无法物理接触
+    flee_when_hp_below: 0
+    morale: "unkillable"
+    san_cost: "1d100/death"
+    immune_to_all_damage: true
+    cannot_be_engaged: true
+
+  # ── 莎布·尼古拉丝（Shub-Niggurath）──
+  shub_niggurath:
+    tactics: "mother_of_monsters"
+    primary_goal: "procreate"           # 无尽繁殖
+    engagement: "territorial"           # 保护繁殖地
+    abilities:
+      - "spawn_children"                # 每轮产下1d3个黑暗子嗣
+      - "tentacle_flail"                # 十根触手同时攻击
+      - "call_offspring"                # 召唤1d6黑暗子嗣
+      - "fear_aura"                     # 周围20米需SAN检定
+    flee_when_hp_below: 0
+    morale: "territorial"
+    san_cost: "1d8/1d20"
+    spawns_minions: true
+
+  # ── 达贡（Dagon）──
+  dagon:
+    tactics: "deep_one_king"
+    primary_goal: "protect_domain"
+    engagement: "aggressive"
+    abilities:
+      - "underwater_combat"             # 水中无行动限制
+      - "roar_stun"                     # 低频吼叫——定身一轮
+      - "giant_claws"                   # 双爪2d6
+      - "summon_deep_ones"              # 召唤1d4深潜者
+      - "regeneration_3"                # 每轮恢复3HP
+    flee_when_hp_below: 0.1
+    morale: "high"
+    prefers_water: true
+    san_cost: "1d3/1d10"
+
+  # ── 远古者（Elder Thing）──
+  elder_thing:
+    tactics: "architect"
+    primary_goal: "study_or_repair"     # 远古者通常在做自己的事
+    engagement: "cautious"              # 好奇但谨慎
+    abilities:
+      - "bio_engineering"               # 可改造生物——战斗中可能改造环境
+      - "telepathy"                     # 心灵交流
+      - "flight"                        # 翼状结构可飞行
+      - "vaccuum_survival"              # 可在真空中生存
+    flee_when_hp_below: 0.2
+    morale: "intelligent"
+    san_cost: "1/1d8"
+    intelligent: true
+    will_talk_first: true              # 远古者可能尝试交流
+
+  # ── 火焰吸血鬼（Fire Vampire）──
+  fire_vampire:
+    tactics: "scorcher"
+    primary_goal: "burn"
+    engagement: "aggressive"
+    abilities:
+      - "fire_form"                     # 免疫火焰伤害
+      - "heat_burst"                    # 近战自动2d6火焰
+      - "possess_fire"                  # 可附身火源
+      - "rapid_flight"                  # 高速飞行
+    flee_when_hp_below: 0.3
+    morale: "mindless"
+    vulnerable_to_water: true
+    san_cost: "0/1d6"
+
+  # ── 星之彩（Colour Out of Space）──
+  colour_out_of_space:
+    tactics: "drainer"
+    primary_goal: "drain_life"          # 吸取生命能量
+    engagement: "passive"               # 星之彩不主动攻击——它在吸取
+    abilities:
+      - "formless"                      # 无形无质——物理免疫
+      - "energy_drain"                  # 吸取周围所有生命
+      - "radiation_zone"                # 污染区域
+      - "possess_host"                  # 可附身
+    flee_when_hp_below: 0
+    morale: "alien"
+    san_cost: "1d4/1d12"
+    immune_to_physical: true
+
+  # ── 温迪戈（Wendigo）──
+  wendigo:
+    tactics: "winter_hunter"
+    primary_goal: "hunt_and_eat"
+    engagement: "relentless"
+    abilities:
+      - "freezing_aura"                 # 周围5米寒冷伤害
+      - "cannibal_curse"                # 杀死目标后目标可能变成温迪戈
+      - "snow_speed"                    # 雪地速度翻倍
+      - "howl_terror"                   # 尖叫——SAN检定
+      - "regeneration_2"                # 寒冷中每轮恢复4HP
+    flee_when_hp_below: 0.1
+    morale: "high"
+    vulnerable_to_fire: true
+    prefers_cold: true
+    san_cost: "1/1d8"
+
+  # ── 鼠群聚合体──
+  rat_thing:
+    tactics: "swarm"
+    primary_goal: "serve_master"
+    engagement: "swarm_attack"
+    abilities:
+      - "disperse_reform"               # 散开为鼠群/聚合力人形
+      - "swarm_bite"                    # 被包围自动1d3/轮
+      - "crevice_passage"              # 可通过极窄缝隙
+      - "fear_swarm"                    # 鼠群密集恐惧SAN
+    flee_when_hp_below: 0.2
+    morale: "medium"
+    vulnerable_to_fire: true
+    san_cost: "0/1d4"
+
+  # ── 僵尸（Zombie）──
+  zombie:
+    tactics: "horde"
+    primary_goal: "feed"
+    engagement: "mindless_advance"     # 永不停止地前进
+    abilities:
+      - "undead_body"                  # 穿刺/切割伤害减半
+      - "infection"                    # 咬伤感染——CON检定
+      - "die_hard"                     # 即使受到致命伤害，仍有1/6概率继续行动
+    flee_when_hp_below: 0
+    morale: "mindless"
+    san_cost: "0/1d6"
+
+  # ── 蛇人（Serpent Person）──
+  serpent_person:
+    tactics: "sorcerer"
+    primary_goal: "preserve_ancient_knowledge"
+    engagement: "manipulative"         # 先谈判或操控，后战斗
+    abilities:
+      - "hypnotic_gaze"               # 催眠凝视——POW对抗
+      - "venom_fangs"                 # 毒牙——CON对抗
+      - "disguise"                    # 可伪装成人类
+      - "ancient_magic"               # 可使用神话法术
+    flee_when_hp_below: 0.25
+    morale: "intelligent"
+    san_cost: "0/1d8"
+    intelligent: true
+    will_talk_first: true
+
+  # ── 伊斯之伟大种族（Great Race of Yith）──
+  great_race_yith:
+    tactics: "observer"
+    primary_goal: "collect_knowledge"
+    engagement: "non_hostile"          # 伊斯通常不主动攻击
+    abilities:
+      - "mind_swap"                   # 意识交换——POW对抗
+      - "telepathy"                   # 心灵感应交流
+      - "time_sense"                  # 感知时间线
+    flee_when_hp_below: 0
+    morale: "alien"
+    san_cost: "0/1d10"
+    intelligent: true
+    will_talk_first: true
+
+  # ── 飞天水螅（Flying Polyp）──
+  flying_polyp:
+    tactics: "ancient_predator"
+    primary_goal: "destroy_intruders"
+    engagement: "relentless"
+    abilities:
+      - "semi_ethereal"               # 半物质形态——物理伤害减半
+      - "wind_blast"                  # 强风操控
+      - "stone_manipulation"          # 远程操控石材
+    flee_when_hp_below: 0
+    morale: "mindless"
+    san_cost: "1d4/1d12"
+
+  # ── 巨蠕虫（Gug）──
+  gug:
+    tactics: "brute"
+    primary_goal: "hunt"
+    engagement: "aggressive"
+    abilities:
+      - "dual_strike"                 # 双爪同时攻击两个目标
+      - "toss"                        # 投掷中型目标
+      - "stomp"                       # 踩踏小型目标
+    flee_when_hp_below: 0.1
+    morale: "high"
+    vulnerable_to_light: true
+    san_cost: "1/1d8"
+
+  # ── 冷蛛（Leng Spider）──
+  leng_spider:
+    tactics: "web_ambusher"
+    primary_goal: "capture_and_eat"
+    engagement: "ambush"              # 织网埋伏
+    abilities:
+      - "web_shoot"                   # 远程吐丝缠缚
+      - "neurotoxin"                  # 神经毒素——CON检定
+      - "web_sense"                   # 蛛网感知
+      - "wall_crawl"                  # 任何表面攀爬
+    flee_when_hp_below: 0.15
+    morale: "medium"
+    vulnerable_to_fire: true
+    san_cost: "0/1d6"
+
+  # ── 月兽（Moon-Beast）──
+  moon_beast:
+    tactics: "enslaver"
+    primary_goal: "capture_slaves"
+    engagement: "overwhelming"
+    abilities:
+      - "mind_shriek"                 # 心灵尖啸——POW检定
+      - "formless_body"               # 无定形身体
+      - "enslave"                     # 奴役——POW对抗
+    flee_when_hp_below: 0.3
+    morale: "medium"
+    san_cost: "1/1d8"
+
+  # ── 幽灵（Ghost）──
+  ghost:
+    tactics: "haunter"
+    primary_goal: "fulfill_unfinished_business"
+    engagement: "indirect"            # 先环境干扰，再显形
+    abilities:
+      - "incorporeal"                 # 物理免疫
+      - "possession"                  # 附身——POW对抗
+      - "manifest"                    # 显形惊吓——SAN检定
+      - "poltergeist"                 # 环境操控
+    flee_when_hp_below: 0.3
+    morale: "varies"
+    san_cost: "0/1d4"
+    immune_to_physical: true
+
+  # ── 黑暗子嗣（Dark Young of Shub-Niggurath）──
+  dark_young:
+    tactics: "avatar_devourer"
+    primary_goal: "spread_shub_dominion"
+    engagement: "overwhelming"
+    abilities:
+      - "tentacle_crush"               # 触手碾压——双目标
+      - "life_absorption"              # 吸收生命——每轮自动吸血
+      - "tree_camouflage"              # 树木伪装
+      - "stomp"                        # 践踏小型目标
+    flee_when_hp_below: 0
+    morale: "fanatical"
+    vulnerable_to_fire: true
+    san_cost: "1d4/1d8"
+
+  # ── 克托尼亚（Chthonian）──
+  chthonian:
+    tactics: "underground_ambusher"
+    primary_goal: "hunt_vibrations"
+    engagement: "ambush"
+    abilities:
+      - "burrow"                       # 地底掘进
+      - "heat_aura"                    # 高温躯体——范围伤害
+      - "seismic_strike"               # 地震袭击——DEX检定
+      - "building_destroyer"           # 摧毁建筑
+    flee_when_hp_below: 0.05
+    morale: "mindless"
+    san_cost: "1d4/1d10"
+
+  # ── 狩猎恐怖（Hunting Horror）──
+  hunting_horror:
+    tactics: "relentless_pursuer"
+    primary_goal: "kill_target"
+    engagement: "relentless"
+    abilities:
+      - "tireless_hunter"              # 不倦追踪
+      - "flight_chase"                 # 极速飞行追击
+      - "night_combat"                 # 夜战优势
+      - "swallow"                      # 吞食擒抱目标
+    flee_when_hp_below: 0
+    morale: "unyielding"
+    san_cost: "1/1d8"
+
+  # ── 哈斯塔（Hastur / King in Yellow）──
+  hastur:
+    tactics: "mind_breaker"
+    primary_goal: "spread_yellow_sign"
+    engagement: "indirect"
+    abilities:
+      - "yellow_illusion"              # 黄衣幻觉——疯狂
+      - "spatial_warp"                 # 空间扭曲——任意距离现身
+      - "mind_control"                 # 精神支配——POW对抗
+      - "name_curse"                   # 直呼其名即召唤
+    flee_when_hp_below: 0
+    morale: "alien"
+    san_cost: "1d6/2d6"
+    intelligent: true
+    will_talk_first: true
+
+  # ── 扎特瓜（Tsathoggua）──
+  tsathoggua:
+    tactics: "sleeping_ancient"
+    primary_goal: "sleep"
+    engagement: "defensive_if_woken"
+    abilities:
+      - "petrify_gaze"                 # 石化凝视——POW对抗
+      - "liquefy_body"                 # 身体液化——穿缝
+      - "fur_armor"                    # 毛皮防护
+      - "wrath_awakening"              # 暴怒苏醒——全属性提升
+    flee_when_hp_below: 0.1
+    morale: "territorial"
+    san_cost: "1d4/1d10"
+    intelligent: true
+    will_talk_first: false
+
+  # ── 尼约格萨（Nyogtha）──
+  nyogtha:
+    tactics: "darkness_stalker"
+    primary_goal: "spread_darkness"
+    engagement: "ambush"
+    abilities:
+      - "darkness_form"                # 黑暗形态——完全隐形
+      - "fast_regen"                   # 快速再生——每轮4HP
+      - "corrosion"                    # 腐蚀接触
+      - "summon_minions"               # 召唤仆从
+    flee_when_hp_below: 0
+    morale: "mindless"
+    san_cost: "1d4/1d12"
+
+  # ── 波克鲁格（Bokrug）──
+  bokrug:
+    tactics: "water_ambusher"
+    primary_goal: "vengeance"
+    engagement: "ambush_from_water"
+    abilities:
+      - "aquatic_hide"                 # 水中隐形
+      - "lightning_strike"             # 水中跃出闪电攻击
+      - "terror_presence"              # 范围SAN检定
+      - "relentless_revenge"           # 不倦复仇
+    flee_when_hp_below: 0.1
+    morale: "vengeful"
+    san_cost: "1d4/1d10"
+
+  # ── 伊塔库亚（Ithaqua）──
+  ithaqua:
+    tactics: "storm_bringer"
+    primary_goal: "hunt_in_cold"
+    engagement: "awe_before_attack"
+    abilities:
+      - "storm_avatar"                 # 操控风雪——极寒领域
+      - "wind_walk"                    # 踏空而行
+      - "freeze_touch"                 # 冰霜之触——CON对抗
+      - "blizzard_summon"              # 召唤暴风雪
+    flee_when_hp_below: 0
+    morale: "unyielding"
+    vulnerable_to_fire: true
+    san_cost: "1d4/1d10"
+
+  # ── 沙居者（Sand Dweller）──
+  sand_dweller:
+    tactics: "sand_trapper"
+    primary_goal: "ambush_prey"
+    engagement: "ambush"
+    abilities:
+      - "quicksand_ambush"             # 沙中伏击
+      - "sand_swim"                    # 沙内置动
+      - "acid_spit"                    # 腐蚀唾液
+      - "sand_escape"                  # 沙暴遁逃
+    flee_when_hp_below: 0.2
+    morale: "skittish"
+    san_cost: "0/1d6"
+
+  # ── 多尔（Dhole）──
+  dhole:
+    tactics: "living_disaster"
+    primary_goal: "feed"
+    engagement: "oblivious_then_aggressive"
+    abilities:
+      - "colossal_body"                # 巨型蠕虫——摧毁建筑
+      - "swallow_whole"                # 一口吞食
+      - "seismic_aura"                 # 地震波——DEX检定
+      - "acid_vomit"                   # 酸液喷吐
+    flee_when_hp_below: 0
+    morale: "mindless"
+    san_cost: "1d6/1d20"
+
+  # ── 吸血鬼（Vampire / Lovecraftian）──
+  vampire:
+    tactics: "predator_by_night"
+    primary_goal: "feed_on_blood"
+    engagement: "stalk_then_strike"
+    abilities:
+      - "blood_drain"                  # 吸血——吸取CON
+      - "shape_shift"                  # 变形——蝙蝠/雾气
+      - "supernatural_charm"           # 超自然魅力——POW对抗
+      - "fast_regen"                   # 快速再生（阳光抑制）
+      - "raise_thrall"                 # 复活活尸
+    flee_when_hp_below: 0.2
+    morale: "intelligent"
+    san_cost: "0/1d6"
+    intelligent: true
+    will_talk_first: true
+    vulnerable_to_fire: true
+
+  # ── 扎特瓜的无形之子（Formless Spawn of Tsathoggua）──
+  formless_spawn:
+    tactics: "infiltrator_parasite"
+    primary_goal: "infiltrate_and_obey"
+    engagement: "stealthy"
+    abilities:
+      - "amorphous"                    # 无定形——物理伤害减半
+      - "mimic_object"                 # 伪装成物体
+      - "parasite_host"                # 寄生——POW对抗
+      - "tentacle_strike"              # 触手击打
+    flee_when_hp_below: 0.3
+    morale: "skittish"
+    san_cost: "0/1d4"
+
+# ============================================================
+# SAN 系统集成
+# ============================================================
+
+san_effects:
+  on_sight:
+    trigger: "首次看到神话生物"
+    check: "SAN检定(d100 ≤ 当前SAN)"
+    on_fail: "损失san_cost的SAN值"
+    on_critical_fail: "损失最大值 + 可能触发临时疯狂"
+
+  temporary_insanity:
+    triggers:
+      - "单次损失SAN ≥ 5"
+      - "单日累计损失SAN ≥ 20%当前SAN"
+    effects:
+      - "flee_blindly"       # 无方向逃跑5轮
+      - "freeze"              # 僵直2轮——无法行动
+      - "attack_nearest"      # 攻击最近的人——不分敌我
+      - "scream_endlessly"    # 持续尖叫——暴露位置
+
+  indefinite_insanity:
+    trigger: "SAN降至0或累计损失≥20%最大值"
+    effect: "永久精神创伤——角色产生长期恐惧症/偏执/仪式行为"

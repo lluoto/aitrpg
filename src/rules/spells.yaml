@@ -1,0 +1,259 @@
+# D&D 5e SRD 法术 YAML
+# CC-BY-4.0 — Wizards of the Coast
+# 仅 POC 阶段需要的法术子集（含戏法到 3 环）
+
+spells:
+  # ── 戏法（Cantrips, 0 环）──
+  fire_bolt:
+    name: "火焰箭"
+    level: 0
+    school: "evocation"
+    casting_time: "1 动作"
+    range: "120 英尺"
+    components: "V, S"
+    duration: "立即"
+    description: "你向射程内的一个目标发射一束火焰。远程法术攻击命中后造成 1d10 火焰伤害。"
+    damage: "1d10"
+    damage_type: "fire"
+    attack_type: "ranged_spell"
+    classes: ["sorcerer", "wizard"]
+    damage_at_higher_level: { 5: "2d10", 11: "3d10", 17: "4d10" }
+
+  ray_of_frost:
+    name: "冰冻射线"
+    level: 0
+    school: "evocation"
+    casting_time: "1 动作"
+    range: "60 英尺"
+    components: "V, S"
+    duration: "立即"
+    description: "一道冰冷的射线射向目标。远程法术攻击命中后造成 1d8 寒冷伤害，目标速度减少 10 英尺直到你的下一回合。"
+    damage: "1d8"
+    damage_type: "cold"
+    attack_type: "ranged_spell"
+    classes: ["sorcerer", "wizard"]
+    damage_at_higher_level: { 5: "2d8", 11: "3d8", 17: "4d8" }
+
+  mage_hand:
+    name: "法师之手"
+    level: 0
+    school: "conjuration"
+    casting_time: "1 动作"
+    range: "30 英尺"
+    components: "V, S"
+    duration: "1 分钟"
+    description: "你在射程内创造一个漂浮的魔法手，持续时间内你可以用它操作物品、开锁等。"
+    attack_type: "utility"
+    classes: ["bard", "sorcerer", "warlock", "wizard"]
+
+  prestidigitation:
+    name: "魔法伎俩"
+    level: 0
+    school: "transmutation"
+    casting_time: "1 动作"
+    range: "10 英尺"
+    components: "V, S"
+    duration: "1 小时"
+    description: "你施展一个基本的魔法把戏：清洁/弄脏物品、点燃/熄灭火焰、创造小幻象等。"
+    attack_type: "utility"
+    classes: ["bard", "sorcerer", "warlock", "wizard"]
+
+  sacred_flame:
+    name: "圣火术"
+    level: 0
+    school: "evocation"
+    casting_time: "1 动作"
+    range: "60 英尺"
+    components: "V, S"
+    duration: "立即"
+    description: "一道神圣火焰从目标上方落下。目标必须通过敏捷豁免，否则受到 1d8 光耀伤害。不死生物对该伤害有劣势。"
+    damage: "1d8"
+    damage_type: "radiant"
+    attack_type: "save_dexterity"
+    classes: ["cleric"]
+    damage_at_higher_level: { 5: "2d8", 11: "3d8", 17: "4d8" }
+
+  # ── 1 环 ──
+  magic_missile:
+    name: "魔法飞弹"
+    level: 1
+    school: "evocation"
+    casting_time: "1 动作"
+    range: "120 英尺"
+    components: "V, S"
+    duration: "立即"
+    description: "你创造三枚魔法飞弹，自动命中射程内的目标。每枚造成 1d4+1 力场伤害。你可以将飞弹分散攻击多个目标。"
+    damage: "1d4+1"
+    damage_count: 3
+    damage_type: "force"
+    attack_type: "auto_hit"
+    classes: ["sorcerer", "wizard"]
+    damage_at_higher_level: { 2: "+1d4+1", 3: "+1d4+1", 4: "+1d4+1", 5: "+1d4+1" }
+
+  burning_hands:
+    name: "燃烧之手"
+    level: 1
+    school: "evocation"
+    casting_time: "1 动作"
+    range: "自身（15 英尺锥形）"
+    components: "V, S"
+    duration: "立即"
+    description: "你的双手喷出火焰。你前方锥形范围内的目标必须通过敏捷豁免，失败则受到 3d6 火焰伤害，成功则减半。"
+    damage: "3d6"
+    damage_type: "fire"
+    attack_type: "save_dexterity_half"
+    classes: ["sorcerer", "wizard"]
+    damage_at_higher_level: { 2: "4d6", 3: "5d6", 4: "6d6", 5: "7d6" }
+
+  cure_wounds:
+    name: "治疗伤势"
+    level: 1
+    school: "evocation"
+    casting_time: "1 动作"
+    range: "接触"
+    components: "V, S"
+    duration: "立即"
+    description: "你触摸一个生物，恢复 1d8+施法属性调整值 的生命值。"
+    healing: "1d8+mod"
+    attack_type: "heal"
+    classes: ["bard", "cleric", "paladin", "druid"]
+    damage_at_higher_level: { 2: "+1d8", 3: "+1d8", 4: "+1d8", 5: "+1d8" }
+
+  shield:
+    name: "护盾术"
+    level: 1
+    school: "abjuration"
+    casting_time: "1 反应"
+    range: "自身"
+    components: "V, S"
+    duration: "1 轮"
+    description: "一道无形的力场屏障围绕你旋转，直到你的下一回合开始前，AC 获得 +5 加值，并免疫魔法飞弹。"
+    attack_type: "buff"
+    ac_bonus: 5
+    classes: ["sorcerer", "wizard"]
+
+  bless:
+    name: "祝福术"
+    level: 1
+    school: "enchantment"
+    casting_time: "1 动作"
+    range: "30 英尺"
+    components: "V, S, M"
+    duration: "专注，至多 1 分钟"
+    description: "你祝福射程内最多三个生物。每次攻击检定和豁免检定前可以投 1d4 加到结果中。"
+    attack_type: "buff"
+    classes: ["cleric", "paladin"]
+
+  # ── 2 环 ──
+  scorching_ray:
+    name: "灼热射线"
+    level: 2
+    school: "evocation"
+    casting_time: "1 动作"
+    range: "120 英尺"
+    components: "V, S"
+    duration: "立即"
+    description: "你创造三束灼热的射线攻击目标。每束进行一次远程法术攻击检定，命中造成 2d6 火焰伤害。"
+    damage: "2d6"
+    damage_count: 3
+    damage_type: "fire"
+    attack_type: "ranged_spell"
+    classes: ["sorcerer", "wizard"]
+    damage_at_higher_level: { 3: "+1d6", 4: "+1d6", 5: "+1d6" }
+
+  misty_step:
+    name: "迷踪步"
+    level: 2
+    school: "conjuration"
+    casting_time: "1 附赠动作"
+    range: "自身"
+    components: "V"
+    duration: "立即"
+    description: "你被银色薄雾包裹，传送到 30 英尺内一个你能看到的未占据空间。"
+    attack_type: "movement"
+    classes: ["sorcerer", "warlock", "wizard"]
+
+  # ── 3 环 ──
+  fireball:
+    name: "火球术"
+    level: 3
+    school: "evocation"
+    casting_time: "1 动作"
+    range: "150 英尺"
+    components: "V, S, M"
+    duration: "立即"
+    description: "一道火焰从你的指尖射向目标点，在 20 英尺半径范围内爆炸。目标必须通过敏捷豁免，失败则受到 8d6 火焰伤害，成功则减半。"
+    damage: "8d6"
+    damage_type: "fire"
+    attack_type: "save_dexterity_half"
+    classes: ["sorcerer", "wizard"]
+    damage_at_higher_level: { 4: "9d6", 5: "10d6", 6: "11d6", 7: "12d6", 8: "13d6", 9: "14d6" }
+
+  lightning_bolt:
+    name: "闪电束"
+    level: 3
+    school: "evocation"
+    casting_time: "1 动作"
+    range: "自身（100 英尺直线）"
+    components: "V, S, M"
+    duration: "立即"
+    description: "一道闪电从你指尖射向射程内一个方向，直线上的所有目标必须通过敏捷豁免，失败则受到 8d6 闪电伤害，成功则减半。"
+    damage: "8d6"
+    damage_type: "lightning"
+    attack_type: "save_dexterity_half"
+    classes: ["sorcerer", "wizard"]
+    damage_at_higher_level: { 4: "9d6", 5: "10d6", 6: "11d6", 7: "12d6", 8: "13d6", 9: "14d6" }
+
+  revivify:
+    name: "回生术"
+    level: 3
+    school: "necromancy"
+    casting_time: "1 动作"
+    range: "接触"
+    components: "V, S, M(300gp 钻石)"
+    duration: "立即"
+    description: "你触摸一个最近 1 分钟内死亡的不死生物，它将以 1 点 HP 复活。该法术不能复活因衰老而死的人。"
+    attack_type: "heal"
+    healing: "1"
+    revive: true
+    classes: ["cleric", "paladin", "bard"]
+
+# ── 环位数量（1 级角色）──
+spell_slots_by_class:
+  # 满施法者（法师/术士/牧师等）: 2 个 1 环
+  full_caster:
+    1: { 1: 2 }
+  # 半施法者（圣武士/游侠等）: 无 1 级法术位
+  half_caster:
+    1: { 1: 0 }
+
+# ── 已知法术（per 职业 per 等级）──
+known_spells:
+  wizard:
+    1: [fire_bolt, mage_hand, prestidigitation, magic_missile, burning_hands, shield]
+    2: [fire_bolt, mage_hand, prestidigitation, magic_missile, burning_hands, shield, scorching_ray, misty_step]
+    3: [fire_bolt, mage_hand, prestidigitation, magic_missile, burning_hands, shield, scorching_ray, misty_step, fireball, lightning_bolt]
+  sorcerer:
+    1: [fire_bolt, ray_of_frost, mage_hand, prestidigitation, magic_missile, burning_hands, shield]
+    2: [fire_bolt, ray_of_frost, mage_hand, prestidigitation, magic_missile, burning_hands, shield, scorching_ray, misty_step]
+    3: [fire_bolt, ray_of_frost, mage_hand, prestidigitation, magic_missile, burning_hands, shield, scorching_ray, misty_step, fireball, lightning_bolt]
+  cleric:
+    1: [sacred_flame, cure_wounds, bless]
+    2: [sacred_flame, cure_wounds, bless]
+    3: [sacred_flame, cure_wounds, bless, revivify]
+  bard:
+    1: [mage_hand, prestidigitation, cure_wounds]
+    2: [mage_hand, prestidigitation, cure_wounds]
+    3: [mage_hand, prestidigitation, cure_wounds, revivify]
+  warlock:
+    1: [mage_hand, prestidigitation]
+    2: [mage_hand, prestidigitation, misty_step]
+    3: [mage_hand, prestidigitation, misty_step]
+  paladin:
+    1: [cure_wounds, bless]
+    2: [cure_wounds, bless]
+    3: [cure_wounds, bless, revivify]
+  druid:
+    1: [cure_wounds]
+    2: [cure_wounds]
+    3: [cure_wounds, revivify]

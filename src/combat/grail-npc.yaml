@@ -1,0 +1,215 @@
+# 圣杯系统 NPC 战斗行为规则
+# 基于世界模型 v9 提取的力量体系
+# 位阶压制 + 技能体系 + 士气连锁
+
+ruleset: grail
+
+# ============================================================
+# 位阶体系
+# ============================================================
+
+ranks:
+  bronze:        # 青铜阶 — 入门者/民兵
+    label: "青铜"
+    tier: 1
+    base_attack: 2
+    base_defense: 10
+    hp_multiplier: 1
+    abilities: ["基础攻击"]
+    morale: "low"
+
+  iron:          # 黑铁阶 — 正规士兵
+    label: "黑铁"
+    tier: 2
+    base_attack: 4
+    base_defense: 12
+    hp_multiplier: 1.5
+    abilities: ["战技(1)", "格挡"]
+    morale: "medium"
+
+  silver:        # 白银阶 — 精英骑士
+    label: "白银"
+    tier: 3
+    base_attack: 7
+    base_defense: 15
+    hp_multiplier: 3
+    abilities: ["战技(2)", "圣光斩", "神圣护盾"]
+    morale: "high"
+    aura: "白银光环 — 半径10尺内友方AC+1"
+
+  gold:          # 黄金阶 — 骑士长/将军
+    label: "黄金"
+    tier: 4
+    base_attack: 12
+    base_defense: 18
+    hp_multiplier: 6
+    abilities: ["战技(3)", "圣光审判", "群体祝福", "神圣领域"]
+    morale: "very_high"
+    aura: "黄金光环 — 半径20尺内友方AC+2,atk+2"
+    damage_reduction: 3  # 减免3点非魔法伤害
+
+  legendary:     # 传奇阶 — 一国之力
+    label: "传奇"
+    tier: 5
+    base_attack: 20
+    base_defense: 22
+    hp_multiplier: 12
+    abilities: ["战技(全部)", "圣光化身", "奇迹", "领域展开"]
+    morale: "unbreakable"
+    aura: "传奇光环 — 半径30尺内友方AC+3,atk+3,每轮恢复1HP"
+    damage_reduction: 8
+    legendary_actions: 3       # 每轮额外3次传奇动作
+
+# ============================================================
+# 位阶压制规则
+# ============================================================
+
+tier_suppression:
+  # 高1阶: 攻击方获得+2命中/+2伤害，低阶方-2士气
+  one_tier_above:
+    attack_bonus: 2
+    damage_bonus: 2
+    enemy_morale_penalty: 2
+
+  # 高2阶: 攻击方获得+5命中/+5伤害，低阶方恐惧检定
+  two_tiers_above:
+    attack_bonus: 5
+    damage_bonus: 5
+    enemy_fear_check: true      # 低阶方需过士气检定，失败→逃跑
+
+  # 高3+阶: 攻击方自动命中，低阶方即死或溃散
+  three_plus_above:
+    auto_hit: true
+    enemy_morale_break: true    # 低阶方直接溃散
+
+# ============================================================
+# 默认行为
+# ============================================================
+
+default:
+  tactics_by_rank:
+    bronze:     # 青铜→集群作战
+      label: "人海"
+      focus_fire: false           # 不集火
+      flee_when_hp_below: 0.4
+      flee_when_leader_dies: true # 队长死了就溃散
+      morale: "low"
+
+    iron:       # 黑铁→方阵推进
+      label: "方阵"
+      focus_fire: true
+      flee_when_hp_below: 0.25
+      formation_bonus: true       # 方阵：相邻友方+1AC
+      morale: "medium"
+
+    silver:     # 白银→战术协同
+      label: "战术"
+      focus_fire: true
+      flee_when_hp_below: 0.15
+      protect_weaker_allies: true  # 保护弱小队友
+      coordinated_strike: true     # 协同打击——2+白银同时攻击同一目标→额外伤害
+      morale: "high"
+
+    gold:       # 黄金→战场核心
+      label: "统帅"
+      focus_fire: true
+      flee_when_hp_below: 0.05
+      lead_by_example: true        # 亲自冲锋→友方士气+3
+      battlefield_control: true    # 控制战场——打断敌人阵型
+      morale: "very_high"
+
+    legendary:  # 传奇→一人成军
+      label: "无双"
+      focus_fire: false            # 不需要集火——自己就是火力
+      flee_when_hp_below: 0        # 不逃跑
+      solo_army: true              # 可同时攻击3个目标
+      morale: "unbreakable"
+
+# ============================================================
+# 特定阵营/职业覆写
+# ============================================================
+
+creatures:
+  # ── 圣骑士 ──
+  paladin:
+    tactics: "protector"
+    target_priority:
+      - "attacking_allies"         # 优先攻击正在攻击友方的人
+      - "undead_or_demon"          # 优先净化亡灵/恶魔
+      - "highest_threat"
+    abilities:
+      - "smite"                    # 破邪斩——对邪恶阵营额外伤害
+      - "lay_on_hands"             # 圣疗——恢复友方HP
+      - "divine_sense"             # 感知邪恶——不会被偷袭
+    protect_weaker: true
+    last_stand: true               # HP=0时可能触发"屹立不倒"——再战1轮
+
+  # ── 暗精灵 ──
+  dark_elf:
+    tactics: "assassin"
+    target_priority:
+      - "isolated"
+      - "caster"
+      - "leader"
+    abilities:
+      - "poison_blade"             # 毒刃——命中后追加毒伤
+      - "shadow_step"              # 暗影步——瞬移至目标背后
+      - "darkness"                 # 黑暗术——制造黑暗区域
+    flee_when_hp_below: 0.3
+    morale: "medium"
+    prefers_ambush: true
+
+  # ── 亡灵系 ──
+  undead:
+    tactics: "relentless"
+    flee_when_hp_below: 0          # 不逃跑
+    morale: "mindless"
+    immune_to_fear: true
+    immune_to_poison: true
+    weakness: "holy"               # 弱点:圣光——受到额外伤害
+
+  # ── 恶魔 ──
+  demon:
+    tactics: "destroyer"
+    engagement: "aggressive"
+    target_priority:
+      - "holy_users"               # 优先杀圣职者
+      - "highest_threat"
+    abilities:
+      - "hellfire"                 # 地狱火——范围AOE，无视部分AC
+      - "corruption_aura"          # 腐蚀光环——半径15尺内每轮受到1点腐蚀伤害
+      - "possession"               # 附身——可尝试控制一个低意志目标
+    flee_when_hp_below: 0.1
+    morale: "high"
+    banishment_risk: true          # 可能被放逐——受到圣光伤害时有概率被逐回深渊
+
+# ============================================================
+# 士气系统
+# ============================================================
+
+morale:
+  # 士气检定: d20 + 士气修正 ≥ DC
+  check_dc:
+    ally_dies: 12                   # 友方死亡
+    leader_dies: 16                 # 队长死亡
+    outnumbered_2x: 10              # 被2倍以上人数包围
+    tier_suppressed: 15             # 被高位阶压制
+    hp_below_25: 10                 # HP低于25%
+    ally_routed: 14                 # 友方溃散——连锁反应
+
+  morale_bonus:
+    leader_present: 3
+    winning: 2                      # 己方占优势
+    holy_ground: 2                  # 在圣地上战斗
+    outnumber_enemy: 1
+
+  morale_penalty:
+    leader_dead: -4
+    losing: -2
+    tier_suppressed: -2（每高1阶）
+    dark_environment: -1
+
+  effects:
+    shaken: "士气检定DC失败5以内→攻击-2，可能撤退"
+    routed: "士气检定DC失败10以内→逃跑，借机攻击正常"
+    broken: "士气检定DC失败10以上→溃散，无法行动"

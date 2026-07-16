@@ -1,0 +1,81 @@
+# POC 核心规则集 — D&D 5e SRD
+# 仅 POC 阶段需要的规则，约 5-8 条
+
+rules:
+  - id: attack_roll
+    trigger: attack_action
+    conditions:
+      - target_in_range
+    resolution: d20 + proficiency_bonus + ability_modifier vs target_ac
+    priority: 1
+    description: "基础攻击检定"
+
+  - id: advantage
+    trigger: attack_action
+    conditions:
+      - has_advantage
+      - not has_disadvantage
+    resolution: roll_2d20_keep_highest
+    priority: 2
+    description: "优势——投2d20取高"
+
+  - id: disadvantage
+    trigger: attack_action
+    conditions:
+      - has_disadvantage
+      - not has_advantage
+    resolution: roll_2d20_keep_lowest
+    priority: 2
+    description: "劣势——投2d20取低"
+
+  - id: advantage_disadvantage_cancel
+    trigger: attack_action
+    conditions:
+      - has_advantage
+      - has_disadvantage
+    resolution: roll_1d20  # 优势劣势互相抵消
+    priority: 3
+    description: "优势劣势同时存在→抵消"
+
+  - id: critical_hit
+    trigger: attack_action
+    conditions:
+      - natural_20
+    resolution: double_damage_dice
+    priority: 1
+    description: "重击——自然20→伤害骰翻倍"
+
+  - id: sneak_attack
+    trigger: damage_calculation
+    conditions:
+      - attacker_has_sneak_attack
+      - has_advantage  # 或其他偷袭条件
+      - weapon_is_finesse_or_ranged
+    resolution: add_sneak_attack_dice
+    priority: 1
+    description: "偷袭——有优势+灵巧武器→追加偷袭伤害"
+
+  - id: damage_kill
+    trigger: damage_calculation
+    conditions:
+      - damage_exceeds_hp
+    resolution: set_status_dead
+    priority: 0
+    description: "伤害超过HP→击杀"
+
+  - id: fallback
+    trigger: any_action
+    conditions: []
+    resolution: prompt_dm_override
+    priority: 99
+    description: "未匹配规则→提示DM手动裁决"
+
+weapons:
+  shortsword: { dice: "1d6", damage_type: "piercing", properties: ["finesse", "light"] }
+  longsword: { dice: "1d8", damage_type: "slashing", properties: ["versatile(1d10)"] }
+  dagger: { dice: "1d4", damage_type: "piercing", properties: ["finesse", "light", "thrown(20/60)"] }
+  longbow: { dice: "1d8", damage_type: "piercing", properties: ["ammunition", "heavy", "two_handed", "range(150/600)"] }
+
+creatures:
+  goblin: { ac: 15, hp: 7, passive_perception: 9, cr: "1/4" }
+  wolf: { ac: 13, hp: 11, passive_perception: 13, cr: "1/4" }

@@ -1,0 +1,122 @@
+# D&D 5e NPC 战斗行为规则
+# 所有数值来自 SRD 公开内容
+
+ruleset: dnd5e
+
+# ============================================================
+# 默认行为（未匹配特定生物时使用）
+# ============================================================
+
+default:
+  engagement: "nearest"
+  target_priority:
+    - "last_attacker"      # 优先反击最近攻击它的
+    - "lowest_hp"           # 其次攻击残血
+    - "nearest"              # 最后打最近的
+  flee_when_hp_below: 0.25  # HP 低于 25% 尝试逃跑
+  morale: "medium"           # low/medium/high — 影响逃跑概率
+
+# ============================================================
+# CR 段位战术修正
+# ============================================================
+
+cr_tactics:
+  cr_0_to_half:       # CR 0 ~ 1/2 — 野兽/低级怪物
+    label: "蛮冲"
+    use_cover: false
+    disengage: false         # 不会撤离，硬吃借机攻击
+    focus_fire: false        # 不集火
+    flee_early: true         # HP<50% 就跑
+    special_ability_chance: 0.1
+
+  cr_1_to_4:          # CR 1~4 — 有经验的对手
+    label: "游击"
+    use_cover: true
+    disengage: true           # 会撤离
+    focus_fire: true          # 会集火一个目标
+    flee_early: false
+    special_ability_chance: 0.3
+    flank_bonus: true         # 尝试夹击
+
+  cr_5_to_10:         # CR 5~10 — 精英
+    label: "指挥"
+    use_cover: true
+    disengage: true
+    focus_fire: true
+    flee_early: false
+    special_ability_chance: 0.5
+    buff_allies: true         # 会 buff 友方
+    target_healer: true       # 优先打治疗者
+
+  cr_11_plus:         # CR 11+ — 传奇
+    label: "支配"
+    use_cover: true
+    disengage: true
+    focus_fire: true
+    flee_early: false        # 几乎不跑
+    special_ability_chance: 0.8
+    buff_allies: true
+    target_healer: true
+    lair_action: true        # 巢穴动作
+    legendary_resistance: true
+
+# ============================================================
+# 特定生物覆写
+# ============================================================
+
+creatures:
+  goblin:
+    tactics: "swarm"            # 围攻——至少 2 只打同一目标
+    flee_when_hp_below: 0.5     # 懦弱
+    morale: "low"
+    disengage_after_hit: true   # 打了就跑
+
+  wolf:
+    tactics: "pack"             # 狼群——优先攻击孤立目标
+    target_priority:
+      - "isolated"              # 落单的
+      - "lowest_hp"
+    pack_tactics: true          # 有盟友在旁时获得优势
+
+  skeleton:
+    tactics: "relentless"       # 不死不休
+    flee_when_hp_below: 0       # 不逃跑
+    morale: "high"
+
+  dragon_young:
+    tactics: "controller"
+    target_priority:
+      - "grouped"               # 优先喷聚集的
+      - "highest_threat"
+    flee_when_hp_below: 0.15
+    morale: "high"
+    strafe: true                # 俯冲攻击→飞走→等吐息冷却
+
+  bandit:
+    tactics: "skirmisher"
+    flee_when_hp_below: 0.35
+    morale: "low"
+    surrender_chance: 0.4       # 可能投降
+
+  mage:
+    tactics: "controller"
+    target_priority:
+      - "highest_threat"
+      - "grouped"
+    flee_when_hp_below: 0.2
+    morale: "medium"
+    stay_at_range: true         # 保持距离
+    use_cantrip_when_out_of_slots: true
+
+# ============================================================
+# 通用行为权重
+# ============================================================
+
+action_weights:
+  melee_attack:     40          # 基础近战
+  ranged_attack:    25          # 远程
+  special_ability:  15          # 特殊能力/法术
+  disengage:        10          # 撤离
+  dodge:             5          # 闪避
+  dash:              5          # 疾跑
+  flee:              0          # 逃跑（由 flee_when_hp_below 单独触发）

@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  trpg:
+    build: .
+    ports:
+      - "3099:3099"
+    environment:
+      - PORT=3099
+      - NODE_ENV=production
+    volumes:
+      - trpg_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  trpg_data:

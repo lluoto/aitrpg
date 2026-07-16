@@ -1,0 +1,759 @@
+// AI TRPG HTTP Server �?Bun.serve()
+// 管理 GameSession 实例，暴�?REST 接口供前端调�?//
+// 运行: bun run src/api/server.ts
+
+import { GameSession, type ActionResponse, type SessionSummary } from "./game-session";
+import type { RulesetId } from "../rules/rules-engine";
+import { loadConfig } from "../config";
+import { loadSessionIds, loadSessionMeta, saveSessionMeta, deleteSessionFile, listStoredSessions } from "./session-store";
+import { saveCharacter, loadCharacter, listCharacters } from "./character-store";
+import { createWsClient, removeWsClient, broadcastToSession, wsStats } from "./ws-handler";
+import { listSavedModules, loadModuleFile, saveModuleFile, deleteModuleFile, createBlankModule } from "./module-editor";
+
+// ============================================================
+// 会话存储
+// ============================================================
+
+const sessions = new Map<string, GameSession>();
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 分钟无操作自动清�?
+function generateId(): string {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let id = "";
+  for (let i = 0; i < 8; i++) id += chars[Math.floor(Math.random() * chars.length)];
+  return id;
+}
+
+function cleanupStaleSessions() {
+  const now = Date.now();
+  for (const [id, session] of sessions) {
+    if (now - session.createdAt > SESSION_TIMEOUT_MS && session.round === 0) {
+      sessions.delete(id);
+    }
+  }
+}
+
+// �?5 分钟清理
+setInterval(cleanupStaleSessions, 5 * 60 * 1000);
+
+// ============================================================
+// CORS �?// ============================================================
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+function corsHeaders(): Record<string, string> {
+  return { ...CORS_HEADERS, "Content-Type": "application/json; charset=utf-8" };
+}
+
+// ============================================================
+// 路由处理
+// ============================================================
+
+function parseUrl(pathname: string): { segments: string[]; query: URLSearchParams } {
+  const [path, qs] = pathname.split("?");
+  return {
+    segments: path.split("/").filter(Boolean),
+    query: new URLSearchParams(qs ?? ""),
+  };
+}
+
+// ── Session Cleanup ──────────────────────────────────────
+// �?5 分钟清理一次超�?30 分钟未活跃的 session
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
+setInterval(() => {
+  const now = Date.now();
+  let cleaned = 0;
+  for (const [id, session] of sessions) {
+    if (now - session.lastActiveAt > SESSION_TIMEOUT_MS) {
+      sessions.delete(id);
+      deleteSessionFile(id);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) console.log(`[cleanup] 清理�?${cleaned} 个过期会话`);
+}, CLEANUP_INTERVAL_MS);
+
+async function handleRequest(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  const { segments, query } = parseUrl(url.pathname);
+  const method = req.method;
+
+  // OPTIONS �?CORS preflight
+  if (method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
+  // GET / �?内置测试�?  if (method === "GET" && segments.length === 0) {
+    return serveTestPage();
+  }
+
+  // GET /api �?健康检�?  if (method === "GET" && segments[0] === "api" && segments.length === 1) {
+    return respondJson({
+      status: "ok",
+      activeSessions: sessions.size,
+      version: "0.1.0",
+      endpoints: [
+        "POST /api/sessions �?创建游戏会话",
+        "GET /api/sessions �?列出会话",
+        "GET /api/sessions/:id �?会话摘要",
+        "POST /api/sessions/:id/action �?执行玩家行动",
+        "GET /api/sessions/:id/history �?对话历史",
+        "GET /api/sessions/:id/state �?世界状�?,
+      ],
+    });
+  }
+
+  //   }
+
+  // GET /api/config �� ����������
+  if (method === "GET" && segments[0] === "api" && segments[1] === "config" && segments.length === 2) {
+    const config = loadConfig();
+    return respondJson({
+      llm: { baseUrl: config.baseUrl, model: config.model, maxTokens: config.maxTokens, temperature: config.temperature, hasKey: !!config.apiKey && !config.apiKey.startsWith("sk-placeholder") },
+      server: { port: parseInt(process.env.PORT || "3099"), env: process.env.NODE_ENV || "development", sessionTimeoutMinutes: parseInt(process.env.SESSION_TIMEOUT_MINUTES || "30") },
+      sessionCount: sessions.size,
+    });
+  }
+
+  // GET /api/archetypesGET /api/archetypes �?可用职业模板
+  if (method === "GET" && segments[0] === "api" && segments[1] === "archetypes" && segments.length === 2) {
+    const rulesetFilter = query.get("ruleset") || undefined;
+    return respondJson({
+      archetypes: CharacterFactory.listArchetypes(rulesetFilter),
+    });
+  }
+
+  // ── 角色卡持久化 ──
+
+  // GET /api/characters �?列出已保存的角色�?  if (method === "GET" && segments[0] === "api" && segments[1] === "characters" && segments.length === 2) {
+    return respondJson({ characters: listCharacters() });
+  }
+
+  // POST /api/characters �?保存角色�?  if (method === "POST" && segments[0] === "api" && segments[1] === "characters" && segments.length === 2) {
+    const body = await req.json().catch(() => ({}));
+    if (!body.name) return respondError("角色名不能为�?, 400);
+    saveCharacter(body.name, body);
+    return respondJson({ success: true });
+  }
+
+  // ── 模组编辑�?──
+
+  // GET /api/modules �?列出所有模�?  if (method === "GET" && segments[0] === "api" && segments[1] === "modules" && segments.length === 2) {
+    return respondJson({ modules: listSavedModules() });
+  }
+
+  // GET /api/modules/:id �?获取单个模组
+  if (method === "GET" && segments[0] === "api" && segments[1] === "modules" && segments.length === 3) {
+    const mod = loadModuleFile(segments[2]);
+    if (!mod) return respondError("模组不存�?, 404);
+    return respondJson({ module: mod });
+  }
+
+  // POST /api/modules �?新建或保存模�?  if (method === "POST" && segments[0] === "api" && segments[1] === "modules" && segments.length === 2) {
+    const body = await req.json().catch(() => ({}));
+    if (!body.id || !body.name) return respondError("模组 ID 和名称不能为�?, 400);
+    saveModuleFile(body);
+    return respondJson({ success: true });
+  }
+
+  // PUT /api/modules/:id �?更新模组
+  if (method === "PUT" && segments[0] === "api" && segments[1] === "modules" && segments.length === 3) {
+    const body = await req.json().catch(() => ({}));
+    if (!body.name) return respondError("模组名称不能为空", 400);
+    const existing = loadModuleFile(segments[2]);
+    if (!existing) return respondError("模组不存�?, 404);
+    saveModuleFile({ ...existing, ...body, id: segments[2] });
+    return respondJson({ success: true });
+  }
+
+  // DELETE /api/modules/:id �?删除模组
+  if (method === "DELETE" && segments[0] === "api" && segments[1] === "modules" && segments.length === 3) {
+    deleteModuleFile(segments[2]);
+    return respondJson({ success: true });
+  }
+
+  // ── 会话管理 ──
+
+  // POST /api/sessions �?创建新会�?  if (method === "POST" && segments[0] === "api" && segments[1] === "sessions" && segments.length === 2) {
+    let ruleset: RulesetId = "coc7e";
+    let archetypeId: string | undefined;
+    let characterName: string | undefined;
+    try {
+      const body = await req.json().catch(() => ({}));
+      if (body.ruleset === "dnd5e" || body.ruleset === "grail") ruleset = body.ruleset;
+      if (body.archetype) archetypeId = body.archetype;
+      if (body.characterName) characterName = body.characterName;
+    } catch {}
+
+    const id = generateId();
+    const session = new GameSession(id, ruleset, undefined, archetypeId, characterName);
+
+    // 生成开场描�?    let opening = "";
+    try {
+      opening = await session.getOpeningScene();
+    } catch (err: any) {
+      opening = `[LLM 不可用] ${err.message}`;
+    }
+
+    sessions.set(id, session);
+
+    // 持久化（扩展元数据）
+    const summary = session.getSummary();
+    const kpState = session.getKPState();
+    saveSessionMeta(id, {
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+      ruleset: session.activeRuleset,
+      playerName: characterName ?? "调查�?,
+      scene: summary.scene,
+      round: summary.round,
+      characters: kpState.characters?.map((ch: any) => ({
+        name: ch.name, hp: ch.hp, maxHp: ch.maxHp,
+        san: ch.san, maxSan: ch.maxSan,
+        archetype: ch.archetype,
+      })),
+    });
+
+    const character = session.getCharacterSummary();
+    broadcastToSession(id, "session-created", {
+      sessionId: id,
+      ruleset,
+      characterName: characterName ?? "调查�?,
+    });
+    return respondJson({
+      sessionId: id,
+      ruleset,
+      archetype: archetypeId ?? null,
+      characterName: characterName ?? "调查�?,
+      character,
+      opening,
+      summary: session.getSummary(),
+    }, 201);
+  }
+
+  // GET /api/sessions �?列表
+  if (method === "GET" && segments[0] === "api" && segments[1] === "sessions" && segments.length === 2) {
+    const list: SessionSummary[] = [];
+    for (const s of sessions.values()) {
+      list.push(s.getSummary());
+    }
+    // 合并已持久化但未在内存中�?session
+    const storedMeta = listStoredSessions();
+    for (const sm of storedMeta) {
+      if (!list.find(l => l.id === sm.id)) {
+        list.push({
+          id: sm.id, round: 0, ruleset: sm.ruleset,
+          scene: sm.scene, playerName: sm.playerName,
+          archetype: null, messageCount: 0,
+          npcCount: 0, createdAt: sm.createdAt,
+        });
+      }
+    }
+    return respondJson({ sessions: list });
+  }
+
+  // 需�?:id 的路�?  if (segments.length >= 3 && segments[0] === "api" && segments[1] === "sessions") {
+    const sessionId = segments[2];
+    const session = sessions.get(sessionId);
+
+    if (!session) {
+      return respondError("会话不存在或已过�?, 404);
+    }
+    session.lastActiveAt = Date.now();
+
+    // GET /api/sessions/:id
+    if (method === "GET" && segments.length === 3) {
+      return respondJson({
+        summary: session.getSummary(),
+        state: session.getState(),
+        sanity: session.getSanity(),
+        history: session.getHistory().slice(-10),
+      });
+    }
+
+    // GET /api/sessions/:id/history
+    if (method === "GET" && segments[3] === "history") {
+      const limit = parseInt(query.get("limit") || "50");
+      const history = session.getHistory();
+      return respondJson({
+        messages: history.slice(-limit),
+        total: history.length,
+      });
+    }
+
+    // GET /api/sessions/:id/state
+    if (method === "GET" && segments[3] === "state") {
+      return respondJson({
+        state: session.getState(),
+        sanity: session.getSanity(),
+        summary: session.getSummary(),
+      });
+    }
+
+    // GET /api/sessions/:id/character �?角色属�?    if (method === "GET" && segments[3] === "character") {
+      return respondJson({
+        character: session.getCharacterSummary(),
+        sanity: session.getSanity(),
+      });
+    }
+
+    // ── KP 面板路由 ──
+
+    // GET /api/sessions/:id/kp �?KP 完整状�?    if (method === "GET" && segments[3] === "kp" && segments.length === 4) {
+      return respondJson({ kp: session.getKPState() });
+    }
+
+    // POST /api/sessions/:id/kp/:action �?KP 操作
+    if (method === "POST" && segments[3] === "kp" && segments.length === 5) {
+      const kpAction = segments[4];
+      const body = await req.json().catch(() => ({}));
+
+      try {
+        switch (kpAction) {
+          case "send-message": {
+            const msg = (body.message || "").trim();
+            if (!msg) return respondError("消息不能为空", 400);
+            const speaker = body.speaker || "守秘�?;
+            session.sendMessage(speaker, msg, body.type || "system");
+            return respondJson({ success: true });
+          }
+          case "set-san": {
+            const pid = body.playerId || session.activePlayerId;
+            const value = parseInt(body.value);
+            if (isNaN(value)) return respondError("SAN 值无�?, 400);
+            session.setPlayerSan(pid, value);
+            return respondJson({ success: true });
+          }
+          case "set-hp": {
+            const pid = body.playerId || session.activePlayerId;
+            const value = parseInt(body.value);
+            if (isNaN(value)) return respondError("HP 值无�?, 400);
+            session.setPlayerHp(pid, value);
+            return respondJson({ success: true });
+          }
+          case "apply-damage": {
+            const target = (body.target || "").trim();
+            const dmg = parseInt(body.damage);
+            if (!target || isNaN(dmg)) return respondError("目标或伤害值无�?, 400);
+            await session.applyDamage(target, dmg);
+            return respondJson({ success: true });
+          }
+          case "set-scene": {
+            const sceneId = (body.sceneId || "").trim();
+            if (!sceneId) return respondError("场景 ID 无效", 400);
+            session.setScene(sceneId);
+            return respondJson({ success: true });
+          }
+          case "set-difficulty": {
+            const diff = (body.difficulty || "").trim();
+            if (!["easy", "medium", "hard", "nightmare"].includes(diff)) {
+              return respondError("难度需�?easy/medium/hard/nightmare", 400);
+    }
+
+    // POST /api/sessions/:id/character �?更新角色属�?    if (method === "POST" && segments[3] === "character") {
+      const body = await req.json().catch(() => ({}));
+      try {
+        const ch = session.activeCharacter;
+        if (!ch) throw new Error("无活跃角�?);
+        if (body.hp !== undefined) ch.hp = Math.max(0, Math.min(body.hp, ch.maxHp ?? 99));
+        if (body.maxHp !== undefined) ch.maxHp = body.maxHp;
+        if (body.skills && typeof body.skills === "object") Object.assign(ch.skillValues ?? (ch.skillValues = {}), body.skills);
+        if (body.inventory && Array.isArray(body.inventory)) session.inventoryMap.set(session.activePlayerId, body.inventory);
+        if (body.weapons && Array.isArray(body.weapons)) session.equippedWeaponsMap.set(session.activePlayerId, body.weapons);
+        if (body.luck !== undefined) ch.luck = body.luck;
+        if (body.creditRating !== undefined) ch.creditRating = body.creditRating;
+        if (body.attributes && typeof body.attributes === "object") Object.assign(ch.attributes ?? (ch.attributes = {}), body.attributes);
+        // 同步世界实体
+        const ent = session.world.getEntity("player");
+        if (ent) { ent.hp = ch.hp; session.world.upsertEntity(ent); }
+        return respondJson({ success: true, character: ch });
+      } catch (err: any) {
+        return respondError(`更新角色失败: ${err.message}`, 400);
+      }
+    }
+            session.setDifficulty(diff as any);
+            return respondJson({ success: true });
+          }
+          default:
+            return respondError(`未知 KP 操作: ${kpAction}`, 400);
+        }
+      } catch (err: any) {
+        return respondError(`KP 操作失败: ${err.message}`, 500);
+      }
+    }
+
+    // POST /api/sessions/:id/action �?核心：玩家输�?    if (method === "POST" && segments[3] === "action") {
+      const body = await req.json().catch(() => ({}));
+      const input = (body.input || "").trim();
+
+      if (!input) {
+        return respondError("请输入行�?, 400);
+      }
+
+      try {
+        const result: ActionResponse = await session.act(input);
+        saveSessionMeta(sessionId, {
+          lastActiveAt: Date.now(),
+          round: result.state?.round,
+          scene: result.state?.scene,
+        });
+        broadcastToSession(sessionId, "action-result", {
+          narrative: result.narrative,
+          events: result.events,
+          state: result.state,
+          dead: result.dead,
+          sanity: result.sanity,
+          dice: result.dice,
+        });
+        return respondJson({
+          ...result,
+          summary: session.getSummary(),
+        });
+      } catch (err: any) {
+        return respondError(`判定失败: ${err.message}`, 500);
+      }
+    }
+
+    // POST /api/sessions/:id/npc-chat �?NPC 对话
+    if (method === "POST" && segments[3] === "npc-chat") {
+      const body = await req.json().catch(() => ({}));
+      const npcName = (body.npc || "").trim();
+      const playerMsg = (body.message || "").trim();
+      if (!npcName || !playerMsg) return respondError("NPC 名称和消息不能为�?, 400);
+      try {
+        // �?registry �?NPC agent
+        const npcAgent = session.registry.findAgentByName(npcName);
+        if (!npcAgent) return respondError(`未找�?NPC: ${npcName}`, 404);
+        const history = session.getHistory(10);
+        const reply = await npcAgent.respond(playerMsg, history.messages);
+        // 记录�?session 历史
+        session.addMessage(npcName, reply, "dialogue");
+        return respondJson({ npc: npcName, reply });
+      } catch (err: any) {
+        return respondError(`NPC 对话失败: ${err.message}`, 500);
+      }
+    }
+
+    // GET /api/sessions/:id/export/:format �?战报导出
+    if (method === "GET" && segments[3] === "export" && segments.length === 5) {
+      const format = segments[4];
+      const history = session.getHistory();
+      const summary = session.getSummary();
+
+      if (format === "json") {
+        return respondJson({
+          session: summary,
+          exportedAt: new Date().toISOString(),
+          messageCount: history.length,
+          messages: history,
+        });
+      }
+
+      if (format === "markdown") {
+        const lines: string[] = [
+          `# AI TRPG 游戏记录`,
+          ``,
+          `**会话ID:** ${summary.id}`,
+          `**规则:** ${summary.ruleset}`,
+          `**角色:** ${summary.playerName}`,
+          `**场景:** ${summary.scene}`,
+          `**回合:** ${summary.round}`,
+          `**导出时间:** ${new Date().toLocaleString("zh-CN")}`,
+          ``,
+          `---`,
+          ``,
+        ];
+        for (const msg of history) {
+          const ts = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString("zh-CN") : "";
+          const speaker = msg.speaker ?? "系统";
+          const tag = msg.type === "narration" ? "*旁白*" : msg.type === "action" ? `**${speaker}**` : `_${speaker}_`;
+          lines.push(`${ts ? `\`${ts}\` ` : ""}${tag}: ${msg.content}`);
+          lines.push("");
+        }
+        return new Response(lines.join("\n"), {
+          headers: { "Content-Type": "text/markdown; charset=utf-8" },
+        });
+      }
+
+      return respondError("不支持的导出格式，支�? json, markdown", 400);
+    }
+
+  }
+  return respondError("未找到路�?, 404);
+}
+
+// ============================================================
+// 响应辅助
+// ============================================================
+
+function respondJson(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data, null, 2), {
+    status,
+    headers: corsHeaders(),
+  });
+}
+
+function respondError(message: string, status = 400): Response {
+  return respondJson({ error: message }, status);
+}
+
+// ============================================================
+// 测试�?// ============================================================
+
+function serveTestPage(): Response {
+  const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI TRPG �?测试客户�?/title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; display: flex; flex-direction: column; }
+  #app { max-width: 800px; margin: 0 auto; width: 100%; padding: 16px; flex: 1; display: flex; flex-direction: column; }
+  h1 { font-size: 20px; color: #b8b8d0; text-align: center; padding: 16px 0; border-bottom: 1px solid #2a2a4a; margin-bottom: 16px; }
+  #narrative { flex: 1; background: #16213e; border-radius: 8px; padding: 16px; overflow-y: auto; min-height: 300px; line-height: 1.7; white-space: pre-wrap; font-size: 15px; margin-bottom: 12px; border: 1px solid #2a2a4a; }
+  #narrative .msg-narration { color: #c8d6e5; margin-bottom: 8px; }
+  #narrative .msg-dialogue { color: #7bed9f; margin-bottom: 4px; }
+  #narrative .msg-system { color: #ff6b6b; font-size: 13px; margin-bottom: 4px; }
+  #narrative .msg-action { color: #ffd93d; margin-bottom: 4px; }
+  #narrative .speaker { font-weight: 600; }
+  #narrative .timestamp { color: #576574; font-size: 11px; margin-left: 8px; }
+  #status-bar { display: flex; gap: 16px; padding: 8px 12px; background: #0f3460; border-radius: 8px; font-size: 13px; margin-bottom: 12px; flex-wrap: wrap; }
+  #status-bar .stat { display: flex; align-items: center; gap: 4px; }
+  #status-bar .label { color: #8899aa; }
+  #status-bar .value { color: #e0e0e0; font-weight: 600; }
+  #status-bar .danger { color: #ff6b6b; }
+  #input-area { display: flex; gap: 8px; }
+  #input { flex: 1; padding: 10px 14px; border-radius: 8px; border: 1px solid #2a2a4a; background: #16213e; color: #e0e0e0; font-size: 15px; outline: none; }
+  #input:focus { border-color: #4a6fa5; }
+  #send { padding: 10px 24px; border-radius: 8px; border: none; background: #4a6fa5; color: #fff; font-size: 15px; cursor: pointer; }
+  #send:hover { background: #5a7fb5; }
+  #send:disabled { opacity: 0.5; cursor: not-allowed; }
+  #new-game { padding: 8px 16px; border-radius: 8px; border: 1px solid #2a2a4a; background: transparent; color: #8899aa; font-size: 13px; cursor: pointer; }
+  #new-game:hover { background: #2a2a4a; color: #e0e0e0; }
+  .error-msg { color: #ff6b6b; padding: 8px; background: #2a1a1a; border-radius: 4px; margin-bottom: 8px; }
+  .loading { text-align: center; padding: 20px; color: #576574; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>🎲 AI TRPG �?调查员终�?/h1>
+  <div id="status-bar">
+    <span class="stat"><span class="label">会话:</span><span class="value" id="session-id">�?/span></span>
+    <span class="stat"><span class="label">回合:</span><span class="value" id="round">0</span></span>
+    <span class="stat"><span class="label">场景:</span><span class="value" id="scene">�?/span></span>
+    <span class="stat"><span class="label">HP:</span><span class="value" id="hp">�?/span></span>
+    <span class="stat"><span class="label">SAN:</span><span class="value" id="san">�?/span></span>
+    <span id="insanity-badge" style="display:none;color:#ff6b6b;font-weight:700;">🧠 疯狂</span>
+    <button id="new-game">新游�?/button>
+  </div>
+  <div id="narrative">
+    <div class="loading">点击"新游�?开�?/div>
+  </div>
+  <div id="input-area">
+    <input id="input" type="text" placeholder="输入你的行动..." autocomplete="off">
+    <button id="send" disabled>发�?/button>
+  </div>
+</div>
+<script>
+let sessionId = null;
+const narrative = document.getElementById('narrative');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('send');
+const newGameBtn = document.getElementById('new-game');
+
+function $(id) { return document.getElementById(id); }
+
+function appendMessage(speaker, content, type) {
+  const div = document.createElement('div');
+  div.className = 'msg-' + type;
+  const ts = new Date().toLocaleTimeString();
+  if (type === 'system') {
+    div.innerHTML = '<span class="speaker">�?/span> ' + escapeHtml(content) + '<span class="timestamp">' + ts + '</span>';
+  } else {
+    div.innerHTML = '<span class="speaker">' + escapeHtml(speaker) + '</span> ' + escapeHtml(content) + '<span class="timestamp">' + ts + '</span>';
+  }
+  narrative.appendChild(div);
+  narrative.scrollTop = narrative.scrollHeight;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function updateStatus(state, sanity, summary) {
+  if (summary) {
+    $('session-id').textContent = summary.id || '�?;
+    $('round').textContent = summary.round || 0;
+  }
+  if (state) {
+    $('scene').textContent = state.scene || '�?;
+    if (state.player) {
+      $('hp').textContent = state.player.hp + '/' + state.player.maxHp;
+    }
+  }
+  if (sanity) {
+    $('san').textContent = sanity.currentSAN + '/' + sanity.maxSAN;
+    const badge = $('insanity-badge');
+    badge.style.display = (sanity.temporaryInsanity || sanity.indefiniteInsanity) ? 'inline' : 'none';
+    badge.textContent = sanity.temporaryInsanity ? '🧠 临时疯狂' : sanity.indefiniteInsanity ? '🧠 永久疯狂' : '';
+  }
+}
+
+async function createSession() {
+  const res = await fetch('/api/sessions', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ruleset:'coc7e'}) });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  sessionId = data.sessionId;
+  narrative.innerHTML = '';
+  if (data.opening) {
+    appendMessage('KP', data.opening, 'narration');
+  }
+  updateStatus(null, null, data.summary);
+  input.disabled = false;
+  input.focus();
+  return data;
+}
+
+async function sendAction(inputText) {
+  sendBtn.disabled = true;
+  input.value = '';
+  appendMessage('🎲', inputText, 'action');
+
+  try {
+    const res = await fetch('/api/sessions/' + sessionId + '/action', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({input: inputText}),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      appendMessage('系统', err.error || '请求失败', 'system');
+      return;
+    }
+    const data = await res.json();
+    // 显示 KP/旁白叙事
+    if (data.narrative) {
+      appendMessage('KP', data.narrative, 'narration');
+    }
+    // 显示其他事件
+    if (data.events) {
+      for (const e of data.events) {
+        if (e.speaker !== 'KP' && e.speaker !== '旁白') {
+          appendMessage(e.speaker, e.content, e.type);
+        }
+      }
+    }
+    updateStatus(data.state, data.sanity, data.summary);
+  } catch (err) {
+    appendMessage('系统', '连接错误: ' + err.message, 'system');
+  } finally {
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+// 事件绑定
+sendBtn.addEventListener('click', () => {
+  const text = input.value.trim();
+  if (text && sessionId) sendAction(text);
+});
+
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !sendBtn.disabled) sendBtn.click();
+});
+
+newGameBtn.addEventListener('click', async () => {
+  newGameBtn.disabled = true;
+  narrative.innerHTML = '<div class="loading">创建新游�?..</div>';
+  input.disabled = true;
+  try {
+    await createSession();
+    sendBtn.disabled = false;
+  } catch (err) {
+    narrative.innerHTML = '<div class="error-msg">创建失败: ' + err.message + '</div>';
+  } finally {
+    newGameBtn.disabled = false;
+  }
+});
+
+// 自动创建
+window.addEventListener('load', async () => {
+  try {
+    await createSession();
+    sendBtn.disabled = false;
+  } catch (err) {
+    narrative.innerHTML = '<div class="error-msg">无法连接服务�? ' + err.message + '</div>';
+  }
+});
+</script>
+</body>
+</html>`;
+  return new Response(html, {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+}
+
+// ============================================================
+// 启动
+// ============================================================
+
+const PORT = parseInt(process.env.PORT || "3099");
+
+Bun.serve({
+  port: PORT,
+  hostname: "0.0.0.0",
+  fetch(req, server) {
+    // WebSocket upgrade
+    const url = new URL(req.url);
+    if (url.pathname === "/ws") {
+      const sessionId = url.searchParams.get("session") || "";
+      const role = (url.searchParams.get("role") as "kp" | "player") || "observer";
+      const playerId = url.searchParams.get("playerId") || undefined;
+      const upgraded = server.upgrade(req, {
+        data: { sessionId, role, playerId },
+      });
+      if (upgraded) return;
+      return new Response("WebSocket upgrade failed", { status: 400 });
+    }
+    return handleRequest(req);
+  },
+  websocket: {
+    open(ws) {
+      const { sessionId, role, playerId } = ws.data;
+      createWsClient(ws, sessionId, role, playerId);
+      console.log(`  🔗 WS 连接: ${role} �?${sessionId.slice(-8)} (�?${wsStats().total} 连接)`);
+    },
+    close(ws) {
+      removeWsClient(ws);
+    },
+    message(ws, msg) {
+      // 可选的客户端→服务端消息（未来扩展�?      try {
+        const parsed = JSON.parse(msg.toString());
+        if (parsed.type === "ping") ws.send(JSON.stringify({ type: "pong" }));
+      } catch { /* ignore */ }
+    },
+  },
+});
+
+// 启动时加载已持久化的 session 摘要
+const stored = listStoredSessions();
+if (stored.length > 0) {
+  console.log(`  Loaded ${stored.length} stored session(s) from disk`);
+}
+
+console.log(`\n  🎲 AI TRPG Server`);
+console.log(`  ─────────────────`);
+console.log(`  API:  http://localhost:${PORT}/api`);
+console.log(`  GUI:  http://localhost:${PORT}/`);
+console.log(`  Port: ${PORT}`);
+console.log(`  CORS: *\n`);
