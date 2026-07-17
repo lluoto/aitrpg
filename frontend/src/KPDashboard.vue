@@ -485,4 +485,10 @@ function sanColor(cur, max) {
 .kp-feedback { padding: 6px 12px; margin-top: 8px; border-radius: 6px; font-size: 12px; }
 .kp-feedback--ok { background: #1a2a1a; color: #6bcf6b; }
 .kp-feedback:not(.kp-feedback--ok) { background: #2a1a1a; color: #ff6b6b; }
+@media (max-width: 480px) {
+  .kp-panel { width: 100vw; max-height: 100vh; border-radius: 0; }
+  .kp-tab-content { padding: 8px 10px; }
+  .kp-form-row { flex-wrap: wrap; }
+  .kp-input--grow { min-width: 100%; }
+}
 </style>

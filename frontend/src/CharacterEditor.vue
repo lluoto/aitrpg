@@ -149,4 +149,10 @@ async function save() {
 .ce-msg { font-size: 12px; flex: 1; }
 .ce-msg--ok { color: #6bcf6b; }
 .ce-msg:not(.ce-msg--ok) { color: #ff6b6b; }
+@media (max-width: 480px) {
+  .ce-panel { width: 100vw; max-height: 100vh; border-radius: 0; }
+  .ce-body { padding: 8px 10px; }
+  .ce-input, .ce-input--num { font-size: 14px; }
+  .ce-input--num { width: 48px; }
+}
 </style>

@@ -81,4 +81,10 @@ async function send() {
 .nc-input:focus { border-color: #c9a96e; }
 .nc-btn { padding: 7px 14px; border: 1px solid #c9a96e; border-radius: 6px; background: #3a3a20; color: #c9a96e; font-size: 12px; cursor: pointer; }
 .nc-btn:disabled { opacity: 0.4; cursor: default; }
+@media (max-width: 480px) {
+  .nc-panel { width: 100vw; height: 100vh; border-radius: 0; }
+  .nc-body { padding: 8px 10px; }
+  .nc-input { font-size: 16px; }
+  .nc-btn { font-size: 14px; padding: 8px 16px; }
+}
 </style>

@@ -1,12 +1,13 @@
 <script setup>
 import { ref, reactive, computed, watch, nextTick } from 'vue'
-import { createSession, sendAction, getArchetypes, getSuggestions, listSessions, getSession } from './api.js'
+import { createSession, sendAction, getArchetypes, getSuggestions, listSessions, getSession, getHistory } from './api.js'
 import KPDashboard from './KPDashboard.vue'
 import CombatGrid from './CombatGrid.vue'
 import ModuleEditor from './ModuleEditor.vue'
 import CharacterEditor from './CharacterEditor.vue'
 import NpcChat from './NpcChat.vue'
 import SceneOverview from './SceneOverview.vue'
+import SettingsPanel from './SettingsPanel.vue'
 
 // ── State ──────────────────────────────────────────────
 const screen = ref('start')        // 'start' | 'game'
@@ -66,6 +67,7 @@ const companionsExpanded = ref(true) // collapsible toggle for narrow screens
 const selectedCompanion = ref(null)     // modal state
 const kpVisible = ref(false)            // KP dashboard toggle
 const moduleEditorVisible = ref(false)  // Module editor toggle
+const settingsVisible = ref(false)       // Settings panel toggle
 const charEditorVisible = ref(false)    // Character editor toggle
 const npcChatVisible = ref(false)       // NPC chat modal
 const chattingNpc = ref(null)           // currently chatting NPC
@@ -240,6 +242,16 @@ async function resumeSession(s) {
     session.scene = s.scene ?? ''
     session.playerName = s.playerName ?? '调查员'
     session.ruleset = s.ruleset ?? 'CoC 7E'
+    // 加载历史消息
+    try {
+      const hist = await getHistory(s.id, 100)
+      messages.value = (hist.messages || []).map((m) => ({
+        id: Date.now() + Math.random(),
+        type: m.type || 'system',
+        speaker: m.speaker || '',
+        content: m.content || '',
+      }))
+    } catch { messages.value = [] }
     screen.value = 'game'
   } catch (e) {
     error.value = e.message
@@ -354,6 +366,7 @@ function newGame() {
   error.value = null
   kpVisible.value = false
   moduleEditorVisible.value = false
+  settingsVisible.value = false
   charEditorVisible.value = false
   npcChatVisible.value = false
   screen.value = 'start'
@@ -478,7 +491,11 @@ function recordHistory(cmd) {
               placeholder="输入你的名字…"
               maxlength="20"
               @keyup.enter="startGame"
-            />
+/>
+      <SettingsPanel
+        v-if="settingsVisible"
+        @close="settingsVisible = false"
+      />
           </div>
           <div class="char-creation__field">
             <label class="char-creation__label">规则</label>
@@ -643,6 +660,7 @@ function recordHistory(cmd) {
           <button class="kp-toggle-btn" @click="charEditorVisible = true" title="编辑角色">📝</button>
           <button class="kp-toggle-btn" @click="kpVisible = !kpVisible" :class="{ 'kp-toggle-btn--active': kpVisible }" title="KP 控制台">📋</button>
           <button class="kp-toggle-btn" @click="moduleEditorVisible = !moduleEditorVisible" :class="{ 'kp-toggle-btn--active': moduleEditorVisible }" title="模组编辑器">📦</button>
+          <button class="kp-toggle-btn" @click="settingsVisible = !settingsVisible" :class="{ 'kp-toggle-btn--active': settingsVisible }" title="设置">⚙️</button>
         </div>
       </header>
 

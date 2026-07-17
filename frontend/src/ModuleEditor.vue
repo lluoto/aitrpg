@@ -78,16 +78,11 @@ async function deleteModule(id) {
           <button class="me-close" @click="emit('close')">✕</button>
         </div>
 
-        <!-- List view -->
         <div v-if="!editing" class="me-body">
           <button class="me-btn me-btn--primary" @click="newModule">+ 新建模组</button>
           <div v-if="loading" class="me-loading">加载中…</div>
           <div v-for="m in modules" :key="m.id" class="me-card">
-            <div class="me-card__info">
-              <strong>{{ m.name }}</strong>
-              <span class="me-tag">{{ m.difficulty }}</span>
-              <p class="me-desc">{{ m.description }}</p>
-            </div>
+            <div class="me-card__info"><strong>{{ m.name }}</strong><span class="me-tag">{{ m.difficulty }}</span><p class="me-desc">{{ m.description }}</p></div>
             <div class="me-card__actions">
               <button class="me-btn" @click="editModule(m)">编辑</button>
               <button class="me-btn me-btn--danger" @click="deleteModule(m.id)">删除</button>
@@ -96,20 +91,10 @@ async function deleteModule(id) {
           <div v-if="!loading && modules.length === 0" class="me-empty">暂无模组</div>
         </div>
 
-        <!-- Edit view -->
         <div v-if="editing" class="me-body">
-          <div class="me-field">
-            <label>ID</label>
-            <input v-model="editing.id" class="me-input" placeholder="唯一标识" />
-          </div>
-          <div class="me-field">
-            <label>名称</label>
-            <input v-model="editing.name" class="me-input" placeholder="模组名称" />
-          </div>
-          <div class="me-field">
-            <label>描述</label>
-            <textarea v-model="editing.description" class="me-textarea" rows="2"></textarea>
-          </div>
+          <div class="me-field"><label>ID</label><input v-model="editing.id" class="me-input" placeholder="唯一标识" /></div>
+          <div class="me-field"><label>名称</label><input v-model="editing.name" class="me-input" placeholder="模组名称" /></div>
+          <div class="me-field"><label>描述</label><textarea v-model="editing.description" class="me-textarea" rows="2"></textarea></div>
           <div class="me-field me-field--row">
             <label>难度</label>
             <select v-model="editing.difficulty" class="me-select">
@@ -151,7 +136,7 @@ async function deleteModule(id) {
 .me-overlay { position: fixed; inset: 0; z-index: 9000; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: flex-start; padding-top: 4vh; }
 .me-panel { width: min(640px, 95vw); max-height: 88vh; background: #1a1a2e; border: 1px solid #3a3a5c; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; color: #e0e0e0; font-size: 13px; }
 .me-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #2a2a4a; background: #141428; }
-.me-header h2 { font-size: 15px; font-weight: 600; color: #c9a96e; }
+.me-header h2 { font-size: 15px; font-weight: 600; color: #c9a96e; margin: 0; }
 .me-close { background: transparent; border: 1px solid #3a3a5c; color: #888; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
 .me-close:hover { color: #fff; border-color: #666; }
 .me-body { flex: 1; overflow-y: auto; padding: 12px 16px; }
@@ -183,4 +168,5 @@ async function deleteModule(id) {
 .me-msg { font-size: 12px; flex: 1; }
 .me-msg--ok { color: #6bcf6b; }
 .me-msg:not(.me-msg--ok) { color: #ff6b6b; }
+@media (max-width: 480px) { .me-panel { width: 100vw; max-height: 100vh; border-radius: 0; } .me-body { padding: 8px 10px; } }
 </style>

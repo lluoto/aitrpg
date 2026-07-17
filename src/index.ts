@@ -30,13 +30,14 @@ import { WorldModelIntegrator } from "./world/world-model-integrator";
 import { CharacterFactory, type GeneratedCharacter } from "./character/character-factory";
 import { EXTRA_SUBCLASSES } from "./character/subclasses-extra";
 import { PRESTIGE_CLASSES } from "./character/prestige-classes";
-import { QIANKUN_SUBCLASSES } from "./character/qiankun-subclasses";
+import { QIANKUN_SUBCLASSES, getAllQiankunLegendaryTemplates } from "./character/qiankun-subclasses";
 import { ItemValidator } from "./validator/item-validator";
 import { NPCStore } from "./db/index";
 
 CharacterFactory.registerExtra(EXTRA_SUBCLASSES);
 CharacterFactory.registerExtra(PRESTIGE_CLASSES);
 CharacterFactory.registerExtra(QIANKUN_SUBCLASSES);
+CharacterFactory.registerLegendaryTemplates(getAllQiankunLegendaryTemplates());
 
 const itemValidator = new ItemValidator(worldModel);
 import type { CombatResult } from "./types";

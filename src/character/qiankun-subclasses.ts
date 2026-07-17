@@ -1,4 +1,4 @@
-import type { CharacterArchetype } from "./character-factory";
+import type { CharacterArchetype, LegendaryTemplate } from "./character-factory";
 
 /**
  * 《网游之亡者征途》（乾坤）职业系统
@@ -467,7 +467,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
   {
     id: "wizard_summoner",
     label: "法师·召唤魔导师",
-    description: "精擅召唤魔法的召唤魔导师，潘多拉大召唤术",
+    description: "精擅召唤魔法的召唤魔导师，以卡牌式契约召唤异界生物",
     minAttributes: { intelligence: 16, charisma: 14, wisdom: 12 },
     priorityAttributes: ["intelligence", "charisma", "wisdom"],
     skills: ["arcana", "nature", "animal handling"],
@@ -481,7 +481,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
     levelFeatures: [
       { level: 3, name: "召唤契约", description: "与一个异界生物签订临时契约，召唤其为你作战，持续1小时", type: "active", usesPerDay: "魅力调整值次/长休" },
       { level: 6, name: "强化召唤", description: "召唤生物获得额外生命值和攻击力，且持续时间延长至8小时", type: "passive" },
-      { level: 10, name: "潘多拉召唤", description: "打开潘多拉魔盒随机召唤强大生物，可能是友军也可能是强敌", type: "supernatural", usesPerDay: "1次/长休" },
+      { level: 10, name: "契约召唤", description: "从契约卡牌中召唤强大异界生物为你而战，持续至战斗结束", type: "supernatural", usesPerDay: "1次/长休" },
       { level: 14, name: "军团召唤", description: "同时召唤多个低阶异界生物组成小型军团，最多召唤5只", type: "active", usesPerDay: "1次/短休" },
       { level: 18, name: "异界之门", description: "开启通往异界的永久传送门，可召唤传奇级异界生物跨越门扉为你而战", type: "supernatural", usesPerDay: "1次/长休" }
     ],
@@ -698,21 +698,18 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
     ],
   },
 
-  // 龙炎霸者 - 法师子职
+  // 龙炎霸者 - 野蛮人子职（原著为近战狂战士，龙炎吐息为其招牌能力）
   {
     id: "wizard_dragon_fire",
-    label: "法师·龙炎霸者",
-    description: "三转职业，再生型火系法师，以强悍的再生速度抵消攻击速度",
-    minAttributes: { intelligence: 16, constitution: 18, wisdom: 12 },
-    priorityAttributes: ["intelligence", "constitution", "wisdom"],
-    skills: ["arcana", "survival", "intimidation"],
-    baseHp: 8,
+    label: "野蛮人·龙炎霸者",
+    description: "三转职业，再生型龙炎战士，以双头剑近战配合龙息著称",
+    minAttributes: { strength: 16, constitution: 18, charisma: 14 },
+    priorityAttributes: ["strength", "constitution", "charisma"],
+    skills: ["athletics", "intimidation", "survival"],
+    baseHp: 14,
     rulesets: ["dnd5e"],
-    saveProficiencies: ["intelligence", "wisdom"],
-    spellcaster: true,
-    spellcastingType: "full",
-    knownSpellsCount: 6,
-    baseClassId: "wizard",
+    saveProficiencies: ["strength", "constitution"],
+    baseClassId: "barbarian",
     levelFeatures: [
       { level: 3, name: "龙炎吐息", description: "喷吐龙炎对前方锥形区域造成火焰伤害，伤害随等级提升", type: "active", usesPerDay: "体质调整值次/长休" },
       { level: 6, name: "烈焰再生", description: "每回合开始时恢复3+体质调整值点生命值，获得火焰伤害抗性", type: "passive" },
@@ -835,11 +832,12 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
     ],
   },
 
-  // 铁蹄骑士 - 战士子职
+  // 铁蹄骑士 - 战士子职（注：原著中"铁蹄骑士"为骑士团名，成员职业为审判骑士。
+  // 此处作为审判骑士的重装冲锋特化变体保留，非原著独立职业。）
   {
     id: "fighter_iron_hoof",
-    label: "战士·铁蹄骑士",
-    description: "教廷的精锐骑士团，东征白骨海洋的部队",
+    label: "战士·铁蹄骑士（审判骑士·重装特化）",
+    description: "教廷铁蹄骑士团的重装冲锋特化分支，以骑阵与钢铁防线著称",
     minAttributes: { strength: 16, dexterity: 14, constitution: 16 },
     priorityAttributes: ["strength", "constitution", "dexterity"],
     skills: ["athletics", "tactics", "animal handling"],
@@ -882,7 +880,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
   {
     id: "paladin_divine_punisher",
     label: "圣武士·神罚骑士",
-    description: "教廷的精锐圣武士，神恩祭司进阶，圣琼尼是其中的代表人物",
+    description: "教廷的精锐圣武士，铁蹄骑士团团长圣琼尼的职业，以光之制裁与圣链守护著称",
     minAttributes: { strength: 16, charisma: 16, wisdom: 14 },
     priorityAttributes: ["strength", "charisma", "wisdom"],
     skills: ["religion", "athletics", "intimidation"],
@@ -1542,8 +1540,8 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
   // 海龙王 - 德鲁伊子职
   {
     id: "druid_water_sovereign",
-    label: "德鲁伊·海龙王",
-    description: "澜沧龙王，水元素形态，能够操控海洋力量",
+    label: "德鲁伊·澜沧龙王",
+    description: "护国神兽澜沧龙王，水元素形态，能够操控海洋力量",
     minAttributes: { wisdom: 16, constitution: 14, charisma: 12 },
     priorityAttributes: ["wisdom", "constitution", "charisma"],
     skills: ["nature", "survival", "athletics"],
@@ -1957,8 +1955,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
     baseHp: 10,
     rulesets: ["dnd5e"],
     saveProficiencies: ["constitution", "intelligence"],
-    spellcaster: true,
-    spellcastingType: "half",
+    // 注：原著明文重机驾手无法掌握初级魔法，此处不设施法能力
     baseClassId: "artificer",
     levelFeatures: [
       { level: 3,  name: "机甲操控", description: "可驾驶一台中型机甲作战，机甲拥有独立的HP和AC，提供额外的攻击火力", type: "passive" },
@@ -2313,6 +2310,93 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
   },
 ];
 
+// ============================================================
+// 三转传奇模板（20+ 满级后突破）
+// ============================================================
+
+/** 《乾坤》三转传奇模板 */
+export const QIANKUN_LEGENDARY_TEMPLATES: LegendaryTemplate[] = [
+  // ── 神罚骑士 · 光之制裁者 ──
+  {
+    id: "legendary_divine_punisher",
+    label: "光之制裁者",
+    description: "铁蹄骑士团团长圣琼尼达到的英雄境界，光之箭与圣链的终极形态",
+    appliesTo: ["paladin_divine_punisher"],
+    prerequisites: { minLevel: 20, requiresSubclass: ["paladin_divine_punisher"] },
+    epicFeature: { level: 18, name: "光之箭·异端公墓", description: "以动作召唤漫天光之箭雨，60尺半径内所有邪魔与不死生物受到12d10光耀伤害（感知豁免减半），同时对范围内盟友施加【圣链加护】：1分钟内免疫恐慌且AC+3", legendary: true },
+    legendaryActions: [
+      { name: "圣链加护", description: "以附赠动作将圣链缠绕30尺内一名盟友，使其受到的下一次伤害减半且获得等价临时生命值", cost: 1, type: "bonus_action", sceneLimit: "any" },
+      { name: "光之箭·神罚", description: "以反应动作在敌人攻击命中前射出一支光之箭，使该攻击失手并对攻击者造成4d8光耀伤害", cost: 1, type: "reaction", sceneLimit: "combat" },
+    ],
+    legendaryResistance: 2,
+    epicNarrative: "神罚骑士已突破凡人极限——其光之箭可贯穿位面壁垒，圣链可连接众生命运。举手投足间，圣光随行，邪魔辟易。",
+  },
+
+  // ── 龙炎霸者 · 龙神化身 ──
+  {
+    id: "legendary_dragon_fire",
+    label: "龙神化身",
+    description: "烈火雄心达到的三转极致，龙炎不灭体与双头剑『纵火者犄角』的完全解放",
+    appliesTo: ["wizard_dragon_fire"],
+    prerequisites: { minLevel: 20, requiresSubclass: ["wizard_dragon_fire"] },
+    epicFeature: { level: 18, name: "龙神降临·不灭龙炎", description: "以动作化为远古龙神形态1分钟：获得100点临时生命值、免疫火焰伤害、龙息对90尺锥形造成16d10火焰伤害（敏捷豁免减半）、近战攻击附加4d8火焰伤害、每回合恢复10+体质调整值生命值", legendary: true },
+    legendaryActions: [
+      { name: "狂化·逆鳞", description: "以附赠动作进入狂化状态，本回合所有攻击造成双倍伤害，但受到伤害时承受1.5倍", cost: 1, type: "bonus_action", sceneLimit: "combat" },
+      { name: "龙炎再生", description: "你受到伤害时，可以选择消耗一次传奇抗性立即恢复30点生命值", cost: 1, type: "reaction", sceneLimit: "combat" },
+    ],
+    legendaryResistance: 1,
+    epicNarrative: "龙炎霸者已化为行走的天灾——其吐息能熔穿山岳，逆鳞之下无人可挡。纵火者犄角所及，皆为焦土。",
+  },
+
+  // ── 通武将军 · 武曲星君 ──
+  {
+    id: "legendary_martial_general",
+    label: "武曲星君",
+    description: "武曲星天命宿主战黄沙的三转形态，精通一切武器的终极武神",
+    appliesTo: ["fighter_martial_general"],
+    prerequisites: { minLevel: 20, requiresSubclass: ["fighter_martial_general"] },
+    epicFeature: { level: 18, name: "武神降世·万武归宗", description: "以动作演武进入武神形态1分钟：全武器熟练+擅长重击、每回合可发动四次攻击、全豁免获得优势、所有攻击忽略目标的伤害抗性和减伤", legendary: true },
+    legendaryActions: [
+      { name: "武曲天命", description: "以反应动作重新投掷一次失败的攻击检定、技能检定或豁免（必须接受新结果）", cost: 1, type: "reaction", sceneLimit: "any" },
+      { name: "万武归一", description: "以附赠动作更换手中武器为任意武器库中的装备，且该武器在接下来1分钟内被视为魔法武器", cost: 1, type: "bonus_action", sceneLimit: "any" },
+    ],
+    legendaryResistance: 2,
+    epicNarrative: "武曲星照耀之下，通武将军即是武之化身——十八般兵器随心而发，天命加身，万夫莫敌。",
+  },
+
+  // ── 荣光戟手 · 太阳神代行者 ──
+  {
+    id: "legendary_glory_halberd",
+    label: "太阳神代行者",
+    description: "荣光戟手自由头等舱的三转形态，太阳神代行者的完全觉醒",
+    appliesTo: ["fighter_glory_halberd"],
+    prerequisites: { minLevel: 20, requiresSubclass: ["fighter_glory_halberd"] },
+    epicFeature: { level: 18, name: "伊卡洛斯·太阳神降临", description: "以动作化身太阳神形态1分钟：获得120尺飞行速度、长戟变为炽焰形态每次攻击附带6d8光耀伤害+4d8火焰伤害、'伊卡洛斯'俯冲攻击造成16d10光耀伤害（对暗属性目标翻倍）、自身周围30尺绽放净化光环每回合对不死生物造成4d8光耀伤害", legendary: true },
+    legendaryActions: [
+      { name: "光之翼", description: "以附赠动作展开光之翼，瞬间移动至60尺内可见位置并使经过路径上的敌人受到2d8光耀伤害", cost: 1, type: "bonus_action", sceneLimit: "combat" },
+      { name: "净化之焰", description: "以反应动作在被攻击时爆发太阳烈焰，使该攻击失手并对攻击者造成4d8光耀+4d8火焰伤害", cost: 1, type: "reaction", sceneLimit: "combat" },
+    ],
+    legendaryResistance: 2,
+    epicNarrative: "太阳神代行者张开光之翼时，黑夜亦如白昼——长戟所过，邪魔灰飞烟灭。阳炎不熄，圣战不止。",
+  },
+
+  // ── 天刑剑仙 · 御剑飞仙 ──
+  {
+    id: "legendary_sword_immortal",
+    label: "天刑剑仙",
+    description: "华夏守护神御清锋的三转形态，飞剑巡视万里苍穹的天刑剑仙",
+    appliesTo: ["sword_immortal"],
+    prerequisites: { minLevel: 20, requiresSubclass: ["sword_immortal"] },
+    epicFeature: { level: 18, name: "万剑归宗·天刑剑阵", description: "以动作展开天刑剑阵1分钟：召唤1000把灵剑形成剑域，每把灵剑自动攻击120尺内任意目标（攻击加值=感知调整值+熟练加值，伤害2d8+感知调整值力场伤害）；剑阵范围内所有敌对生物移动速度减半、传送无效；剑仙可在剑阵内任意位置瞬间移动", legendary: true },
+    legendaryActions: [
+      { name: "飞剑·巡视", description: "以附赠动作释放飞剑巡视整片战场（最远500尺），揭示所有隐藏目标和陷阱，飞剑返回时携带一道剑光对指定目标造成6d10力场伤害", cost: 1, type: "bonus_action", sceneLimit: "any" },
+      { name: "剑匣·归宗", description: "以反应动作在受到致命伤害时解体为万道剑光，免疫本次伤害并瞬间移动至60尺外，每场战斗限一次", cost: 1, type: "reaction", sceneLimit: "combat" },
+    ],
+    legendaryResistance: 3,
+    epicNarrative: "天刑剑仙御剑立于云端，万里山河尽收眼底。剑匣中万剑齐鸣，一念间可斩尽来犯之敌。护国神将，当如是。",
+  },
+];
+
 /**
  * 获取所有《乾坤》子职业
  */
@@ -2325,4 +2409,18 @@ export function getAllQiankunSubclasses(): CharacterArchetype[] {
  */
 export function getQiankunSubclassesByBaseClass(baseClassId: string): CharacterArchetype[] {
   return QIANKUN_SUBCLASSES.filter(cls => cls.baseClassId === baseClassId);
+}
+
+/**
+ * 获取所有《乾坤》三转传奇模板
+ */
+export function getAllQiankunLegendaryTemplates(): LegendaryTemplate[] {
+  return [...QIANKUN_LEGENDARY_TEMPLATES];
+}
+
+/**
+ * 按子职获取可用的传奇模板
+ */
+export function getLegendaryTemplatesForSubclass(subclassId: string): LegendaryTemplate[] {
+  return QIANKUN_LEGENDARY_TEMPLATES.filter(t => t.appliesTo.includes(subclassId));
 }

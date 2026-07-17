@@ -131,6 +131,51 @@ export interface CharacterArchetype {
   mandatorySkills?: string[];
 }
 
+// ============================================================
+// 传奇模板（三转/满级后内容）
+// ============================================================
+
+/** 传奇动作（资源独立的超强能力） */
+export interface LegendaryAction {
+  name: string;
+  description: string;
+  /** 每传奇回合可使用次数 */
+  cost: number;
+  type: "action" | "reaction" | "passive" | "bonus_action";
+  /** 战外可用还是仅限战斗 */
+  sceneLimit?: "combat" | "any";
+}
+
+/** 三转传奇模板 — 角色满级后突破上限获得 */
+export interface LegendaryTemplate {
+  id: string;
+  label: string;
+  description: string;
+  /** 作用于哪个基础子职业（baseClassId.subclassId 或直接关联） */
+  appliesTo: string[];
+  /** 前置条件 */
+  prerequisites: {
+    minLevel: number;
+    minAttributes?: Record<string, number>;
+    requiresSubclass?: string[];
+  };
+  /** 替换子职业的 18 级特性（传奇化版本） */
+  epicFeature: LevelFeature & { legendary: true };
+  /** 传奇动作 */
+  legendaryActions?: LegendaryAction[];
+  /** 传奇抗性次数/日 */
+  legendaryResistance?: number;
+  /** LLM 叙事注入 — 描述该角色的传奇气质 */
+  epicNarrative?: string;
+  /** 可选的表演时间（show time）终极形态 */
+  showTime?: {
+    name: string;
+    description: string;
+    duration: string;
+    effects: string[];
+  };
+}
+
 /** 完整 GeneratedCharacter 接口（兼容 D&D + CoC） */
 export interface GeneratedCharacter {
   name: string;
@@ -162,6 +207,11 @@ export interface GeneratedCharacter {
   occupationSkills?: string[];
   /** 技能值（英文 key → 百分比），由分配器生成 */
   skillValues?: Record<string, number>;
+
+  // 传奇模板（三转）
+  legendaryTemplate?: LegendaryTemplate;
+  /** 传奇抗性剩余次数/日 */
+  legendaryResistanceUsed?: number;
 }
 
 export interface FeatureEffect {
@@ -1019,6 +1069,67 @@ export class CharacterFactory {
     }
     character.selectedFeats.push(featName);
     return { success: true, message: `获得专长"${featName}"` };
+  }
+
+  // ============================================================
+  // 传奇模板（三转）系统
+  // ============================================================
+
+  /** 已注册的传奇模板 */
+  private static legendaryTemplates: Map<string, LegendaryTemplate> = new Map();
+
+  /** 注册传奇模板 */
+  static registerLegendaryTemplates(templates: LegendaryTemplate[]): void {
+    for (const t of templates) {
+      CharacterFactory.legendaryTemplates.set(t.id, t);
+    }
+  }
+
+  /** 列出可用传奇模板（角色满级时调用） */
+  static listAvailableLegendaryTemplates(character: GeneratedCharacter): LegendaryTemplate[] {
+    const results: LegendaryTemplate[] = [];
+    for (const t of CharacterFactory.legendaryTemplates.values()) {
+      const prereq = t.prerequisites;
+      if (character.totalLevel < prereq.minLevel) continue;
+      // Check subclass match
+      if (prereq.requiresSubclass && prereq.requiresSubclass.length > 0) {
+        const hasMatch = [...character.classLevels.keys()].some(
+          cl => prereq.requiresSubclass!.includes(cl)
+        );
+        if (!hasMatch) continue;
+      }
+      results.push(t);
+    }
+    return results;
+  }
+
+  /** 进阶/三转 — 应用传奇模板 */
+  static advance(character: GeneratedCharacter, templateId: string, levels: number = 1): GeneratedCharacter {
+    const template = CharacterFactory.legendaryTemplates.get(templateId);
+    if (!template) throw new Error(`未知传奇模板: ${templateId}`);
+
+    const prereq = template.prerequisites;
+    if (character.totalLevel < prereq.minLevel) {
+      throw new Error(`需要等级 ${prereq.minLevel} 才能解锁「${template.label}」（当前 ${character.totalLevel}）`);
+    }
+    if (character.legendaryTemplate) {
+      throw new Error(`角色已拥有传奇模板「${character.legendaryTemplate.label}」，不可叠加`);
+    }
+
+    // 替换/增强最后一级特性
+    const epicFeature = template.epicFeature;
+    if (epicFeature) {
+      // 移除旧的 18 级特性（如果存在）
+      character.activeFeatures = character.activeFeatures.filter(f => f.level < 18);
+      // 添加传奇特性
+      character.activeFeatures.push({ ...epicFeature, level: 18 });
+    }
+
+    character.legendaryTemplate = template;
+    character.legendaryResistanceUsed = 0;
+    character.totalLevel += levels;
+
+    return character;
   }
 
   /** 检查进阶条件 */

@@ -108,4 +108,10 @@ async function sendCustom() {
 .fp-input-row { display: flex; gap: 6px; }
 .fp-input { flex: 1; padding: 7px 10px; border: 1px solid #3a3a5c; border-radius: 6px; background: #141428; color: #e0e0e0; font-size: 12px; outline: none; }
 .fp-input:focus { border-color: #c9a96e; }
+@media (max-width: 480px) {
+  .fp-panel { width: 100vw; max-height: 100vh; border-radius: 0; }
+  .fp-body { padding: 8px 10px; }
+  .fp-btn { font-size: 13px; padding: 8px 10px; }
+  .fp-grid { gap: 4px; }
+}
 </style>

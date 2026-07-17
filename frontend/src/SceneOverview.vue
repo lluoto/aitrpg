@@ -11,19 +11,10 @@ const props = defineProps({
 
 const emit = defineEmits(['chat', 'inspect'])
 
-const interactiveNpcs = computed(() =>
-  props.npcs.filter(n => n.hp > 0).map(n => ({ ...n, _type: 'npc' }))
-)
-const interactiveMonsters = computed(() =>
-  props.monsters.filter(m => m.hp > 0).map(m => ({ ...m, _type: 'monster' }))
-)
-const allies = computed(() =>
-  props.companions.filter(c => c.hp > 0).map(c => ({ ...c, _type: 'companion' }))
-)
-
-const empty = computed(() =>
-  interactiveNpcs.value.length === 0 && interactiveMonsters.value.length === 0 && allies.value.length === 0
-)
+const interactiveNpcs = computed(() => props.npcs.filter(n => n.hp > 0).map(n => ({ ...n, _type: 'npc' })))
+const interactiveMonsters = computed(() => props.monsters.filter(m => m.hp > 0).map(m => ({ ...m, _type: 'monster' })))
+const allies = computed(() => props.companions.filter(c => c.hp > 0).map(c => ({ ...c, _type: 'companion' })))
+const empty = computed(() => interactiveNpcs.value.length === 0 && interactiveMonsters.value.length === 0 && allies.value.length === 0)
 </script>
 
 <template>
@@ -32,11 +23,7 @@ const empty = computed(() =>
       <span class="so-scene-label">{{ scene }}</span>
       <span v-if="combatActive" class="so-badge so-badge--combat">⚔️ 战斗中</span>
     </div>
-
-    <div v-if="empty" class="so-empty">
-      <p>当前场景没有可交互的元素。</p>
-    </div>
-
+    <div v-if="empty" class="so-empty"><p>当前场景没有可交互的元素。</p></div>
     <div v-if="interactiveNpcs.length > 0" class="so-section">
       <h4 class="so-section-title">👤 NPC ({{ interactiveNpcs.length }})</h4>
       <div v-for="n in interactiveNpcs" :key="n.name" class="so-entity" @click="emit('chat', n)">
@@ -45,7 +32,6 @@ const empty = computed(() =>
         <button class="so-chat-btn" @click.stop="emit('chat', n)">💬</button>
       </div>
     </div>
-
     <div v-if="interactiveMonsters.length > 0" class="so-section">
       <h4 class="so-section-title so-section-title--enemy">👹 敌人 ({{ interactiveMonsters.length }})</h4>
       <div v-for="m in interactiveMonsters" :key="m.name" class="so-entity so-entity--enemy">
@@ -53,7 +39,6 @@ const empty = computed(() =>
         <span class="so-entity-hp" style="color:#ff4757">{{ m.hp }}/{{ m.maxHp }}</span>
       </div>
     </div>
-
     <div v-if="allies.length > 0" class="so-section">
       <h4 class="so-section-title">👥 友方 ({{ allies.length }})</h4>
       <div v-for="c in allies" :key="c.id" class="so-entity" @click="emit('inspect', c)">
@@ -81,4 +66,5 @@ const empty = computed(() =>
 .so-entity-hp { font-size: 11px; min-width: 40px; text-align: right; }
 .so-chat-btn { background: transparent; border: 1px solid #3a3a5c; border-radius: 4px; color: #888; cursor: pointer; font-size: 11px; padding: 1px 5px; }
 .so-chat-btn:hover { color: #c9a96e; border-color: #c9a96e; }
+@media (max-width: 480px) { .so-panel { font-size: 11px; } .so-entity { flex-wrap: wrap; } }
 </style>

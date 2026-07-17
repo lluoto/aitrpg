@@ -543,9 +543,10 @@ export class GameSession {
       }
     }
 
-    // LLM 叙事
+    // LLM 叙事（含传奇模板上下文注入）
+    const epicContext = this.buildEpicContext();
     try {
-      const narration = await this.kp.narrateOutcome(input, `玩家行动: ${input}`, turnMessages);
+      const narration = await this.kp.narrateOutcome(input, `玩家行动: ${input}${epicContext}`, turnMessages);
       this.lastNarrative = narration;
       turnMessages.push({ speaker: "守秘人", content: narration, type: "narration" });
     } catch {
@@ -1477,6 +1478,23 @@ export class GameSession {
   // ============================================================
   // 骰子引擎
   // ============================================================
+
+  // ============================================================
+  // 传奇模板辅助
+  // ============================================================
+
+  /** 构建 LLM 传奇上下文注入 */
+  private buildEpicContext(): string {
+    const template = this.activeCharacter?.legendaryTemplate;
+    if (!template) return "";
+    const ep = template.epicNarrative ?? "";
+    const showTime = template.showTime;
+    const st = showTime ? `\n表演时间「${showTime.name}」：${showTime.description}（持续${showTime.duration}）` : "";
+    const actions = template.legendaryActions?.map(a =>
+      `【${a.name}】${a.description}（消耗 ${a.cost} 传奇点）`
+    ).join("\n") ?? "";
+    return `\n\n=== 传奇角色上下文 ===\n${ep}${st}\n${actions}\n当前角色已超越凡人极限。请以匹配的史诗级别描绘其行动与叙事。`;
+  }
 
   private execDiceExpr(expr: string): { total: number; detail: string; bonus?: number } {
     let total = 0; const rolls: string[] = [];
