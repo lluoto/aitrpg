@@ -154,6 +154,22 @@ export class GameSession {
     this.inventoryMap.set("p1", []);
     this.equippedWeaponsMap.set("p1", []);
     this.equippedArmorMap.set("p1", []);
+
+    // 创建初始角色
+    if (archetypeId || characterName) {
+      try {
+        const char = CharacterFactory.generate(
+          characterName ?? "调查员",
+          archetypeId ?? "investigator",
+          ruleset
+        );
+        this.activeCharacter = char;
+        this.characters.set("p1", char);
+        this.session.switchActive("p1");
+      } catch (e) {
+        console.warn("角色创建失败", e);
+      }
+    }
   }
 
   // ============================================================
@@ -396,7 +412,7 @@ export class GameSession {
     const recruitMatch = input.match(/^创建队友\s+(\S+)\s+(\S+)/);
     if (recruitMatch) {
       const [, name, cls] = recruitMatch;
-      const ch = CharacterFactory.create({ name, archetype: cls } as any, this.activeRuleset);
+      const ch = CharacterFactory.generate(name, cls, this.activeRuleset);
       const pid = `p${this.characters.size + 1}`;
       const san = new SanityEngine(50, 50);
       this.characters.set(pid, ch);

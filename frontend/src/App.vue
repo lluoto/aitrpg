@@ -41,6 +41,12 @@ const session = reactive({
   tempInsanity: false,
   indefInsanity: false,
   dead: false,
+  luck: 0,
+  creditRating: 0,
+  skills: {},
+  inventory: [],
+  weapons: [],
+  attributes: {},
 })
 
 const messages = ref([])           // { id, type, speaker, content }
@@ -793,7 +799,7 @@ function recordHistory(cmd) {
       <CharacterEditor
         v-if="charEditorVisible && session.id"
         :session-id="session.id"
-        :character="{ name: session.playerName, archetype: session.archetype, hp: session.hp, maxHp: session.maxHp, luck: 60, skills: {} }"
+        :character="{ name: session.playerName, archetype: session.archetype, hp: session.hp, maxHp: session.maxHp, luck: session.luck ?? 60, creditRating: session.creditRating ?? 30, skills: session.skills ?? {}, inventory: session.inventory ?? [], weapons: session.weapons ?? [], attributes: session.attributes ?? {} }"
         :sanity="{ currentSAN: session.san, maxSAN: session.maxSAN }"
         @close="charEditorVisible = false"
       />
