@@ -34,6 +34,13 @@ export async function getSession(sessionId) {
   return res.json()
 }
 
+export async function listSessions() {
+  const res = await fetch(`${BASE}/sessions`)
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.sessions ?? []
+}
+
 export async function getHistory(sessionId, limit = 50) {
   const res = await fetch(`${BASE}/sessions/${sessionId}/history?limit=${limit}`)
   return res.json()

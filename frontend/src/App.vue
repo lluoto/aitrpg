@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed, watch, nextTick } from 'vue'
-import { createSession, sendAction, getArchetypes, getSuggestions } from './api.js'
+import { createSession, sendAction, getArchetypes, getSuggestions, listSessions, getSession } from './api.js'
 import KPDashboard from './KPDashboard.vue'
 import CombatGrid from './CombatGrid.vue'
 import ModuleEditor from './ModuleEditor.vue'
@@ -10,6 +10,8 @@ import SceneOverview from './SceneOverview.vue'
 
 // ── State ──────────────────────────────────────────────
 const screen = ref('start')        // 'start' | 'game'
+const savedSessions = ref([])      // persisted sessions list
+const loadingSessions = ref(false)
 const loading = ref(false)         // waiting for API
 const error = ref(null)            // last error message
 
@@ -153,8 +155,19 @@ async function loadArchetypes(ruleset) {
   }
 }
 
+async function loadSavedSessions() {
+  loadingSessions.value = true
+  try {
+    const data = await listSessions()
+    savedSessions.value = data.filter(s => s.id)
+  } catch {
+    savedSessions.value = []
+  } finally { loadingSessions.value = false }
+}
+
 // Call load on setup
 loadArchetypes()
+loadSavedSessions()
 
 // Watch ruleset change → reload archetypes
 watch(selectedRuleset, (rs) => {
@@ -217,6 +230,20 @@ async function startGame() {
   } finally {
     loading.value = false
   }
+}
+
+async function resumeSession(s) {
+  loading.value = true
+  try {
+    session.id = s.id
+    session.round = s.round ?? 0
+    session.scene = s.scene ?? ''
+    session.playerName = s.playerName ?? '调查员'
+    session.ruleset = s.ruleset ?? 'CoC 7E'
+    screen.value = 'game'
+  } catch (e) {
+    error.value = e.message
+  } finally { loading.value = false }
 }
 
 async function submitAction(inputText, actingPc) {
@@ -479,6 +506,61 @@ function recordHistory(cmd) {
             <p class="char-creation__hint" v-if="selectedArchetype">
               {{ archetypes.find(a => a.id === selectedArchetype)?.description || '' }}
             </p>
+          </div>
+
+          <!-- 角色属性预览 -->
+          <div v-if="selectedArchetype" class="stat-preview">
+            <h4 class="stat-preview__title">基础属性 (CoC 7e)</h4>
+            <div class="stat-preview__grid">
+              <div class="stat-preview__item">
+                <span class="stat-preview__label">STR</span>
+                <span class="stat-preview__val">50</span>
+              </div>
+              <div class="stat-preview__item">
+                <span class="stat-preview__label">CON</span>
+                <span class="stat-preview__val">50</span>
+              </div>
+              <div class="stat-preview__item">
+                <span class="stat-preview__label">SIZ</span>
+                <span class="stat-preview__val">50</span>
+              </div>
+              <div class="stat-preview__item">
+                <span class="stat-preview__label">DEX</span>
+                <span class="stat-preview__val">50</span>
+              </div>
+              <div class="stat-preview__item">
+                <span class="stat-preview__label">APP</span>
+                <span class="stat-preview__val">50</span>
+              </div>
+              <div class="stat-preview__item">
+                <span class="stat-preview__label">INT</span>
+                <span class="stat-preview__val">50</span>
+              </div>
+              <div class="stat-preview__item">
+                <span class="stat-preview__label">POW</span>
+                <span class="stat-preview__val">50</span>
+              </div>
+              <div class="stat-preview__item">
+                <span class="stat-preview__label">EDU</span>
+                <span class="stat-preview__val">50</span>
+              </div>
+            </div>
+            <p class="stat-preview__note">进入游戏后可在角色编辑器中调整</p>
+          </div>
+        </div>
+
+        <!-- 继续游戏 -->
+        <div v-if="savedSessions.length > 0" class="saved-sessions">
+          <h4 class="saved-sessions__title">继续游戏</h4>
+          <div v-if="loadingSessions" class="saved-sessions__loading">加载中…</div>
+          <div
+            v-for="s in savedSessions.slice(0, 5)"
+            :key="s.id"
+            class="saved-sessions__item"
+            @click="resumeSession(s)"
+          >
+            <span class="saved-sessions__name">{{ s.playerName || '调查员' }}</span>
+            <span class="saved-sessions__meta">{{ s.ruleset }} · {{ s.scene }} · 回合{{ s.round }}</span>
           </div>
         </div>
 
@@ -1217,6 +1299,95 @@ function recordHistory(cmd) {
   color: var(--color-text-muted);
   line-height: 1.4;
   min-height: 1.2em;
+}
+
+/* Stat preview */
+.stat-preview {
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.stat-preview__title {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  color: var(--color-gold-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 var(--space-sm);
+}
+.stat-preview__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-xs);
+}
+.stat-preview__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0;
+}
+.stat-preview__label {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+.stat-preview__val {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.stat-preview__note {
+  margin: var(--space-sm) 0 0;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+/* Saved sessions */
+.saved-sessions {
+  margin-top: var(--space-lg);
+  padding: var(--space-md);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.saved-sessions__title {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  color: var(--color-gold-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 var(--space-sm);
+}
+.saved-sessions__loading {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: var(--space-sm);
+}
+.saved-sessions__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-xs) var(--space-sm);
+  margin-bottom: 4px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.saved-sessions__item:hover {
+  background: rgba(201, 169, 110, 0.08);
+}
+.saved-sessions__name {
+  font-size: 0.85rem;
+  color: var(--color-text);
+  font-weight: 500;
+}
+.saved-sessions__meta {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
 }
 
 @media (max-width: 480px) {
