@@ -93,3 +93,13 @@ export async function getSuggestions(sessionId) {
   const data = await res.json()
   return data.suggestions ?? []
 }
+
+export async function luckSpend(sessionId, amount) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/luck-spend`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount }),
+  })
+  if (!res.ok) throw new Error((await res.json()).error || '燃运失败')
+  return res.json()
+}

@@ -439,6 +439,16 @@ async function handleRequest(req: Request): Promise<Response> {
       }
     }
 
+    // POST /api/sessions/:id/luck-spend �?幸运消�?    if (method === "POST" && segments[3] === "luck-spend") {
+      const body = await req.json().catch(() => ({}));
+      const amount = parseInt(body.amount) || 0;
+      const ch = session.activeCharacter;
+      if (!ch) return respondError("无活跃角�?, 400);
+      if (amount <= 0 || amount > (ch.luck ?? 0)) return respondError("幸运不足", 400);
+      ch.luck = (ch.luck ?? 0) - amount;
+      return respondJson({ success: true, luck: ch.luck });
+    }
+
     // GET /api/sessions/:id/export/:format �?战报导出
     if (method === "GET" && segments[3] === "export" && segments.length === 5) {
       const format = segments[4];

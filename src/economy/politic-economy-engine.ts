@@ -1,0 +1,418 @@
+// ============================================================
+// 政治经济引擎 - 主编排器
+// Politico-Economic Engine — orchestrates faction, trade,
+// policy, and finance subsystems into a unified game module.
+// ============================================================
+
+import { FactionSystem } from "./faction-system";
+import { TradeSystem } from "./trade-system";
+import { PolicySystem } from "./policy-system";
+import { FinanceSystem } from "./finance-system";
+import {
+  PoliticoEconomyState,
+  Faction,
+  FactionType,
+  Market,
+  Policy,
+  FinancialCrisis,
+  Currency,
+  EconomyEvent,
+  PolicyCategory,
+} from "./types";
+
+export class PoliticoEconomyEngine {
+  readonly factions: FactionSystem;
+  readonly trades: TradeSystem;
+  readonly policies: PolicySystem;
+  readonly finances: FinanceSystem;
+
+  events: EconomyEvent[];
+  round: number;
+
+  constructor() {
+    this.factions = new FactionSystem();
+    this.trades = new TradeSystem();
+    this.policies = new PolicySystem();
+    this.finances = new FinanceSystem();
+    this.events = [];
+    this.round = 0;
+
+    this.seedInitialState();
+  }
+
+  // ── 初始世界状态 ──
+
+  private seedInitialState(): void {
+    // 创建默认势力
+    this.factions.addFaction({
+      id: "arcane_council", name: "奥法议会", type: "government",
+      leaderName: "大议长", capitalName: "王都",
+      treasury: 500, stability: 60, militaryPower: 40, economicPower: 60,
+    });
+    this.factions.addFaction({
+      id: "merchant_guild", name: "商会联盟", type: "corporation",
+      leaderName: "商会长", capitalName: "港口城",
+      treasury: 800, stability: 70, militaryPower: 20, economicPower: 80,
+    });
+    this.factions.addFaction({
+      id: "hidden_cult", name: "暗影教团", type: "cult",
+      leaderName: "大祭司", capitalName: "地下神殿",
+      treasury: 300, stability: 40, militaryPower: 30, economicPower: 40,
+    });
+    this.factions.addFaction({
+      id: "northern_barons", name: "北境领主联盟", type: "noble_house",
+      leaderName: "大公爵", capitalName: "北境要塞",
+      treasury: 400, stability: 55, militaryPower: 60, economicPower: 35,
+    });
+    this.factions.addFaction({
+      id: "spirit_monastery", name: "灵石寺", type: "school",
+      leaderName: "方丈", capitalName: "灵山",
+      treasury: 600, stability: 75, militaryPower: 35, economicPower: 55,
+    });
+
+    // 初始关系
+    this.factions.setRelation("arcane_council", "merchant_guild", 40);
+    this.factions.setRelation("arcane_council", "hidden_cult", -30);
+    this.factions.setRelation("arcane_council", "northern_barons", 10);
+    this.factions.setRelation("arcane_council", "spirit_monastery", 50);
+    this.factions.setRelation("merchant_guild", "hidden_cult", -10);
+    this.factions.setRelation("merchant_guild", "northern_barons", 20);
+    this.factions.setRelation("merchant_guild", "spirit_monastery", 30);
+    this.factions.setRelation("hidden_cult", "northern_barons", -40);
+    this.factions.setRelation("hidden_cult", "spirit_monastery", -50);
+    this.factions.setRelation("northern_barons", "spirit_monastery", 10);
+
+    // 市场
+    this.trades.createMarket({ id: "capital_market", name: "王都市场", location: "capital", controlledBy: "arcane_council" });
+    this.trades.createMarket({ id: "port_market", name: "港口集市", location: "port", controlledBy: "merchant_guild" });
+    this.trades.createMarket({ id: "black_market", name: "暗市", location: "slums", controlledBy: "hidden_cult", taxRate: 0.15 });
+    this.trades.createMarket({ id: "fortress_market", name: "堡垒交易所", location: "fortress", controlledBy: "northern_barons", taxRate: 0.08 });
+    this.trades.createMarket({ id: "monastery_market", name: "灵山坊市", location: "mountain", controlledBy: "spirit_monastery", taxRate: 0.03 });
+
+    // 商品定价
+    this.trades.setPrice("capital_market", "food", 5);
+    this.trades.setPrice("capital_market", "iron", 8);
+    this.trades.setPrice("capital_market", "spirit_stone", 55);
+    this.trades.setPrice("port_market", "silk", 22);
+    this.trades.setPrice("port_market", "herbs", 14);
+    this.trades.setPrice("port_market", "spirit_stone", 50);
+    this.trades.setPrice("black_market", "weapons", 20);
+    this.trades.setPrice("black_market", "artifact", 250);
+    this.trades.setPrice("fortress_market", "iron", 6);
+    this.trades.setPrice("fortress_market", "weapons", 12);
+    this.trades.setPrice("monastery_market", "spirit_stone", 45);
+    this.trades.setPrice("monastery_market", "herbs", 10);
+    this.trades.setPrice("monastery_market", "mana_crystal", 75);
+
+    // 供给/需求
+    this.trades.adjustSupply("capital_market", "food", 100);
+    this.trades.adjustSupply("capital_market", "iron", 50);
+    this.trades.adjustSupply("port_market", "silk", 30);
+    this.trades.adjustSupply("port_market", "spirit_stone", 20);
+    this.trades.adjustSupply("black_market", "weapons", 15);
+    this.trades.adjustSupply("fortress_market", "iron", 80);
+    this.trades.adjustSupply("fortress_market", "weapons", 40);
+    this.trades.adjustSupply("monastery_market", "spirit_stone", 40);
+    this.trades.adjustSupply("monastery_market", "mana_crystal", 15);
+
+    this.trades.adjustDemand("capital_market", "food", 80);
+    this.trades.adjustDemand("capital_market", "spirit_stone", 25);
+    this.trades.adjustDemand("capital_market", "iron", 40);
+    this.trades.adjustDemand("port_market", "silk", 15);
+    this.trades.adjustDemand("port_market", "herbs", 20);
+    this.trades.adjustDemand("black_market", "weapons", 20);
+    this.trades.adjustDemand("fortress_market", "iron", 60);
+    this.trades.adjustDemand("fortress_market", "weapons", 30);
+    this.trades.adjustDemand("monastery_market", "spirit_stone", 35);
+
+    // 贸易路线
+    this.trades.establishTradeRoute("capital_market", "port_market", "food", 20, 6);
+    this.trades.establishTradeRoute("port_market", "capital_market", "silk", 10, 24);
+    this.trades.establishTradeRoute("fortress_market", "capital_market", "iron", 30, 7);
+    this.trades.establishTradeRoute("monastery_market", "capital_market", "spirit_stone", 10, 48);
+
+    // 默认政策
+    const lowTax = this.policies.definePolicy({
+      name: "低税率", description: "降低税率以刺激经济", factionId: "arcane_council",
+      category: "tax", cost: 0,
+      effects: [{ target: "treasury", operation: "multiply", value: 20, description: "收入+20%" }, { target: "stability", operation: "add", value: 5, description: "稳定度+5" }],
+    });
+    this.policies.enactPolicy(lowTax.id);
+    this.factions.getFaction("arcane_council")?.activePolicies.push(lowTax.id);
+
+    const openTrade = this.policies.definePolicy({
+      name: "贸易开放", description: "开放边境促进贸易", factionId: "merchant_guild",
+      category: "trade", cost: 10,
+      effects: [{ target: "trade_income", operation: "multiply", value: 30, description: "贸易收入+30%" }, { target: "stability", operation: "add", value: 3, description: "稳定度+3" }],
+    });
+    this.policies.enactPolicy(openTrade.id);
+    this.factions.getFaction("merchant_guild")?.activePolicies.push(openTrade.id);
+
+    const spControl = this.policies.definePolicy({
+      name: "灵石管制", description: "严格控制灵石流通", factionId: "spirit_monastery",
+      category: "economic", cost: 15,
+      effects: [{ target: "spirit_stone_price", operation: "multiply", value: 30, description: "灵石价格+30%" }, { target: "treasury", operation: "multiply", value: 10, description: "国库+10%" }, { target: "stability", operation: "add", value: -3, description: "稳定度-3" }],
+    });
+    this.policies.enactPolicy(spControl.id);
+    this.factions.getFaction("spirit_monastery")?.activePolicies.push(spControl.id);
+
+    // 银行
+    this.finances.createBank({ id: "central_bank", name: "灵石储备银行", location: "capital", factionId: "arcane_council" });
+    this.finances.deposit("central_bank", "gold_coin", 500);
+    this.finances.deposit("central_bank", "spirit_stone", 100);
+
+    this.finances.createBank({ id: "merchant_bank", name: "商会钱庄", location: "port", factionId: "merchant_guild" });
+    this.finances.deposit("merchant_bank", "gold_coin", 800);
+    this.finances.deposit("merchant_bank", "spirit_voucher", 2000);
+
+    this.finances.createBank({ id: "monastery_vault", name: "灵山金库", location: "mountain", factionId: "spirit_monastery" });
+    this.finances.deposit("monastery_vault", "spirit_stone", 200);
+    this.finances.deposit("monastery_vault", "gold_coin", 300);
+  }
+
+  // ── 回合推进 ──
+
+  advanceRound(): EconomyEvent[] {
+    this.round++;
+    const newEvents: EconomyEvent[] = [
+      ...this.factions.advanceRound(),
+      ...this.trades.advanceRound(),
+      ...this.policies.advanceRound(),
+      ...this.finances.advanceRound(),
+    ];
+    for (const e of newEvents) {
+      this.events.push(e);
+      if (this.events.length > 200) this.events.shift();
+    }
+    return newEvents;
+  }
+
+  // ── 状态输出 ──
+
+  getState(): PoliticoEconomyState {
+    return {
+      factions: this.factions.getAllFactions(),
+      markets: this.trades.getAllMarkets(),
+      activePolicies: this.policies.getAllPolicies().filter(p => p.active),
+      activeCrises: this.finances.getActiveCrises(),
+      currencies: Array.from(this.finances["currencies"].values()),
+      recentEvents: this.events.slice(-20),
+      round: this.round,
+    };
+  }
+
+  // ── 简略版状态（用于 getState() 嵌入） ──
+
+  getBriefState(): {
+    factions: { id: string; name: string; type: FactionType; stability: number; treasury: number }[];
+    markets: { id: string; name: string; location: string; controller: string }[];
+    crisisCount: number;
+  } {
+    return {
+      factions: this.factions.getAllFactions().map(f => ({
+        id: f.id, name: f.name, type: f.type,
+        stability: f.stability, treasury: f.treasury,
+      })),
+      markets: this.trades.getAllMarkets().map(m => ({
+        id: m.id, name: m.name, location: m.location,
+        controller: m.controlledBy,
+      })),
+      crisisCount: this.finances.getActiveCrises().filter(c => !c.resolved).length,
+    };
+  }
+
+  // ── 用户交互 Handler ──
+
+  handleAction(
+    action: string,
+    params: { target?: string; from?: string; amount?: number; item?: string; skill?: string; dc?: number },
+  ): { narrative: string; systemMsg?: string } {
+    const { target, from, amount, item } = params;
+
+    switch (action) {
+      // 查看势力列表
+      case "factions": {
+        const list = this.factions.getAllFactions().map(f =>
+          `${f.name}[${f.id}] 稳定:${f.stability} 国库:${f.treasury}G 军力:${f.militaryPower} 经济:${f.economicPower}`
+        ).join("\n");
+        return { narrative: `【世界势力一览】\n${list}` };
+      }
+
+      // 查看势力详情
+      case "faction_status": {
+        const fid = target ?? "arcane_council";
+        const f = this.factions.getFaction(fid);
+        if (!f) return { narrative: `未找到势力「${fid}」。` };
+        const rels = Object.values(f.relations).map(r => {
+          const t = this.factions.getFaction(r.targetId);
+          return `  ${t?.name ?? r.targetId}: ${r.stance} (${r.score})`;
+        }).join("\n");
+        const pols = f.activePolicies.map(pid => this.policies.getPolicy(pid)?.name ?? pid).join(", ") || "无";
+        return {
+          narrative: [
+            `【${f.name}】`,
+            `  类型: ${f.type} | 领袖: ${f.leaderName ?? "未知"}`,
+            `  国库: ${f.treasury}G | 稳定度: ${f.stability}/100`,
+            `  军力: ${f.militaryPower} | 经济力: ${f.economicPower}`,
+            `  领地: ${f.territory.join(", ") || "无"}`,
+            `  政策: ${pols}`,
+            ``,
+            `【外交关系】`,
+            rels || "  (无已知关系)",
+          ].join("\n"),
+        };
+      }
+
+      // 市场列表
+      case "market": {
+        const mid = target;
+        if (!mid) {
+          const list = this.trades.getAllMarkets().map(m =>
+            `${m.name}[${m.id}] 税率:${(m.taxRate * 100).toFixed(0)}%`
+          ).join("\n");
+          return { narrative: `【市场列表】\n${list}\n使用 "查看市场 <市场名>" 查看详情。` };
+        }
+        const m = this.trades.getMarket(mid);
+        if (!m) return { narrative: `未找到市场「${mid}」。` };
+        const controller = this.factions.getFaction(m.controlledBy);
+        const rows = Object.values(m.entries).map(e => {
+          const def = this.trades.getResourceDef(e.resourceId);
+          return `  ${(def?.name ?? e.resourceId).padEnd(8)} ${String(e.price).padStart(4)}G  供给:${String(e.supply).padStart(4)} 需求:${String(e.demand).padStart(4)}  [${e.trend}]`;
+        }).join("\n");
+        return {
+          narrative: [
+            `【${m.name}】`,
+            `  位置: ${m.location} | 控制: ${controller?.name ?? m.controlledBy}`,
+            `  税率: ${(m.taxRate * 100).toFixed(0)}%`,
+            ``,
+            `  商品       价格   供给   需求  趋势`,
+            `  ${"-".repeat(38)}`,
+            rows || "  (暂无上架商品)",
+          ].join("\n"),
+        };
+      }
+
+      // 外交行动
+      case "diplomacy": {
+        // 格式: 外交 <行动> <目标势力> [参数...]
+        // 行动: status/gift/war/treaty
+        const subAction = params.skill ?? "status";
+        const fromId = from ?? "arcane_council";
+        const toId = target;
+
+        if (subAction === "status" && toId) {
+          const rel = this.factions.getRelation(fromId, toId);
+          const f = this.factions.getFaction(fromId);
+          const t = this.factions.getFaction(toId);
+          if (!f || !t) return { narrative: "势力不存在。" };
+          return {
+            narrative: [
+              `【${f.name} ⟷ ${t.name}】`,
+              `  关系状态: ${rel?.stance ?? "无"} (关系值: ${rel?.score ?? 0})`,
+              `  贸易额: ${f.relations[toId]?.tradeVolume ?? 0}G`,
+              `  条约: ${(f.relations[toId]?.treaties ?? []).filter(tr => tr.active).map(tr => tr.type).join(", ") || "无"}`,
+            ].join("\n"),
+          };
+        }
+
+        if (subAction === "gift" && toId && amount && amount > 0) {
+          const success = this.factions.sendGift(fromId, toId, amount);
+          if (!success) return { narrative: "赠送失败。国库不足或势力不存在。" };
+          const t = this.factions.getFaction(toId);
+          return { narrative: `✅ ${fromId} 向 ${t?.name ?? toId} 赠送了 ${amount}G，关系改善。` };
+        }
+
+        if (subAction === "war" && toId) {
+          const success = this.factions.declareWar(fromId, toId);
+          if (!success) return { narrative: "宣战失败。" };
+          const t = this.factions.getFaction(toId);
+          return { narrative: `⚔️ ${fromId} 对 ${t?.name ?? toId} 宣战！` };
+        }
+
+        return { narrative: "外交用法: 外交 status/gift/war <目标势力> [金额]" };
+      }
+
+      // 金融信息
+      case "finance": {
+        const currencies = Array.from(this.finances["currencies"].values());
+        const crises = this.finances.getActiveCrises().filter(c => !c.resolved);
+        const banks = this.finances.getAllBanks();
+
+        const curInfo = currencies.map(c =>
+          `  ${c.name}[${c.id}] | 类型:${c.type} | 发行:${c.issuer} | 流通量:${c.supply} | 稳定度:${c.stability}`
+        ).join("\n");
+
+        const crisisInfo = crises.length === 0
+          ? "  (无活跃金融危机)"
+          : crises.map(c => `  ⚠️ ${c.name} (${c.type}) 严重度:${c.severity}/10 — ${c.description}`).join("\n");
+
+        const bankInfo = banks.map(b => {
+          const f = this.factions.getFaction(b.factionId);
+          return `  ${b.name}[${b.id}] (${f?.name ?? b.factionId}) 稳定度:${b.stability}`;
+        }).join("\n");
+
+        return {
+          narrative: [
+            `【金融概况】`,
+            ``,
+            `货币体系:`,
+            curInfo,
+            ``,
+            `金融机构:`,
+            bankInfo || "  (无)",
+            ``,
+            `金融危机:`,
+            crisisInfo,
+          ].join("\n"),
+        };
+      }
+
+      // 政策管理
+      case "policy": {
+        const fid = target ?? "arcane_council";
+        const f = this.factions.getFaction(fid);
+        if (!f) return { narrative: `势力不存在: ${fid}` };
+        const categorized = this.policies.getFactionPolicies(fid);
+        const fmt = (list: Policy[]) => list.map(p => `  ${p.name}[${p.id}] (${p.category}) ${p.active ? "✅" : ""}`).join("\n");
+        return {
+          narrative: [
+            `【${f.name} 政策】`,
+            ``,
+            `已生效:`,
+            fmt(categorized.active) || "  (无)",
+            ``,
+            `可实施:`,
+            fmt(categorized.available) || "  (无)",
+            ``,
+            `冷却中:`,
+            fmt(categorized.onCooldown) || "  (无)",
+          ].join("\n"),
+        };
+      }
+
+      default:
+        return { narrative: `未知政治经济指令: ${action}` };
+    }
+  }
+
+  // ── 外交/贸易/金融交互（用于 LLM 驱动的自由叙事） ──
+
+  getDiplomaticContext(): string {
+    const factions = this.factions.getAllFactions();
+    const lines: string[] = ["【政治经济局势】"];
+    for (const f of factions) {
+      const hostile = Object.values(f.relations).filter(r => r.stance === "hostile" || r.stance === "war");
+      const allies = Object.values(f.relations).filter(r => r.stance === "ally" || r.stance === "trade_pact");
+      const h = hostile.map(r => this.factions.getFaction(r.targetId)?.name ?? r.targetId).join(", ");
+      const a = allies.map(r => this.factions.getFaction(r.targetId)?.name ?? r.targetId).join(", ");
+      lines.push(`  ${f.name}: 国库${f.treasury}G 稳定${f.stability} 军力${f.militaryPower} 经济${f.economicPower}`);
+      if (a) lines.push(`    盟友/贸易伙伴: ${a}`);
+      if (h) lines.push(`    敌对: ${h}`);
+    }
+    const crises = this.finances.getActiveCrises().filter(c => !c.resolved);
+    for (const c of crises) {
+      lines.push(`  ⚠️ 金融危机: ${c.name} (${c.description})`);
+    }
+    return lines.join("\n");
+  }
+}
