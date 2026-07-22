@@ -395,6 +395,172 @@ export class PoliticoEconomyEngine {
     }
   }
 
+  // ── 可视化数据接口 ──
+
+  /** 返回结构化 JSON，供前端或 HTML 渲染引擎使用 */
+  getEconomyVizData(): {
+    factions: Array<{
+      id: string; name: string; type: string;
+      treasury: number; stability: number;
+      militaryPower: number; economicPower: number;
+    }>;
+    relations: Array<{
+      source: string; target: string;
+      stance: string; score: number;
+    }>;
+    markets: Array<{
+      id: string; name: string; controller: string;
+      entries: Array<{
+        resourceId: string; price: number;
+        supply: number; demand: number; trend: string;
+      }>;
+    }>;
+    tradeRoutes: Array<{
+      from: string; to: string;
+      resourceId: string; volume: number;
+    }>;
+    crises: Array<{
+      name: string; type: string;
+      severity: number; description: string;
+    }>;
+    round: number;
+  } {
+    const factions = this.factions.getAllFactions();
+    const relations: Array<{ source: string; target: string; stance: string; score: number }> = [];
+    for (const f of factions) {
+      for (const [targetId, rel] of Object.entries(f.relations)) {
+        relations.push({ source: f.id, target: targetId, stance: rel.stance, score: rel.score });
+      }
+    }
+    return {
+      factions: factions.map(f => ({
+        id: f.id, name: f.name, type: f.type,
+        treasury: f.treasury, stability: f.stability,
+        militaryPower: f.militaryPower, economicPower: f.economicPower,
+      })),
+      relations,
+      markets: this.trades.getAllMarkets().map(m => ({
+        id: m.id, name: m.name, controller: m.controlledBy,
+        entries: Object.values(m.entries).map(e => ({
+          resourceId: e.resourceId, price: e.price,
+          supply: e.supply, demand: e.demand, trend: e.trend,
+        })),
+      })),
+      tradeRoutes: this.trades.getAllMarkets().flatMap(m =>
+        m.tradeRoutes.map(r => ({
+          from: r.fromFactionId, to: r.toFactionId,
+          resourceId: r.resourceId, volume: r.volume,
+        }))
+      ),
+      crises: this.finances.getActiveCrises().filter(c => !c.resolved).map(c => ({
+        name: c.name, type: c.type, severity: c.severity, description: c.description,
+      })),
+      round: this.round,
+    };
+  }
+
+  /** 生成自包含 HTML 经济仪表盘 */
+  renderEconomyHtml(): string {
+    const d = this.getEconomyVizData();
+    const { factions, relations, markets, tradeRoutes, crises } = d;
+
+    // ── 势力关系图（D3 force-simulation 替代：纯 CSS 网格） ──
+    const factionCards = factions.map(f => {
+      const rels = relations.filter(r => r.source === f.id);
+      const allies = rels.filter(r => r.stance === "ally" || r.stance === "trade_pact").length;
+      const enemies = rels.filter(r => r.stance === "hostile" || r.stance === "war").length;
+      const color = f.stability >= 70 ? "#4ade80" : f.stability >= 40 ? "#facc15" : "#f87171";
+      return `
+        <div class="fc" style="border-left:4px solid ${color}">
+          <div class="fch">${f.name}</div>
+          <div class="fct">${f.type} · 国库 ${f.treasury}G</div>
+          <div class="fcb">
+            <span>稳${f.stability}</span>
+            <span>军${f.militaryPower}</span>
+            <span>经${f.economicPower}</span>
+          </div>
+          <div class="fcr">友${allies} 敌${enemies}</div>
+        </div>`;
+    }).join("");
+
+    // ── 市场表格 ──
+    const marketTables = markets.map(m => {
+      const rows = m.entries.map(e => {
+        const trendIcon = e.trend === "rising" ? "↑" : e.trend === "falling" ? "↓" : "→";
+        const trendCls = e.trend === "rising" ? "tr" : e.trend === "falling" ? "tf" : "ts";
+        return `<tr>
+          <td>${e.resourceId}</td>
+          <td class="n">${e.price}G</td>
+          <td class="n">${e.supply}</td>
+          <td class="n">${e.demand}</td>
+          <td class="${trendCls}">${trendIcon}</td>
+        </tr>`;
+      }).join("");
+      return `<details open>
+        <summary class="ms">${m.name} (${m.controller})</summary>
+        <table><tr><th>商品</th><th>价格</th><th>供给</th><th>需求</th><th></th></tr>${rows}</table>
+      </details>`;
+    }).join("");
+
+    // ── 贸易路线 ──
+    const routeRows = tradeRoutes.map(r => {
+      const from = factions.find(f => f.id === r.from)?.name ?? r.from;
+      const to = factions.find(f => f.id === r.to)?.name ?? r.to;
+      return `<tr><td>${from}</td><td class="a">→</td><td>${to}</td><td>${r.resourceId}</td><td class="n">${r.volume}/t</td></tr>`;
+    }).join("");
+
+    // ── 危机 ──
+    const crisisBanner = crises.length > 0
+      ? `<div class="crisis">⚠️ ${crises.map(c => `${c.name}（严重度 ${c.severity}）`).join(" · ")}</div>`
+      : `<div class="ok">✅ 经济稳定</div>`;
+
+    return `<!DOCTYPE html><html lang="zh"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;padding:24px;max-width:1200px;margin:0 auto}
+h1{font-size:24px;margin-bottom:4px;color:#f8fafc}
+.sub{color:#94a3b8;font-size:14px;margin-bottom:24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:24px}
+.fc{background:#1e293b;border-radius:8px;padding:12px 14px}
+.fch{font-weight:600;font-size:15px;color:#f1f5f9;margin-bottom:2px}
+.fct{font-size:12px;color:#94a3b8;margin-bottom:6px}
+.fcb{display:flex;gap:10px;font-size:13px;color:#cbd5e1;margin-bottom:4px}
+.fcr{font-size:12px;color:#64748b}
+.ms{font-size:15px;font-weight:600;color:#e2e8f0;cursor:pointer;padding:8px 0;border-bottom:1px solid #334155;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px}
+th{text-align:left;padding:6px 8px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:500}
+td{padding:6px 8px;border-bottom:1px solid #1e293b}
+.n{text-align:right;font-variant-numeric:tabular-nums}
+.a{text-align:center;color:#64748b;padding:0 4px}
+.tr{color:#4ade80;font-weight:600;text-align:center}
+.tf{color:#f87171;font-weight:600;text-align:center}
+.ts{color:#94a3b8;text-align:center}
+.crisis{background:#7f1d1d;color:#fca5a5;padding:10px 16px;border-radius:8px;margin-bottom:20px;font-size:14px}
+.ok{background:#14532d;color:#86efac;padding:10px 16px;border-radius:8px;margin-bottom:20px;font-size:14px}
+.s2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+@media(max-width:640px){.s2{grid-template-columns:1fr}}
+details{margin-bottom:4px}
+.routes{margin-top:16px}
+.routes table{margin-top:8px}
+</style>
+</head><body>
+<h1>🏛️ 政治经济仪表盘</h1>
+<div class="sub">第 ${d.round} 回合 · ${factions.length} 势力 · ${markets.length} 市场 · ${tradeRoutes.length} 贸易路线</div>
+${crisisBanner}
+<div class="grid">${factionCards}</div>
+<div class="s2">
+  <div>
+    <div class="ms">📊 市场行情</div>
+    ${marketTables}
+  </div>
+  <div>
+    <div class="ms">🔄 贸易路线 <span style="font-weight:400;font-size:13px;color:#94a3b8">(${tradeRoutes.length} 条)</span></div>
+    ${tradeRoutes.length > 0 ? `<table class="routes"><tr><th>出发</th><th></th><th>到达</th><th>货物</th><th class="n">流量</th></tr>${routeRows}</table>` : '<div style="color:#64748b;font-size:14px">暂无活跃贸易路线</div>'}
+  </div>
+</div>
+</body></html>`;
+  }
+
   // ── 外交/贸易/金融交互（用于 LLM 驱动的自由叙事） ──
 
   getDiplomaticContext(): string {
