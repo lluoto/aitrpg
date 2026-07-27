@@ -1374,8 +1374,8 @@ export class GameSession {
     }
     // D&D cast
     const spellName = intent.spell ?? intent.target ?? "法术";
-    msg(`你施展了�?{spellName}」！`);
-    this.lastNarrative = `你施展了�?{spellName}」。`;
+    msg(`你施展了${spellName}！」`);
+    this.lastNarrative = `你施展了${spellName}」。`;
     return true;
   }
 
@@ -1385,17 +1385,17 @@ export class GameSession {
     // 典籍定义
     const tomes: Record<string, { sanCost: string; cmGain: number; spellCount: number; spells: string[] }> = {
       "死灵之书": { sanCost: "1d10/1d100", cmGain: 10, spellCount: 7, spells: ["呼唤米戈", "放逐术", "克苏鲁之", "肉傀儡创", "亡者苏", "时空", "旧日支配者之印记"] },
-      "无名祭祀": { sanCost: "1d6/1d20", cmGain: 6, spellCount: 4, spells: ["召唤暗影", "灵魂转移", "死灵沟", "诅咒"] },
+      "无名祭祀书": { sanCost: "1d6/1d20", cmGain: 6, spellCount: 4, spells: ["召唤暗影", "灵魂转移", "死灵沟", "诅咒"] },
       "黄衣之王": { sanCost: "1d8/1d20", cmGain: 8, spellCount: 4, spells: ["黄衣之印", "疯狂低语", "幻象编织", "哈斯塔之"] },
       "塞拉伊诺断章": { sanCost: "1d6/1d20", cmGain: 5, spellCount: 3, spells: ["时空感知", "星之投射", "塞拉伊诺之眼"] },
-      "阿卡姆特": { sanCost: "1d4/1d10", cmGain: 4, spellCount: 0, spells: [] },
+      "阿卡姆特集": { sanCost: "1d4/1d10", cmGain: 4, spellCount: 0, spells: [] },
     };
 
     const tome = tomes[tomeName];
     if (!tome) {
-      // 非典籍物"
-      msg(`你翻阅了�?{tomeName}」。`);
-      this.lastNarrative = `你翻阅了�?{tomeName}」。`;
+      // 非典籍
+      msg(`你翻阅了${tomeName}。」`);
+      this.lastNarrative = `你翻阅了${tomeName}。」`;
       return true;
     }
 
@@ -1404,13 +1404,13 @@ export class GameSession {
     const passed = result.passed;
     const sanLoss = result.sanLoss;
     const roll = result.roll;
-    msg(`🧠 阅读�?{tomeName}」SAN 检查 d100=${roll} (目标=${this.sanity.state.currentSAN}) �?${passed ? "通过" : "失败"}！SAN -${sanLoss} (剩余: ${this.sanity.state.currentSAN})`);
+    msg(`🧠 阅读${tomeName}」SAN 检查 d100=${roll} (目标=${this.sanity.state.currentSAN}) ${passed ? "通过" : "失败"}！SAN -${sanLoss} (剩余: ${this.sanity.state.currentSAN})`);
 
     // CM 成长
     if (this.sanity.state.cthulhuMythos !== undefined) {
       this.sanity.state.cthulhuMythos += tome.cmGain;
     }
-    msg(`📖 克苏鲁神话技能提�?+${tome.cmGain}%`);
+    msg(`📖 克苏鲁神话技能提升+${tome.cmGain}%`);
 
     // 法术学习
     const learnedSpells: string[] = [];
@@ -1419,19 +1419,19 @@ export class GameSession {
       const learnTarget = Math.min(99, this.sanity.state.cthulhuMythos ?? 10);
       if (learnRoll <= learnTarget && !this.knownMythosSpells.includes(spell)) {
         this.knownMythosSpells.push(spell);
-        // 注册�?mythosSpells
+        // 注册到 mythosSpells
         this.mythosSpells.set(spell, { sanCost: "1d4", mpCost: Math.floor(Math.random() * 4) + 1, description: `神话法术: ${spell}`, effect: `施展${spell}的效果` });
         learnedSpells.push(spell);
       }
     }
 
     if (learnedSpells.length > 0) {
-      msg(`�?你领悟了新法�? ${learnedSpells.join(", ")}`);
+      msg(`🎉 你领悟了新法术: ${learnedSpells.join(", ")}`);
     } else if (tome.spellCount > 0) {
       msg("你未能领悟任何法术，也许下次会有不同的领悟");
     }
 
-    this.lastNarrative = `你阅读了�?{tomeName}」，SAN -${sanLoss}，克苏鲁神话技�?+${tome.cmGain}%。`;
+    this.lastNarrative = `你阅读了${tomeName}」，SAN -${sanLoss}，克苏鲁神话技能+${tome.cmGain}%。`;
     return true;
   }
 

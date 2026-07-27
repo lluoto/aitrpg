@@ -70,12 +70,14 @@ export class RulesEngine {
     // CoC 反击/格挡
     isFightBack?: boolean,
     fightBackDamageDice?: string,
+    /** CoC 伤害加值 DB（如 "+1d4"），由角色的 STR+SIZ 决定 */
+    attackerDb?: string,
   ): UnifiedCombatResult {
     switch (ruleset) {
       case "dnd5e":
         return this.adjudicateDnD(intent, attacker, defender, hasAdvantage ?? false, hasDisadvantage ?? false, weaponName ?? "shortsword");
       case "coc7e":
-        return this.adjudicateCoC(intent, attacker, defender, attackerSkill ?? 40, defenderDodge ?? 30, intent.method, damageDice, penaltyDiceOverride, isFightBack, fightBackDamageDice);
+        return this.adjudicateCoC(intent, attacker, defender, attackerSkill ?? 40, defenderDodge ?? 30, intent.method, damageDice, penaltyDiceOverride, isFightBack, fightBackDamageDice, attackerDb);
       case "grail":
         return this.adjudicateGrail(attacker as any, defender, "1d8");
       default:
@@ -124,6 +126,7 @@ export class RulesEngine {
     penaltyDiceOverride?: number,
     isFightBack?: boolean,
     fightBackDamageDice?: string,
+    attackerDb?: string,
   ): UnifiedCombatResult {
     const aimedMode = method === "aimed" || !!intent.calledShot;
     const calledShot = intent.calledShot;
@@ -139,7 +142,7 @@ export class RulesEngine {
     }
     const bonusDice = aimedMode && !calledShot ? 1 : 0;
     const dice = damageDice || "1d6";
-    const result = CoCEngine.combatCheck(attackerSkill, defenderDodge, dice, bonusDice, penaltyDice, aimedMode, calledShot, isFightBack ?? false, fightBackDamageDice);
+    const result = CoCEngine.combatCheck(attackerSkill, defenderDodge, dice, bonusDice, penaltyDice, aimedMode, calledShot, isFightBack ?? false, fightBackDamageDice, attackerDb);
 
     const hpEffect = result.hit ? (defender.hp <= result.damage ? "kill" : "wound") : "miss";
 

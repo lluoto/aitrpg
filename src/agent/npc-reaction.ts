@@ -200,9 +200,7 @@ export function updateMood(
   const transitions = MOOD_TRANSITIONS[trigger];
   if (!transitions) return current;
 
-  // 稳定性越高，情绪惯性越大（随机偏移抵抗）
-  const roll = Math.random() * 10;
-  const stabilityResist = (t.stability - 5) * 0.5; // -2.5 ~ +2.5
+  const stabilityResist = (t.stability - 5) * 0.5;
 
   // 按权重选取新情绪
   const candidates = Object.entries(transitions) as [NPCMood, number][];

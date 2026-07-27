@@ -226,6 +226,8 @@ export class CoCEngine {
     calledShot?: string,
     isFightBack: boolean = false,
     counterDamageDice?: string,
+    /** 攻击方伤害加值 DB 字符串，如 "+1d4"、"-2"，由 rollDamageBonus 解析 */
+    attackerDb?: string,
   ): CombatCheckResult {
     const attackRoll = CoCEngine.skillCheck(attackerSkill, "regular", bonusDice, penaltyDice);
 
@@ -286,6 +288,15 @@ export class CoCEngine {
           damage += Math.floor(Math.random() * sidesNum) + 1;
         }
         damage += bonusNum;
+      }
+    }
+
+    // 伤害加值：攻击方 DB（如 "+1d4"）
+    if (attackerDb && attackerDb !== "0") {
+      if (isImpale || isCritical) {
+        damage += maxDamageBonus(attackerDb);
+      } else {
+        damage += rollDamageBonus(attackerDb);
       }
     }
 
@@ -1151,6 +1162,30 @@ export function rollDamageBonus(db: string): number {
     return sign * parseInt(flatMatch[2]);
   }
   return 0;
+}
+
+/**
+ * 伤害加值最大可能值（用于贯穿/暴击时取满伤）
+ * 支持格式："+1d4"→4, "-1d6"→-6, "-2"→-2, "0"→0
+ * 复合格式如 "+1d4+1d6"→10
+ */
+export function maxDamageBonus(db: string): number {
+  // 复合格式：用全局匹配分段
+  const parts = db.match(/[+-]?\d+d\d+|[+-]?\d+/g);
+  if (!parts) return 0;
+  let total = 0;
+  for (const part of parts) {
+    const dice = part.match(/^([+-]?)(\d*)d(\d+)$/);
+    if (dice) {
+      const sign = dice[1] === "-" ? -1 : 1;
+      const count = parseInt(dice[2] || "1");
+      const sides = parseInt(dice[3]);
+      total += sign * count * sides;
+    } else {
+      total += parseInt(part);
+    }
+  }
+  return total;
 }
 
 // ============================================================

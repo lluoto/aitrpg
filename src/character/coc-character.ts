@@ -35,7 +35,7 @@ export const COC_SKILLS: string[] = [
   "科学(化学)", "科学(生物学)", "科学(物理学)", "科学(天文学)", "科学(地质学)",
   "妙手", "侦查", "潜行", "生存", "游泳",   "投掷",
   "追踪",
-  "运动",
+  "攀爬",
 ];
 
 /** 中文技能名 → 英文内部 key 映射（用于技能检定系统） */
@@ -95,7 +95,7 @@ export const SKILL_NAME_MAP: Record<string, string> = {
   "游泳": "swim",
   "投掷": "throw",
   "追踪": "track",
-  "运动": "athletics",
+  "攀爬": "climb",
 };
 
 /** 英文内部 key → 中文技能名（反向映射，多个中文→同英文时保留第一个） */
@@ -154,7 +154,6 @@ export interface CoCGeneratedCharacter {
   luck: number;
   hp: number;
   maxHp: number;
-  ac: number;
   damageBonus: string;
   build: number;
   move: number;
@@ -340,11 +339,6 @@ export function calcCoCHP(constitution: number, size: number): number {
   return Math.max(1, Math.floor((constitution + size) / 10));
 }
 
-/** 计算 AC（基于 DEX） */
-export function calcCoCAC(dexterity: number): number {
-  return 10 + Math.floor(dexterity / 20);
-}
-
 /** 计算移动力 */
 export function calcCoCMove(strength: number, dexterity: number, size: number, age: number = 30): number {
   let move = 8;
@@ -378,16 +372,23 @@ export function rollCreditRating(range?: [number, number]): number {
 // 技能点分配
 // ============================================================
 
-/** 计算职业技能点 */
+/** 计算职业技能点（支持双来源，如 EDU×4 或 EDU×2+DEX×2） */
 export function calcOccupationSkillPoints(
   archetype: CharacterArchetype,
-  education: number,
+  attrs: Record<string, number>,
 ): number {
-  const source = archetype.skillPointSource ?? "education";
-  const multiplier = archetype.skillPointMultiplier ?? 1;
-  // 以 source 属性的值作为基数
-  const baseValue = source === "education" ? education : education; // 默认用 EDU
-  return baseValue * multiplier;
+  const primaryAttr = archetype.skillSourceAttribute ?? "education";
+  const primaryMult = archetype.skillPointMultiplier ?? 4;
+  let total = (attrs[primaryAttr] ?? 50) * primaryMult;
+
+  // 第二来源（如 DEX×2）
+  const secondAttr = (archetype as any).skillSecondSource;
+  const secondMult = (archetype as any).skillSecondMultiplier ?? 0;
+  if (secondAttr && secondMult > 0) {
+    total += (attrs[secondAttr] ?? 50) * secondMult;
+  }
+
+  return total;
 }
 
 /** 计算个人兴趣技能点 = INT × 2 */
@@ -494,12 +495,11 @@ export async function createCoCCharacter(
     ? rollLuck()
     : 0;
   const hp = calcCoCHP(attrs.constitution, attrs.size);
-  const ac = calcCoCAC(attrs.dexterity);
   const { db: damageBonus, build } = calcDamageBonus(attrs.strength, attrs.size);
   const move = calcCoCMove(attrs.strength, attrs.dexterity, attrs.size, age);
 
   // 6. 技能点
-  const occupationSkillPoints = calcOccupationSkillPoints(archetype, attrs.education);
+  const occupationSkillPoints = calcOccupationSkillPoints(archetype, attrs);
   const interestSkillPoints = calcInterestSkillPoints(attrs.intelligence);
 
   // 6.5 自动分配技能点
@@ -523,7 +523,6 @@ export async function createCoCCharacter(
     luck,
     hp,
     maxHp: hp,
-    ac,
     damageBonus,
     build,
     move,
@@ -637,7 +636,7 @@ export const COC_SKILL_BASES: Record<string, number> = {
   psychology: 5, ride: 5, science_astronomy: 1, science_biology: 1,
   science_chemistry: 1, science_geology: 1, science_physics: 1,
   sleight_of_hand: 10, spot_hidden: 25, stealth: 20, survival: 10,
-  swim: 20, throw: 20, track: 10, athletics: 20,
+  swim: 20, throw: 20, track: 10,
 };
 
 // ── 别名/多中文→同英文 补充 ──
@@ -706,12 +705,20 @@ export function createSkillAllocator(
     intMultiplier?: number;
     /** 初始技能值覆盖 */
     overrides?: Record<string, number>;
+    /** 属性表（双来源计算用） */
+    attrs?: Record<string, number>;
   },
 ): SkillAllocState {
   const occSkills: string[] = archetype.skills ?? [];
   const occKeys: string[] = (archetype as any).occupationSkills ?? [];
 
-  const occPts = edu * (options?.occMultiplier ?? 1);
+  // 支持双来源计算
+  let occPts: number;
+  if (options?.attrs) {
+    occPts = calcOccupationSkillPoints(archetype, options.attrs);
+  } else {
+    occPts = edu * (options?.occMultiplier ?? 1);
+  }
   const intPts = int * (options?.intMultiplier ?? 2);
 
   const values: Record<string, number> = {};

@@ -330,66 +330,84 @@ export class NPCAgent {
     return this.personality.attitudes?.[targetName] ?? "中立";
   }
 
-  /** LLM 不可用时的模板回应（特质+情绪驱动） */
+  /** 提取短角色标签用于身份感知 */
+  private roleTag(): string {
+    const role = this.personality.role || "";
+    if (!role) return "";
+    const short = role.includes("——") ? role.split("——")[0] : role;
+    if (short.length > 10) return "";
+    return short;
+  }
+
+  /** LLM 不可用时的模板回应（特质+情绪+身份驱动） */
   private templateReply(context: string): string {
     const p = this.personality;
     const combined = (p.personality + " " + p.speech_style).toLowerCase();
+    const tag = this.roleTag();
+    const tagPhrase = tag ? `我这个${tag}` : "我";
 
     // 情绪驱动
     if (this.mood === "fearful") {
-      const fearfulReplies = [
-        `（${this.name}声音发抖）"不……不要靠近我！"`,
-        `（${this.name}后退了一步）"我……我没什么好说的，求你了……"`,
+      const replies = [
+        `（${this.name}声音发抖）"不……不要靠近我！${tag ? `我${tagPhrase}真的什么都不知道……` : ""}"`,
+        `（${this.name}后退了一步）"我……${tag ? `我只是个${tag}` : ""}没什么好说的，求你了……"`,
         `"你不明白……你不明白这里发生了什么……" ${this.name}语无伦次地说。`,
+        `（${this.name}蜷缩着）"求求你，别问我了……${tag ? `我${tagPhrase}只想安安静静的……` : ""}"`,
       ];
-      return fearfulReplies[Math.floor(Math.random() * fearfulReplies.length)];
+      return replies[Math.floor(Math.random() * replies.length)];
     }
 
     if (this.mood === "angry") {
-      const angryReplies = [
-        `（${this.name}怒视着你）"你还有脸来找我？"`,
+      const replies = [
+        `（${this.name}怒视着你）"你还有脸来找我？${tag ? `我${tagPhrase}可不是好欺负的。` : ""}"`,
         `"别浪费我的时间。" ${this.name}转过身去，显然不想再谈。`,
-        `（${this.name}咬牙切齿地说）"你要是聪明的话，就趁我没发火之前赶紧走。"`,
+        `（${this.name}咬牙切齿）"你要是聪明的话，趁我没发火之前赶紧走。"`,
+        `"我警告你——${tag ? `${tagPhrase}可不是吃素的` : "别太过分"}。" ${this.name}的声音冷了下来。`,
       ];
-      return angryReplies[Math.floor(Math.random() * angryReplies.length)];
+      return replies[Math.floor(Math.random() * replies.length)];
     }
 
     if (this.mood === "friendly") {
-      const friendlyReplies = [
+      const replies = [
         `"啊，是你！" ${this.name}的表情明显放松了下来，"我正想着你会不会来呢。"`,
-        `（${this.name}向你招了招手）"来，我给你看点东西——我觉得你会感兴趣。"`,
+        `（${this.name}向你招了招手）"来，我给你看点东西——${tag ? `${tagPhrase}可不会随便给人看这个。` : "我觉得你会感兴趣。"}"`,
         `"太好了，有你在我就放心多了。"`,
+        `（${this.name}笑了笑）"我就知道你靠得住——${tag ? `${tagPhrase}见过的人不少，你算特别的。` : ""}"`,
       ];
-      return friendlyReplies[Math.floor(Math.random() * friendlyReplies.length)];
+      return replies[Math.floor(Math.random() * replies.length)];
     }
 
     // 特质+性格关键词驱动
     if (this.traits.courage <= 3 || combined.includes("紧张") || combined.includes("警惕") || combined.includes("恐惧")) {
-      const nervousReplies = [
+      const replies = [
         `（${this.name}紧张地看着你，低声说）"你……你也是听到那个声音才来的吗？"`,
-        `（${this.name}不安地搓着手）"这里不对劲……我建议你赶紧离开。"`,
+        `（${this.name}不安地搓着手）"这里不对劲……${tag ? `${tagPhrase}劝你赶紧离开。` : "我建议你赶紧离开。"}"`,
         `"嘘——别那么大声。它们……它们能听到。"`,
-        `（${this.name}东张西望了一番才开口）"我不知道你是什么人，但你要是聪明的话，就别进那个谷仓。"`,
+        `（${this.name}东张西望了一番）"我不知道你是什么人，但${tag ? `${tagPhrase}得提醒你——` : ""}别进那个谷仓。"`,
+        `（${this.name}压低声音）"这地方有古怪……${tag ? `我${tagPhrase}在这里待久了，感觉不对劲。` : ""}"`,
       ];
-      return nervousReplies[Math.floor(Math.random() * nervousReplies.length)];
+      return replies[Math.floor(Math.random() * replies.length)];
     }
 
     if (combined.includes("沉默") || combined.includes("寡言") || combined.includes("简洁")) {
-      const terseReplies = [
+      const replies = [
         `"嗯。" ${this.name}简短地应了一声，没有多说的意思。`,
         `"没时间闲聊。" ${this.name}的目光扫过你的肩膀，似乎在注意别的东西。`,
         `"该说的都说了。你自己小心。"`,
+        `（${this.name}只是沉默地看了你一眼，没有搭话）`,
+        `${tag ? `"${tagPhrase}没什么好说的。"` : `"不关我事。"`} ${this.name}移开了目光。`,
       ];
-      return terseReplies[Math.floor(Math.random() * terseReplies.length)];
+      return replies[Math.floor(Math.random() * replies.length)];
     }
 
     if (this.traits.friendliness >= 7 || combined.includes("友好") || combined.includes("热情") || combined.includes("开朗")) {
-      const friendlyReplies = [
-        `"哦！终于有人来了！" ${this.name}露出松了一口气的表情，"我正需要帮手。"`,
+      const replies = [
+        `"哦！终于有人来了！" ${this.name}露出松了一口气的表情，"${tag ? `${tagPhrase}正需要帮手。` : "我正需要帮手。"}"`,
         `"你好啊，旅行者！你看起来像是能应付麻烦的人。"`,
         `"太好了——这里我一个人实在应付不来。"`,
+        `（${this.name}热情地招呼你）"来来来，${tag ? `${tagPhrase}跟你说道说道。` : "我跟你说说这里的事。"}"`,
       ];
-      return friendlyReplies[Math.floor(Math.random() * friendlyReplies.length)];
+      return replies[Math.floor(Math.random() * replies.length)];
     }
 
     // 关系值影响
@@ -398,42 +416,52 @@ export class NPCAgent {
     }
 
     if (this.relationship >= 3) {
-      return `"你来了。" ${this.name}露出一个难得的微笑，"说实话，见到你让我安心不少。"`;
+      const replies = [
+        `"你来了。" ${this.name}露出一个难得的微笑，"说实话，见到你让我安心不少。"`,
+        `（${this.name}点了点头）"又见面了。${tag ? `我${tagPhrase}一直想着你可能会回来。` : "我还以为你不会回来了。"}"`,
+      ];
+      return replies[Math.floor(Math.random() * replies.length)];
     }
 
     // 默认
-    const defaultReplies = [
+    const defaults = [
       `"你是……谁？" ${this.name}警惕地打量着你。`,
       `（${this.name}摇了摇头）"我没什么好说的。"`,
       `"你最好别管这里的事。"`,
       `（${this.name}沉默了片刻）"……你想知道什么？"`,
+      tag ? `"我就是个${tag}，能知道什么。" ${this.name}耸了耸肩。` : `"别问我，我什么都不知道。"`,
     ];
-    return defaultReplies[Math.floor(Math.random() * defaultReplies.length)];
+    return defaults[Math.floor(Math.random() * defaults.length)];
   }
 
-  /** LLM 不可用时主动发言模板 */
+  /** LLM 不可用时主动发言模板（身份感知） */
   private templateSpeakUp(trigger: string): string {
     const p = this.personality;
     const combined = (p.personality + " " + p.speech_style).toLowerCase();
+    const tag = this.roleTag();
 
     if (combined.includes("紧张") || combined.includes("恐惧")) {
-      const nervous = [
+      const replies = [
         `（${this.name}突然抓住你的手臂）"听到了吗？那个声音又来了……"`,
         `"我们得走了……这里很快就不安全了。"`,
         `（${this.name}猛地回头看向黑暗中）"……没事。我以为看到了什么。"`,
+        tag ? `"${tag}的直觉告诉我——有什么东西在靠近。" ${this.name}的声音压得很低。` : `"我觉得有人在看着我们。" ${this.name}低声道。`,
       ];
-      return nervous[Math.floor(Math.random() * nervous.length)];
+      return replies[Math.floor(Math.random() * replies.length)];
     }
     if (combined.includes("沉默") || combined.includes("寡言")) {
-      const terse = [
+      const replies = [
         `"……有动静。" ${this.name}低声说。`,
         `（${this.name}停下脚步，侧耳倾听了一会儿）`,
+        tag ? `${this.name}指了指某个方向——${tag}的手在微微发抖。` : `${this.name}抬了抬下巴，示意你看那边。`,
       ];
-      return terse[Math.floor(Math.random() * terse.length)];
+
+      return replies[Math.floor(Math.random() * replies.length)];
     }
     const defaults = [
       `（${this.name}清了清嗓子）"嗯……你还在啊。"`,
       `"你有闻到什么味道吗？" ${this.name}皱了皱眉头。`,
+      tag ? `（${this.name}低声道）"我${tag}可以跟你说件事，但你别说出去。"` : `"喂，你知道这里都发生过什么事吗？"`,
     ];
     return defaults[Math.floor(Math.random() * defaults.length)];
   }

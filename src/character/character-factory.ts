@@ -125,8 +125,12 @@ export interface CharacterArchetype {
   maxAttributeValue?: number;
   /** 职业技能点来源属性（默认 education） */
   skillSourceAttribute?: "education" | "intelligence" | "dexterity";
-  /** 职业技能点倍率（默认 1） */
+  /** 职业技能点倍率（默认 4） */
   skillPointMultiplier?: number;
+  /** 职业技能点第二来源属性（如 "dexterity" 用于 EDU×2 + DEX×2） */
+  skillSecondSource?: string;
+  /** 第二来源倍率（如 2 表示 ×2） */
+  skillSecondMultiplier?: number;
   /** 强制初始技能（英文 skillId） */
   mandatorySkills?: string[];
 }
@@ -183,7 +187,6 @@ export interface GeneratedCharacter {
   attributes: Record<string, number>;
   hp: number;
   maxHp: number;
-  ac: number;
   skills: string[];
   ruleset: string;
   valid: boolean;
@@ -370,7 +373,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["侦查", "图书馆使用", "心理学", "说服", "格斗(肉搏)", "射击(手枪)"],
     occupationSkills: ["spot_hidden", "library_use", "psychology", "persuade", "fighting", "firearms_pistol"],
     baseHp: 10, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 考古学家 Archaeologist ──
   {
@@ -381,7 +384,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["考古学", "历史", "图书馆使用", "人类学", "估价", "语言(其他)"],
     occupationSkills: ["archaeology", "history", "library_use", "anthropology", "appraise", "language_other"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [30, 60],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 古物学者 Antiquarian ──
   {
@@ -392,7 +395,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["估价", "考古学", "历史", "神秘学", "图书馆使用", "语言(其他)"],
     occupationSkills: ["appraise", "archaeology", "history", "occult", "library_use", "language_other"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [30, 60],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 记者 Journalist ──
   {
@@ -403,7 +406,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["侦查", "图书馆使用", "心理学", "说服", "话术", "历史"],
     occupationSkills: ["spot_hidden", "library_use", "psychology", "persuade", "fast_talk", "history"],
     baseHp: 9, rulesets: ["coc7e"], creditRatingRange: [50, 80],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 业余艺术爱好者 Dilettante ──
   {
@@ -414,7 +417,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["说服", "魅惑", "心理学", "话术", "艺术与手艺", "驾驶"],
     occupationSkills: ["persuade", "charm", "psychology", "fast_talk", "art", "drive"],
     baseHp: 9, rulesets: ["coc7e"], creditRatingRange: [50, 90],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "dexterity", skillSecondMultiplier: 2,
   },
   // ── 医生 Doctor of Medicine ──
   {
@@ -425,7 +428,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["医学", "精神分析", "心理学", "急救", "科学(生物学)", "图书馆使用"],
     occupationSkills: ["medicine", "psychoanalysis", "psychology", "first_aid", "science_biology", "library_use"],
     baseHp: 9, rulesets: ["coc7e"], creditRatingRange: [30, 80],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 工程师 Engineer ──
   {
@@ -436,7 +439,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["机械维修", "电气维修", "计算机使用", "科学(物理学)", "驾驶", "操作重型机械"],
     occupationSkills: ["mechanical_repair", "electrical_repair", "computer_use", "science_physics", "drive", "operate_heavy_machinery"],
     baseHp: 9, rulesets: ["coc7e"], creditRatingRange: [30, 70],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 士兵 Soldier ──
   {
@@ -444,10 +447,10 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     description: "军队训练的战斗人员",
     minAttributes: { strength: 60, constitution: 60 },
     priorityAttributes: ["strength", "constitution", "dexterity"],
-    skills: ["格斗(肉搏)", "射击(步枪/霰弹枪)", "射击(冲锋枪)", "潜行", "运动", "急救"],
-    occupationSkills: ["fighting", "firearms_rifle", "firearms_smg", "stealth", "athletics", "first_aid"],
+    skills: ["格斗(肉搏)", "射击(步枪/霰弹枪)", "射击(冲锋枪)", "潜行", "攀爬", "急救"],
+    occupationSkills: ["fighting", "firearms_rifle", "firearms_smg", "stealth", "climb", "first_aid"],
     baseHp: 12, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "strength", skillSecondMultiplier: 2,
   },
   // ── 图书馆管理员 Librarian ──
   {
@@ -458,7 +461,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["图书馆使用", "侦查", "心理学", "历史", "语言(其他)", "神秘学"],
     occupationSkills: ["library_use", "spot_hidden", "psychology", "history", "language_other", "occult"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [30, 60],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 神秘学家 Occultist ──
   {
@@ -469,7 +472,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["神秘学", "历史", "考古学", "人类学", "图书馆使用", "语言(其他)"],
     occupationSkills: ["occult", "history", "archaeology", "anthropology", "library_use", "language_other"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [30, 60],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 超心理学家 Parapsychologist ──
   {
@@ -480,7 +483,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["心理学", "精神分析", "神秘学", "图书馆使用", "科学(生物学)", "说服"],
     occupationSkills: ["psychology", "psychoanalysis", "occult", "library_use", "science_biology", "persuade"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 摄影师 Photographer ──
   {
@@ -491,7 +494,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["侦查", "艺术与手艺", "心理学", "潜行", "图书馆使用", "驾驶"],
     occupationSkills: ["spot_hidden", "art", "psychology", "stealth", "library_use", "drive"],
     baseHp: 9, rulesets: ["coc7e"], creditRatingRange: [30, 60],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "dexterity", skillSecondMultiplier: 2,
   },
   // ── 飞行员 Pilot ──
   {
@@ -502,7 +505,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["驾驶", "导航", "机械维修", "电气维修", "科学(物理学)", "侦查"],
     occupationSkills: ["drive", "navigate", "mechanical_repair", "electrical_repair", "science_physics", "spot_hidden"],
     baseHp: 10, rulesets: ["coc7e"], creditRatingRange: [30, 70],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 教授 Professor ──
   {
@@ -513,7 +516,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["图书馆使用", "神秘学", "历史", "说服", "人类学", "心理学"],
     occupationSkills: ["library_use", "occult", "history", "persuade", "anthropology", "psychology"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [40, 80],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 科学家 Scientist ──
   {
@@ -524,7 +527,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["科学(化学)", "科学(生物学)", "科学(物理学)", "图书馆使用", "计算机使用", "侦查"],
     occupationSkills: ["science_chemistry", "science_biology", "science_physics", "library_use", "computer_use", "spot_hidden"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [30, 70],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 精神科医生 Psychiatrist ──
   {
@@ -535,7 +538,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["心理学", "精神分析", "医学", "说服", "话术", "图书馆使用"],
     occupationSkills: ["psychology", "psychoanalysis", "medicine", "persuade", "fast_talk", "library_use"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [30, 70],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 艺术家 Artist ──
   {
@@ -546,7 +549,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["艺术与手艺", "侦查", "心理学", "话术", "潜行", "图书馆使用"],
     occupationSkills: ["art", "spot_hidden", "psychology", "fast_talk", "stealth", "library_use"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "dexterity", skillSecondMultiplier: 2,
   },
   // ── 音乐家 Musician ──
   {
@@ -557,7 +560,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["艺术与手艺", "聆听", "心理学", "说服", "魅惑", "潜行"],
     occupationSkills: ["art", "listen", "psychology", "persuade", "charm", "stealth"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "dexterity", skillSecondMultiplier: 2,
   },
   // ── 运动员 Athlete ──
   {
@@ -565,10 +568,10 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     description: "专业从事体育竞技的运动选手",
     minAttributes: { strength: 60, dexterity: 60 },
     priorityAttributes: ["strength", "dexterity", "constitution"],
-    skills: ["运动", "跳跃", "游泳", "格斗(肉搏)", "投掷", "潜行"],
-    occupationSkills: ["athletics", "jump", "swim", "fighting", "throw", "stealth"],
+    skills: ["攀爬", "跳跃", "游泳", "格斗(肉搏)", "投掷", "潜行"],
+    occupationSkills: ["climb", "jump", "swim", "fighting", "throw", "stealth"],
     baseHp: 11, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "strength", skillSecondMultiplier: 2,
   },
   // ── 拳击手 Boxer ──
   {
@@ -576,10 +579,10 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     description: "专业拳击格斗运动员",
     minAttributes: { strength: 60, constitution: 60 },
     priorityAttributes: ["strength", "constitution", "dexterity"],
-    skills: ["格斗(肉搏)", "运动", "跳跃", "急救", "侦查", "恐吓"],
-    occupationSkills: ["fighting", "athletics", "jump", "first_aid", "spot_hidden", "intimidate"],
+    skills: ["格斗(肉搏)", "攀爬", "跳跃", "急救", "侦查", "恐吓"],
+    occupationSkills: ["fighting", "climb", "jump", "first_aid", "spot_hidden", "intimidate"],
     baseHp: 12, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "strength", skillSecondMultiplier: 2,
   },
   // ── 机械师 Mechanic ──
   {
@@ -590,7 +593,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["机械维修", "电气维修", "驾驶", "操作重型机械", "锁匠", "潜行"],
     occupationSkills: ["mechanical_repair", "electrical_repair", "drive", "operate_heavy_machinery", "lockpick", "stealth"],
     baseHp: 10, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 探险家 Explorer ──
   {
@@ -598,10 +601,10 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     description: "深入野外探索未知区域的冒险者",
     minAttributes: { constitution: 60 },
     priorityAttributes: ["constitution", "strength", "dexterity"],
-    skills: ["自然学", "导航", "生存", "运动", "潜行", "侦查"],
-    occupationSkills: ["natural_history", "navigate", "survival", "athletics", "stealth", "spot_hidden"],
+    skills: ["自然学", "导航", "生存", "攀爬", "潜行", "侦查"],
+    occupationSkills: ["natural_history", "navigate", "survival", "climb", "stealth", "spot_hidden"],
     baseHp: 11, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "strength", skillSecondMultiplier: 2,
   },
   // ── 传教士 Missionary ──
   {
@@ -612,7 +615,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["说服", "心理学", "语言(其他)", "历史", "急救", "图书馆使用"],
     occupationSkills: ["persuade", "psychology", "language_other", "history", "first_aid", "library_use"],
     baseHp: 9, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "constitution", skillSecondMultiplier: 2,
   },
   // ── 消防员 Firefighter ──
   {
@@ -620,10 +623,10 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     description: "扑灭火情与紧急救援的应急人员",
     minAttributes: { strength: 60, constitution: 60 },
     priorityAttributes: ["strength", "constitution", "dexterity"],
-    skills: ["运动", "格斗(肉搏)", "攀爬", "跳跃", "急救", "驾驶"],
-    occupationSkills: ["athletics", "fighting", "climb", "jump", "first_aid", "drive"],
+    skills: ["攀爬", "格斗(肉搏)", "跳跃", "急救", "驾驶"],
+    occupationSkills: ["climb", "fighting", "jump", "first_aid", "drive"],
     baseHp: 12, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "strength", skillSecondMultiplier: 2,
   },
   // ── 殡葬师 Undertaker ──
   {
@@ -634,7 +637,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["侦查", "心理学", "医学", "历史", "潜行", "驾驶"],
     occupationSkills: ["spot_hidden", "psychology", "medicine", "history", "stealth", "drive"],
     baseHp: 9, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 古董商 Antique Dealer ──
   {
@@ -645,7 +648,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["估价", "考古学", "历史", "说服", "心理学", "话术"],
     occupationSkills: ["appraise", "archaeology", "history", "persuade", "psychology", "fast_talk"],
     baseHp: 9, rulesets: ["coc7e"], creditRatingRange: [30, 70],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 建筑师 Architect ──
   {
@@ -656,7 +659,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["图书馆使用", "计算机使用", "科学(物理学)", "机械维修", "驾驶", "心理学"],
     occupationSkills: ["library_use", "computer_use", "science_physics", "mechanical_repair", "drive", "psychology"],
     baseHp: 9, rulesets: ["coc7e"], creditRatingRange: [40, 70],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 流浪者 Drifter ──
   {
@@ -667,7 +670,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["侦查", "潜行", "生存", "话术", "格斗(肉搏)", "自然学"],
     occupationSkills: ["spot_hidden", "stealth", "survival", "fast_talk", "fighting", "natural_history"],
     baseHp: 10, rulesets: ["coc7e"], creditRatingRange: [10, 30],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 林务员 Forester ──
   {
@@ -675,10 +678,10 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     description: "管理保护森林资源的专业人员",
     minAttributes: { constitution: 60 },
     priorityAttributes: ["constitution", "strength"],
-    skills: ["自然学", "生存", "导航", "潜行", "侦查", "运动"],
-    occupationSkills: ["natural_history", "survival", "navigate", "stealth", "spot_hidden", "athletics"],
+    skills: ["自然学", "生存", "导航", "攀爬", "侦查", "潜行"],
+    occupationSkills: ["natural_history", "survival", "navigate", "climb", "spot_hidden", "stealth"],
     baseHp: 11, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "strength", skillSecondMultiplier: 2,
   },
   // ── 猎人/捕兽者 Hunter Trapper ──
   {
@@ -689,7 +692,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["侦查", "潜行", "生存", "自然学", "导航", "射击(步枪/霰弹枪)"],
     occupationSkills: ["spot_hidden", "stealth", "survival", "natural_history", "navigate", "firearms_rifle"],
     baseHp: 10, rulesets: ["coc7e"], creditRatingRange: [20, 40],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "dexterity", skillSecondMultiplier: 2,
   },
   // ── 伐木工 Lumberjack ──
   {
@@ -697,10 +700,10 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     description: "以采伐树木为生的体力劳动者",
     minAttributes: { strength: 70 },
     priorityAttributes: ["strength", "constitution"],
-    skills: ["运动", "格斗(肉搏)", "攀爬", "跳跃", "机械维修", "驾驶"],
-    occupationSkills: ["athletics", "fighting", "climb", "jump", "mechanical_repair", "drive"],
+    skills: ["攀爬", "格斗(肉搏)", "跳跃", "机械维修", "驾驶"],
+    occupationSkills: ["climb", "fighting", "jump", "mechanical_repair", "drive"],
     baseHp: 12, rulesets: ["coc7e"], creditRatingRange: [10, 30],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "strength", skillSecondMultiplier: 2,
   },
   // ── 博物馆馆长 Museum Curator ──
   {
@@ -711,7 +714,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["考古学", "历史", "估价", "人类学", "图书馆使用", "心理学"],
     occupationSkills: ["archaeology", "history", "appraise", "anthropology", "library_use", "psychology"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [30, 60],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 药剂师 Pharmacist ──
   {
@@ -722,7 +725,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["医学", "科学(化学)", "科学(生物学)", "会计", "心理学", "图书馆使用"],
     occupationSkills: ["medicine", "science_chemistry", "science_biology", "accounting", "psychology", "library_use"],
     baseHp: 9, rulesets: ["coc7e"], creditRatingRange: [30, 60],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 勘探者 Prospector ──
   {
@@ -733,7 +736,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["自然学", "导航", "生存", "驾驶", "机械维修", "侦查"],
     occupationSkills: ["natural_history", "navigate", "survival", "drive", "mechanical_repair", "spot_hidden"],
     baseHp: 11, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "constitution", skillSecondMultiplier: 2,
   },
   // ── 研究员 Researcher ──
   {
@@ -744,7 +747,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["图书馆使用", "计算机使用", "心理学", "神秘学", "科学(化学)", "侦查"],
     occupationSkills: ["library_use", "computer_use", "psychology", "occult", "science_chemistry", "spot_hidden"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [30, 60],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 走私者 Smuggler ──
   {
@@ -755,7 +758,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["潜行", "话术", "侦查", "驾驶", "估价", "格斗(肉搏)"],
     occupationSkills: ["stealth", "fast_talk", "spot_hidden", "drive", "appraise", "fighting"],
     baseHp: 10, rulesets: ["coc7e"], creditRatingRange: [30, 60],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "dexterity", skillSecondMultiplier: 2,
   },
   // ── 狂热者 Zealot ──
   {
@@ -766,7 +769,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["神秘学", "历史", "心理学", "说服", "潜行", "话术"],
     occupationSkills: ["occult", "history", "psychology", "persuade", "stealth", "fast_talk"],
     baseHp: 9, rulesets: ["coc7e"], creditRatingRange: [20, 40],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "power", skillSecondMultiplier: 2,
   },
   // ── 学者 Scholar ──
   {
@@ -777,7 +780,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["图书馆使用", "神秘学", "历史", "考古学", "人类学", "语言(其他)"],
     occupationSkills: ["library_use", "occult", "history", "archaeology", "anthropology", "language_other"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [30, 60],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 会计师 Accountant ──
   {
@@ -788,7 +791,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["会计", "计算机使用", "法律", "心理学", "图书馆使用", "话术"],
     occupationSkills: ["accounting", "computer_use", "law", "psychology", "library_use", "fast_talk"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [30, 70],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 演员 Actor ──
   {
@@ -799,7 +802,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["艺术与手艺", "乔装", "话术", "魅惑", "心理学", "潜行"],
     occupationSkills: ["art", "disguise", "fast_talk", "charm", "psychology", "stealth"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [20, 60],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "dexterity", skillSecondMultiplier: 2,
   },
   // ── 作家 Author ──
   {
@@ -810,7 +813,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["心理学", "历史", "图书馆使用", "神秘学", "话术", "侦查"],
     occupationSkills: ["psychology", "history", "library_use", "occult", "fast_talk", "spot_hidden"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 私家侦探 Detective ──
   {
@@ -821,7 +824,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["侦查", "图书馆使用", "心理学", "话术", "格斗(肉搏)", "潜行"],
     occupationSkills: ["spot_hidden", "library_use", "psychology", "fast_talk", "fighting", "stealth"],
     baseHp: 9, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 司机 Driver ──
   {
@@ -832,7 +835,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["驾驶", "机械维修", "侦查", "潜行", "话术", "格斗(肉搏)"],
     occupationSkills: ["drive", "mechanical_repair", "spot_hidden", "stealth", "fast_talk", "fighting"],
     baseHp: 10, rulesets: ["coc7e"], creditRatingRange: [10, 40],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "dexterity", skillSecondMultiplier: 2,
   },
   // ── 联邦探员 Federal Agent ──
   {
@@ -843,7 +846,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["侦查", "格斗(肉搏)", "射击(手枪)", "法律", "心理学", "话术"],
     occupationSkills: ["spot_hidden", "fighting", "firearms_pistol", "law", "psychology", "fast_talk"],
     baseHp: 11, rulesets: ["coc7e"], creditRatingRange: [40, 80],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 黑客 Hacker ──
   {
@@ -854,7 +857,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["计算机使用", "电子学", "图书馆使用", "侦查", "电气维修", "潜行"],
     occupationSkills: ["computer_use", "electronics", "library_use", "spot_hidden", "electrical_repair", "stealth"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [20, 60],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 律师 Lawyer ──
   {
@@ -865,7 +868,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["法律", "说服", "心理学", "话术", "图书馆使用", "历史"],
     occupationSkills: ["law", "persuade", "psychology", "fast_talk", "library_use", "history"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [40, 80],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 护士 Nurse ──
   {
@@ -876,7 +879,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["医学", "急救", "心理学", "精神分析", "科学(生物学)", "潜行"],
     occupationSkills: ["medicine", "first_aid", "psychology", "psychoanalysis", "science_biology", "stealth"],
     baseHp: 9, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 警察 Police Officer ──
   {
@@ -887,7 +890,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["侦查", "格斗(肉搏)", "射击(手枪)", "法律", "急救", "驾驶"],
     occupationSkills: ["spot_hidden", "fighting", "firearms_pistol", "law", "first_aid", "drive"],
     baseHp: 11, rulesets: ["coc7e"], creditRatingRange: [20, 50],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "strength", skillSecondMultiplier: 2,
   },
   // ── 海员 Sailor ──
   {
@@ -898,7 +901,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["驾驶", "导航", "机械维修", "游泳", "格斗(肉搏)", "攀爬"],
     occupationSkills: ["drive", "navigate", "mechanical_repair", "swim", "fighting", "climb"],
     baseHp: 11, rulesets: ["coc7e"], creditRatingRange: [10, 40],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "strength", skillSecondMultiplier: 2,
   },
   // ── 罪犯 Criminal ──
   {
@@ -909,7 +912,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["潜行", "锁匠", "估价", "格斗(肉搏)", "射击(手枪)", "话术"],
     occupationSkills: ["stealth", "lockpick", "appraise", "fighting", "firearms_pistol", "fast_talk"],
     baseHp: 10, rulesets: ["coc7e"], creditRatingRange: [10, 40],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "strength", skillPointMultiplier: 2, skillSecondSource: "dexterity", skillSecondMultiplier: 2,
   },
   // ── 大学生 College Student ──
   {
@@ -920,7 +923,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["图书馆使用", "侦查", "计算机使用", "心理学", "话术", "潜行"],
     occupationSkills: ["library_use", "spot_hidden", "computer_use", "psychology", "fast_talk", "stealth"],
     baseHp: 8, rulesets: ["coc7e"], creditRatingRange: [5, 30],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 地质学家 Geologist ──
   {
@@ -931,7 +934,7 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["科学(地质学)", "自然学", "导航", "侦查", "图书馆使用", "驾驶"],
     occupationSkills: ["science_geology", "natural_history", "navigate", "spot_hidden", "library_use", "drive"],
     baseHp: 9, rulesets: ["coc7e"], creditRatingRange: [30, 60],
-    skillCount: 6, skillSourceAttribute: "education",
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
 ];
 
@@ -1020,15 +1023,12 @@ export class CharacterFactory {
     const level = 1;
 
     const hpResult = CharacterFactory.calcHP(archetype, attributes);
-    const ac = 10 + Math.floor(((attributes.dexterity ?? 10) - 10) / 2);
-
     return {
       name,
       archetype: archetypeId,
       attributes,
       hp: hpResult.hp,
       maxHp: hpResult.hp,
-      ac,
       skills,
       ruleset,
       valid: true,
@@ -1048,12 +1048,9 @@ export class CharacterFactory {
     return { hp: Math.max(baseHp + conMod, 1) };
   }
 
-  /** 计算 AC */
+  /** 计算 AC (D&D 5e only) */
   static computeAC(character: GeneratedCharacter): number {
     const dex = character.attributes?.dexterity ?? 10;
-    if (character.ruleset === "coc7e") {
-      return Math.floor(dex / 20) + 10;
-    }
     return 10 + Math.floor((dex - 10) / 2);
   }
 
