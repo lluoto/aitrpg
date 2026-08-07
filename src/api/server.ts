@@ -1,5 +1,5 @@
-// AI TRPG HTTP Server �?Bun.serve()
-// 管理 GameSession 实例，暴�?REST 接口供前端调�?//
+// AI TRPG HTTP Server — Bun.serve()
+// 管理 GameSession 实例，暴露 REST 接口供前端调用 //
 // 运行: bun run src/api/server.ts
 
 import { GameSession, type ActionResponse, type SessionSummary } from "./game-session";
@@ -15,7 +15,7 @@ import { listSavedModules, loadModuleFile, saveModuleFile, deleteModuleFile, cre
 // ============================================================
 
 const sessions = new Map<string, GameSession>();
-const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 分钟无操作自动清�?
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 分钟无操作自动清理
 function generateId(): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
   let id = "";
@@ -32,11 +32,11 @@ function cleanupStaleSessions() {
   }
 }
 
-// �?5 分钟清理
+// 每 5 分钟清理
 setInterval(cleanupStaleSessions, 5 * 60 * 1000);
 
 // ============================================================
-// CORS �?// ============================================================
+// CORS 头 // ============================================================
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -74,7 +74,7 @@ setInterval(() => {
       cleaned++;
     }
   }
-  if (cleaned > 0) console.log(`[cleanup] 清理�?${cleaned} 个过期会话`);
+  if (cleaned > 0) console.log(`[cleanup] 清理了 ${cleaned} 个过期会话`);
 }, CLEANUP_INTERVAL_MS);
 
 async function handleRequest(req: Request): Promise<Response> {
@@ -82,26 +82,28 @@ async function handleRequest(req: Request): Promise<Response> {
   const { segments, query } = parseUrl(url.pathname);
   const method = req.method;
 
-  // OPTIONS �?CORS preflight
+  // OPTIONS → CORS preflight
   if (method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
-  // GET / �?内置测试�?  if (method === "GET" && segments.length === 0) {
+  // GET / → 内置测试页
+  if (method === "GET" && segments.length === 0) {
     return serveTestPage();
   }
 
-  // GET /api �?健康检�?  if (method === "GET" && segments[0] === "api" && segments.length === 1) {
+  // GET /api → 健康检查
+  if (method === "GET" && segments[0] === "api" && segments.length === 1) {
     return respondJson({
       status: "ok",
       activeSessions: sessions.size,
       version: "0.1.0",
       endpoints: [
-        "POST /api/sessions �?创建游戏会话",
-        "GET /api/sessions �?列出会话",
-        "GET /api/sessions/:id �?会话摘要",
-        "POST /api/sessions/:id/action �?执行玩家行动",
-        "GET /api/sessions/:id/history �?对话历史",
+        "POST /api/sessions — 创建游戏会话",
+        "GET /api/sessions — 列出会话",
+        "GET /api/sessions/:id — 会话摘要",
+        "POST /api/sessions/:id/action — 执行玩家行动",
+        "GET /api/sessions/:id/history — 对话历史",
         "GET /api/sessions/:id/state — 世界状态",
       ],
     });
@@ -109,7 +111,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
   //   }
 
-  // GET /api/config �� ����������
+  // GET /api/config — 服务器配置
   if (method === "GET" && segments[0] === "api" && segments[1] === "config" && segments.length === 2) {
     const config = loadConfig();
     return respondJson({
@@ -119,7 +121,7 @@ async function handleRequest(req: Request): Promise<Response> {
     });
   }
 
-  // GET /api/archetypesGET /api/archetypes �?可用职业模板
+  // GET /api/archetypesGET /api/archetypes — 可用职业模板
   if (method === "GET" && segments[0] === "api" && segments[1] === "archetypes" && segments.length === 2) {
     const rulesetFilter = query.get("ruleset") || undefined;
     return respondJson({
@@ -129,48 +131,52 @@ async function handleRequest(req: Request): Promise<Response> {
 
   // ── 角色卡持久化 ──
 
-  // GET /api/characters �?列出已保存的角色�?  if (method === "GET" && segments[0] === "api" && segments[1] === "characters" && segments.length === 2) {
+  // GET /api/characters — 列出已保存的角色卡
+  if (method === "GET" && segments[0] === "api" && segments[1] === "characters" && segments.length === 2) {
     return respondJson({ characters: listCharacters() });
   }
 
-  // POST /api/characters �?保存角色�?  if (method === "POST" && segments[0] === "api" && segments[1] === "characters" && segments.length === 2) {
+  // POST /api/characters — 保存角色卡
+  if (method === "POST" && segments[0] === "api" && segments[1] === "characters" && segments.length === 2) {
     const body = await req.json().catch(() => ({}));
-    if (!body.name) return respondError("角色名不能为�?, 400);
+    if (!body.name) return respondError("角色名不能为空", 400);
     saveCharacter(body.name, body);
     return respondJson({ success: true });
   }
 
-  // ── 模组编辑�?──
+  // ── 模组编辑器 ──
 
-  // GET /api/modules �?列出所有模�?  if (method === "GET" && segments[0] === "api" && segments[1] === "modules" && segments.length === 2) {
+  // GET /api/modules — 列出所有模块
+  if (method === "GET" && segments[0] === "api" && segments[1] === "modules" && segments.length === 2) {
     return respondJson({ modules: listSavedModules() });
   }
 
-  // GET /api/modules/:id �?获取单个模组
+  // GET /api/modules/:id — 获取单个模组
   if (method === "GET" && segments[0] === "api" && segments[1] === "modules" && segments.length === 3) {
     const mod = loadModuleFile(segments[2]);
-    if (!mod) return respondError("模组不存�?, 404);
+    if (!mod) return respondError("模组不存在", 404);
     return respondJson({ module: mod });
   }
 
-  // POST /api/modules �?新建或保存模�?  if (method === "POST" && segments[0] === "api" && segments[1] === "modules" && segments.length === 2) {
+  // POST /api/modules — 新建或保存模块
+  if (method === "POST" && segments[0] === "api" && segments[1] === "modules" && segments.length === 2) {
     const body = await req.json().catch(() => ({}));
-    if (!body.id || !body.name) return respondError("模组 ID 和名称不能为�?, 400);
+    if (!body.id || !body.name) return respondError("模组 ID 和名称不能为空", 400);
     saveModuleFile(body);
     return respondJson({ success: true });
   }
 
-  // PUT /api/modules/:id �?更新模组
+  // PUT /api/modules/:id — 更新模组
   if (method === "PUT" && segments[0] === "api" && segments[1] === "modules" && segments.length === 3) {
     const body = await req.json().catch(() => ({}));
     if (!body.name) return respondError("模组名称不能为空", 400);
     const existing = loadModuleFile(segments[2]);
-    if (!existing) return respondError("模组不存�?, 404);
+    if (!existing) return respondError("模组不存在", 404);
     saveModuleFile({ ...existing, ...body, id: segments[2] });
     return respondJson({ success: true });
   }
 
-  // DELETE /api/modules/:id �?删除模组
+  // DELETE /api/modules/:id — 删除模组
   if (method === "DELETE" && segments[0] === "api" && segments[1] === "modules" && segments.length === 3) {
     deleteModuleFile(segments[2]);
     return respondJson({ success: true });
@@ -178,7 +184,8 @@ async function handleRequest(req: Request): Promise<Response> {
 
   // ── 会话管理 ──
 
-  // POST /api/sessions �?创建新会�?  if (method === "POST" && segments[0] === "api" && segments[1] === "sessions" && segments.length === 2) {
+  // POST /api/sessions — 创建新会话
+  if (method === "POST" && segments[0] === "api" && segments[1] === "sessions" && segments.length === 2) {
     let ruleset: RulesetId = "coc7e";
     let archetypeId: string | undefined;
     let characterName: string | undefined;
@@ -192,7 +199,8 @@ async function handleRequest(req: Request): Promise<Response> {
     const id = generateId();
     const session = new GameSession(id, ruleset, undefined, archetypeId, characterName);
 
-    // 生成开场描�?    let opening = "";
+    // 生成开场描述
+    let opening = "";
     try {
       opening = await session.getOpeningScene();
     } catch (err: any) {
@@ -208,7 +216,7 @@ async function handleRequest(req: Request): Promise<Response> {
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       ruleset: session.activeRuleset,
-      playerName: characterName ?? "调查�?,
+      playerName: characterName ?? "调查员",
       scene: summary.scene,
       round: summary.round,
       characters: kpState.characters?.map((ch: any) => ({
@@ -222,26 +230,26 @@ async function handleRequest(req: Request): Promise<Response> {
     broadcastToSession(id, "session-created", {
       sessionId: id,
       ruleset,
-      characterName: characterName ?? "调查�?,
+      characterName: characterName ?? "调查员",
     });
     return respondJson({
       sessionId: id,
       ruleset,
       archetype: archetypeId ?? null,
-      characterName: characterName ?? "调查�?,
+      characterName: characterName ?? "调查员",
       character,
       opening,
       summary: session.getSummary(),
     }, 201);
   }
 
-  // GET /api/sessions �?列表
+  // GET /api/sessions — 列表
   if (method === "GET" && segments[0] === "api" && segments[1] === "sessions" && segments.length === 2) {
     const list: SessionSummary[] = [];
     for (const s of sessions.values()) {
       list.push(s.getSummary());
     }
-    // 合并已持久化但未在内存中�?session
+    // 合并已持久化但未在内存中的 session
     const storedMeta = listStoredSessions();
     for (const sm of storedMeta) {
       if (!list.find(l => l.id === sm.id)) {
@@ -256,12 +264,13 @@ async function handleRequest(req: Request): Promise<Response> {
     return respondJson({ sessions: list });
   }
 
-  // 需�?:id 的路�?  if (segments.length >= 3 && segments[0] === "api" && segments[1] === "sessions") {
+  // 需要 :id 的路由
+  if (segments.length >= 3 && segments[0] === "api" && segments[1] === "sessions") {
     const sessionId = segments[2];
     const session = sessions.get(sessionId);
 
     if (!session) {
-      return respondError("会话不存在或已过�?, 404);
+      return respondError("会话不存在或已过期", 404);
     }
     session.lastActiveAt = Date.now();
 
@@ -294,7 +303,8 @@ async function handleRequest(req: Request): Promise<Response> {
       });
     }
 
-    // GET /api/sessions/:id/character �?角色属�?    if (method === "GET" && segments[3] === "character") {
+    // GET /api/sessions/:id/character — 角色属性
+    if (method === "GET" && segments[3] === "character") {
       return respondJson({
         character: session.getCharacterSummary(),
         sanity: session.getSanity(),
@@ -303,11 +313,12 @@ async function handleRequest(req: Request): Promise<Response> {
 
     // ── KP 面板路由 ──
 
-    // GET /api/sessions/:id/kp �?KP 完整状�?    if (method === "GET" && segments[3] === "kp" && segments.length === 4) {
+    // GET /api/sessions/:id/kp — KP 完整状态
+    if (method === "GET" && segments[3] === "kp" && segments.length === 4) {
       return respondJson({ kp: session.getKPState() });
     }
 
-    // POST /api/sessions/:id/kp/:action �?KP 操作
+    // POST /api/sessions/:id/kp/:action — KP 操作
     if (method === "POST" && segments[3] === "kp" && segments.length === 5) {
       const kpAction = segments[4];
       const body = await req.json().catch(() => ({}));
@@ -317,28 +328,28 @@ async function handleRequest(req: Request): Promise<Response> {
           case "send-message": {
             const msg = (body.message || "").trim();
             if (!msg) return respondError("消息不能为空", 400);
-            const speaker = body.speaker || "守秘�?;
+            const speaker = body.speaker || "守秘人";
             session.sendMessage(speaker, msg, body.type || "system");
             return respondJson({ success: true });
           }
           case "set-san": {
             const pid = body.playerId || session.activePlayerId;
             const value = parseInt(body.value);
-            if (isNaN(value)) return respondError("SAN 值无�?, 400);
+            if (isNaN(value)) return respondError("SAN 值无效", 400);
             session.setPlayerSan(pid, value);
             return respondJson({ success: true });
           }
           case "set-hp": {
             const pid = body.playerId || session.activePlayerId;
             const value = parseInt(body.value);
-            if (isNaN(value)) return respondError("HP 值无�?, 400);
+            if (isNaN(value)) return respondError("HP 值无效", 400);
             session.setPlayerHp(pid, value);
             return respondJson({ success: true });
           }
           case "apply-damage": {
             const target = (body.target || "").trim();
             const dmg = parseInt(body.damage);
-            if (!target || isNaN(dmg)) return respondError("目标或伤害值无�?, 400);
+            if (!target || isNaN(dmg)) return respondError("目标或伤害值无效", 400);
             await session.applyDamage(target, dmg);
             return respondJson({ success: true });
           }
@@ -351,14 +362,15 @@ async function handleRequest(req: Request): Promise<Response> {
           case "set-difficulty": {
             const diff = (body.difficulty || "").trim();
             if (!["easy", "medium", "hard", "nightmare"].includes(diff)) {
-              return respondError("难度需�?easy/medium/hard/nightmare", 400);
+              return respondError("难度需要 easy/medium/hard/nightmare", 400);
     }
 
-    // POST /api/sessions/:id/character �?更新角色属�?    if (method === "POST" && segments[3] === "character") {
+    // POST /api/sessions/:id/character — 更新角色属性
+    if (method === "POST" && segments[3] === "character") {
       const body = await req.json().catch(() => ({}));
       try {
         const ch = session.activeCharacter;
-        if (!ch) throw new Error("无活跃角�?);
+        if (!ch) throw new Error("无活跃角色");
         if (body.hp !== undefined) ch.hp = Math.max(0, Math.min(body.hp, ch.maxHp ?? 99));
         if (body.maxHp !== undefined) ch.maxHp = body.maxHp;
         if (body.skills && typeof body.skills === "object") Object.assign(ch.skillValues ?? (ch.skillValues = {}), body.skills);
@@ -386,12 +398,13 @@ async function handleRequest(req: Request): Promise<Response> {
       }
     }
 
-    // POST /api/sessions/:id/action �?核心：玩家输�?    if (method === "POST" && segments[3] === "action") {
+    // POST /api/sessions/:id/action — 核心：玩家输入
+    if (method === "POST" && segments[3] === "action") {
       const body = await req.json().catch(() => ({}));
       const input = (body.input || "").trim();
 
       if (!input) {
-        return respondError("请输入行�?, 400);
+        return respondError("请输入行动", 400);
       }
 
       try {
@@ -418,19 +431,19 @@ async function handleRequest(req: Request): Promise<Response> {
       }
     }
 
-    // POST /api/sessions/:id/npc-chat �?NPC 对话
+    // POST /api/sessions/:id/npc-chat — NPC 对话
     if (method === "POST" && segments[3] === "npc-chat") {
       const body = await req.json().catch(() => ({}));
       const npcName = (body.npc || "").trim();
       const playerMsg = (body.message || "").trim();
-      if (!npcName || !playerMsg) return respondError("NPC 名称和消息不能为�?, 400);
+      if (!npcName || !playerMsg) return respondError("NPC 名称和消息不能为空", 400);
       try {
-        // �?registry �?NPC agent
+        // 从 registry 找 NPC agent
         const npcAgent = session.registry.findAgentByName(npcName);
-        if (!npcAgent) return respondError(`未找�?NPC: ${npcName}`, 404);
+        if (!npcAgent) return respondError(`未找到 NPC: ${npcName}`, 404);
         const history = session.getHistory(10);
         const reply = await npcAgent.respond(playerMsg, history.messages);
-        // 记录�?session 历史
+        // 记录到 session 历史
         session.addMessage(npcName, reply, "dialogue");
         return respondJson({ npc: npcName, reply });
       } catch (err: any) {
@@ -438,17 +451,18 @@ async function handleRequest(req: Request): Promise<Response> {
       }
     }
 
-    // POST /api/sessions/:id/luck-spend �?幸运消�?    if (method === "POST" && segments[3] === "luck-spend") {
+    // POST /api/sessions/:id/luck-spend — 幸运消耗
+    if (method === "POST" && segments[3] === "luck-spend") {
       const body = await req.json().catch(() => ({}));
       const amount = parseInt(body.amount) || 0;
       const ch = session.activeCharacter;
-      if (!ch) return respondError("无活跃角�?, 400);
+      if (!ch) return respondError("无活跃角色", 400);
       if (amount <= 0 || amount > (ch.luck ?? 0)) return respondError("幸运不足", 400);
       ch.luck = (ch.luck ?? 0) - amount;
       return respondJson({ success: true, luck: ch.luck });
     }
 
-    // GET /api/sessions/:id/export/:format �?战报导出
+    // GET /api/sessions/:id/export/:format — 战报导出
     if (method === "GET" && segments[3] === "export" && segments.length === 5) {
       const format = segments[4];
       const history = session.getHistory();
@@ -489,11 +503,11 @@ async function handleRequest(req: Request): Promise<Response> {
         });
       }
 
-      return respondError("不支持的导出格式，支�? json, markdown", 400);
+      return respondError("不支持的导出格式，支持 json, markdown", 400);
     }
 
   }
-  return respondError("未找到路�?, 404);
+  return respondError("未找到路由", 404);
 }
 
 // ============================================================
@@ -512,7 +526,7 @@ function respondError(message: string, status = 400): Response {
 }
 
 // ============================================================
-// 测试�?// ============================================================
+// 测试页 // ============================================================
 
 function serveTestPage(): Response {
   const html = `<!DOCTYPE html>
@@ -520,7 +534,7 @@ function serveTestPage(): Response {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI TRPG �?测试客户�?/title>
+<title>AI TRPG — 测试客户端</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; display: flex; flex-direction: column; }
@@ -555,22 +569,22 @@ function serveTestPage(): Response {
 </head>
 <body>
 <div id="app">
-  <h1>🎲 AI TRPG �?调查员终�?/h1>
+  <h1>🎲 AI TRPG — 调查员终端</h1>
   <div id="status-bar">
-    <span class="stat"><span class="label">会话:</span><span class="value" id="session-id">�?/span></span>
+    <span class="stat"><span class="label">会话:</span><span class="value" id="session-id">—</span></span>
     <span class="stat"><span class="label">回合:</span><span class="value" id="round">0</span></span>
-    <span class="stat"><span class="label">场景:</span><span class="value" id="scene">�?/span></span>
-    <span class="stat"><span class="label">HP:</span><span class="value" id="hp">�?/span></span>
-    <span class="stat"><span class="label">SAN:</span><span class="value" id="san">�?/span></span>
+    <span class="stat"><span class="label">场景:</span><span class="value" id="scene">—</span></span>
+    <span class="stat"><span class="label">HP:</span><span class="value" id="hp">—</span></span>
+    <span class="stat"><span class="label">SAN:</span><span class="value" id="san">—</span></span>
     <span id="insanity-badge" style="display:none;color:#ff6b6b;font-weight:700;">🧠 疯狂</span>
-    <button id="new-game">新游�?/button>
+    <button id="new-game">新游戏</button>
   </div>
   <div id="narrative">
-    <div class="loading">点击"新游�?开�?/div>
+    <div class="loading">点击"新游戏"开始</div>
   </div>
   <div id="input-area">
     <input id="input" type="text" placeholder="输入你的行动..." autocomplete="off">
-    <button id="send" disabled>发�?/button>
+    <button id="send" disabled>发送</button>
   </div>
 </div>
 <script>
@@ -587,7 +601,7 @@ function appendMessage(speaker, content, type) {
   div.className = 'msg-' + type;
   const ts = new Date().toLocaleTimeString();
   if (type === 'system') {
-    div.innerHTML = '<span class="speaker">�?/span> ' + escapeHtml(content) + '<span class="timestamp">' + ts + '</span>';
+    div.innerHTML = '<span class="speaker">⚔</span> ' + escapeHtml(content) + '<span class="timestamp">' + ts + '</span>';
   } else {
     div.innerHTML = '<span class="speaker">' + escapeHtml(speaker) + '</span> ' + escapeHtml(content) + '<span class="timestamp">' + ts + '</span>';
   }
@@ -601,11 +615,11 @@ function escapeHtml(s) {
 
 function updateStatus(state, sanity, summary) {
   if (summary) {
-    $('session-id').textContent = summary.id || '�?;
+    $('session-id').textContent = summary.id || '—';
     $('round').textContent = summary.round || 0;
   }
   if (state) {
-    $('scene').textContent = state.scene || '�?;
+    $('scene').textContent = state.scene || '—';
     if (state.player) {
       $('hp').textContent = state.player.hp + '/' + state.player.maxHp;
     }
@@ -683,7 +697,7 @@ input.addEventListener('keydown', (e) => {
 
 newGameBtn.addEventListener('click', async () => {
   newGameBtn.disabled = true;
-  narrative.innerHTML = '<div class="loading">创建新游�?..</div>';
+  narrative.innerHTML = '<div class="loading">创建新游戏...</div>';
   input.disabled = true;
   try {
     await createSession();
@@ -701,7 +715,7 @@ window.addEventListener('load', async () => {
     await createSession();
     sendBtn.disabled = false;
   } catch (err) {
-    narrative.innerHTML = '<div class="error-msg">无法连接服务�? ' + err.message + '</div>';
+    narrative.innerHTML = '<div class="error-msg">无法连接服务器 ' + err.message + '</div>';
   }
 });
 </script>
@@ -740,13 +754,14 @@ Bun.serve({
     open(ws) {
       const { sessionId, role, playerId } = ws.data;
       createWsClient(ws, sessionId, role, playerId);
-      console.log(`  🔗 WS 连接: ${role} �?${sessionId.slice(-8)} (�?${wsStats().total} 连接)`);
+      console.log(`  🔗 WS 连接: ${role} → ${sessionId.slice(-8)} (共 ${wsStats().total} 连接)`);
     },
     close(ws) {
       removeWsClient(ws);
     },
     message(ws, msg) {
-      // 可选的客户端→服务端消息（未来扩展�?      try {
+      // 可选的客户端→服务端消息（未来扩展）
+      try {
         const parsed = JSON.parse(msg.toString());
         if (parsed.type === "ping") ws.send(JSON.stringify({ type: "pong" }));
       } catch { /* ignore */ }
