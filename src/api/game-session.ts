@@ -9,6 +9,7 @@ import { RuleEngine } from "../engine/rule-engine";
 import { RulesEngine, type RulesetId } from "../rules/rules-engine";
 import { SanityEngine, CoCEngine, calcDamageBonus, rollDamageBonus, getHitLocationEffect, checkMajorWound, opposedCheck } from "../rules/coc-engine";
 import { NPCAgent } from "../agent/npc-agent";
+import type { NPCPersonality } from "../agent/types";
 import { KPAgent } from "../agent/kp-agent";
 import { AgentRegistry } from "../agent/agent-registry";
 import { WorldStateManager } from "../state/world-state-manager";
@@ -167,14 +168,14 @@ export class GameSession {
     this.politicoEconomy = new PoliticoEconomyEngine();
     this.investigation = new InvestigationEngine();
     this.spellEngine = new SpellEngine();
-    this.registry = new AgentRegistry();
+    this.npcStore = new NPCStore();
+    this.registry = new AgentRegistry(this.llm, this.npcStore);
     this.kp = new KPAgent({ scene_description: "", scene_elements: [], current_phase: "exploration", style: "standard", plot_nodes: [] }, this.llm);
     this.worldModel = new WorldModelLoader();
     this.wmIntegrator = new WorldModelIntegrator(this.worldModel);
     this.cthulhuLoader = new WorldModelLoader();
     // 世界模型懒加载：不在此处 load()（v18_all_master.jsonl ~240MB，会拖慢所有 GameSession 实例化，
     // 测试与无模型场景均受影响）。首次需要注入时才在 injectWorldModelForScene() 里加载。
-    this.npcStore = new NPCStore();
 
     this.sanity = new SanityEngine(50, 50);
     this.sanityEngines.set("p1", this.sanity);
@@ -358,6 +359,62 @@ export class GameSession {
     } catch {
       this.kp.setWorldModelContext("");
     }
+  }
+
+  /**
+   * 将模组 NPC 内联人格注册进 NPC Agent 系统（供 /npc-chat 对话）。
+   * 数据源：模组 npcs 数组的 personality（权威设定，优先）
+   *        + npcs.yaml 通用人格（仅当模组指定 npcPersonalityId 引用时兜底）。
+   * ModuleNPC.personality 字段是 ModuleNPC 风格（role/background/goals/secrets/traits...），
+   * 需映射为 NPCPersonality 风格（含必填 speech_style/knowledge，缺失时给默认值）。
+   */
+  private registerModuleNPCPersonality(npcName: string, personality: any, npcPersonalityId?: string): void {
+    if (!npcName) return;
+    // 已注册则跳过（模组重复加载保护）
+    if (this.registry.has(npcName)) return;
+    // 内联人格为空且指定了 npcPersonalityId → 从 npcs.yaml 通用人格库兜底（按 id 或名称匹配）
+    if (!personality && npcPersonalityId) {
+      personality = this.loadNPCPersonalityFromYaml(npcName, npcPersonalityId);
+    }
+    if (!personality) return;
+    const p = personality;
+    const card: NPCPersonality = {
+      name: npcName,
+      role: p.role ?? "NPC",
+      personality: p.personality ?? p.role ?? "普通镇民",
+      background: p.background ?? `${npcName}，${p.role ?? "普通镇民"}`,
+      goals: Array.isArray(p.goals) ? p.goals : (p.goals ? [String(p.goals)] : ["生存", "完成自己的事"]),
+      speech_style: p.speech_style ?? "以角色身份自然说话，符合身份与处境",
+      knowledge: Array.isArray(p.knowledge) ? p.knowledge : [],
+      secrets: Array.isArray(p.secrets) ? p.secrets : [],
+      attitudes: p.attitudes,
+      ruleset: this.activeRuleset as any,
+      traits: p.traits,
+      initialMood: p.initialMood,
+    };
+    try {
+      this.registry.register(card);
+    } catch (e: any) {
+      // 已注册或注册失败不阻塞模组加载
+      console.warn(`  ⚠️ NPC Agent 注册跳过: ${npcName} — ${e?.message ?? e}`);
+    }
+  }
+
+  /** 懒加载 npcs.yaml 通用人格库，按 id 或名称匹配返回人格（找不到返回 undefined） */
+  private loadNPCPersonalityFromYaml(npcName: string, npcPersonalityId: string): any | undefined {
+    try {
+      const raw = readFileSync(new URL("../agent/npcs.yaml", import.meta.url), "utf8");
+      const data = parseYaml(raw) as any;
+      const npcs = Array.isArray(data?.npcs) ? data.npcs : (data && typeof data === "object" ? Object.values(data) : []);
+      for (const item of npcs) {
+        const id = String(item?.id ?? item?.name ?? "");
+        const name = String(item?.name ?? "");
+        if (id === npcPersonalityId || name === npcPersonalityId || name === npcName) return item;
+      }
+    } catch (e: any) {
+      console.warn(`  ⚠️ npcs.yaml 加载失败: ${e?.message ?? e}`);
+    }
+    return undefined;
   }
 
   /**
@@ -1500,6 +1557,10 @@ export class GameSession {
         // 读取模块：将模组线索注册进调查引擎（供场景线索注入）
         registerSceneClue: (sceneName: string, clueType: string, description?: string) => {
           this.investigation.registerSceneClue(sceneName, clueType, description);
+        },
+        // 读取模块：将模组 NPC 内联人格注册进 NPC Agent 系统（供 /npc-chat 对话）
+        registerNPCPersonality: (npcName: string, personality: any, npcPersonalityId?: string) => {
+          this.registerModuleNPCPersonality(npcName, personality, npcPersonalityId);
         },
       };
       (this as any)["_moduleLoader"] = new MythosModuleLoader(host);

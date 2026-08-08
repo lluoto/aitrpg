@@ -98,6 +98,11 @@ export class AgentRegistry {
     return this.agents.get(name);
   }
 
+  /** 按名查找 Agent（server API 兼容别名，等价 get） */
+  findAgentByName(name: string): NPCAgent | undefined {
+    return this.agents.get(name);
+  }
+
   /** 是否存在 */
   has(name: string): boolean {
     return this.agents.has(name);
