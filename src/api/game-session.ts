@@ -804,12 +804,16 @@ export class GameSession {
     this.injectWorldModelForScene();
     const epicContext = this.buildEpicContext();
     try {
-      // 将最近历史（含 NPC 对话）并入 recentMessages，让 KP 感知玩家与 NPC 的交流
-      const recentHistory = this.session.getRecentGlobal(8);
+      // 将最近的 NPC 对话并入 recentMessages，让 KP 感知玩家与 NPC 的交流。
+      // 只筛选 dialogue 类型（而非全部历史），避免被 KP 内部 slice(-8) 截断。
+      const recentDialogues = this.session
+        .getRecentGlobal(50)
+        .filter((m) => m.type === "dialogue")
+        .slice(-6);
       const narration = await this.kp.narrateOutcome(
         input,
         `玩家行动: ${input}${epicContext}`,
-        [...recentHistory, ...turnMessages]
+        [...recentDialogues, ...turnMessages]
       );
       this.lastNarrative = narration;
       turnMessages.push({ speaker: "守秘人", content: narration, type: "narration" });
