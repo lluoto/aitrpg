@@ -1,6 +1,8 @@
 // CoC 7e 信用评级 / 初始物品 / 商店系统
 // Credit Rating: 0-99, 决定初始资产、社交地位、购买权限
 
+import { ConstraintEngine, DEFAULT_CONSTRAINTS } from "../world/world-constraint";
+
 /** CR 等级定义 */
 export interface CreditTier {
   range: [number, number];
@@ -57,7 +59,57 @@ export function getCrLabel(creditRating: number): string {
 
 export function getStartingItems(creditRating: number): string[] {
   const tier = getCrTier(creditRating);
-  return CR_STARTING_ITEMS[tier.equipmentTier] ?? CR_STARTING_ITEMS.average;
+  const items = CR_STARTING_ITEMS[tier.equipmentTier] ?? CR_STARTING_ITEMS.average;
+  // 过世界模型约束：过滤不合时代物品（使用统一约束引擎）
+  return worldModelItemFilter(items, MODULE_YEAR);
+}
+
+// ============================================================
+// 世界模型物品约束系统
+// ============================================================
+
+/** 当前模块设定年代 — 供世界模型约束使用 */
+const MODULE_YEAR = 1921;
+
+/**
+ * 约束引擎实例（延迟初始化，允许模组在启动时注入 override）
+ * 默认使用 CoC 通用约束（DESIGN-LOG.md §1）。
+ */
+let _constraintEngine: ConstraintEngine | null = null;
+
+export function getConstraintEngine(): ConstraintEngine {
+  if (!_constraintEngine) {
+    _constraintEngine = new ConstraintEngine(DEFAULT_CONSTRAINTS);
+  }
+  return _constraintEngine;
+}
+
+/**
+ * 设置约束引擎（供模组启动时注入 module constraintOverrides）。
+ * 需在 getStartingItems() 之前调用。
+ */
+export function setConstraintEngine(engine: ConstraintEngine): void {
+  _constraintEngine = engine;
+}
+
+/**
+ * 世界模型物品过滤器：
+ * 使用统一约束引擎检查每个物品是否在设定年代存在。
+ * 不存在时按约束定义替换或移除。
+ */
+export function worldModelItemFilter(
+  items: string[],
+  year: number = MODULE_YEAR,
+): string[] {
+  const engine = getConstraintEngine();
+  return items.map(item => {
+    const result = engine.checkItem(item, year);
+    if (!result) return item;                       // 无约束匹配 → 保留
+    if (result.type === "replace") return result.replacement;
+    if (result.type === "block") return "";          // 直接封锁 → 移除
+    // allow_with_cost / redirect 对物品同样可以保留（由模组决定后续行为）
+    return item;
+  }).filter(Boolean);
 }
 
 export function getShopAccess(creditRating: number): string[] {

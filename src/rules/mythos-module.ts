@@ -111,6 +111,12 @@ export interface ModuleNPC {
   /** CoC 技能列表（技能名 → 百分比），如 { "斗殴": 65, "侦查": 50, "克苏鲁": 20 } */
   skills?: Record<string, number>;
 
+  // ── 人设元数据（供 KP 上下文注入，防止 LLM 臆造年龄/性别）──
+  /** 年龄（模组原文权威值；缺失时以 personality.background 文本为准） */
+  age?: number;
+  /** 性别（模组原文权威值；缺失时以 personality.background 文本为准） */
+  gender?: "male" | "female";
+
   // ── NPC 人格系统集成 ──
   /** 对话提示（供 LLM 生成对话） */
   dialogHints?: string[];

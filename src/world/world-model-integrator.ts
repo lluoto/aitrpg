@@ -9,6 +9,23 @@ import type { WorldState } from "../types";
 // 场景上下文
 // ============================================================
 
+/** 在场 NPC 人设卡 — 供 KP 上下文注入（防止 LLM 臆造年龄/性别/状态） */
+export interface NPCPresentProfile {
+  name: string;
+  /** 年龄（模组权威值；缺失时以 background 文本为准） */
+  age?: number;
+  /** 性别（模组权威值；缺失时以 background 文本为准） */
+  gender?: "male" | "female";
+  /** 身份角色（如 "委托人"、"失踪者"） */
+  role?: string;
+  /** 当前场景状态（如 "在篮球场玩耍"、"昏迷不醒"） */
+  currentState?: string;
+  /** 背景（模组原文，权威事实） */
+  background?: string;
+  /** 对话提示（供 LLM 生成符合人设的言行） */
+  dialogHints?: string[];
+}
+
 export interface SceneContext {
   sceneId: string;
   sceneName: string;
@@ -16,6 +33,8 @@ export interface SceneContext {
   keywords: string[];
   /** 在场 NPC 名 */
   presentNPCs: string[];
+  /** 在场 NPC 人设卡（与 presentNPCs 对应，供 KP 注入权威元数据） */
+  npcProfiles?: NPCPresentProfile[];
   /** 玩家已发现的线索 */
   discoveredClues: string[];
   /** 当前回合 */
@@ -24,6 +43,14 @@ export interface SceneContext {
   activeNovel?: string;
   /** 可选：当前规则集（"dnd5e" | "coc7e" | "grail"） */
   ruleset?: string;
+  /** 可选：模组原文场景描写（来自场景表 description，权威事实层） */
+  sceneDescription?: string;
+  /** 可选：场景内可互动物品（item 实体名列表） */
+  presentItems?: string[];
+  /** 可选：游戏内当前时间标签（如 "第一天 · 下午"），由会话层注入 */
+  gameTime?: string;
+  /** 可选：当前时段环境修饰语（如 "午后时光，光线渐渐西斜。"） */
+  periodAtmosphere?: string;
 }
 
 // ============================================================
@@ -236,6 +263,64 @@ export class WorldModelIntegrator {
     const lines: string[] = [];
     lines.push("[世界模型上下文]");
 
+    // ── 层 0: 当前时间（游戏内昼夜循环，权威事实层）──
+    if (ctx.gameTime) {
+      lines.push(`[当前时间] ${ctx.gameTime}${ctx.periodAtmosphere ? `（${ctx.periodAtmosphere}）` : ""}`);
+    }
+
+    // ── 层 -1: 模组原文场景描写（权威事实层，优先于世界模型推断）──
+    if (ctx.sceneDescription && ctx.sceneDescription.trim()) {
+      lines.push(`[模组场景描写] ${ctx.sceneDescription.trim()}`);
+    }
+
+    if (ctx.presentNPCs && ctx.presentNPCs.length > 0) {
+      if (ctx.npcProfiles && ctx.npcProfiles.length > 0) {
+        // 有权威人设卡 → 输出带元数据 + 负面约束的人设表，防止 LLM 臆造年龄/性别/状态
+        lines.push("[在场角色（权威人设，叙事必须遵守）]");
+        for (const p of ctx.npcProfiles) {
+          const meta: string[] = [];
+          if (p.age !== undefined) meta.push(`${p.age}岁`);
+          if (p.gender === "female") meta.push("女性");
+          if (p.gender === "male") meta.push("男性");
+          if (p.role) meta.push(p.role);
+          const metaText = meta.length > 0 ? `（${meta.join(" · ")}）` : "";
+          lines.push(`- ${p.name}${metaText}`);
+          if (p.currentState) lines.push(`  当前状态: ${p.currentState}`);
+          if (p.background) lines.push(`  背景: ${p.background}`);
+          if (p.dialogHints && p.dialogHints.length > 0) {
+            lines.push(`  言行提示: ${p.dialogHints.join("；")}`);
+          }
+          // 负面约束：根据权威元数据生成不可违背的硬性规则
+          const hardRules: string[] = [];
+          if (p.age !== undefined && p.age <= 7) {
+            hardRules.push("未成年幼童：严禁描写为成年人或青少年，言行必须符合其幼童年龄的认知与词汇");
+          } else if (p.age !== undefined && p.age < 18) {
+            hardRules.push("未成年人：严禁出现成人化言行或超出其年龄的成熟表达");
+          }
+          if (p.gender === "female") hardRules.push("女性角色：严禁以男性称谓/动作描写，代名词必须使用她");
+          if (p.gender === "male") hardRules.push("男性角色：代名词必须使用他");
+          // 状态约束检测：currentState + background 联合（背景文本常含"瘫痪/昏迷/缸中脑"等权威状态词）
+          const stateText = `${p.currentState ?? ""} ${p.background ?? ""}`;
+          if (/昏迷|瘫痪|无意识|沉睡|不省人事|缸中脑|无法行动|被麻醉/.test(stateText)) {
+            const stateWord = (stateText.match(/昏迷|瘫痪|无意识|沉睡|不省人事|缸中脑|无法行动|被麻醉/) ?? [""])[0];
+            hardRules.push(`该角色当前处于「${p.currentState ?? stateWord}」状态：严禁让该角色主动行动、正常说话或做出超出该状态的言行`);
+          }
+          if (hardRules.length > 0) {
+            lines.push(`  【禁止】${hardRules.join("；")}`);
+          }
+        }
+        lines.push("以上 NPC 此刻就在当前场景中，叙事中必须至少让一位以举止、神态或言语方式在场，且人设必须与上述权威信息严格一致，不得臆造与之冲突的外貌、年龄、性别或行为。");
+      } else {
+        lines.push(`[必须在叙事中呈现的在场 NPC] ${ctx.presentNPCs.join("、")}。以上 NPC 出现在当前场景，描写玩家所见时务必让其中至少一位以举止、神态或言语方式在场，不得只描写环境而不写 NPC。`);
+      }
+    } else {
+      lines.push(`[提示] 当前场景没有需要强制呈现的 NPC，可以自由描写环境。`);
+    }
+
+    if (ctx.presentItems && ctx.presentItems.length > 0) {
+      lines.push(`场景物品: ${ctx.presentItems.join("、")}`);
+    }
+
     // 小说上下文
     lines.push(injection.novelContext);
 
@@ -247,7 +332,9 @@ export class WorldModelIntegrator {
       lines.push(`环境/资源: ${injection.resourceContext}`);
     }
 
-    if (injection.dndRuleHints.length > 0) {
+    // 规则参考：仅当模组指定对应规则集时才引入（避免 D&D 规则污染 CoC 模组叙事）。
+    // v18 无 CoC 规则库 → coc7e 模组跳过规则参考，但保留常规世界模型信息（势力/行为/事件/资源）。
+    if (ctx.ruleset === "dnd5e" && injection.dndRuleHints.length > 0) {
       lines.push("D&D 规则参考:");
       for (const hint of injection.dndRuleHints) {
         lines.push(`  - ${hint}`);

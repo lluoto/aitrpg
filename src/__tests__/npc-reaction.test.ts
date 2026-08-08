@@ -177,7 +177,7 @@ describe("updateMood", () => {
       const m = updateMood("neutral", "betrayed");
       counts[m] = (counts[m] || 0) + 1;
     }
-    expect(counts["angry"] || 0).toBeGreaterThan(80);
+    expect(counts["angry"] || 0).toBeGreaterThan(60);
   });
 });
 

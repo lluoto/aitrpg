@@ -1,4 +1,4 @@
-// KP Agent — 导演/Keeper
+﻿// KP Agent — 导演/Keeper
 // 负责：场景描述、事件注入、节奏控制
 //
 // 设计原则：
@@ -27,6 +27,8 @@ export class KPAgent {
   private llm: LLMClient;
   private directive: KPDirective;
   private turns: TurnRecord[] = [];
+  /** 世界模型权威事实注入（可选）：由会话层在叙事前设置，作为 system 上下文注入 */
+  private worldModelContext: string = "";
 
   constructor(directive: KPDirective, llm: LLMClient) {
     this.directive = directive;
@@ -36,6 +38,11 @@ export class KPAgent {
   /** 更新剧情指令 */
   updateDirective(update: Partial<KPDirective>) {
     Object.assign(this.directive, update);
+  }
+
+  /** 设置世界模型注入文本（空串 = 不注入） */
+  setWorldModelContext(text: string) {
+    this.worldModelContext = text;
   }
 
   /** 推进当前场景 */
@@ -52,6 +59,11 @@ export class KPAgent {
         ].join("\n"),
       },
     ];
+
+    // 世界模型权威事实注入（可选）
+    if (this.worldModelContext) {
+      messages.push({ role: "system", content: this.worldModelContext });
+    }
 
     // 注入最近的回合历史
     if (this.turns.length > 0) {
@@ -80,7 +92,7 @@ export class KPAgent {
       const response = await this.llm.chat(messages, {
         temperature: 0.7,
         maxTokens: 600,
-        timeout: 12000,
+        timeout: 120000,
       });
       return response.trim();
     } catch (err: any) {
@@ -105,6 +117,11 @@ export class KPAgent {
         ].join("\n"),
       },
     ];
+
+    // 世界模型权威事实注入（可选）
+    if (this.worldModelContext) {
+      messages.push({ role: "system", content: this.worldModelContext });
+    }
 
     if (recentMessages.length > 0) {
       const history = recentMessages
@@ -131,7 +148,7 @@ export class KPAgent {
       const response = await this.llm.chat(messages, {
         temperature: 0.8,
         maxTokens: 500,
-        timeout: 10000,
+        timeout: 120000,
       });
       return response.trim();
     } catch (err: any) {

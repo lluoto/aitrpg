@@ -63,7 +63,8 @@ describe("InvestigationEngine — CoC 7e", () => {
         const r = engine.investigateCoC("antique_object", { occult: 90 }, "p1");
         if (r.success) successCount++;
       }
-      expect(successCount).toBeGreaterThan(80);
+      // 90% 技能 × 100 次：成功次数期望 90，正态下标准差 ~3，>70 几乎不可能失守
+      expect(successCount).toBeGreaterThan(70);
     });
 
     it("低技能值大概率失败", () => {
@@ -72,7 +73,8 @@ describe("InvestigationEngine — CoC 7e", () => {
         const r = engine.investigateCoC("ritual_site", { occult: 10 }, "p2");
         if (!r.success) failCount++;
       }
-      expect(failCount).toBeGreaterThan(50);
+      // 10% 技能 × 100 次：失败次数期望 90，>70 几乎不可能失守
+      expect(failCount).toBeGreaterThan(70);
     });
 
     it("返回有效 successLevel", () => {
@@ -99,12 +101,28 @@ describe("InvestigationEngine — CoC 7e", () => {
   // ============================================================
   describe("discovery tracking", () => {
     it("成功调查后被标记为已发现", () => {
-      engine.investigateCoC("antique_object", { occult: 95 }, "discoverer");
+      // 95% 技能仍有 ~5% 失败率，重试直到出现一次成功再断言
+      let attempts = 0;
+      let r = engine.investigateCoC("antique_object", { occult: 95 }, "discoverer");
+      while (!r.success && attempts < 100) {
+        engine.resetAttempts("antique_object");
+        r = engine.investigateCoC("antique_object", { occult: 95 }, "discoverer");
+        attempts++;
+      }
+      expect(r.success).toBe(true);
       expect(engine.isDiscoveredBy("antique_object", "discoverer")).toBe(true);
     });
 
     it("失败后不标记为已发现", () => {
-      engine.investigateCoC("ritual_site", { occult: 5 }, "failer");
+      // occult: 5 有 ~2% 概率投出 01/02 成功（CoC 铁律），重试直到出现失败再断言
+      let r = engine.investigateCoC("ritual_site", { occult: 5 }, "failer");
+      let attempts = 0;
+      while (r.success && attempts < 100) {
+        engine.resetAttempts("ritual_site"); // 清除偶发成功留下的标记
+        r = engine.investigateCoC("ritual_site", { occult: 5 }, "failer");
+        attempts++;
+      }
+      expect(r.success).toBe(false);
       expect(engine.isDiscoveredBy("ritual_site", "failer")).toBe(false);
     });
   });

@@ -164,28 +164,58 @@ const PL_SYSTEM_PROMPT = `你是一个 CoC 7e 调查员角色。你正在参与�
 3. 简短的行动描述（1-3句），不要输出内心独白
 4. 不要替 KP 或 GM 做任何事——只描述你的角色要做什么
 5. 如果你要使用某个技能，明确说出技能名
+6. 每次行动描述不要重复——避免"握紧拳头""站在那里一动不动""眯起眼睛审视"之类的固定句式。根据场景决定具体行动：在室内就翻找物品、询问相关人员；在户外就观察环境、搜索线索
+7. 根据场合调整态度——在警局/面对NPC时保持礼貌，搜索时描述具体动作（翻开、检查、查找、询问），而不是笼统的"审视"
 
 格式：直接输出你的角色的行动。`;
 
 export class PlayerAgent {
-  private pc: PlayerCharacter;
+  /** 底层角色数据（公开只读以支持场景描述等外部读访问） */
+  readonly pc: PlayerCharacter;
   private history: { kp: string; action: string }[] = [];
   private isLLMAvailable = false;
   /** Round counter for cycling fallback patterns */
   private _fallbackTurn = 0;
 
+  /** 角色名 — 委托给 this.pc.name */
+  get name(): string { return this.pc.name; }
+  /** 角色背景 — 委托给 this.pc.backstory（play-module 中引用为 .background） */
+  get background(): string { return this.pc.backstory; }
+  /** 角色动机/当前目标 — 委托给 this.pc.currentGoal */
+  get motive(): string { return this.pc.currentGoal; }
+
   constructor(pc: PlayerCharacter) {
     this.pc = pc;
   }
 
+  /** 角色名 */
+  get name(): string { return this.pc.name; }
+  /** 角色背景（别名 backstory） */
+  get background(): string { return this.pc.backstory; }
+  /** 角色动机（别名 currentGoal） */
+  get motive(): string { return this.pc.currentGoal; }
+
   /** 构建 LLM 提示 — 当前情景 + 角色信息 */
   buildPrompt(kpNarration: string, availableClues: string[], availableActions: string[]): string {
+    const bp = this.pc.char.backgroundProfile;
+    const bpLines = bp
+      ? [
+          `形象: ${bp.appearance}`,
+          `信念: ${bp.beliefs}`,
+          `重要之人: ${bp.significantPeople}`,
+          `意义非凡之地: ${bp.meaningfulPlace}`,
+          `宝贵之物: ${bp.treasuredPossession}`,
+          `伤口和疤痕: ${bp.woundsAndScars}`,
+          `恐惧症和躁狂症: ${bp.phobiasAndManias}`,
+        ].map(l => `  ${l}`)
+      : [];
     return [
       `【你的角色】`,
       `名字: ${this.pc.name}`,
       `职业: ${this.pc.occupation}`,
       `性格: ${this.pc.personality}`,
       `背景: ${this.pc.backstory}`,
+      ...bpLines,
       `当前目标: ${this.pc.currentGoal}`,
       ``,
       `【当前情景】`,
@@ -214,7 +244,7 @@ export class PlayerAgent {
 
       if (!apiKey || apiKey === "sk-placeholder" || apiKey.startsWith("${")) {
         this.isLLMAvailable = false;
-        return this.fallbackDecision(kpNarration, availableActions);
+        return this.fallbackDecision(kpNarration, availableActions, { availableClues });
       }
 
       const resp = await fetch(`${baseUrl}/chat/completions`, {
@@ -236,13 +266,13 @@ export class PlayerAgent {
       });
 
       if (!resp.ok) {
-        console.warn(`  ⚠ PL LLM API ${resp.status}`);
-        return this.fallbackDecision(kpNarration, availableActions);
+        // stderr noise suppressed — fallback handles gracefully
+        return this.fallbackDecision(kpNarration, availableActions, { availableClues });
       }
 
       const json = await resp.json();
       const content: string = json.choices?.[0]?.message?.content?.trim();
-      if (!content) return this.fallbackDecision(kpNarration, availableActions);
+      if (!content) return this.fallbackDecision(kpNarration, availableActions, { availableClues });
 
       this.isLLMAvailable = true;
       const decision = this.parseAction(content);
@@ -250,70 +280,123 @@ export class PlayerAgent {
       return decision;
     } catch {
       this.isLLMAvailable = false;
-      return this.fallbackDecision(kpNarration, availableActions);
+      return this.fallbackDecision(kpNarration, availableActions, { availableClues });
     }
   }
 
-  /** 无 LLM 时的模板决策 — 行动库概率选择 + 情境加权 */
+  /** 无 LLM 时的模板决策 — 使用可用线索/行动生成上下文相关的描述 */
+  private _lastFallbackText = "";
   fallbackDecision(kpNarration: string, availableActions: string[], extCtx?: Partial<FallbackContext>): PlayerDecision {
     const p = this.pc;
     this._fallbackTurn++;
 
-    // 构建上下文（最小上下文 = 仅场景描述 + 可用行动）
+    const clues: string[] = extCtx?.availableClues ?? [];
+    // 从 availableActions 中识别移动选项：包含"前往""返回""进入""去"等
+    const moveLabels = availableActions.filter(a => /前往|返回|进入|去|到/.test(a));
+    const hasInvestigation = clues.length > 0;
+    const canMove = moveLabels.length > 0;
+
+    // ── 有未发现的线索 → 生成调查行动 ──
+    if (hasInvestigation) {
+      const idx = this._fallbackTurn % clues.length;
+      const clueName = clues[idx].replace(/（.*?）/, "").trim(); // 去掉技能标注
+      const invTemplates = [
+        `凑近查看${clueName}的细节。`,
+        `把注意力转向${clueName}，仔细观察。`,
+        `俯身检查${clueName}。`,
+        `走到${clueName}旁边，开始仔细翻看。`,
+        `盯着${clueName}看了好一会儿，然后动手检查。`,
+      ];
+      const t = invTemplates[(this._fallbackTurn + idx) % invTemplates.length];
+      this._lastFallbackText = `${p.name}${t}`;
+      return { action: this._lastFallbackText, intent: "investigate" };
+    }
+
+    // ── 无可调查线索，有移动选项 → 生成行动描述 ──
+    if (canMove) {
+      const isFirstVisit = !kpNarration.includes("再次来到");
+      // 首次访问时避免立即离开——先观察或交谈
+      if (isFirstVisit) {
+        if (/在场的人/.test(kpNarration)) {
+          const talkTemplates = [
+            `主动走上前，与在场的人打招呼。`,
+            `决定先和这里的人聊聊，看看能不能得到什么信息。`,
+            `仔细观察了一下在场的人，然后开口询问。`,
+            `清了清嗓子，开始向周围的人打听情况。`,
+          ];
+          const t = talkTemplates[this._fallbackTurn % talkTemplates.length];
+          this._lastFallbackText = `${p.name}${t}`;
+          return { action: this._lastFallbackText, intent: "talk" };
+        }
+        // 无NPC但首次到访 → 先观察
+        const obsTemplates = [
+          `站在原地，仔细打量周围的每一个细节。`,
+          `缓步走动，目光扫过整个空间。`,
+          `停下脚步，凝神感受周围的气氛。`,
+          `环顾四周，试图找到什么值得注意的东西。`,
+        ];
+        const t = obsTemplates[this._fallbackTurn % obsTemplates.length];
+        this._lastFallbackText = `${p.name}${t}`;
+        return { action: this._lastFallbackText, intent: "observe" };
+      }
+      // moveLabels 由 play-module 按"未访问优先"排序传入：优先探索含核心线索的未访问场景
+      // （轮询取模会无视该排序，导致医院/警察局等关键场景被反复跳过）
+      const mIdx = 0;
+      const dest = moveLabels[mIdx].replace(/^(前往|返回|进入|去)\s*/, "").trim();
+      const moveTemplates = [
+        `觉得这里暂时没有更多发现了，${dest ? `决定${dest}` : "换个地方看看"}。`,
+        `扫视了一圈，确认没有遗漏后，${dest ? `向${dest}走去` : "转身离开"}。`,
+        `这里已经查得差不多了，${dest ? `前往${dest}` : "该去别处了"}。`,
+      ];
+      const t = moveTemplates[(this._fallbackTurn + mIdx) % moveTemplates.length];
+      this._lastFallbackText = `${p.name}${t}`;
+      return { action: this._lastFallbackText, intent: "move" };
+    }
+
+    // ── 既无线索也无移动选项 → 用行动库填充 ──
     const ctx: FallbackContext = {
       sceneDescription: kpNarration,
       availableActions,
-      availableClues: extCtx?.availableClues ?? [],
+      availableClues: clues,
       npcCount: extCtx?.npcCount ?? 0,
       round: extCtx?.round ?? 0,
     };
-
-    // 1. 匹配职业档案
     const profile = OCCUPATION_PROFILES.find(pr => pr.match(p.occupation))
       ?? OCCUPATION_PROFILES.find(pr => pr.name === "default")!;
 
-    // 2. 对所有行动加权
     type Entry = { action: FallbackAction; weight: number };
     const entries: Entry[] = [];
-    const rng = this._fallbackTurn * 7 + 13; // 伪随机种子
+    const rng = this._fallbackTurn * 7 + 13;
 
     for (const act of ACTION_LIBRARY) {
-      let weight = act.baseWeight;
+      // 跳过刚用过的模板，避免连续重复
+      if (act.text === this._lastFallbackText) continue;
 
-      // 职业偏好加权
+      let weight = act.baseWeight;
       const hasPreferred = act.tags.some(t => profile.preferredTags.includes(t));
       const hasAvoided = act.tags.some(t => profile.avoidedTags.includes(t));
       if (hasPreferred) weight *= 1.8;
       if (hasAvoided) weight *= 0.4;
-
-      // 情境加权
       weight *= scoreActionByContext(act, ctx);
-
-      // 小幅度随机扰动（基于 turn 种子，保证同回合不同 PL 不同）
       const variety = 0.8 + ((rng + act.text.length + entries.length) % 7) * 0.1;
       weight *= variety;
-
       if (weight > 0.05) entries.push({ action: act, weight });
     }
 
-    // 3. 加权随机选择
-    const totalWeight = entries.reduce((s, e) => s + e.weight, 0);
-    let roll = Math.random() * totalWeight;
-    for (const entry of entries) {
-      roll -= entry.weight;
-      if (roll <= 0) {
-        const name = p.name;
-        return { action: entry.action.text.replace("{name}", name), intent: entry.action.intent };
+    if (entries.length > 0) {
+      const totalWeight = entries.reduce((s, e) => s + e.weight, 0);
+      let roll = Math.random() * totalWeight;
+      for (const entry of entries) {
+        roll -= entry.weight;
+        if (roll <= 0) {
+          this._lastFallbackText = entry.action.text;
+          return { action: entry.action.text.replace("{name}", p.name), intent: entry.action.intent };
+        }
       }
     }
 
-    // 安全回退
-    const fallbacks = [
-      `${p.name}打量着四周，"嗯……让我看看。"`,
-      `${p.name}站在原地思考下一步该怎么做。`,
-      `${p.name}环顾了一圈。`,
-    ];
-    return { action: fallbacks[this._fallbackTurn % fallbacks.length], intent: "investigate" };
+    this._lastFallbackText = "站在原地思考下一步";
+    return { action: `${p.name}站在原地思考下一步该怎么做。`, intent: "investigate" };
   }
 
   /** 解析 LLM 输出的行动文本为结构化决策 */

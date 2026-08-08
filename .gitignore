@@ -11,3 +11,8 @@ temp/
 tmp-build/
 tools/
 package-lock.json
+play-logs/
+analysis/
+play-records/
+src/module/raw/
+src/module/*.md

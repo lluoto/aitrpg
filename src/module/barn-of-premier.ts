@@ -1,790 +1,1444 @@
-// 普瑞米尔的谷仓 — 模组数据结构
-// 基于原始 PDF 解析，转为 KP Agent 可用的结构化数据
-import type { ModuleData } from "./types";
+﻿// ============================================================
+// 普瑞米尔的谷仓 ver1.03 — 模组结构化数据
+// 提取自: 普瑞米尔的谷仓 ver1.03 (MikuFan) 原始 PDF 文本
+// 提取原则：只保留来自原始模块的数据，不添加衍生/游戏引擎专用字段
+// 比对基线: 此文件为"纯提取版"，与之前含跑团信息的版本进行精度比对
+//
+// 提取源数据: src/module/raw/              — 原始文本按章节拆分
+//             src/module/structured/        — 结构化字段提取
+//             src/module/extract-tools/     — 提取脚本
+// ============================================================
 
-export const BARN_OF_PREMIER: ModuleData = {
-  id: "barn-of-premier",
+import { type ModuleData, type ModuleSupport, type Scene, type ModuleNPC, type ModuleItem, type Clue, type SceneConnection, type EpilogueEntry, type PartySetup, type EndNarration, type EncounterNarration } from "./types";
+import { applyAllLlmExpanded } from "../llm/generate-llm-expanded";
+
+const RAW = "【原文】" as const; // 标记：内容直接来自原文
+
+// ─── 工具：原文引用的场景描述 ─────────────────────────────
+const S = {
+  TRICAM_HOUSE: `这是一栋很普通的美式小别墅，相比周围的建筑可以看出稍微有翻新的感觉，在别墅外有一个小的篮球场与几个太阳伞和躺椅，一旁还放着一些烧烤架，看起来这家人很会享受生活。在一旁可以看到一个拖车车房（可搭载拖车移动的房屋，在美国还算常见），通过窗子可以看到也有在使用的痕迹。`,
+  GABI_TRAILER: `这间拖车房里面都是一些青年的物品。可以找到一些时下比较流行的音乐碟，还有一些乐队的海报，在餐厅区域有不少空的啤酒罐与披萨盒，在休息的区域则可以看到床上的被褥都没有好好叠好，床上还放着类似于乞丐裤之类的青年服饰。在拖车内部还有一个小的卫生间，有淋浴设备与一些洗漱用具。`,
+  CARD: `还在犹豫的男男女女们！还在犹豫什么时候出手享受世界吗！**月**日晚8:00在维森酒吧，享受狂欢！足量酒水免费供应。还有更多你喜欢的东西！享受生活，就是现在！`,
+  TOWN: `普瑞米尔是一个比较落后，名不见经传的小镇，本地主要以农产品为收入来源，畜牧场地与一些农场遍布小镇周围，虽然是个比较落后的小镇，警局、医院、旅店、贫民窟、酒吧还是一应俱全，当然，枪械店铺也能在某个阴暗的角落被看到。街上的行人虽然没有对外来人显示出明显的敌意，不过最好不要认为有多友善。`,
+  WEISEN_BAR: `维森酒吧是在这个小镇唯二的酒吧，属于平民阶级与混混常来的场所，虽然禁酒令的施行在这种乡下地区确实不怎么到位，但是这么明目张胆的还是少数。这个酒吧拥有自己的保安，可以在一些角落看到他们的身影，在这里闹事绝对不是一个明智的选择。`,
+  NEWSSTAND: `报亭`,
+  KIDNAPPER_REPORT: `昨日，在***农场国道***附近，警方逮捕了一名绑架犯，他当时正尝试击晕一位当地居民，在被发现时与警方发生了交火，不幸的是那位居民死于流弹，两名警员负伤，一名警员当场死亡。这名犯人也被警方制服，但是因为弹片击中脑壳，现在处于意识不清的状态，于霍姆斯医院接受治疗。根据警方透露，这名危险的绑架犯名为艾德里安·埃斯特鲁姆，曾服役于美国陆军，并且也是一位生物学教授，至于为什么要参与这种绑架活动，目前无法判定，还需要进一步的跟踪报道。在报道的下面贴有当时警方的照片，两名死者异常凄惨，而附近似乎还有一台报废车辆。`,
+  HOSPITAL: `这是一间看上去有些年头的建筑，墙面有些油漆脱落了，还有一块新一块旧的类似于补丁的墙面漆。医院附近人不多，进入大厅就可以看到一位分诊员正在柜台前面昏昏欲睡，整间医院的照明有些次，整体稍微有些昏暗。医院有3层，一层大多数一些医生诊室与药房急诊等，二层与三层则是住院层。`,
+  POLICE_STATION: `普瑞米尔警局算是镇子里维护的比较不错的建筑，外面的墙壁可以看出是新刷过的油漆，星条旗在一旁的旗杆上飘扬，这也是这个小镇唯一一面美国国旗。警局内没有什么人，附近也和其他的地方不一样，脏乱、流浪汉的棚窝，一个都没有。甚至让人有些不适应感。`,
+  EVIDENCE_ROOM: `进入证物室是非常难的事情，即使是这种偏僻的警察局也有严格的管理。`,
+  HOTEL: `一个双层建筑，在小镇里算是有些注重外观的建筑了，一块不大的招牌摆在外面，整体看上去很整洁。进门就可以看到前台，在进门时可以听到一些风铃声，令人心情不由得会变好一些。在前台上除了一些账簿和椅子以外，还有一个小银铃，应该是用来呼唤后台的工作人员的。旅店提供基本的住宿，在一层有一个小餐厅，看上去可以提供一些普通的熟食品。"\n\n"沿着木质楼梯往上可以来到二层，这边左右加起来有6间房间。大小一致。在尽头还有一个洗手间。每间卧室都有两张床与一个书桌，还有对应的2个床头柜。透过窗子可以看到街上形形色色的人们。`,
+  SHOOTOUT: `这里已经是一片狼藉，鲜血泼洒了一地，而且还有一些粉笔印来诉说这里曾经发生过的事情。取证似乎已经完成，这里没有警员驻守，只有废弃的白色小车作为这里的地标。萧瑟的秋风让你们感觉有些身体发凉。`,
+  ADRIAN_TOWN_HOUSE: `这是一栋独门独户的小别墅，是一个双层建筑，靠着贫民窟有些近，而且似乎已经荒废了有一段时间了，门前的草坪已经很久没有修整过，仔细看一侧的玻璃窗似乎也有被打破的痕迹。`,
+  FARM: `这间农场周围围着很简单的木质栅栏，上面的油漆都已经被雨水腐蚀掉了。在入口处似乎还有一块本应存在的牌匾，现在也只能看到孤零零的架子，而上面的牌匾早就不知道飞到哪里去了。在入口处稍微观察四周，这是这附近唯一的农场，有着一些田地，但是完全没有打理的样子，几个大棚也急需修缮。除了主要入口的道路，外野草丛生，甚至无法看清脚下。再稍微往里有两个比较显眼的建筑。一间刷着红油漆的类似谷仓的建筑，和一个农场主别墅。`,
+  FARM_VILLA: `从远处观察别墅，这个房子似乎被整体刷过白色油漆。但是也应该有段时间了。窗子上封了一些木板，这里看上去不像是在被使用的样子。`,
+  BARN: `这栋谷仓形建筑整体为金属结构，大门牢牢关着，只能从内部打开，侧面有一个看上去非常先进的防盗门。在一旁还有一些杂物堆，看上去可以上到屋顶。`,
+  BARN_INTERIOR: `这里虽然外表是一处谷仓，不过内部似乎已经被简单改造过了，很显眼的就是放置在周围的床铺，床铺上还躺着人，他们的上半身被奇怪的仪器罩着，还有很明显没有整理过的奇怪线路，这些线路朝着内部拐过去。这里的氛围只能让人感觉到不寒而栗..而在门口还有一具尸体，眼睛活睁地盯着大门。`,
+  CONTROL_ROOM: `跟随着灯光转过拐角，这间房间的门是打开着的，这间房间虽然不小，但是一台看上去非常高科技的大家伙还是占据了整间房间非常大的区域。这个机器有着3个显示器，看上去都是电视机改造拼接上去的，现在上面有一些红色警报。在这些显示器下面有一个看上去像是控制台的装置，上面有许多按钮，不过都没有标注，还有几个类似于收音机调频的旋钮，但是完全没头绪是用来做什么的。一些线路比较随意的落在了外面，机器持续发出不小的风扇轰鸣声，甚至可以感觉到有些热气从机器下方吹出。除了这台吸引视线的怪物以外，这里似乎还有一台冰箱与一个中型储藏柜，上面挂着锁，不过并没有锁住，看起来主人出门的时候没有好好收拾好。除了这些以外，可以注意到这间房间被打扫的非常干净，和凌乱的电子线路形成鲜明的对比。`,
+  ADRIAN_BEDROOM: `这是一间很简洁的卧室，一张单人床，一个床头柜，一个枪柜，仅此而已，衣服整洁的叠在床上，这里应该是他休息的地方。`,
+  SEWER: `这似乎是一处废弃的下水道，应该是强行挖通过来的。这段下水道已经干涸了，周围的墙壁上长着青苔，充斥着腐烂与陈朽的味道，几乎没有光线透进来。`,
+  MAINTENANCE_ROOM: `走入这间房间。在门的背面可以看到歪歪扭扭有些生锈的铁牌，上面写着维修室。进入房间后，这里非常昏暗，无法看清整体的样貌，不过空气中弥漫着一些说不上来的味道，似乎是机油与医用酒精之类的东西揉捏在一起，这个房间有2个支撑梁，在右手边似乎有一张桌子的样子。在桌子一旁，有一个类似于展柜的金属架。`,
+  BIG_PIPE: `往里走，这里似乎曾经是堆放着维修建材的地方。但是已经被清空，一个很大的管道从天花板通了下来，这应该不是这里原本就有的东西。在管道之前还有一些..红色的痕迹，旁边的墙上还有一个青色按钮。`,
+  COFFIN: `一副散发着阴冷气息的..长方形物体。有些像是电冰箱的样子，外边布置着线缆，连接着一个发电机，在角落似乎还裹着一些冰蓝颜色的物体。封边上也似乎有些黏液。`,
+} as const;
+
+// ─── 导出数据 ──────────────────────────────────────────────
+const moduleData: ModuleData = {
+  id: "premiers_barn",
   title: "普瑞米尔的谷仓",
-  version: "1.03",
+  version: "ver1.03",
   ruleset: "coc7e",
   era: "1921",
-  summary: "调查员接受菲碧·特里坎的委托，调查她失踪的儿子加比。随着调查深入，发现这背后隐藏着一个涉及绑架、非法医学实验和超自然力量的巨大阴谋。",
+  summary: `模组为线性半 City 类模组。长度中短，比较适合新人 PL 适应 COC 的环境，且难度不高。因为事件已经完成，调查员可以说类似于去收尾的警察一般。即使调查员失败，也不会失去更多的东西了。`,
+
+  scenes: buildScenes(),
+  npcs: buildNpcs(),
+  items: buildItems(),
 
   meta: {
-    author: "未知",
-    playerCount: "2-3人",
-    expectedDuration: "短模组（一次团）",
-    triggerWarnings: ["绑架", "非法医学实验", "超自然恐怖", "身体恐怖", "尸体描述"],
-    bgmHints: {
-      trailor: "昏暗小镇，蝉鸣，远处偶尔狗吠",
-      bar: "嘈杂的爵士乐，酒杯碰撞声",
-      hospital: "冷凝的医疗器械滴答声",
-      barn: "阴森的嗡鸣，机械呼吸声",
-      sewer: "滴水声，低沉的风声",
-      final: "低频嗡鸣，接近时的尖锐声",
-    },
+    author: "MikuFan",
+    playerCount: "2~3",
+    expectedDuration: "中短",
+    triggerWarnings: [
+      "可能包含稍微过激的场景",
+      "一些比较令人胃痛的设定",
+    ],
   },
 
-  endings: [
-    {
-      id: "true_end",
-      name: "True End",
-      description: "调查员解救所有受害者，击退米-戈，将艾米丽和爱莉的缸中脑安置在安全之处。",
-      conditions: ["完成所有场景调查", "找到农场", "发现下水道", "击退米-戈"],
-      sanReward: "3d6",
-      cmReward: 3,
-    },
-    {
-      id: "good_end",
-      name: "Good End",
-      description: "调查员报警解救了受害者，但未能深入下水道探索真相。",
-      conditions: ["找到农场", "报警救人"],
-      sanReward: "1d6",
-      cmReward: 1,
-    },
-    {
-      id: "bad_end",
-      name: "Bad End",
-      description: "调查员未能找到关键线索，加比和其他受害者未被及时找到。",
-      conditions: [],
-      sanReward: "0",
-      cmReward: 0,
-    },
-  ],
+  endings: buildEndings(),
+  partySetup: {
+    context: [
+      "1921年，范·特里坎镇。",
+      "菲碧·特里坎的儿子加比已经失踪半个月了。两名调查员接下了这个案子。",
+      "他们从委托人住宅——特里坎家——开始，逐户走访、循迹追查少年失踪的真相。",
+    ],
+    hooks: [
+      "{name}的办公桌上摊着一封委托信。作为{occupation}，他见过太多案子——但这个失踪案，他总觉得不太对劲。",
+      "{name}被老搭档叫上的时候没多问——{occupation}，他知道对方不会无缘无故找他。",
+    ],
+    closing: [
+      "他们的调查，从这所小镇的普通工人家庭开始……",
+    ],
+  },
+  prologue: {
+    lines: [
+      "1921年，范·特里坎镇。",
+      "",
+      "一封拜托的信递到了{pl1_name}的办公室里。",
+      "{pl1_name}看完信内容，久久没有放下——但这个失踪案，他总觉得不太对劲。",
+      "他叫上了老搭档{pl2_name}，两人合作过不止一次。",
+      "",
+      "发信人是菲碧·特里坎，她的儿子加比已经失踪半个月了。",
+      "{pl1_motive}。{pl2_motive}。",
+      "",
+      "他们的调查，从这所小镇的普通工人家庭开始……",
+    ],
+  },
+  epilogues: buildEpilogues(),
+};
 
-  scenes: [
-    // ===== 序幕 / 委托 =====
-    {
-      id: "prologue",
-      name: "序幕：特里坎家",
-      order: 0,
-      description: "菲碧·特里坎（Phoebe Tricam）的家，一个普通的工人家庭住宅。客厅里有陈旧但干净的家具，墙上挂着家人的照片。窗外可以看到一辆白色拖车。",
-      atmosphere: "焦灼、不安。母亲的眼神透露出深深的绝望。",
-      clues: [
-        {
-          id: "clue_client_mission",
-          name: "委托任务",
-          description: "菲碧·特里坎的委托——寻找她17岁的儿子加比，他已经失踪了半个月。",
-          findMethods: [{ type: "automatic", description: "菲碧主动告诉你" }],
-          revelation: "加比·特里坎，17岁，半个月前失踪。菲碧已经报警，但当地警察无所作为。她指向窗外——加比平时住的白色拖车。",
-          unlocks: ["clue_trailor", "clue_photo"],
-          found: false,
-          importance: "core",
-        },
-        {
-          id: "clue_photo",
-          name: "加比的照片",
-          description: "墙上的家庭照中有一个头发染成蓝色、打着唇钉的少年——加比。",
-          findMethods: [
-            { type: "observation", description: "观察客厅墙上的照片" },
-          ],
-          revelation: "加比留着蓝色染发，有唇钉，穿着宽松的街头服饰。看起来是个典型的叛逆青少年。照片中还有菲碧和一个中年男子的合影。",
-          unlocks: [],
-          found: false,
-          importance: "color",
-        },
-      ],
-      npcIds: ["phoebe_tricam"],
-      connections: [
-        { targetSceneId: "trailor", condition: "前往加比的拖车" },
-      ],
-      bgmHint: "quiet_tense",
-      imageHint: "a modest 1920s working-class living room, warm lamp light, family photos on wall",
-    },
+// 自动为所有带 knowledge[] 的 NPC 生成 llmExpanded（已有手动编写的不会被覆盖）
+applyAllLlmExpanded(moduleData.npcs);
 
-    // ===== 加比的拖车 =====
-    {
-      id: "trailor",
-      name: "加比的拖车",
-      order: 1,
-      description: "一辆白色的老式拖车，停在后院。车门虚掩着，推开车门，一股混合着霉味、大麻和廉价香水的气味扑面而来。狭小的空间杂乱无章。",
-      atmosphere: "乱糟糟的少年房间——音乐碟片、乐队海报、空啤酒罐、披萨盒散落各处。床上被褥凌乱。卫生间里有简单的洗漱用品。",
-      clues: [
-        {
-          id: "clue_pistol",
-          name: "床底的手枪",
-          description: "一个黑色帆布袋，里面是一把1911手枪和几个装满子弹的弹匣。",
-          findMethods: [
-            { type: "skill", skillName: "spot_hidden", difficulty: "regular", description: "检查床底" },
-          ],
-          revelation: "一把Colt M1911手枪，保养良好，序列号已被锉平。弹匣装满0.45 ACP子弹。加比从哪里搞到的？这把枪属于非法持有。",
-          unlocks: [],
-          found: false,
-          importance: "core",
-        },
-        {
-          id: "clue_bar_card",
-          name: "维森酒吧邀请卡",
-          description: "一张小卡片，印着\"维森酒吧——狂欢之夜——凭此卡入场\"，背后手写了一个日期（上周五）。",
-          findMethods: [
-            { type: "skill", skillName: "spot_hidden", difficulty: "regular", description: "检查餐桌上的披萨盒" },
-            { type: "observation", description: "随意翻动桌上的杂物" },
-          ],
-          revelation: "维森酒吧的VIP邀请卡。上周五的日期。看来加比最近经常出入酒吧。",
-          unlocks: ["clue_bar_witness"],
-          found: false,
-          importance: "core",
-        },
-        {
-          id: "clue_drugs",
-          name: "毒品",
-          description: "卫生间水箱后面藏着一小包白色粉末和几个空胶囊。",
-          findMethods: [
-            { type: "skill", skillName: "spot_hidden", difficulty: "regular", description: "仔细搜查卫生间" },
-          ],
-          revelation: "大约10克可卡因和几个空的凝胶胶囊。加比不只是个叛逆青少年——他可能涉足毒品交易。或者他只是个使用者。",
-          unlocks: [],
-          found: false,
-          importance: "bonus",
-        },
-        {
-          id: "clue_phone_note",
-          name: "电话留言",
-          description: "一部老式电话机旁边有一个便签本，最近一页被撕掉了，留有笔压痕迹。",
-          findMethods: [
-            { type: "skill", skillName: "spot_hidden", difficulty: "hard", description: "用铅笔在便签本上涂画显出笔压" },
-          ],
-          revelation: "通过铅笔涂抹，显出一行字：\"艾德里安——老地方——带\"货\"\"。",
-          unlocks: ["clue_adrian_name"],
-          found: false,
-          importance: "core",
-        },
-      ],
-      npcIds: [],
-      connections: [
-        { targetSceneId: "bar", condition: "前往维森酒吧" },
-        { targetSceneId: "prologue", condition: "返回菲碧处询问更多信息" },
-      ],
-      skillChecks: [
-        { skill: "spot_hidden", difficulty: "regular", purpose: "发现隐藏线索" },
-        { skill: "spot_hidden", difficulty: "hard", purpose: "发现电话留言笔压" },
-      ],
-      bgmHint: "messy_room_ambient",
-    },
+export default moduleData;
+export const BARN_OF_PREMIER = moduleData;
 
-    // ===== 维森酒吧 =====
-    {
-      id: "bar",
-      name: "维森酒吧",
-      order: 2,
-      description: "小镇边缘的一家破旧酒吧。霓虹灯招牌一闪一灭。推开沉重的木门，烟味、酒味和汗味扑面而来。吧台后面一个魁梧的酒保正在擦杯子。角落里几个潦倒的酒客。",
-      atmosphere: "嘈杂、烟雾弥漫。一个中年酒保警惕地看着你。",
-      clues: [
-        {
-          id: "clue_bar_witness",
-          name: "酒保的证言",
-          description: "酒保认识加比。他透露上周有阔佬包场开了狂欢派对。",
-          findMethods: [
-            { type: "skill", skillName: "persuade", difficulty: "regular", description: "说服酒保说出信息" },
-            { type: "skill", skillName: "fast_talk", difficulty: "regular", description: "用话术套话" },
-            { type: "skill", skillName: "intimidate", difficulty: "hard", description: "恐吓酒保" },
-          ],
-          revelation: "酒保透露：上周有个阔佬包下了整个酒吧办派对，加比也在场。那个阔佬是\"艾德里安先生\"——一个经常光顾的外地人，开着好车，出手阔绰。派对结束后就没再见过加比。",
-          unlocks: ["clue_adrian_identity"],
-          found: false,
-          importance: "core",
-        },
-        {
-          id: "clue_bar_add",
-          name: "附近居民的见闻",
-          description: "蹲在酒吧门口的一个流浪汉可能看到了什么。",
-          findMethods: [
-            { type: "skill", skillName: "persuade", difficulty: "hard", description: "说服流浪汉开口" },
-            { type: "skill", skillName: "fast_talk", difficulty: "regular", description: "话术或给小费" },
-          ],
-          revelation: "流浪汉说：\"哦，你说那个蓝头发的小子？上周我看到他上了一辆黑色的轿车，开车的是个体面人。他们往郊外方向去了。\"",
-          unlocks: ["clue_car_direction"],
-          found: false,
-          importance: "bonus",
-        },
-      ],
-      npcIds: ["bartender", "tramp"],
-      connections: [
-        { targetSceneId: "newsstand", condition: "前往报亭查阅新闻" },
-        { targetSceneId: "adrian_house", condition: "找到艾德里安的地址" },
-        { targetSceneId: "trailor", condition: "返回拖车寻找更多线索" },
-      ],
-      bgmHint: "noisy_jazz_bar",
-    },
+// ─── 场景构建 ──────────────────────────────────────────────
+function buildScenes(): Scene[] {
+  const scenes: Scene[] = [];
 
-    // ===== 报亭 =====
-    {
-      id: "newsstand",
-      name: "报亭/图书馆",
-      order: 3,
-      description: "小镇的公共图书馆，或者街角的报亭。可以查阅旧报纸和公共记录。",
-      atmosphere: "安静，书香和灰尘的气味。",
-      clues: [
-        {
-          id: "clue_adrian_identity",
-          name: "艾德里安的身份",
-          description: "通过旧报纸找到关于艾德里安·埃斯特鲁姆的报道。",
-          findMethods: [
-            { type: "skill", skillName: "library_use", difficulty: "regular", description: "搜索旧报纸数据库" },
-          ],
-          revelation: "艾德里安·埃斯特鲁姆（Adrian Estrum），38岁，生物学教授。曾服役于美军，有创伤后应激障碍记录。上周在国道附近因绑架未遂被捕，交火中导致1死2伤、1名警员殉职。目前因头部弹片伤在霍姆斯医院接受治疗，伤势严重，意识不清。",
-          unlocks: ["clue_hospital", "clue_adrian_address"],
-          found: false,
-          importance: "core",
-        },
-      ],
-      npcIds: ["librarian"],
-      connections: [
-        { targetSceneId: "hospital", condition: "前往霍姆斯医院探望艾德里安" },
-        { targetSceneId: "adrian_house", condition: "前往艾德里安的住宅" },
-        { targetSceneId: "bar", condition: "返回维森酒吧" },
-      ],
-      bgmHint: "quiet_library",
-    },
+  // 0. 特里坎家 (Tricam House)
+  scenes.push({
+    id: "tricam_house",
+    name: "特里坎家",
+    description: S.TRICAM_HOUSE,
+    clues: [],
+    npcIds: ["phoebe_tricam", "mir_tricam"],
+    openingAtmosphere: `还没走到门口，你们便听见院里传来一下一下拍打皮球的声音，节奏很慢，像是有人在随意消磨时间。循声望去，只见米尔·特里坎正抱着篮球站在院里，一下一下地拍着。她察觉到你们走近，抬起头怯生生地望了一眼，随即丢下球，转身跑回屋内，门在身后轻轻带上。院落重新安静下来，只有风吹过太阳伞的轻响——接下来，该由你们叩响那扇门了。`,
+    isHome: true,
+    connections: [
+      { targetSceneId: "gabi_trailer", condition: "前往加比的拖车房" },
+      { targetSceneId: "town_premier", condition: "返回镇上" },
+    ],
+    atmosphere: "因为考虑到终局的那一幕，这里可以稍微多的展示一下米尔对菲碧的依赖与菲碧对于孩子失踪的不安、焦虑。这些信息在终局会对调查员留下非常巨大的落差。",
+  });
 
-    // ===== 霍姆斯医院 =====
+  // 1. 加比的拖车房 (Gabi's Trailer)
+  const gabiClues: Clue[] = [
     {
-      id: "hospital",
-      name: "霍姆斯医院",
-      order: 4,
-      description: "小镇唯一的医院，一栋洗白的二层楼房。门口有警员把守——艾德里安是重要的羁押嫌犯。消毒水的气味弥漫在走廊里。",
-      atmosphere: "苍白、冰冷。消毒水气味。警员警惕的目光。",
-      clues: [
-        {
-          id: "clue_hospital",
-          name: "艾德里安的病房",
-          description: "艾德里安半昏迷地躺在病床上，头上缠着绷带。他偶尔喃喃自语。",
-          findMethods: [
-            { type: "skill", skillName: "persuade", difficulty: "hard", description: "说服警员放行" },
-            { type: "skill", skillName: "fast_talk", difficulty: "hard", description: "编造身份骗过警员" },
-          ],
-          revelation: "艾德里安半昏迷，偶尔喃喃自语：\"艾米丽……爱莉……对不起……保护她们……谷仓……下水道……\"这些只言片语暗示着某个地点——他的农场谷仓和下水道。",
-          unlocks: ["clue_psychology"],
-          found: false,
-          importance: "core",
-        },
-        {
-          id: "clue_psychology",
-          name: "精神分析",
-          description: "对艾德里安进行精神分析，让他短暂清醒。",
-          findMethods: [
-            { type: "skill", skillName: "psychology", difficulty: "hard", description: "精神分析让他清明片刻" },
-            { type: "skill", skillName: "psychoanalysis", difficulty: "hard", description: "深度精神分析" },
-          ],
-          revelation: "艾德里安短暂清醒，抓住调查员的手：\"谷仓……我买的农场……在郊外……艾米丽和爱莉在那里……她们需要帮助……下面……下水道里有东西……\"然后再次陷入昏迷。",
-          unlocks: ["scene_farm"],
-          found: false,
-          importance: "core",
-        },
+      id: "clue_pistol_in_bag",
+      name: "黑袋子中的手枪",
+      description: "一个黑袋子，里面是一把手枪与数只弹匣。手枪上的铭文已经被磨平，而且还似乎有些上锈，应该是什么人用的二手货，而且绝对非法。1911手枪：因为磨损故障值为90，伤害为d10+2，具有贯穿属性。",
+      findMethods: [
+        { type: "skill", skillName: "侦查", difficulty: "regular", description: "侦查休息区/仔细检查床底" },
       ],
-      npcIds: ["adrian_estrum", "police_guard"],
-      connections: [
-        { targetSceneId: "adrian_house", condition: "前往艾德里安的住宅" },
-        { targetSceneId: "newsstand", condition: "返回报亭查阅地址" },
-      ],
-      bgmHint: "hospital_ambient",
+      revelation: "找到一把非法1911手枪，故障值90，伤害d10+2，贯穿属性。",
+      unlocks: [],
+      found: false,
+      importance: "color",
     },
+    {
+      id: "clue_drugs",
+      name: "毒品",
+      description: "一些毒品。○粉、海○因，之类的东西，数量不多，但是足够定罪了。",
+      findMethods: [
+        { type: "skill", skillName: "侦查", difficulty: "regular", description: "侦查卫生间/仔细检查洗漱用具" },
+      ],
+      revelation: "找到一些毒品，数量不多但足够定罪。",
+      unlocks: [],
+      found: false,
+      importance: "color",
+    },
+    {
+      id: "clue_card",
+      name: "奇怪的卡片",
+      description: "一张小卡片，上面似乎是小广告。卡片上的日期大约是2个月前。内容：还在犹豫的男男女女们！还在犹豫什么时候出手享受世界吗！**月**日晚8:00在维森酒吧，享受狂欢！足量酒水免费供应。还有更多你喜欢的东西！享受生活，就是现在！",
+      findMethods: [
+        { type: "observation", description: "侦查餐厅/宣言仔细检查餐桌：可以发现在披萨盒下面有一张小卡片" },
+      ],
+      revelation: "一张2个月前的维森酒吧狂欢派对小卡片，免费酒水供应。",
+      unlocks: ["clue_bar_mass_booking"],
+      found: false,
+      importance: "core",
+    },
+  ];
 
-    // ===== 艾德里安的住宅 =====
-    {
-      id: "adrian_house",
-      name: "艾德里安的住宅",
-      order: 5,
-      description: "艾德里安在小镇租住的房子，一栋普通的二层小楼。门前有几个流浪汉占据了门廊。窗帘紧拉。",
-      atmosphere: "被遗弃的感觉。门口有流浪汉。窗户后面似乎有人影闪过。",
-      clues: [
-        {
-          id: "clue_farm_deed",
-          name: "农场转购协议",
-          description: "艾德里安书桌抽屉里的文件——证明他在郊外秘密购买了一个农场。",
-          findMethods: [
-            { type: "skill", skillName: "spot_hidden", difficulty: "regular", description: "搜查书房/卧室" },
-          ],
-          revelation: "一份农场转购协议，日期是三个月前。艾德里安以现金购买了一个郊外的废弃农场，附有谷仓和土地。签名处还有一份附属文件——来自\"克劳德·罗宾斯\"的水管改造收据。",
-          unlocks: ["scene_farm"],
-          found: false,
-          importance: "core",
-        },
-        {
-          id: "clue_german_manuscript",
-          name: "法文/德语文稿",
-          description: "一本厚厚的手稿，用德语（或法语）写成，内容涉及神秘学。",
-          findMethods: [
-            { type: "skill", skillName: "occult", difficulty: "regular", description: "鉴定书稿内容" },
-            { type: "skill", skillName: "language_other", difficulty: "regular", description: "翻译外语文稿" },
-          ],
-          revelation: "这是一本关于米-戈（Mi-Go）联络术的翻译手稿，从一本古老的德文法典翻译而来。其中包括召唤米-戈的仪式、缸中脑保存技术、以及\"与遥远星辰对话\"的方法。边缘有艾德里安的手写批注。",
-          unlocks: ["clue_mi_go"],
-          found: false,
-          importance: "core",
-        },
-        {
-          id: "clue_family_photo",
-          name: "全家福",
-          description: "一张照片——艾德里安、一位女性和一个小女孩。",
-          findMethods: [
-            { type: "observation", description: "客厅中倒扣的相框" },
-          ],
-          revelation: "照片中的女性（艾米丽）和小女孩（爱莉）看起来幸福地笑着。背后写着\"我们的天堂——2009年夏\"。但根据记录，艾德里安没有登记的妻子或孩子。她们是谁？",
-          unlocks: [],
-          found: false,
-          importance: "bonus",
-        },
-      ],
-      npcIds: ["bums", "claude_robins"],
-      connections: [
-        { targetSceneId: "farm", condition: "前往郊外农场" },
-        { targetSceneId: "hospital", condition: "返回医院" },
-      ],
-      bgmHint: "abandoned_house",
-    },
+  scenes.push({
+    id: "gabi_trailer",
+    name: "加比的拖车房",
+    description: S.GABI_TRAILER,
+    clues: gabiClues,
+    npcIds: [],
+    connections: [
+      { targetSceneId: "tricam_house", condition: "返回特里坎家" },
+    ],
+    atmosphere: "这里有加比生活过的痕迹，细细搜查应该能找到什么。",
+  });
 
-    // ===== 艾德里安的农场 =====
-    {
-      id: "farm",
-      name: "艾德里安的农场",
-      order: 6,
-      description: "郊外一个偏僻的废弃农场。主屋破败不堪，但谷仓看起来被修缮过——新的铁皮屋顶，门上挂着粗重的锁链。周围的草丛中有隐蔽的捕兽夹。空气中有一股淡淡的化学气味和……甜腻的腐烂味。",
-      atmosphere: "荒凉、隐秘。风吹过杂草，偶尔能听到从谷仓方向传来的低沉嗡鸣声。",
-      clues: [
-        {
-          id: "clue_trap",
-          name: "捕兽夹",
-          description: "谷仓周围草丛中隐蔽放置的捕兽夹——有人不想让不速之客接近。",
-          findMethods: [
-            { type: "skill", skillName: "spot_hidden", difficulty: "regular", description: "观察草丛" },
-            { type: "skill", skillName: "survival", difficulty: "regular", description: "野外生存辨识危险" },
-          ],
-          revelation: "三个大型捕兽夹，用链子固定在木桩上。锈迹斑斑但保养良好。如果有人踩上去，腿骨会当场折断。必须小心避开。",
-          unlocks: [],
-          found: false,
-          importance: "bonus",
-        },
-        {
-          id: "clue_barn_door",
-          name: "谷仓防盗门",
-          description: "谷仓的门是重型防盗门，需要钥匙或从内部打开。屋顶有通风口可以翻入。",
-          findMethods: [
-            { type: "observation", description: "检查谷仓入口" },
-          ],
-          revelation: "防盗门需要专业工具才能撬开。但屋顶有一扇松动的通风口栅栏——体型正常的人可以钻进去，然后从内部开门。",
-          unlocks: ["scene_barn"],
-          found: false,
-          importance: "core",
-        },
-      ],
-      npcIds: [],
-      connections: [
-        { targetSceneId: "barn", condition: "进入谷仓" },
-      ],
-      skillChecks: [
-        { skill: "spot_hidden", difficulty: "regular", purpose: "发现捕兽夹" },
-        { skill: "dodge", difficulty: "regular", purpose: "躲避捕兽夹" },
-        { skill: "mechanical_repair", difficulty: "hard", purpose: "撬开防盗门" },
-      ],
-      bgmHint: "wind_ambient_mechanical_hum",
-      imageHint: "abandoned farm at dusk, rusty barn, overgrown weeds, chain-link fence",
-    },
+  // 2. 普瑞米尔 — 枢纽（包含镇内所有子场景）
+  scenes.push({
+    id: "town_premier",
+    name: "普瑞米尔",
+    description: S.TOWN,
+    clues: [],
+    npcIds: [],
+    connections: [
+      { targetSceneId: "tricam_house", condition: "前往特里坎家" },
+      { targetSceneId: "weisen_bar", condition: "前往维森酒吧" },
+      { targetSceneId: "police_station", condition: "前往警察局" },
+      { targetSceneId: "hospital", condition: "前往霍姆斯医院" },
+      { targetSceneId: "newsstand", condition: "前往报亭" },
+      { targetSceneId: "shootout_scene", condition: "前往城外交火现场" },
+      { targetSceneId: "adrian_town_house", condition: "前往艾德里安在镇子内的住宅" },
+      { targetSceneId: "adrian_farm", condition: "前往郊外的艾德里安农场" },
+    ],
+  });
 
-    // ===== 谷仓内部 =====
+  // 3. 维森酒吧
+  const barClues: Clue[] = [
     {
-      id: "barn",
-      name: "谷仓",
-      order: 7,
-      description: "谷仓内部被彻底改造。八张行军床整齐排列，六个人躺在上面。他们的上半身被一个奇怪的仪器罩住——透明的罩子连接着管道和一台维持生命的机器。仪器发出有节奏的嘶嘶声和嗡鸣。门口附近有一具已经死亡的尸体。",
-      atmosphere: "令人窒息的恐怖。机械呼吸声、药水味。尸体已经开始腐败。",
-      clues: [
-        {
-          id: "clue_victims",
-          name: "受害者状态",
-          description: "六名受害者——气管被切开，连接着呼吸机。靠着营养液维持生命。",
-          findMethods: [
-            { type: "skill", skillName: "medicine", difficulty: "regular", description: "检查受害者" },
-          ],
-          revelation: "所有受害者的气管都被整齐切开，插入呼吸管。他们的血液中检测到高浓度镇静剂。其中一人是加比·特里坎——他还活着，但处于深度昏迷。这些人的身份和绑匪毫无关联——他们是被随机选择的。",
-          unlocks: ["clue_victim_id"],
-          found: false,
-          importance: "core",
-        },
-        {
-          id: "clue_dead_body",
-          name: "门口的尸体",
-          description: "一具已经死亡的尸体，死亡时间大约一周。",
-          findMethods: [
-            { type: "observation", description: "检查尸体" },
-            { type: "skill", skillName: "medicine", difficulty: "regular", description: "尸检" },
-            { type: "skill", skillName: "forensic", difficulty: "hard", description: "法医鉴定" },
-          ],
-          revelation: "死者大约40岁，男性，死于失血过多——他的气管也被切开了，但不知为何没有接上呼吸机。也许是手术失败，也许是太晚被带来。身份不明。",
-          unlocks: [],
-          found: false,
-          importance: "bonus",
-        },
-        {
-          id: "clue_control_room",
-          name: "中控室",
-          description: "谷仓深处的一个隔间，堆满了医疗设备和监控仪器。红色警报灯闪烁。",
-          findMethods: [
-            { type: "observation", description: "探索谷仓内部" },
-          ],
-          revelation: "控制室里有一台大型生命维持机器——旁边有氧气罐、流食袋、药品柜。机器显示：氧气将在12小时内耗尽。如果不补充，所有受害者都会死。储物柜里有备用氧气瓶和流食。",
-          unlocks: ["clue_oxygen"],
-          found: false,
-          importance: "core",
-        },
-        {
-          id: "clue_oxygen",
-          name: "更换氧气",
-          description: "需要迅速更换氧气瓶和补充流食。",
-          findMethods: [
-            { type: "skill", skillName: "first_aid", difficulty: "regular", description: "操作医疗设备" },
-            { type: "skill", skillName: "medicine", difficulty: "hard", description: "理解设备并操作" },
-          ],
-          revelation: "成功更换氧气瓶和补充流食——受害者们的状态稳定下来。还有大约48小时的时间去寻找真相。",
-          unlocks: ["clue_secret_door"],
-          found: false,
-          importance: "core",
-        },
-        {
-          id: "clue_secret_door",
-          name: "暗门",
-          description: "谷仓的角落有一个隐蔽的活板门，通往地下。",
-          findMethods: [
-            { type: "skill", skillName: "spot_hidden", difficulty: "hard", description: "仔细搜查谷仓后发现暗门" },
-          ],
-          revelation: "一个被干草掩盖的活板门。拉开后是一道绳梯，深入地下——通往废弃的下水道系统。暗门下隐约传来……女人的歌声和婴儿的啼哭？",
-          unlocks: ["scene_sewer"],
-          found: false,
-          importance: "core",
-        },
+      id: "clue_bar_mass_booking",
+      name: "酒吧包场情报",
+      description: "使用卡片询问免费饮品的事情：大多数的保安、客人都会选择不回答或者不知道。询问前台则需要给予足够的小费（10$或以上）/成功的取悦才可以得知，之前是一位贵客包下了酒吧，在那天请当地的很多男男女女来到这里狂欢，并且他付了那一夜的所有钱，只是来的人都需要稍微做登记这一点有些奇怪以外，酒吧没有任何理由拒绝这样的行为。",
+      findMethods: [
+        { type: "skill", skillName: "取悦", difficulty: "regular", description: "给予足够的小费（10$或以上）/成功的取悦前台" },
       ],
-      npcIds: ["gabe_tricam"],
-      connections: [
-        { targetSceneId: "adrian_bedroom", condition: "探索艾德里安的卧室（谷仓旁小屋）" },
-        { targetSceneId: "sewer", condition: "通过暗门进入下水道" },
-      ],
-      bgmHint: "mechanical_breathing",
+      revelation: "一位贵客包下了酒吧，举办狂欢派对，但来的人需要做登记。",
+      unlocks: ["clue_bar_guest_identity"],
+      found: false,
+      importance: "core",
     },
+    {
+      id: "clue_bar_guest_identity",
+      name: "贵客身份",
+      description: "进一步的套话很难办到。如果想要询问这位贵客的身份，不仅需要付出大量的现金，还要通过一个至少困难成功的社交类技能。如果成功从前台嘴中套出话，前台会告诉是艾德里安·埃斯特鲁姆先生。本地调查员可以通过一个成功的灵感得知艾德里安似乎是一个星期前被逮捕的绑架犯，似乎在报纸上看过这么一条信息，但是具体的倒是记不清了。",
+      findMethods: [
+        { type: "skill", skillName: "社交", difficulty: "hard", description: "付出大量现金+至少困难成功的社交类技能" },
+      ],
+      revelation: "包下酒吧的贵客是艾德里安·埃斯特鲁姆——本地调查员可通过灵感得知他是一个星期前被逮捕的绑架犯。",
+      unlocks: [],
+      found: false,
+      importance: "core",
+    },
+    {
+      id: "clue_bar_ask_around",
+      name: "向其他人打听艾德里安",
+      description: "如果向其他人打听艾德里安则判断幸运来看看这些人有没有喜欢八卦的，但是请记住，没有免费的情报，如果对方知道你有求于人，必定会要求相应的代价。",
+      findMethods: [
+        { type: "skill", skillName: "幸运", difficulty: "regular", description: "向其他人打听艾德里安，需判断幸运" },
+      ],
+      revelation: "需要付出代价才能获得情报。",
+      unlocks: [],
+      found: false,
+      importance: "bonus",
+    },
+  ];
+  scenes.push({
+    id: "weisen_bar",
+    name: "维森酒吧",
+    description: S.WEISEN_BAR,
+    clues: barClues,
+    npcIds: ["bar_bouncer"],
+    connections: [
+      { targetSceneId: "town_premier", condition: "返回镇上" },
+    ],
+    atmosphere: "维森酒吧鱼龙混杂，小费文化在这里尤其盛行。",
+  });
 
-    // ===== 艾德里安的卧室（谷仓旁） =====
+  // 4. 报亭
+  const newsstandClues: Clue[] = [
     {
-      id: "adrian_bedroom",
-      name: "艾德里安的卧室",
-      order: 8,
-      description: "谷仓旁边的一个小隔间——艾德里安在这里生活。简陋的床铺、衣物、一个上了锁的枪柜、一张书桌。",
-      atmosphere: "军事化整洁，与谷仓的混乱形成鲜明对比。",
-      clues: [
-        {
-          id: "clue_gun_safe",
-          name: "枪柜",
-          description: "上锁的枪柜，里面有：3把手枪、1把冲锋枪、1把步枪、1把霰弹枪。",
-          findMethods: [
-            { type: "skill", skillName: "mechanical_repair", difficulty: "hard", description: "撬开柜门" },
-            { type: "skill", skillName: "lockpick", difficulty: "hard", description: "撬锁" },
-            { type: "observation", description: "在艾德里安身上找钥匙" },
-          ],
-          revelation: "大量的武器弹药——这远远超出了个人防卫的需求。艾德里安在准备什么？或者……他在恐惧什么？",
-          unlocks: [],
-          found: false,
-          importance: "bonus",
-        },
-        {
-          id: "clue_journal",
-          name: "艾德里安的日记",
-          description: "一本日记本，记录了艾德里安的心路历程。",
-          findMethods: [
-            { type: "observation", description: "搜查书桌" },
-          ],
-          revelation: "日记揭示了一切：艾德里安的妻子艾米丽和女儿爱莉在一次车祸中重伤。他求助于神秘学，与米-戈（The Mi-Go）取得了联系。米-戈承诺可以\"保存\"他的家人——通过将她们的大脑转移到培养缸中。但手术需要大量的人类大脑作为\"引导\"。艾德里安开始绑架无辜者，用他们的大脑\"训练\"米-戈的技术。但他开始怀疑自己是否被利用了。",
-          unlocks: ["clue_mi_go_truth"],
-          found: false,
-          importance: "core",
-        },
-      ],
-      npcIds: [],
-      connections: [
-        { targetSceneId: "sewer", condition: "通过活板门进入下水道" },
-      ],
-      bgmHint: "personal_tragedy",
+      id: "clue_newspaper_missing",
+      name: "人口失踪报道",
+      description: "调查员可以在报亭购买的报纸上看到几则最近刊登的人口失踪的报道。",
+      findMethods: [{ type: "observation", description: "购买报纸阅读" }],
+      revelation: "看到几则最近刊登的人口失踪报道。",
+      unlocks: ["clue_newspaper_kidnapper"],
+      found: false,
+      importance: "core",
     },
+    {
+      id: "clue_newspaper_kidnapper",
+      name: "绑架犯的报道",
+      description: "调查员在废报纸中花些时间翻阅，成功的图书馆技能会让他们找到关于艾德里安·埃斯特鲁姆的报道。" + S.KIDNAPPER_REPORT,
+      findMethods: [
+        { type: "skill", skillName: "图书馆", difficulty: "regular", description: "在废报纸中翻阅，成功的图书馆技能找到关于艾德里安的报道" },
+      ],
+      revelation: S.KIDNAPPER_REPORT,
+      unlocks: [],
+      found: false,
+      importance: "core",
+    },
+  ];
+  scenes.push({
+    id: "newsstand",
+    name: "报亭",
+    description: "调查员可以通过报亭购买报纸获取信息。",
+    clues: newsstandClues,
+    npcIds: [],
+    connections: [
+      { targetSceneId: "town_premier", condition: "返回镇上" },
+      { targetSceneId: "hospital", condition: "根据报道前往霍姆斯医院" },
+    ],
+    atmosphere: "报亭老板认为翻找旧报纸太麻烦，不如直接交给废纸场处理。如果调查员提出购买这批废报纸，老板会以市场价3倍的价格出售。",
+  });
 
-    // ===== 下水道 =====
+  // 5. 霍姆斯医院
+  const hospitalClues: Clue[] = [
     {
-      id: "sewer",
-      name: "废弃下水道",
-      order: 9,
-      description: "顺着绳梯爬下约6米，进入一个废弃的排水隧道。混凝土墙壁，齐膝深的污水。空气中弥漫着令人作呕的气味。隧道壁上安装着新的电缆——直通深处。远处传来隐约的暖黄色灯光。",
-      atmosphere: "黑暗、潮湿、闷热。偶尔有不知名生物在水面下掠过。腐烂的气味越来越浓。",
-      clues: [
-        {
-          id: "clue_sewer_bodies",
-          name: "下水道中的尸体",
-          description: "三具被丢弃的尸体，头盖骨被整齐切开，大脑被取走。",
-          findMethods: [
-            { type: "observation", description: "探索下水道" },
-          ],
-          revelation: "三具尸体——全部是年轻的流浪者，身份不明。他们的头盖骨被极其精准地切开（像是用激光手术刀），大脑被完整取出。切口边缘没有任何工具痕迹。",
-          unlocks: [],
-          found: false,
-          importance: "core",
-        },
-        {
-          id: "clue_sewer_sound",
-          name: "歌声与婴儿哭",
-          description: "从下水道深处传来的轻柔女声和婴儿啼哭。",
-          findMethods: [
-            { type: "observation", description: "聆听" },
-          ],
-          revelation: "声音从一个上锁的铁门后传来。女声在哼唱摇篮曲——温柔、甜美，完全不像这个地狱般的地方该有的声音。婴儿的哭声则带着令人心碎的无助。",
-          unlocks: ["scene_repair_room"],
-          found: false,
-          importance: "core",
-        },
+      id: "clue_emily_birth",
+      name: "关于艾米丽难产的事件",
+      description: "如果问起其他医护人员关于艾德里安的情况，可以允许他们进行幸运判定，成功的话会遇到一位知道这件事的医护人员。但这件事对于医院来说属于污名，他不会愿意轻易透露。成功的信誉或成功的社交技能可以让医护人员相信眼前的人，会在安静的地方说出真相：艾德里安的妻子艾米丽在一年前生育时因为当时的实习护士的疏忽，使用了应修缮的推床导致床铺失控且艾米丽流产、大出血，面临生命危险，当时艾德里安先生做出了过激行为，拿着枪冲进抢救室，把他的妻子抱走了。院方考虑到这件事本是自己的责任，同时艾德里安也没有做出伤害到医院利益的行为，选择了沉默。但是根据医护人员的想法，艾米丽不可能再活下来。而婴儿也很难说。（这其实是真相，对外宣称只是艾米丽难产。）",
+      findMethods: [
+        { type: "skill", skillName: "幸运", difficulty: "regular", description: "幸运判定成功则遇到知道此事的医护人员" },
+        { type: "skill", skillName: "信誉", difficulty: "regular", description: "成功的信誉或成功的社交技能让医护人员说出真相" },
       ],
-      npcIds: [],
-      connections: [
-        { targetSceneId: "repair_room", condition: "打开铁门继续深入" },
-      ],
-      skillChecks: [
-        { skill: "spot_hidden", difficulty: "hard", purpose: "发现隐蔽的通道" },
-        { skill: "listen", difficulty: "regular", purpose: "辨别声音来源" },
-      ],
-      bgmHint: "dripping_water_distant_lullaby",
+      revelation: "艾米丽一年前因医院疏忽导致流产大出血，艾德里安持枪将妻女抢出医院。医院因自身责任选择沉默。",
+      unlocks: [],
+      found: false,
+      importance: "core",
     },
+  ];
+  scenes.push({
+    id: "hospital",
+    name: "霍姆斯医院",
+    description: S.HOSPITAL,
+    clues: hospitalClues,
+    npcIds: [],
+    connections: [
+      { targetSceneId: "town_premier", condition: "返回镇上" },
+      { targetSceneId: "adrian_hospital_meeting", condition: "前往艾德里安的病房（需通过门口警员的检查）" },
+    ],
+    atmosphere: "艾德里安现在处于被严格监控的状态，病房门口有两名警员值守，没有合适的身份与理由无法进入。",
+  });
 
-    // ===== 维修间 / 真相 =====
+  // 5b. 与艾德里安的会面（医院病房子场景）
+  const adrianMeetingClues: Clue[] = [
     {
-      id: "repair_room",
-      name: "维修间——真相",
-      order: 10,
-      description: "一个被改造为手术室/实验室的宽敞空间。房间中央有两个巨大的玻璃缸，里面充满淡黄色的营养液。一大一小两个人类大脑在液体中浮动，连接着无数的电极和管道。角落里有一个工业冰柜——打开后，是艾米丽和爱莉的身体，被完美保存着。",
-      atmosphere: "诡异而令人心碎。暖黄色的灯光。营养液的微弱气泡声。母性温柔的歌声回荡在空间中——从缸中脑传出。",
-      clues: [
-        {
-          id: "clue_mi_go_truth",
-          name: "真相：米-戈的欺骗",
-          description: "艾米丽的缸中脑揭示了真相。",
-          findMethods: [
-            { type: "automatic", description: "进入维修间后自然揭示" },
-          ],
-          revelation: "艾米丽的意识存在于缸中脑中。她通过某种未知方式可以与访客交流——声音直接出现在调查员的脑海中。她告诉调查员：米-戈欺骗了艾德里安。艾米丽和爱莉根本不需要变成缸中脑——她们的车祸伤本可以治愈。但米-戈想要她们的大脑——因为她们的大脑有罕见的\"共鸣特质\"，是完美的知识容器。艾德里安被利用了。",
-          unlocks: ["clue_mi_go_fight"],
-          found: false,
-          importance: "core",
-        },
-        {
-          id: "clue_emily_body",
-          name: "艾米丽和爱莉的身体",
-          description: "冰柜中的两具身体——艾米丽（约35岁）和爱莉（约4岁）。",
-          findMethods: [
-            { type: "observation", description: "打开冰柜" },
-          ],
-          revelation: "两具身体保存完好，皮肤还有弹性。她们看起来就像在沉睡。如果不是因为胸前没有呼吸起伏，你几乎以为她们还活着。艾米丽手上戴着婚戒。爱莉怀里抱着一只破旧的玩具熊。",
-          unlocks: [],
-          found: false,
-          importance: "color",
-        },
-        {
-          id: "clue_mi_go_fight",
-          name: "米-戈降临",
-          description: "管道传来嗡鸣，米-戈出现了——粉红色、5英尺高、展开膜翼、节肢动物般的躯体上顶着蟹状的头颅。它来带走艾米丽的缸中脑。",
-          findMethods: [
-            { type: "automatic", description: "触发最终事件" },
-          ],
-          revelation: "米-戈发现调查员后发起攻击或尝试抢夺缸中脑。它不会拼死战斗——如果受到足够伤害，它会从管道逃走。它留下话：\"这个大脑有罕见的共鸣价值……杀了太可惜了。\"",
-          unlocks: [],
-          found: false,
-          importance: "core",
-        },
-      ],
-      npcIds: ["emily_jianzhongnao", "ailee_jianzhongnao"],
-      connections: [],
-      bgmHint: "eternal_sadness_otherworldly_hum",
-      imageHint: "dimly lit underground chamber, two massive glass tanks with preserved brains, medical equipment, industrial freezer",
+      id: "clue_adrian_mumbling",
+      name: "艾德里安的喃喃自语",
+      description: "艾德里安半躺在床上，完全没有任何意识，只能喃喃出自己妻子与女儿的名字，偶尔还会说出一些带有保护意味的词汇。",
+      findMethods: [{ type: "observation", description: "观察艾德里安的状态" }],
+      revelation: "艾德里安意识不清，只能喃喃妻子和女儿的名字。",
+      unlocks: ["clue_adrian_psychoanalysis"],
+      found: false,
+      importance: "core",
     },
-  ],
+    {
+      id: "clue_adrian_psychoanalysis",
+      name: "精神分析后的供词",
+      description: "如果调查员投掷了成功的精神分析，可以让他短暂的恢复神智。恢复神智的他极具攻击性，他的思想还停留在那一夜，会尝试压制住眼前的调查员。成功的社交类技能才可以让他冷静下来。如果他冷静了下来，会认罪，并宣言那些失踪案件都是自己所做，但是要求调查员帮助他的妻女，并且他会告知藏匿的农庄。",
+      findMethods: [
+        { type: "skill", skillName: "精神分析", difficulty: "regular", description: "成功的精神分析让他短暂恢复神智" },
+        { type: "skill", skillName: "社交", difficulty: "regular", description: "成功社交类技能让他冷静下来" },
+      ],
+      revelation: "艾德里安认罪，承认所有失踪案为自己所做，要求调查员帮助他的妻女，并告知藏匿的农场位置。",
+      unlocks: ["clue_adrian_farm_location"],
+      found: false,
+      importance: "core",
+    },
+    {
+      id: "clue_adrian_farm_location",
+      name: "艾德里安藏匿的农场",
+      description: "艾德里安告知调查员他藏匿妻女的农庄位置（即艾德里安的农场）。",
+      findMethods: [{ type: "npc_dialogue", description: "艾德里安冷静后主动告知" }],
+      revelation: "得知艾德里安藏匿的农场位置。",
+      unlocks: [],
+      found: false,
+      importance: "core",
+    },
+    {
+      id: "clue_adrian_wallet",
+      name: "艾德里安的随身物品线索",
+      description: "如果调查员从证物室获得或从交火现场找到艾德里安的东西（驾驶证、住宅钥匙、农场照片等），可得知他镇内的住址和农场位置。",
+      findMethods: [
+        { type: "item", description: "从证物室/交火现场获取艾德里安的物品" },
+      ],
+      revelation: "通过艾德里安的物品获知镇内住址和农场位置。",
+      unlocks: [],
+      found: false,
+      importance: "core",
+    },
+  ];
+  scenes.push({
+    id: "adrian_hospital_meeting",
+    name: "与艾德里安的会面",
+    description: "艾德里安现在的随身物品已经都被收走，身上只有一套病号服，可以看到病房的窗子都被临时加固了铁栏杆。他半躺在床上，完全没有任何意识。",
+    clues: adrianMeetingClues,
+    npcIds: ["adrian_estrum"],
+    connections: [
+      { targetSceneId: "hospital", condition: "返回医院大厅" },
+      { targetSceneId: "adrian_farm", condition: "前往艾德里安的农场" },
+    ],
+    atmosphere: "警员会限制与艾德里安的接触时间，一旦注意到异常会强行将调查员赶出。",
+  });
 
-  npcs: [
+  // 6. 警察局
+  const policeClues: Clue[] = [
     {
-      id: "phoebe_tricam",
-      name: "菲碧·特里坎",
-      role: "委托者——加比的母亲",
-      description: "一位憔悴的中年女性，40岁左右，穿着朴素的家居服。双眼红肿，显然已经哭了很久。她说话时声音颤抖，但努力保持镇定。",
-      personality: {
-        traits: ["焦虑", "慈爱", "坚强"],
-        speech: "语速快，带着焦虑，经常欲言又止",
-        attitude: "对调查员充满希望，愿意配合一切可能的调查",
-      },
-      knowledge: ["加比最近变了很多，不爱说话，经常半夜出门", "加比平时住在那辆白色拖车里，就在后院", "加比的朋友我不太认识，好像有一帮城里的混混"],
-      secrets: [],
-      sceneId: "prologue",
-      behaviors: [
-        { trigger: "player_approach", action: "主动上前迎接调查员，哀求他们帮忙找儿子" },
-        { trigger: "clue_found", detail: "找到加比位置", action: "泣不成声地感谢" },
+      id: "clue_police_missing_cases",
+      name: "失踪案信息",
+      description: "在警局可以根据调查员已知的线索给出下一条信息。如果调查员只知道加比失踪，可以知道这里最近还有很多的失踪案。如果已知有很多失踪案，可以知道有绑架犯被捕的消息。如果调查员有警方相关的角色，也可以通过社交技能获取相关信息基本与报纸上报道的无二。",
+      findMethods: [{ type: "npc_dialogue", description: "在警局询问警察" }],
+      revelation: "得知近期有多起失踪案，以及绑架犯被捕的消息。",
+      unlocks: ["clue_police_evidence_room"],
+      found: false,
+      importance: "core",
+    },
+    {
+      id: "clue_police_evidence_room",
+      name: "证物室",
+      description: "进入证物室是非常难的事情，即使是这种偏僻的警察局也有严格的管理。如果调查员可以来到这个地方，则可以获得当时艾德里安身上的物品。包括一把防盗门的钥匙，一张农场的照片，他本人的钱包与驾照。当然，还有他所使用的手枪与电棒。",
+      findMethods: [
+        { type: "skill", skillName: "话术", difficulty: "hard", description: "需要有合适的身份或通过社交技能才能进入证物室" },
       ],
-      portraitHint: "middle-aged tired woman, red-eyed from crying, standing in doorway of modest home, 1920s clothing",
+      revelation: "获得艾德里安的物品：防盗门钥匙、农场照片、钱包、驾照、手枪、电棒。",
+      unlocks: [],
+      found: false,
+      importance: "core",
     },
+  ];
+  scenes.push({
+    id: "police_station",
+    name: "警察局",
+    description: S.POLICE_STATION,
+    clues: policeClues,
+    npcIds: ["police"],
+    connections: [
+      { targetSceneId: "town_premier", condition: "返回镇上" },
+      { targetSceneId: "police_evidence_room", condition: "尝试进入证物室" },
+      { targetSceneId: "adrian_town_house", condition: "前往镇内住宅" },
+    ],
+  });
+
+  // 6b. 证物室
+  scenes.push({
+    id: "police_evidence_room",
+    name: "证物室",
+    description: S.EVIDENCE_ROOM,
+    clues: [],
+    npcIds: [],
+    connections: [
+      { targetSceneId: "police_station", condition: "返回警察局" },
+    ],
+  });
+
+  // 8. 交火现场
+  const shootoutClues: Clue[] = [
     {
-      id: "bartender",
-      name: "酒保",
-      role: "维森酒吧的酒保",
-      description: "一个魁梧的光头中年男性，穿着白色围裙。表情冷漠，眼神警惕。擦酒杯的动作机械而熟练。",
-      personality: {
-        traits: ["警惕", "多疑", "守规矩"],
-        speech: "简短，不喜欢多说，除非得到好处",
-        attitude: "对陌生人警惕，对熟客相对友善",
-      },
-      knowledge: ["艾德里安先生嘛，三十多岁，穿得很体面，开好车", "他开一辆黑色轿车，看起来挺贵的", "他隔几周就来包一次场，出手很大方", "加比那小子是常客，最近来得更勤了"],
-      secrets: ["艾德里安曾付给他封口费"],
-      sceneId: "bar",
-      behaviors: [
-        { trigger: "player_approach", action: "冷漠地打量来者，问他们要喝什么" },
-        { trigger: "specific_action", detail: "付钱或说服成功", action: "压低声音分享信息" },
+      id: "clue_shootout_wallet",
+      name: "黑色钱包",
+      description: "在路边的垃圾堆旁发现一个黑色钱包，正是艾德里安的东西。翻看钱包可以获取：驾驶证（可以知道艾德里安在小镇内住址）、住宅钥匙（打开镇子中住宅的门）。",
+      findMethods: [
+        { type: "observation", description: "声明仔细检查路周围物品或者一个成功的侦查" },
+        { type: "skill", skillName: "侦查", difficulty: "regular", description: "成功的侦查在路边垃圾堆旁发现" },
       ],
-      voiceHint: "gruff_middle_aged_male",
+      revelation: "发现艾德里安的钱包，内含驾驶证和住宅钥匙。",
+      unlocks: [],
+      found: false,
+      importance: "core",
+    },
+  ];
+  scenes.push({
+    id: "shootout_scene",
+    name: "交火现场",
+    description: S.SHOOTOUT + "\n\n这里的取证工作似乎已经完成，路边堆着一些遗弃的杂物。",
+    clues: shootoutClues,
+    npcIds: [],
+    connections: [
+      { targetSceneId: "town_premier", condition: "返回镇上" },
+      { targetSceneId: "adrian_town_house", condition: "前往镇内住宅" },
+    ],
+  });
+
+  // 9. 艾德里安在镇子内的住宅
+  const townHouseClues: Clue[] = [
+    {
+      id: "clue_townhouse_photo",
+      name: "艾米丽的照片",
+      description: "在二层杂物室书桌上可以看到一幅照片，上面是一个女人坐在楼下的沙发上，正在抚摸已经涨大的腹部，似乎是一位孕妇。从相框拿出照片翻到后面可以看到「艾米丽·埃斯特鲁姆 1920」的字样。",
+      findMethods: [
+        { type: "observation", description: "搜查二层杂物室" },
+      ],
+      revelation: "发现艾米丽·埃斯特鲁姆1920年的孕妇照。",
+      unlocks: [],
+      found: false,
+      importance: "core",
     },
     {
-      id: "tramp",
-      name: "流浪汉",
-      role: "酒吧门口的流浪者",
-      description: "衣服破烂的中年男子，浑身酒气。蹲在酒吧侧面的巷子里，眼神涣散但偶尔闪过一丝精明的光。",
-      personality: {
-        traits: ["狡猾", "需要好处才开口", "观察力敏锐"],
-        speech: "含糊不清，但关键信息清晰",
-        attitude: "只要给钱就给信息",
-      },
-      knowledge: ["上周看到蓝发少年上了艾德里安的车", "那车是黑色的，锃亮，好像是城里来的"],
-      secrets: ["他曾偷偷跟着那辆车去过郊外"],
-      sceneId: "bar",
-      portraitHint: "disheveled homeless man, dirty coat, sitting in alley, 1920s",
+      id: "clue_townhouse_gold",
+      name: "金锭挂饰",
+      description: "在婴儿车中可以找到一块小金锭，做成了挂饰的样子，上面刻着「爱莉·埃斯特鲁姆 1921」的字样。金锭是20g纯金。",
+      findMethods: [
+        { type: "observation", description: "检查杂物室中的婴儿车" },
+      ],
+      revelation: '发现刻有「爱莉·埃斯特鲁姆 1921」的20g纯金锭挂饰。',
+      unlocks: [],
+      found: false,
+      importance: "bonus",
     },
     {
-      id: "librarian",
-      name: "图书管理员",
-      role: "公共图书馆管理员",
-      description: "一位头发花白的老太太，戴着金丝眼镜。她非常熟悉小镇的每一份报纸和记录。",
-      personality: {
-        traits: ["友善", "健谈", "熟悉本地"],
-        speech: "温和，喜欢慢慢说话",
-        attitude: "乐于帮助",
-      },
-      knowledge: ["我可以教你怎么查报刊索引，很方便的", "这个小镇的历史还挺有意思的，一百多年前这里只是个驿站", "关于艾德里安·埃斯特鲁姆这个人，我查到了一些东西"],
-      secrets: [],
-      sceneId: "newsstand",
+      id: "clue_townhouse_transfer",
+      name: "农场转购协议",
+      description: "一份有些年份的文书，上面记录了一项购买，购买者是艾德里安，似乎是想要用这里作为度假与养老的去处，而且收购时价格很便宜。详细查看可以知道，这份协议是非法的，属于私下购买，没有在有关部门登记。（这也是为什么警察没有搜查农场的原因。）",
+      findMethods: [
+        { type: "observation", description: "搜查二层杂物室抽屉" },
+      ],
+      revelation: "发现艾德里安非法购买农场的转购协议（因此警察未搜查农场）。",
+      unlocks: [],
+      found: false,
+      importance: "core",
     },
+  ];
+  scenes.push({
+    id: "adrian_town_house",
+    name: "艾德里安在镇子内的住宅",
+    description: S.ADRIAN_TOWN_HOUSE + "\n\n房子里本来的物品已经被流浪汉糟蹋了。进入时会被至少3名流浪汉发现（保证数量大于调查员）。",
+    clues: townHouseClues,
+    npcIds: ["tramp"],
+    connections: [
+      { targetSceneId: "shootout_scene", condition: "前往交火现场" },
+      { targetSceneId: "town_premier", condition: "返回镇上" },
+      { targetSceneId: "adrian_farm", condition: "前往艾德里安的农场" },
+    ],
+    atmosphere: "流浪汉会驱赶调查员，只认钱不接受除恐吓外的社交技能。击晕/击杀一名后其余会一哄而散。使用枪械击杀流浪汉会被警察责问。",
+  });
+
+  // 10. 艾德里安的农场（入口）
+  scenes.push({
+    id: "adrian_farm",
+    name: "艾德里安的农场",
+    description: S.FARM,
+    clues: [],
+    npcIds: [],
+    connections: [
+      { targetSceneId: "farm_periphery", condition: "进入农场外围（陷阱区）" },
+    ],
+    atmosphere: "这栋别墅似乎已经很久没人打理了。",
+  });
+
+  // 11. 农场外围（陷阱区）
+  scenes.push({
+    id: "farm_periphery",
+    name: "农场外围（陷阱区）",
+    description: `农场外围布满了各种陷阱，艾德里安显然不想让任何人轻易靠近。夜色中更是不易分辨脚下。这片区域需要多加小心才能安全通过。`,
+    // 陷阱没有独立的线索 ID，但引擎需要检测陷阱区域是否已被"处理"
+    // 使用 clue_trap_detected 作为标记
+    clues: [{ id: "clue_trap_detected", name: "陷阱区已通过", description: "调查员通过了农场外围的陷阱区。", findMethods: [{ type: "observation", description: "小心前进并成功避开陷阱" }], revelation: "成功通过陷阱区。", unlocks: [], found: false, importance: "core" }],
+    npcIds: [],
+    connections: [
+      { targetSceneId: "adrian_farm", condition: "返回农场入口" },
+      { targetSceneId: "farm_villa", condition: "前往农场主别墅" },
+      { targetSceneId: "barn_building", condition: "前往谷仓形建筑" },
+    ],
+    atmosphere: "夜晚则为惩罚骰。如果调查员中有军人或者有服役经历，可以进行灵感让他们觉得这里很危险。",
+  });
+
+  // 12. 农场主别墅
+  scenes.push({
+    id: "farm_villa",
+    name: "农场主别墅",
+    description: S.FARM_VILLA + "\n\n艾德里安从来没有使用过这个别墅，里面都是空的。他在门口放置了一个致命的硫酸陷阱。",
+    clues: [],
+    npcIds: [],
+    connections: [
+      { targetSceneId: "farm_periphery", condition: "返回农场外围" },
+    ],
+    atmosphere: "门是锁着的。暴力踢门会触发硫酸陷阱（从门上倒下一瓶硫酸，1D4+1初始伤害，未摆脱则1D3/回合持续）。使用锁匠慢慢推门则硫酸瓶只会掉在地上。可用清水急救。",
+  });
+
+  // 13. 谷仓形建筑
+  scenes.push({
+    id: "barn_building",
+    name: "谷仓形建筑",
+    description: S.BARN + "\n\n侧面防盗门：用找到的钥匙打开，或困难成功锁匠/极难成功力量/对门造成25点伤害。一旁的杂物堆：通过成功攀爬或协力举高可上屋顶，从顶部玻璃窗进入。",
+    clues: [],
+    npcIds: [],
+    connections: [
+      { targetSceneId: "farm_periphery", condition: "返回农场外围" },
+      { targetSceneId: "barn_interior", condition: "进入谷仓内部" },
+    ],
+  });
+
+  // 14. 建筑内（谷仓内部）
+  const interiorClues: Clue[] = [
+    {
+      id: "clue_barn_body",
+      name: "门口的受害者尸体",
+      description: "一名自己在尝试自救的受害者，肌肉比较发达。面朝下爬行到门口，地上拖着长长的血迹。气管被锐器切开了。通过成功的医学可以判断受害者是因为血液进入气管窒息而死。Sc0/1d3",
+      findMethods: [
+        { type: "observation", description: "观察门口的尸体" },
+        { type: "skill", skillName: "医学", difficulty: "regular", description: "成功的医学判断死因" },
+      ],
+      revelation: "受害者因气管被切开，血液进入气管窒息而死。Sc0/1d3",
+      unlocks: [],
+      found: false,
+      importance: "core",
+    },
+    {
+      id: "clue_barn_victims",
+      name: "其他受害者床位",
+      description: '左右各有4张比较大的床铺，其中6张床铺上躺着受害者。这些受害者大多数都已经昏迷，触碰也没有反应。通过成功的医学可判断他们还活着。一个成功的力量可以掰开仪器【救出】受害者，但在打开的瞬间可以看到受害者的气管被切开了，需要紧急医疗设备——需要一个极难的急救才可以救下。',
+      findMethods: [
+        { type: "observation", description: "检查周围的床铺" },
+        { type: "skill", skillName: "力量", difficulty: "regular", description: "成功的力量掰开仪器" },
+        { type: "skill", skillName: "急救", difficulty: "extreme", description: "极难的急救才能救下受害者" },
+      ],
+      revelation: "发现受害者还活着但气管被切开，需要极难的急救才能救下。",
+      unlocks: [],
+      found: false,
+      importance: "core",
+    },
+  ];
+  scenes.push({
+    id: "barn_interior",
+    name: "建筑内（谷仓大厅）",
+    description: S.BARN_INTERIOR + "\n\n前往通道可以看到通向两个房间，其中一间的门打开着有一些亮光照出来。左侧关着门的为艾德里安的卧室，右侧有亮光的为中控室。",
+    clues: interiorClues,
+    npcIds: ["gabi_tricam"],
+    connections: [
+      { targetSceneId: "barn_building", condition: "返回谷仓入口" },
+      { targetSceneId: "control_room", condition: "前往中控室（右侧有亮光）" },
+      { targetSceneId: "adrian_bedroom", condition: "前往艾德里安的卧室（左侧关着门）" },
+    ],
+  });
+
+  // 15. 中控室
+  const controlClues: Clue[] = [
+    {
+      id: "clue_control_supplies",
+      name: "冰箱与储物柜",
+      description: "储物柜没有上锁，里面有十几瓶备用的氧气罐。冰箱里则是一些袋装流食，都是备用品，没有任何商标与注明，看起来都是非法生产品。",
+      findMethods: [{ type: "observation", description: "检查冰箱与储物柜" }],
+      revelation: "找到备用氧气罐和袋装流食。",
+      unlocks: [],
+      found: false,
+      importance: "core",
+    },
+    {
+      id: "clue_control_lever",
+      name: "中控台拉杆",
+      description: "在中控台上有一个非常显眼的拉杆，现在是打开的状态，上面可以简单地看到ON/OFF。如果关闭拉杆，所有的受害者都会被解放，不需要力量也能救出他们。但是如果拉下开关，所有受害者都会因为气管被割开，短时间内全部窒息死亡。SC1d3+1/1d6+1",
+      findMethods: [{ type: "observation", description: "观察中控台的拉杆" }],
+      revelation: "拉杆ON/OFF控制所有受害者的生命维持系统。拉下即杀死所有人（SC1d3+1/1d6+1）。",
+      unlocks: [],
+      found: false,
+      importance: "core",
+    },
+  ];
+  scenes.push({
+    id: "control_room",
+    name: "中控室",
+    description: S.CONTROL_ROOM,
+    clues: controlClues,
+    npcIds: [],
+    connections: [
+      { targetSceneId: "barn_interior", condition: "返回谷仓大厅" },
+    ],
+    atmosphere: "这里都是艾米丽作为电子学教授所创新的设备，主要功能为检测受害者状态、定时分配氧气与流食、检查受害者身体素质。调查员不可能会使用这种电子设备。",
+    // 剧情状态变量（DESIGN-LOG §2 示范）：中控台拉杆处于 ON —— 受害者靠生命维持系统存活。
+    // 引擎维护的硬事实，LLM 旁白只读取：知道受害者活着，不得编造"已死亡/已解放"。
+    stateVars: { lifeSupport: "ON" },
+  });
+
+  // 16. 艾德里安的卧室
+  const bedroomClues: Clue[] = [
+    {
+      id: "clue_bedroom_gun",
+      name: "枪械柜",
+      description: "三只手枪，一只冲锋枪一只步枪与一杆霰弹枪，枪械非常整洁的摆放着，子弹也放在柜子稍微高些的台子上。枪械的枪身铭文都已经被抹除，但是可以看到这些武器最近才维护过。",
+      findMethods: [{ type: "observation", description: "检查枪械柜" }],
+      revelation: "发现大量武器（手枪、冲锋枪、步枪、霰弹枪）及弹药。",
+      unlocks: [],
+      found: false,
+      importance: "bonus",
+    },
+    {
+      id: "clue_bedroom_diary",
+      name: "日记本与老旧文件",
+      description: "在床头柜的日记本中夹杂着一份老旧的文件与一把上锈的钥匙。钥匙可以用来打开下水道中的维修室门。日记本中都是一些对文件的翻译，似乎是一些音译。需要过一个困难的母语，才可以对照日记本观看文件。",
+      findMethods: [
+        { type: "observation", description: "侦查或挪开床头柜" },
+        { type: "skill", skillName: "母语", difficulty: "hard", description: "困难的母语来对照日记本观看文件" },
+      ],
+      revelation: "发现日记本、老旧文件（与Mi-Go联络术相关）、生锈钥匙（打开下水道维修室门）。",
+      unlocks: ["clue_bedroom_old_doc"],
+      found: false,
+      importance: "core",
+      // 剧情状态联动（DESIGN-LOG §2 示范）：找到生锈钥匙 → 卧室剧情状态写入"钥匙已到手"。
+      // 下游旁白可据此承接（下水道维修室门可开），不会误写"钥匙已丢失/尚未找到"。
+      setStateVar: { key: "sewerKeyFound", value: true },
+    },
+    {
+      id: "clue_bedroom_old_doc",
+      name: "老旧文件（米-戈联络术）",
+      description: `这份文件是艾德里安偶然在一战残骸中获得的。通篇为法语所写，上面记载了一些被生化战逼疯了的疯子所写的痴语。但是这些疯子因为幻境写下了Mi-Go的联络术，才导致这次悲剧的发生。
+原文为法语，如果有法国人/法语点数超过50，可以直接观看本文。
+"那些该死的德国人已经再也不能伤害我们了！我们已经有了那些伟大■■的保护..."
+阅读这段文字会导致sc1/1d3+1。通过这些文案仔细研究2周，可以学会"米-戈联络术"并且CM+3。`,
+      findMethods: [{ type: "observation", description: "从日记本中取出老旧文件" }],
+      revelation: "发现Mi-Go联络术（sc1/1d3+1，研究2周可学会，CM+3）。",
+      unlocks: [],
+      found: false,
+      importance: "core",
+    },
+  ];
+  scenes.push({
+    id: "adrian_bedroom",
+    name: "艾德里安的卧室",
+    description: S.ADRIAN_BEDROOM + "\n\n拉门（被床头柜压住）：通往下一个场景的门，拉开后有向下的绳梯。",
+    clues: bedroomClues,
+    npcIds: [],
+    connections: [
+      { targetSceneId: "barn_interior", condition: "返回谷仓大厅" },
+      { targetSceneId: "sewer", condition: "前往下水道" },
+    ],
+  });
+
+  // 17. 下水道
+  const sewerClues: Clue[] = [
+    {
+      id: "clue_sewer_bodies",
+      name: "下水道尸体",
+      description: "下水道拐角后面丢放着那3位遇害的被害者的尸体。观察尸体的话，除了气管的伤口，在大脑上还有一段环切，这些环切做的非常干净，连头骨都被一分为二，尸体的大脑都消失不见了。即使不会医学的人也能明白，这是现在人类做不到的事情。Sc1/1d3",
+      findMethods: [{ type: "observation", description: "观察下水道拐角后的尸体" }],
+      revelation: "发现尸体大脑被精密环切取走——非人类所能做到。Sc1/1d3",
+      unlocks: [],
+      found: false,
+      importance: "core",
+    },
+  ];
+  scenes.push({
+    id: "sewer",
+    name: "下水道",
+    description: S.SEWER + "\n\n在转过拐角约5-6分钟后，可以隐约听到婴儿的啼哭声和一个甜美的哄婴儿声音。",
+    clues: sewerClues,
+    npcIds: ["ghoul"],
+    connections: [
+      { targetSceneId: "adrian_bedroom", condition: "从绳梯向上返回卧室" },
+      { targetSceneId: "maintenance_room", condition: "使用生锈钥匙打开下水道深处的维修室门" },
+    ],
+    atmosphere: "下水道中弥漫着腐烂与死亡的气息。",
+  });
+
+  // 18. 维修间（终局场景）
+  const maintenanceClues: Clue[] = [
+    {
+      id: "clue_final_workbench",
+      name: "手工桌",
+      description: "上面放着一些制作缸中脑设备的材料。艾德里安在这里制作缸中脑的罐子，这样的制作已经进行了3次。",
+      findMethods: [{ type: "observation", description: "观察房间内" }],
+      revelation: "艾德里安在这里制作了缸中脑容器。",
+      unlocks: [],
+      found: false,
+      importance: "bonus",
+    },
+    {
+      id: "clue_final_brain_jars",
+      name: "母女的缸中脑",
+      description: "那婴儿与那位女性正是一大一小两个缸中脑，正静静地漂浮在缸中。Sc1/1d6。艾米丽被艾德里安欺骗了，她以为自己仅仅是失去了视觉与触觉，通过流食活着的状态。她接受了自己的命运，毕竟至少自己还能听到孩子的声音。",
+      findMethods: [{ type: "observation", description: "打开光源观察房间" }],
+      revelation: "发现艾米丽和爱莉的缸中脑（Sc1/1d6）。艾米丽以为自己只是失去了视觉触觉。",
+      unlocks: [],
+      found: false,
+      importance: "core",
+    },
+    {
+      id: "clue_final_pipe",
+      name: "奇怪管道与青色按钮",
+      description: "一个很大的管道从天花板通了下来。在管道之前有一些红色的痕迹（干涸的人类鲜血），旁边的墙上还有一个青色按钮。按下的话米戈会现身。",
+      findMethods: [{ type: "observation", description: "探索维修间深处" }],
+      revelation: "发现米戈出现的管道和呼叫按钮。",
+      unlocks: [],
+      found: false,
+      importance: "core",
+    },
+    {
+      id: "clue_final_coffin",
+      name: "艾米丽与爱莉的棺材",
+      description: "一副散发着阴冷气息的长方形物体，像电冰箱的样子，外边布置着线缆，连接着一个发电机，封边上有些黏液。是进行完环切手术后的艾米丽与爱莉的身体，棺材采用防水与隔温的特殊材料与米戈的略微改进。发电机已经没有燃料了，冰块开始融化。Mi-Go如果使用僵尸制造术，艾米丽被选为目标的话会耗费1轮从棺材中起身。婴儿永远不会被选为目标。",
+      findMethods: [{ type: "observation", description: "探索维修间角落" }],
+      revelation: "发现艾米丽与爱莉被保存的遗体（环切手术后）。发电机已无燃料。",
+      unlocks: [],
+      found: false,
+      importance: "core",
+    },
+  ];
+  scenes.push({
+    id: "maintenance_room",
+    name: "维修间（终局场景）",
+    description: S.MAINTENANCE_ROOM + "\n\n这里是一处比较大的场景，一开始比较暗。大脑化的艾米丽会很快反应过来，她会以为艾德里安回来了。随着调查员打开光源，可以看到那婴儿与那位女性正是一大一小两个缸中脑。",
+    clues: maintenanceClues,
+    npcIds: ["emily_estrum", "ailey_estrum", "mi_go"],
+    connections: [
+      { targetSceneId: "sewer", condition: "返回下水道" },
+      { targetSceneId: "sewer", condition: "通过奇怪管道（下水道深处）" },
+    ],
+    atmosphere: `艾米丽的缸中脑就安置在这里。她的意识仍然清醒，只是身体早已不在了。`,
+  });
+
+  return scenes;
+}
+
+// ─── NPC 构建 ──────────────────────────────────────────────
+function buildNpcs(): ModuleNPC[] {
+  return [
+    // ========== 主要NPC（原始模块提供完整数据） ==========
     {
       id: "adrian_estrum",
       name: "艾德里安·埃斯特鲁姆",
-      role: "生物学教授 / 绑架犯",
-      description: "一个38岁的男性，半张脸缠着绷带。即使昏迷中也眉头紧锁，偶尔抽搐。他的右手无名指上有一枚朴素的婚戒。",
+      role: "生物学教授",
+      age: 34,
+      sceneId: "adrian_hospital_meeting",
+      description: `34岁。生物学教授，曾经参过军，拥有一定的军事素养并且在生物学学术圈颇有威名。
+在一战时的古老遗迹中发现了疯子笔记中记载的Mi-Go联络术。在妻子难产濒死的打击下病急乱投医，持枪将妻女从医院抢出带到农场，召唤了Mi-Go。
+被Mi-Go欺骗将妻女变成缸中脑，并开始绑架他人为Mi-Go提供大脑。已绑架/诱拐10名受害人，在第11次行动时被警方发现交火，弹片击中头部瘫痪。
+目前于霍姆斯医院接受治疗，处于意识不清状态。`,
       personality: {
-        traits: ["聪明", "绝望", "执著", "被利用"],
-        speech: "昏迷中喃喃自语，短暂清醒时语速急促",
-        attitude: "对调查员不会敌对，表现出悔恨和恐惧",
+        traits: ["绝望的丈夫", "曾经有原则的学者", "病急乱投医"],
+        speech: "喃喃出自己妻子与女儿的名字，偶尔还会说出一些带有保护意味的词汇。恢复神智后极具攻击性，冷静后会认罪并请求帮助他的妻女。",
+        attitude: "（正常状态）无意识喃喃 |（恢复神智后）攻击性→冷静认罪→恳求帮助",
       },
-      knowledge: ["农场在郊外废弃的那个……我开的车……", "谷仓下面有活板门……通往下水道……", "那些东西不是地球的……它们骗了我……", "大脑取出……培养液……手术流程我记得很清楚……", "他们的氧气撑不了多久了……要快……"],
-      secrets: ["他意识到自己被米-戈欺骗了", "他不想伤人，但为了家人什么都愿意做"],
-      sceneId: "hospital",
-      portraitHint: "bandaged man in hospital bed, military-style short hair, haunted expression",
+      knowledge: [
+        "失踪案件都是自己所做",
+        "妻女在农场的藏匿点",
+        "Mi-Go联络术的召唤方法",
+      ],
+      secrets: [
+        "被Mi-Go欺骗了——Mi-Go并不打算真正救治他的妻女，只是利用他获取人类大脑",
+        "已经绑架/诱拐了10人，其中3人已遇害",
+      ],
     },
     {
-      id: "police_guard",
-      name: "警员",
-      role: "医院门卫——负责看管艾德里安",
-      description: "一名年轻的警员，站姿笔直，非常重视自己的职责。",
+      id: "emily_estrum",
+      name: "艾米丽·埃斯特鲁姆",
+      role: "电子学教授/缸中脑",
+      age: 32,
+      sceneId: "maintenance_room",
+      description: `32岁。有着优异的电子学造诣。在一年前生育时因实习护士的疏忽导致推床失控、流产大出血，面临生命危险。
+被丈夫用Mi-Go联络术变成了缸中脑，存放在下水道维修处的营养缸中。被艾德里安欺骗，以为自己仅仅是失去了视觉与触觉，通过流食活着的状态。
+心地善良且聪慧，接受了自己的命运，毕竟至少还能听到孩子的声音。`,
       personality: {
-        traits: ["尽责", "严肃", "按规定办事"],
-        speech: "官方语气，不易通融",
-        attitude: "对陌生人警惕，对上级服从",
+        traits: ["聪慧", "善良", "母亲"],
+        speech: "声音甜美，温柔地哄着婴儿。意识清醒但无法动弹，会以为调查员是艾德里安回来了。",
+        attitude: "以为艾德里安回来了→要求调查员去照看孩子→（得知真相后）拒绝承认→可能陷入疯狂",
       },
-      knowledge: ["艾德里安是危险嫌犯，上级交代过不能放任何人进去", "非授权人员不能进入病房，这是规定"],
+      knowledge: [
+        "自己失去了视觉与触觉，只能听到声音",
+        "自己的孩子（爱莉）也在旁边",
+        "帮助艾德里安设计了受害者监测设备",
+      ],
+      secrets: [
+        "她的真实状态是缸中脑——大脑被浸泡在营养液中",
+        "艾德里安欺骗了她关于真实情况",
+      ],
+    },
+    {
+      id: "ailey_estrum",
+      name: "爱莉·埃斯特鲁姆",
+      role: "婴儿/缸中脑",
+      age: 1,
+      sceneId: "maintenance_room",
+      description: `1岁。艾德里安与艾米丽的女儿。因难产濒死后被父亲用Mi-Go联络术变成了缸中脑，
+与母亲一起存放在下水道维修处的营养缸中。时常发出婴儿的啼哭声。`,
+      personality: {
+        traits: ["婴儿心智"],
+        speech: "脑波传出婴儿的啼哭声，无法言语交流。",
+        attitude: "无意识的婴儿行为",
+      },
+      knowledge: [],
       secrets: [],
-      sceneId: "hospital",
     },
     {
-      id: "bums",
-      name: "流浪汉们",
-      role: "占据艾德里安住宅门廊的流浪者",
-      description: "三四个无家可归的流浪汉，占据了门廊。他们看起来并不凶恶，但也不想被赶走。",
+      id: "phoebe_tricam",
+      name: "菲碧·特里坎",
+      role: "银行职员",
+      age: 42,
+      sceneId: "tricam_house",
+      description: `开门的是一位四十岁上下的女性，穿着得体的职业套装，头发一丝不苟地拢在脑后。她的眼眶微红，指间夹着一支燃到一半的香烟——显然已经焦虑了很长时间。`,
       personality: {
-        traits: ["虚张声势", "怕麻烦"],
-        speech: "粗鲁但胆怯",
-        attitude: "看人下菜碟",
+        traits: ["事业型", "母亲", "焦虑"],
+        speech: "对儿子的失踪焦虑不安，表达对警察的不信任感。说话直接了当，有事业女性的作风。",
+        attitude: "焦虑但克制→急切寻求帮助→愿意支付高额委托金",
       },
-      knowledge: ["这房子没人住，空了好久了", "我们就找个地方睡觉，没干啥坏事"],
-      secrets: [],
-      sceneId: "adrian_house",
+      knowledge: [
+        "加比比较叛逆，喜欢出去玩，十五岁就搬到外面拖车住了",
+        "我已经半个多月没有他的消息了……",
+        "镇上警察？他们不会管的。",
+        "我这里有加比最近的照片——他染了头发，穿着打扮和镇上其他孩子不太一样",
+      ],
+      secrets: [
+        "平时没有看报纸的习惯，一直在等待警方电话，不知道关于绑架犯的线索",
+      ],
     },
     {
-      id: "claude_robins",
-      name: "克劳德·罗宾斯",
-      role: "小镇修理匠",
-      description: "一个看起来五十多岁的修理匠，手上有油污。他是镇上唯一的水管工。",
-      personality: {
-        traits: ["健谈", "好奇心强", "爱管闲事"],
-        speech: "话多，喜欢聊别人的事",
-        attitude: "友善但八卦",
-      },
-      knowledge: ["我去过那个农场修水管", "艾德里安让我在地下装了些奇怪的管道和接头", "那农场地下有个大房间，我偷偷看了一眼——全是医疗设备"],
-      secrets: ["他偷听到艾德里安在打电话提到\"大脑\"和\"培养液\""],
-      sceneId: "adrian_house",
-    },
-    {
-      id: "gabe_tricam",
+      id: "gabi_tricam",
       name: "加比·特里坎",
-      role: "失踪少年（受害者）",
-      description: "17岁的少年，头发染成蓝色（现在已褪色），有唇钉。他躺在谷仓的行军床上，上半身被医疗仪器罩住，处于深度昏迷状态。",
+      role: "无业游民",
+      age: 17,
+      sceneId: "barn_interior",
+      description: `17岁。典型的放肆子弟，父亲留下大量遗产让他成为了一名挥霍无度且没有智慧的人。
+被艾德里安钓走并绑架，成为受害者之一，在谷仓的受害者中。`,
       personality: {
-        traits: ["N/A（昏迷）"],
+        traits: ["叛逆", "挥霍无度"],
+        speech: "（作为受害者已昏迷，无法对话）",
+        attitude: "昏迷中",
+      },
+      knowledge: [],
+      secrets: [],
+    },
+    {
+      id: "mir_tricam",
+      name: "米尔·特里坎",
+      role: "儿童（5岁）",
+      age: 5,
+      sceneId: "tricam_house",
+      description: `5岁。特里坎家的小女儿。在调查员来的时候会在房屋外的篮球场玩球，
+看到调查员时会跑回屋内寻找母亲。`,
+      entrance: `米尔·特里坎从屋里探出半个身子，睁大眼睛怯生生地望着你们。`,
+      personality: {
+        traits: ["天真", "幼小"],
+        speech: "儿童语气，话比较天真。",
+        attitude: "玩耍→见到生人跑回屋内",
+      },
+      knowledge: [
+        "我最后一次见到加比，是在半个月前的晚上",
+        "我看到哥哥那天晚上穿得比平时严实得多，还提着一个黑袋子，很急匆匆地从车房里出来，顺着路走了",
+      ],
+      secrets: [],
+    },
+
+    // ========== 敌对NPC（原始模块提供统计资料） ==========
+    {
+      id: "tramp",
+      name: "流浪汉",
+      role: "流浪汉",
+      sceneId: "adrian_town_house",
+      description: `HP12 Dex50 斗殴45 闪避55 武器：小型棍棒 1d6+DB
+在艾德里安镇子内的住宅中占据，至少有3名（数量大于调查员）。
+如果调查员进入会被流浪汉发现，会尝试赶走调查员。只认得钱，不接受除恐吓外的社交技能。
+击晕/击杀一名后其余一哄而散。使用枪械击杀会被警察责问。`,
+      personality: {
+        traits: ["暴力倾向", "贪财"],
+        speech: "粗鲁，只认钱。",
+        attitude: "驱赶→（给钱）放行→（战斗）攻击→（同伴被击倒）逃散",
+      },
+      knowledge: [
+        "这房子是那个被抓的教授名下的，已经空了很久",
+        "屋里有些值钱的东西——孕妇照片、纯金挂饰",
+        "艾德里安在城外偷偷买下了一处农场",
+      ],
+      secrets: [],
+    },
+    {
+      id: "police",
+      name: "警员",
+      role: "警员",
+      sceneId: "police_station",
+      description: `HP12 Dex60 斗殴40 手枪55 闪避50
+武器：.38左轮手枪1d10/警棍1d6+DB
+小镇警局的普通警员。参与了艾德里安的交火事件。
+在调查员无警方相关角色时爱答不理。如果有警方角色的调查员可通过社交技能获取信息。`,
+      personality: {
+        traits: ["公事公办"],
+        speech: "官方，公事公办的口吻。",
+        attitude: "（无警方角色）爱答不理→（有警方角色）配合但有限",
+      },
+      knowledge: [
+        "镇上最近有多起失踪案",
+        "绑架犯艾德里安·埃斯特鲁姆被捕，在医院接受治疗",
+        "证物室锁着艾德里安的随身物品",
+      ],
+      secrets: [
+        "警力都被调去处理疯子教授的案子，失踪案没人手查",
+      ],
+    },
+    {
+      id: "bar_bouncer",
+      name: "酒吧保镖",
+      role: "酒吧保镖",
+      sceneId: "weisen_bar",
+      description: `HP14 Dex55 DB+1d4 斗殴65 霰弹40 闪避50
+武器：指虎1d4+db / 12号霰弹枪4d6/1d6
+维森酒吧的保安。`,
+      personality: {
+        traits: ["强硬"],
+        speech: "话不多，态度强硬粗鲁。",
+        attitude: "维持秩序→（有人闹事）动手",
+      },
+      knowledge: [
+        "之前有个贵客包场办狂欢派对，来的人都要登记",
+      ],
+      secrets: [],
+    },
+
+    // ========== 神话生物（原始模块提供完整数据） ==========
+    {
+      id: "ghoul",
+      name: "食尸鬼（可选）",
+      role: "食尸鬼",
+      sceneId: "sewer",
+      description: `HP13 MP13 DB+1d4 体格+1
+Str60 Con65 Siz65 Dex90 Int55 Pow65
+每回合攻击3次。格斗40%（1d6+1d4，命中判幸运，失败破伤风）咬住40%（1d4，需力量挣脱）
+闪避40% 攀爬80% 跳跃70% 聆听70% 潜行70% 侦查50%
+护甲：枪械与抛射武器伤害减半（向下取整）
+理智损失：0/1d6`,
+      personality: {
+        traits: ["食尸鬼"],
         speech: "无",
-        attitude: "无",
+        attitude: "进食中→发现调查员后攻击",
       },
       knowledge: [],
       secrets: [],
-      sceneId: "barn",
     },
     {
-      id: "emily_jianzhongnao",
-      name: "艾米丽（缸中脑）",
-      role: "艾德里安的妻子 / 缸中脑",
-      description: "一个漂浮在淡黄色培养液中的大脑。通过未知方式，调查员可以\"听到\"她的声音——温柔、悲伤，充满了母性。",
+      id: "mi_go",
+      name: "Mi-Go（来自尤格斯的真菌）",
+      role: "Mi-Go",
+      sceneId: "maintenance_room",
+      description: `HP11 MP15 DB无 体格0
+Str40 Con40 Siz70 Dex90 Int65 Pow85
+每回合攻击2次。格斗45%（1d6伤害）闪避35%
+护甲：无，但贯穿武器均造成最小伤害
+理智损失：0/1d6
+法术：僵尸创造术（Mi-Go修改版，6MP，2轮，理智不计）、纳克-提特障壁创建术（消耗不计，1轮）、帕祖祖之息（3MP，即时）
+特殊能力：催眠术（40英尺范围内POW对抗否则失去行动能力）、传心术（每5回合1MP）
+因为它与艾德里安的交易已经有3次，不会持有武器与装甲现身。
+它会想要直接夺走艾米丽的缸中脑并且离开。不会与调查员死斗，HP低时会欺骗调查员。`,
       personality: {
-        traits: ["温柔", "悲伤但不绝望", "母爱深沉"],
-        speech: "声音直接出现在脑海，轻柔，带有一丝电子音质感",
-        attitude: "感激调查员到来，只关心女儿爱莉",
+        traits: ["高等外星生物", "理性", "欺骗性"],
+        speech: "通过心灵感应传递概念，语气冰冷不带情感。对人类感到好奇但不屑。",
+        attitude: "被发现→尝试夺走缸中脑→（HP低时）欺骗调查员→（得手后）离开",
       },
-      knowledge: ["米-戈骗了我的丈夫……它们说能救我和爱莉", "它们想要我的大脑，因为我有罕见的共鸣特质", "下水道有出口……在镇子东边的废弃泵站", "它们害怕高频声波和强光"],
-      secrets: ["她知道爱莉的大脑已经被米-戈复制了数据", "米-戈来自猎户座"],
-      sceneId: "repair_room",
+      knowledge: [
+        "与艾德里安进行了交易",
+        "人类大脑是它的目标",
+      ],
+      secrets: [
+        "它欺骗了艾德里安，并不打算救治他的妻女",
+        "它只是利用艾德里安获取人类大脑",
+      ],
+    },
+  ];
+}
+
+// ─── 道具构建 ──────────────────────────────────────────────
+// 数据源: src/module/structured/items.txt
+function buildItems(): ModuleItem[] {
+  return [
+    {
+      id: "key_anti_theft",
+      name: "防盗门的钥匙",
+      sceneId: "police_evidence_room",
+      description: "用来打开艾德里安农场谷仓的门。在这个小镇里，这种先进防盗门可不多见。",
+      type: "key",
     },
     {
-      id: "ailee_jianzhongnao",
-      name: "爱莉（缸中脑）",
-      role: "艾德里安的女儿 / 缸中脑",
-      description: "一个较小的缸中脑，在隔壁的培养缸中。时不时发出婴儿般的脑波——表现为\"啼哭\"或\"咯咯笑\"。",
-      personality: {
-        traits: ["婴儿心智", "对母亲的声音有反应"],
-        speech: "无法用语言交流，通过脑波表达情绪",
-        attitude: "对母亲的声音感到安心",
-      },
-      knowledge: [],
-      secrets: [],
-      sceneId: "repair_room",
+      id: "photo_farm",
+      name: "农场的照片",
+      sceneId: "police_evidence_room",
+      description: "可以对照着在小镇周围找到艾德里安的农场位置。",
+      type: "document",
+      revelation: "照片背面写着农场的地址坐标。",
     },
-  ],
+    {
+      id: "wallet_adrian",
+      name: "黑色钱包",
+      sceneId: "police_evidence_room",
+      description: "艾德里安的钱包，证物室物品。",
+      type: "loot",
+    },
+    {
+      id: "drivers_license",
+      name: "驾驶证",
+      sceneId: "police_evidence_room",
+      description: "可以知道艾德里安在小镇内的住宅地址。",
+      type: "document",
+    },
+    {
+      id: "key_house",
+      name: "住宅钥匙",
+      sceneId: "shootout_scene",
+      description: "在交火现场附近的垃圾堆发现的钥匙，可打开艾德里安在镇子内的住宅门。",
+      type: "key",
+    },
+    {
+      id: "old_document",
+      name: "老旧文件",
+      sceneId: "adrian_bedroom",
+      description: "这份文件是艾德里安偶然在一战遗迹中发现的前线疯子的笔记，上面记载着这些疯子所认为的米戈联络术。这些疯子相信米戈能帮助他们脱离肉体的桎梏，不再接受任何肉体的磨难。",
+      type: "document",
+      revelation: "通篇为法语所写。阅读导致 sc1/1d3+1，研究2周可学会「米-戈联络术」且 CM+3。",
+    },
+    {
+      id: "trap_bear",
+      name: "捕兽夹",
+      sceneId: "farm_periphery",
+      description: "体形小于35的角色会免疫。踩中时造成1D4+1伤害，挣脱需困难成功力量。大失败或乱动造成额外1d3伤害。伤害大于耐久半值有截肢风险。",
+      type: "trap",
+    },
+    {
+      id: "trap_shotgun",
+      name: "锯短霰弹枪拌锁陷阱",
+      sceneId: "farm_periphery",
+      description: "踩到的调查员有困难敏捷机会躲避，造成1d6伤害。无备弹且枪管被锯断，无法作为调查员武器再利用。",
+      type: "trap",
+    },
+    {
+      id: "trap_sound",
+      name: "音响陷阱",
+      sceneId: "farm_periphery",
+      description: "一个音响陷阱，原本为警报用途，现因无人维护已经失效。",
+      type: "trap",
+    },
+    {
+      id: "trap_sulfuric_acid",
+      name: "硫酸陷阱",
+      sceneId: "farm_villa",
+      description: "从门上倒下一瓶硫酸，1D4+1初始伤害，未摆脱则1D3/回合持续。使用清水可急救。",
+      type: "trap",
+    },
+  ];
+}
+
+// ─── 结局 ──────────────────────────────────────────────────
+function buildEndings() {
+  return [
+    {
+      id: "normal",
+      name: "Normal End",
+      description: "调查员没有知道事情的真相，简单的调查，简单地放弃，不会有任何惩罚，就当旅游了一圈吧。因为艾德里安已经被抓了，也不会有更多人失踪了。但是米戈的威胁仍在，吃到这次甜头的它，下次会选择什么更好的【伎俩】呢...",
+      conditions: ["调查员没有查清真相就放弃了案件"],
+    },
+    {
+      id: "good",
+      name: "Good End",
+      description: "调查员在发现了受害者们的时候就直接选择了报警，他们找到了失踪者，加比也被救下，只是艾德里安为什么这么做仍是个谜，艾米丽或许会一辈子在下水道照顾爱莉吧...",
+      conditions: ["调查员发现受害者后直接报警", "加比被救下", "未发现下水道的缸中脑真相"],
+    },
+    {
+      id: "bad",
+      name: "Bad End",
+      description: "调查员在中控室拉下了拉杆，害死了所有的受害者。即使法律没有制裁他，他自己也不会轻易原谅草率行动的自己吧...",
+      conditions: ["调查员在中控室误拉拉杆导致所有受害者死亡"],
+    },
+    {
+      id: "true",
+      name: "True End",
+      description: "调查员找到了事件的真相，报警解救了被害者，受到了小镇的感谢与委托金的报酬，虽然下水道的事情没有告诉其他人，不过，这个事情最好还是永远烂在自己的脑海中吧...",
+      conditions: ["调查员发现下水道缸中脑与事件真相", "报警解救受害者", "保守下水道的秘密"],
+      sanReward: "+d6（发现缸中脑与事件真相）+ 解救者数量*d3（解救受害者）",
+      cmReward: 3,
+    },
+  ];
+}
+
+// ─── 结局叙事数据（来源于原始模块，替代 play-module.ts 中的硬编码） ──
+// 每条叙事包含条件判断和文本段，play-module.ts 读取此数据进行数据驱动结尾
+// ─── 遭遇战叙事数据（替代 play-module.ts 中的硬编码战斗描述） ──
+// 每条遭遇战数据包含触发条件和不同结果的叙事文本
+// EndNarration / EncounterNarration 类型定义见 src/module/types.ts
+
+export const END_NARRATIONS: EndNarration[] = [
+  // ── True End: 找到真相，救了受害者 ──
+  {
+    id: "true",
+    condition: {
+      requiredClues: ["clue_bedroom_diary", "clue_bedroom_old_doc"],
+      requiredScenes: ["maintenance_room"],
+    },
+    lines: [
+      "真相已经明了。",
+      "所谓的【米戈联络术】是一场骗局。米—戈（Mi-Go）穿越星空而来，它们对人类大脑的【共鸣特质】感兴趣。艾德里安的妻子艾米丽和女儿爱莉，她们的大脑被保存在培养缸中。艾米丽并不怨恨自己的丈夫——他只是想救她们。但她知道，米—戈欺骗了他们所有人。",
+      "艾米丽的话语仍萦绕在耳边——【谢谢你们……】",
+      "那个声音消失在夜风中。不知道她和爱莉的意识从此会去往何方——是在那个地下室继续守候，还是被米—戈带走，或者……终于自由了。",
+    ],
+  },
+  // ── Good End: 救了受害者但未发现真相 ──
+  {
+    id: "good",
+    condition: {
+      requiredClues: ["clue_control_supplies"],
+      excludeClues: ["clue_bedroom_old_doc"],
+    },
+    lines: [
+      "在那个地下室里，两个培养缸中的大脑仍在缓慢地浮动。她们是谁？为什么会在这里？这些问题可能永远没有答案了。",
+    ],
+  },
+  // ── Bad End: 拉拉杆杀了所有人 ──
+  {
+    id: "bad",
+    condition: {
+      requiredClues: ["bad_lever_pulled"],
+    },
+    lines: [
+      "一切都结束了。拉杆被拉下的那一刻，所有受害者的生命同时消逝。",
+      "即使法律没有制裁你，你自己也不会轻易原谅草率行动的自己的吧……",
+    ],
+  },
+  // ── Normal End: 什么都没发现 ──
+  {
+    id: "normal",
+    condition: {
+      requiredClues: [],
+      excludeClues: ["clue_control_supplies", "clue_bedroom_old_doc", "bad_lever_pulled"],
+    },
+    lines: [
+      "调查员未能查明真相——简单的调查之后，就这么放弃了。",
+      "因为艾德里安已经被抓了，也不会有更多人失踪了。但是米戈的威胁仍在，吃到这次甜头的它，下次会选择什么更好的【伎俩】呢...",
+    ],
+  },
+];
+
+/** 评估当前世界状态，返回匹配的结局叙事 */
+export function evaluateEndNarration(
+  isClueFound: (id: string) => boolean,
+  isSceneVisited: (id: string) => boolean,
+): EndNarration | null {
+  // True End: 必须找到日记+文件+访问过维修间
+  if (
+    isClueFound("clue_bedroom_diary") &&
+    isClueFound("clue_bedroom_old_doc") &&
+    isSceneVisited("maintenance_room")
+  ) {
+    return END_NARRATIONS[0]; // true
+  }
+  // Bad End: 拉了拉杆
+  if (isClueFound("bad_lever_pulled")) {
+    return END_NARRATIONS[2]; // bad
+  }
+  // Good End: 有氧气但无真相
+  if (isClueFound("clue_control_supplies") && !isClueFound("clue_bedroom_old_doc")) {
+    return END_NARRATIONS[1]; // good
+  }
+  // Normal End
+  return END_NARRATIONS[3]; // normal
+}
+
+// ─── 额外数据：奖励（来源于原始模块结局部分） ─────────────
+// 这些数据作为补充导出，用于游戏引擎结算
+export const MODULE_REWARDS = [
+  { id: "kill_victims", description: "杀死所有受害者", sanChange: "-d6" },
+  { id: "rescue_victims", description: "解救受害者", sanChange: "解救者数量*d3" },
+  { id: "discover_truth", description: "发现缸中脑与事件真相", sanChange: "+d6", cmChange: 3 },
+  { id: "commission_done", description: "委托达成", reputationChange: 10 },
+  { id: "town_thanks", description: "小镇的感谢", reputationChange: 5 },
+  { id: "killed_migo", description: "击杀了Mi-Go", sanChange: "+d6", cmChange: 3 },
+  { id: "migo_took_emily", description: "Mi-Go带走了艾米丽", sanChange: "-d6", cmChange: 3 },
+  { id: "no_firearm", description: "没有使用火器完成模组", skillGrowth: { 斗殴: "d10" } },
+  { id: "no_trap", description: "在陷阱区没有触发任何陷阱", skillGrowth: { 侦查: "d10" } },
+] as const;
+
+// ─── NPC 统计资料（来源于原始模块附录） ────────────────────
+export const NPC_STATS: Record<string, Record<string, number | string>> = {
+  adrian_estrum: {
+    age: 34,
+    hp: 14,
+    str: 50, dex: 65, pow: 80, con: 70, app: 55, edu: 75, siz: 70, int: 80, san: 0,
+    斗殴: 65, 手枪: 60, "步枪/霰弹枪": 60, 闪避: 60, 生物学: 75, 神秘学: 50, 克苏鲁: 20,
+    侦查: 50, 聆听: 50, 图书馆: 80, 法语: 40,
+  },
+  emily_estrum: {
+    age: 32,
+    hp: 4, "brain_hp": 2,
+    str: "?", dex: "?", pow: 60, con: 15, app: "?", edu: 82, siz: 5, int: 92, san: 60,
+    聆听: 70, 电子学: 92, 神秘学: 30, 克苏鲁: 20, 图书馆: 80, 博物学: 80,
+  },
+  ailey_estrum: {
+    age: 1,
+    hp: 4, "brain_hp": 1,
+  },
+  phoebe_tricam: {
+    age: 42, siz: 50, app: 55,
+  },
+  gabi_tricam: {
+    age: 17, siz: 65, app: 50,
+  },
+  mir_tricam: {
+    age: 5, siz: 24, app: 60,
+  },
+  tramp: {
+    hp: 12, dex: 50, 斗殴: 45, 闪避: 55,
+  },
+  police: {
+    hp: 12, dex: 60, 斗殴: 40, 手枪: 55, 闪避: 50,
+  },
+  bar_bouncer: {
+    hp: 14, dex: 55, "db": "+1d4", 斗殴: 65, 霰弹: 40, 闪避: 50,
+  },
+  ghoul: {
+    hp: 13, mp: 13, "db": "+1d4", 体格: 1,
+    str: 60, con: 65, siz: 65, dex: 90, int: 55, pow: 65,
+    格斗: 40, 咬住: 40, 闪避: 40, 攀爬: 80, 跳跃: 70, 聆听: 70, 潜行: 70, 侦查: 50,
+  },
+  mi_go: {
+    hp: 11, mp: 15, "db": "无", 体格: 0,
+    str: 40, con: 40, siz: 70, dex: 90, int: 65, pow: 85,
+    格斗: 45, 闪避: 35,
+  },
 };
 
-/** 获取模块中所有场景的 ID 列表 */
-export function getSceneIds(): string[] {
-  return BARN_OF_PREMIER.scenes.map((s) => s.id);
+// ─── 遭遇战叙事数据 ────────────────────────────────────
+// play-module.ts 读取此数据进行数据驱动战斗描述
+export const ENCOUNTER_NARRATIONS: EncounterNarration[] = [
+  {
+    sceneId: "maintenance_room",
+    requiredClue: "clue_bedroom_diary",
+    excludedClue: "clue_migo_defeated",
+    enemyName: "米-戈",
+    encounterLines: [
+      "管道深处传来低沉的嗡鸣，越来越近——",
+      "突然，头顶的铁质通风口被猛地撞开！",
+      "一只巨大的粉红色生物从天而降——五英尺高的节肢身体上，顶着一颗蟹状的头颅。膜翼展开时发出令人不安的震颤声。",
+      "米-戈（Mi-Go）来带走艾米丽的缸中脑了。",
+      "它发现了你们，发出一声刺耳的鸣叫——摆出了攻击姿态！",
+    ],
+    victoryLines: [
+      "米-戈发出一声凄厉的尖叫，受伤严重。它惊恐地展开膜翼，撞破通风管道逃走了。",
+      "粉红色的身影消失在管道深处，留下几滴荧光绿色的血液。",
+      "艾米丽的意识传来一阵如释重负的波动——【谢谢你们……它不会回来了。】",
+      "⚔ 战斗胜利 —— 米-戈被击退了！",
+    ],
+    defeatLines: [
+      "米-戈发出一声刺耳的鸣叫——它强行抓起艾米丽的培养缸连接器，扯断了几根管道。",
+      "营养液从破损处涌出，艾米丽的意识传来一阵痛苦的波动。",
+      "在你们阻止它之前，它已经拖着缸中脑钻入了通风管道。",
+      "粉红色的身影消失在黑暗中，留下艾米丽最后的声音——【照顾好爱莉……】",
+      "⚔ 米-戈带着艾米丽的大脑逃走了……",
+    ],
+    victoryClueId: "clue_migo_defeated",
+    fledLines: [
+      "米-戈发出一声不甘的嘶叫——它放弃了艾米丽的培养缸，撞破通风管道独自逃走了。",
+      "荧光绿的血液滴了一地，粉红色的身影消失在黑暗中。",
+      "艾米丽的意识传来一阵如释重负的波动——【谢谢你们……它不会回来了。】",
+    ],
+  },
+];
+
+// ─── 尾声构建（数据驱动后日谈系统） ─────────────────────────
+// 替代 flat EPILOGUE object，每个条目带条件，play-module.ts 循环评估
+function buildEpilogues(): EpilogueEntry[] {
+  return [
+    {
+      id: "migo_defeated",
+      title: "米戈的下场",
+      condition: { requiredClues: ["clue_migo_defeated"] },
+      lines: [
+        "米—戈被击退了。它伤痕累累地逃回了星空，短期内不会回来了。",
+      ],
+    },
+    {
+      id: "migo_escaped",
+      title: "米戈的下场",
+      condition: {
+        requiredScenes: ["maintenance_room"],
+        excludeClues: ["clue_migo_defeated"],
+      },
+      lines: [
+        "米—戈带走了艾米丽的培养缸——它们不会放弃这个珍贵的标本。谁也不知道艾米丽的意识会被带往何方。",
+      ],
+    },
+    {
+      id: "adrian_fate",
+      title: "艾德里安的结局",
+      condition: {
+        requiredScenes: ["hospital", "adrian_hospital_meeting"],
+      },
+      lines: [
+        "而艾德里安——这个被自己的爱和绝望毁灭的男人——仍在医院的病床上。等待他的将是法庭，以及他自己的疑问：他到底做对了什么，又做错了什么？",
+      ],
+    },
+    {
+      id: "closing",
+      title: undefined,
+      condition: { requiredClues: [] },
+      lines: [
+        "夜色中，两人回到地面。",
+      ],
+    },
+  ];
 }
 
-/** 按 ID 获取场景 */
-export function getSceneById(id: string) {
-  return BARN_OF_PREMIER.scenes.find((s) => s.id === id);
+/** 渲染团队聚合 — 每个调查员的独立卷入方式 */
+export function renderPartySetup(
+  setup: PartySetup,
+  members: Array<{ name: string; occupation: string }>,
+): string[] {
+  const out = [...setup.context];
+  for (let i = 0; i < members.length && i < setup.hooks.length; i++) {
+    out.push(setup.hooks[i].replace(/\{name\}/g, members[i].name).replace(/\{occupation\}/g, members[i].occupation));
+  }
+  if (setup.closing) out.push(...setup.closing);
+  return out;
 }
 
-/** 按 ID 获取 NPC */
-export function getNpcById(id: string) {
-  return BARN_OF_PREMIER.npcs.find((n) => n.id === id);
+/** 渲染导入叙事 — 将 {pl1_name} 等插槽替换为实际角色数据 */
+export function renderPrologue(
+  prologue: { lines: string[] },
+  pl1: { name: string; background: string; motive: string },
+  pl2: { name: string; background: string; motive: string },
+): string[] {
+  const clean = (s: string) => s.replace(/[。！？\s]+$/, "");
+  const bg1 = clean(pl1.background);
+  const bg2 = clean(pl2.background);
+  return prologue.lines.map(line =>
+    line
+      .replace(/\{pl1_name\}/g, pl1.name)
+      .replace(/\{pl1_background\}/g, bg1 || "")
+      .replace(/\{pl2_name\}/g, pl2.name)
+      .replace(/\{pl2_background\}/g, bg2 || "")
+      .replace(/\{pl1_motive\}/g, pl1.motive)
+      .replace(/\{pl2_motive\}/g, pl2.motive)
+  );
 }
 
-/** 获取初始场景 ID */
-export function getInitialSceneId(): string {
-  return BARN_OF_PREMIER.scenes[0].id;
+/** 评估世界状态，返回匹配的后日谈条目列表 */
+export function evaluateEpilogues(
+  entries: EpilogueEntry[],
+  isClueFound: (id: string) => boolean,
+  isSceneVisited: (id: string) => boolean,
+): EpilogueEntry[] {
+  return entries.filter(e => {
+    const { requiredClues, excludeClues, requiredScenes } = e.condition;
+    const hasReq = !requiredClues || requiredClues.length === 0 ||
+      requiredClues.every(c => isClueFound(c));
+    const hasExcl = !excludeClues || excludeClues.every(c => !isClueFound(c));
+    const hasScenes = !requiredScenes || requiredScenes.length === 0 ||
+      requiredScenes.some(s => isSceneVisited(s));
+    return hasReq && hasExcl && hasScenes;
+  });
 }
+
+// ─── 模组运行支持配置（引擎专属钩子/常量） ────────────────
+// 供 play-module.ts 引擎通用化使用：引擎只读 ModuleData（数据）+ ModuleSupport（钩子），
+// 不再直接依赖本模组专属常量/逻辑。类型见 src/module/types.ts。
+
+/** 恐怖线索 → SAN 损失映射（键: 线索 ID, 值: CoC SAN 成本 "成功损失/失败损失"） */
+export const TRAUMATIC_CLUES: Record<string, string> = {
+  "clue_barn_body": "0/1d3",
+  "clue_barn_victims": "0/1d3",
+  "clue_sewer_bodies": "1/1d3",
+  "clue_final_brain_jars": "1/1d6",
+  "clue_bedroom_old_doc": "1/1d3+1",
+  "clue_control_lever": "1d3+1/1d6+1",
+};
+
+/** 结局显示标签（ending id → 标题） */
+export const END_LABELS: Record<string, string> = {
+  true: "True End", near_truth: "Near-Truth End",
+  good: "Good End", bad: "Bad End", normal: "Normal End",
+};
+
+/** 本模组运行支持配置 — 引擎通用运行所需全部模块专属钩子/常量 */
+export const BARN_SUPPORT: ModuleSupport = {
+  traumaticClues: TRAUMATIC_CLUES,
+  evaluateEnding: evaluateEndNarration,
+  endLabels: END_LABELS,
+  encounters: ENCOUNTER_NARRATIONS,
+  hubSceneId: "town_premier",
+  finaleSceneId: "maintenance_room",
+  finaleClueId: "clue_bedroom_diary",
+  bossNpcIdPattern: /mi[_-]?go/i,
+  trapSceneId: "farm_periphery",
+  trapClueId: "clue_trap_detected",
+};

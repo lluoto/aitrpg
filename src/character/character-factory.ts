@@ -821,9 +821,9 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     description: "接受委托进行秘密调查的私人探员",
     minAttributes: { intelligence: 60 },
     priorityAttributes: ["intelligence", "power"],
-    skills: ["侦查", "图书馆使用", "心理学", "话术", "格斗(肉搏)", "潜行"],
-    occupationSkills: ["spot_hidden", "library_use", "psychology", "fast_talk", "fighting", "stealth"],
-    baseHp: 9, rulesets: ["coc7e"], creditRatingRange: [20, 50],
+    skills: ["侦查", "图书馆使用", "心理学", "话术", "格斗(肉搏)", "射击(手枪)"],
+    occupationSkills: ["spot_hidden", "library_use", "psychology", "fast_talk", "fighting", "firearms_pistol"],
+    baseHp: 9, rulesets: ["coc7e"], creditRatingRange: [30, 60],
     skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 4,
   },
   // ── 司机 Driver ──

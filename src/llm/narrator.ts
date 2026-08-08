@@ -1,4 +1,4 @@
-// 叙事生成器 — 克苏鲁风格战斗叙事
+﻿// 叙事生成器 — 克苏鲁风格战斗叙事
 // LLM 驱动（有 API Key） + 模板 fallback（无 API Key）
 // 根据伤害/总HP比例决定伤势描述等级
 //
@@ -12,6 +12,7 @@
 import type { CombatResult } from "../types";
 import type { LLMClient } from "./client";
 import { calcSeverity, type WoundSeverity } from "../combat/wound-effects";
+import { checkDialogueText } from "../world/world-constraint";
 
 // ============================================================
 // 克苏鲁风格叙事模板
@@ -186,10 +187,25 @@ async function generateNarrativeLLM(
       { role: "system", content: NARRATIVE_SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
     ],
-    { temperature: 0.8, maxTokens: 200, timeout: 10000 }
+    { temperature: 0.8, maxTokens: 200, timeout: 120000 }
   );
 
-  return raw.trim();
+  // 世界模型约束：时代科技黑名单 / meta 词汇。命中则重生成一次（新上下文），再命中则交回降级路径
+  let text = raw.trim();
+  if (checkDialogueText(text)) {
+    text = (await llm.chat(
+      [
+        { role: "system", content: NARRATIVE_SYSTEM_PROMPT + "\n禁止使用任何 1920 年代不存在的现代科技词汇（手机、电视、电脑、互联网等）。" },
+        { role: "user", content: userPrompt },
+      ],
+      { temperature: 0.6, maxTokens: 200, timeout: 120000 }
+    )).trim();
+  }
+  if (checkDialogueText(text)) {
+    throw new Error("LLM 叙事违反世界模型约束，降级模板");
+  }
+
+  return text;
 }
 
 // ============================================================

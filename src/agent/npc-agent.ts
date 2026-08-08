@@ -18,6 +18,7 @@ import {
 } from "./npc-reaction";
 import { NPCStore } from "../db/index";
 import { applyConstraints } from "./constraints";
+import { checkDialogueText } from "../world/world-constraint";
 
 const MAX_RECENT_MEMORIES = 20;
 const SYSTEM_PROMPT_PREAMBLE = `你是一个 TRPG 非玩家角色（NPC）。你必须始终以角色的身份说话，不要跳出角色、不要评论游戏机制、不要替其他角色发言。
@@ -259,6 +260,12 @@ export class NPCAgent {
         response = constraintResult.sanitized;
       }
 
+      // 时代约束层 — 1920s 世界模型：LLM 输出含跨时代科技词 → 拦截并替换为安全话术
+      if (checkDialogueText(response)) {
+        console.warn(`  ⚠ NPC ${this.name} 时代约束拦截（输出含现代科技词）`);
+        response = this.anachronismSafeReply();
+      }
+
       this.rememberDialogue(this.name, response);
       return response;
     } catch (err: any) {
@@ -311,6 +318,12 @@ export class NPCAgent {
         response = constraintResult.sanitized;
       }
 
+      // 时代约束层 — 1920s 世界模型：主动发言含跨时代科技词 → 替换为安全话术
+      if (checkDialogueText(response)) {
+        console.warn(`  ⚠ NPC ${this.name} 主动发言时代约束拦截（含现代科技词）`);
+        response = this.anachronismSafeReply();
+      }
+
       this.rememberDialogue(this.name, response, 6);
       return response;
     } catch (err: any) {
@@ -337,6 +350,21 @@ export class NPCAgent {
     const short = role.includes("——") ? role.split("——")[0] : role;
     if (short.length > 10) return "";
     return short;
+  }
+
+  /** 时代约束拦截时的安全话术 — 不含任何具体内容/现代科技词，保持角色感 */
+  private anachronismSafeReply(): string {
+    const p = this.personality;
+    const tag = this.roleTag();
+    const tagPhrase = tag ? `我这个${tag}` : "我";
+    const replies = [
+      `（${this.name}摇了摇头）"这事……我得再想想怎么说。"`,
+      `"抱歉，我一时不知道该怎么跟你说。"`,
+      `（${this.name}沉默了片刻）"有些事，我还理不清头绪。"`,
+      `"唉……说来话长，改天再细说吧。"`,
+      `${tagPhrase ? `"我${tagPhrase}一时也想不明白。"` : `"我也说不清楚。"`}`,
+    ];
+    return replies[Math.floor(Math.random() * replies.length)];
   }
 
   /** LLM 不可用时的模板回应（特质+情绪+身份驱动） */

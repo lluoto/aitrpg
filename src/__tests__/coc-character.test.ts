@@ -71,33 +71,34 @@ describe("calcCoCAC", () => {
 });
 
 describe("calcCoCMove", () => {
-  test("标准属性 50 → Move 10（STR<64 + SIZ<64 + DEX<64 → +2）", () => {
-    // STR<64 && SIZ<64 → +1, DEX<64 && STR<64 → +1
+  test("标准属性 50 → Move 8（STR=DEX=SIZ，无调整）", () => {
     const move = calcCoCMove(50, 50, 50);
-    expect(move).toBe(10);
-  });
-
-  test("高 SIZ 高 DEX → Move 8", () => {
-    const move = calcCoCMove(80, 80, 80);
     expect(move).toBe(8);
   });
 
-  test("高 SIZ 低 DEX → Move 7", () => {
-    // STR 64+ 或 SIZ 64+ 且 DEX < 64 → -1
-    // STR<64 && SIZ<64 → false, DEX<64 && STR<64 → false
-    // (STR>=64 || SIZ>=64) && DEX<64 → true → -1
-    const move = calcCoCMove(80, 50, 80);
+  test("STR 和 DEX 均 < SIZ → Move 7", () => {
+    const move = calcCoCMove(50, 50, 80);
     expect(move).toBe(7);
+  });
+
+  test("STR 和 DEX 均 > SIZ → Move 9", () => {
+    const move = calcCoCMove(80, 80, 50);
+    expect(move).toBe(9);
+  });
+
+  test("单侧高于 SIZ（STR=SIZ, DEX<SIZ）→ Move 8", () => {
+    const move = calcCoCMove(80, 50, 80);
+    expect(move).toBe(8);
   });
 
   test("中年 40 岁减 1", () => {
     const move = calcCoCMove(50, 50, 50, 45);
-    expect(move).toBe(9); // 10 - 1(age)
+    expect(move).toBe(7); // 8 - 1(age)
   });
 
   test("老年 70 岁减 4", () => {
     const move = calcCoCMove(50, 50, 50, 70);
-    expect(move).toBe(6); // 10 - 4(age)
+    expect(move).toBe(4); // 8 - 4(age)
   });
 
   test("至少 1", () => {
@@ -113,16 +114,16 @@ describe("calcCoCMove", () => {
 describe("calcOccupationSkillPoints", () => {
   const testArchetype: CharacterArchetype = ALL_ARCHETYPES.find(a => a.id === "investigator")!;
 
-  test("EDU 60 → 职业技能点 60", () => {
-    expect(calcOccupationSkillPoints(testArchetype, 60)).toBe(60);
+  test("EDU 60 → 职业技能点 240（EDU×4）", () => {
+    expect(calcOccupationSkillPoints(testArchetype, { education: 60 })).toBe(240);
   });
 
-  test("EDU 90 → 职业技能点 90", () => {
-    expect(calcOccupationSkillPoints(testArchetype, 90)).toBe(90);
+  test("EDU 90 → 职业技能点 360", () => {
+    expect(calcOccupationSkillPoints(testArchetype, { education: 90 })).toBe(360);
   });
 
   test("默认使用 education 属性", () => {
-    expect(calcOccupationSkillPoints(testArchetype, 50)).toBe(50);
+    expect(calcOccupationSkillPoints(testArchetype, { education: 50 })).toBe(200);
   });
 });
 
@@ -172,7 +173,7 @@ describe("validateOccupationConstraints", () => {
   test("总额超 460 时警告", () => {
     const attrs = { strength: 90, constitution: 90, size: 90, dexterity: 90,
       appearance: 90, intelligence: 90, power: 90, education: 90 };
-    const warnings = validateOccupationConstraints(attrs, investigatorArchetype);
+    const warnings = validateOccupationConstraints(attrs, investigatorArchetype, 460);
     expect(warnings.some(w => w.includes("460"))).toBe(true);
   });
 });

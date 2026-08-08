@@ -404,7 +404,7 @@ const BOUT_MATRIX: Array<{
     ],
     guidance: "不要使用任何超过「刚才」时间跨度的信息。与其他角色互动时表现出困惑和警惕。",
     residual: "长休后恢复。若不定疯狂中，你可能永远失去这段时间的记忆。",
-    outcomeFn: (v: string) => `失忆——${v.slice(0, 20)}`,
+    outcomeFn: (v: string) => `失忆——${v}`,
   },
   {
     id: "paranoia", label: "偏执",
@@ -415,7 +415,7 @@ const BOUT_MATRIX: Array<{
     ],
     guidance: "不会接受任何帮助或善意。所有说服/交涉对你自动降一级难度。",
     residual: "即使症状消退，你对陌生人的信任永久下降。下次社交技能检定获得 1 个惩罚骰。",
-    outcomeFn: (v: string) => `偏执——${v.slice(0, 20)}`,
+    outcomeFn: (v: string) => `偏执——${v}`,
   },
   {
     id: "violence", label: "暴力",
@@ -426,7 +426,7 @@ const BOUT_MATRIX: Array<{
     ],
     guidance: "战斗时你无法区分队友和敌人。每次攻击前投 1d2 决定目标（1=最近的敌人，2=最近的队友）。",
     residual: "清醒后你为自己的行为感到羞愧。你对在疯狂中伤害过的对象自动产生+1 度好感/敬畏（守密人决定）。",
-    outcomeFn: (v: string) => `暴力倾向——${v.slice(0, 20)}`,
+    outcomeFn: (v: string) => `暴力倾向——${v}`,
   },
   {
     id: "flight", label: "逃跑",
@@ -437,7 +437,7 @@ const BOUT_MATRIX: Array<{
     ],
     guidance: "追逐规则自动启动或你进入最近的掩体。除非被强制拦住，你不会主动停止。",
     residual: "你开始随身准备「逃生路线」。每次进入新场景，你下意识寻找出口。",
-    outcomeFn: (v: string) => `逃跑——${v.slice(0, 20)}`,
+    outcomeFn: (v: string) => `逃跑——${v}`,
   },
   {
     id: "catatonia", label: "僵直",
@@ -448,7 +448,7 @@ const BOUT_MATRIX: Array<{
     ],
     guidance: "你无法行动。这状态持续 1d6 回合（或被外力打断——如被攻击或剧烈摇晃）。",
     residual: "你对僵直期间发生的事完全没有记忆。别人告诉你的你也不信。",
-    outcomeFn: (v: string) => `僵直——${v.slice(0, 20)}`,
+    outcomeFn: (v: string) => `僵直——${v}`,
   },
   {
     id: "hysteria", label: "歇斯底里",
@@ -459,7 +459,7 @@ const BOUT_MATRIX: Array<{
     ],
     guidance: "潜行和说服自动失败。你无法进行需要沉默或冷静的行动。",
     residual: "同伴可以在 1d3 回合后让你冷静下来（需要 INT×5 检定）。失败则持续到场景结束。",
-    outcomeFn: (v: string) => `歇斯底里——${v.slice(0, 20)}`,
+    outcomeFn: (v: string) => `歇斯底里——${v}`,
   },
   {
     id: "phobia", label: "恐惧症获得",
@@ -470,7 +470,7 @@ const BOUT_MATRIX: Array<{
     ],
     guidance: "你会试图远离恐惧来源，拒绝靠近或接触。触及时需要意志检定。",
     residual: "获得对应的恐惧症（见恐惧症表）。",
-    outcomeFn: (v: string) => `恐惧症获得——${v.slice(0, 20)}`,
+    outcomeFn: (v: string) => `恐惧症获得——${v}`,
   },
   {
     id: "fantasy", label: "幻觉/妄想",
@@ -481,7 +481,7 @@ const BOUT_MATRIX: Array<{
     ],
     guidance: "你可以选择「对抗幻觉」（意志检定）或「屈服于幻觉」（接受并开始 RP）。每次对抗成功时幻觉暂时消退 1 回合。",
     residual: "此后你对「真实」的标准变得模糊。你不再 100% 相信自己的感官。",
-    outcomeFn: (v: string) => `幻觉——${v.slice(0, 20)}`,
+    outcomeFn: (v: string) => `幻觉——${v}`,
   },
   {
     id: "obsession", label: "强迫行为",
@@ -492,7 +492,7 @@ const BOUT_MATRIX: Array<{
     ],
     guidance: "每次试图离开当前场景前，你必须先完成强迫行为（守密人决定耗时）。",
     residual: "你保留轻微的强迫倾向。此后到场景结束，每次新场景你多花 1 回合「检查」。",
-    outcomeFn: (v: string) => `强迫行为——${v.slice(0, 20)}`,
+    outcomeFn: (v: string) => `强迫行为——${v}`,
   },
   {
     id: "mania", label: "狂躁",
@@ -503,7 +503,7 @@ const BOUT_MATRIX: Array<{
     ],
     guidance: "你不接受任何否定的意见。所有阻止你的尝试不被你理解。",
     residual: "狂躁消退后你会极度疲惫——下个长休前所有体力行动获得 1 个惩罚骰。",
-    outcomeFn: (v: string) => `狂躁——${v.slice(0, 20)}`,
+    outcomeFn: (v: string) => `狂躁——${v}`,
   },
 ];
 

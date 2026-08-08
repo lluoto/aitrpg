@@ -700,7 +700,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
 
   // 龙炎霸者 - 野蛮人子职（原著为近战狂战士，龙炎吐息为其招牌能力）
   {
-    id: "wizard_dragon_fire",
+    id: "barbarian_dragon_fire",
     label: "野蛮人·龙炎霸者",
     description: "三转职业，再生型龙炎战士，以双头剑近战配合龙息著称",
     minAttributes: { strength: 16, constitution: 18, charisma: 14 },
@@ -879,7 +879,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
   // 神罚骑士 - 圣武士子职
   {
     id: "paladin_divine_punisher",
-    label: "圣武士·神罚骑士",
+    label: "圣骑士·神罚骑士",
     description: "教廷的精锐圣武士，铁蹄骑士团团长圣琼尼的职业，以光之制裁与圣链守护著称",
     minAttributes: { strength: 16, charisma: 16, wisdom: 14 },
     priorityAttributes: ["strength", "charisma", "wisdom"],
@@ -2337,8 +2337,8 @@ export const QIANKUN_LEGENDARY_TEMPLATES: LegendaryTemplate[] = [
     id: "legendary_dragon_fire",
     label: "龙神化身",
     description: "烈火雄心达到的三转极致，龙炎不灭体与双头剑『纵火者犄角』的完全解放",
-    appliesTo: ["wizard_dragon_fire"],
-    prerequisites: { minLevel: 20, requiresSubclass: ["wizard_dragon_fire"] },
+    appliesTo: ["barbarian_dragon_fire"],
+    prerequisites: { minLevel: 20, requiresSubclass: ["barbarian_dragon_fire"] },
     epicFeature: { level: 18, name: "龙神降临·不灭龙炎", description: "以动作化为远古龙神形态1分钟：获得100点临时生命值、免疫火焰伤害、龙息对90尺锥形造成16d10火焰伤害（敏捷豁免减半）、近战攻击附加4d8火焰伤害、每回合恢复10+体质调整值生命值", legendary: true },
     legendaryActions: [
       { name: "狂化·逆鳞", description: "以附赠动作进入狂化状态，本回合所有攻击造成双倍伤害，但受到伤害时承受1.5倍", cost: 1, type: "bonus_action", sceneLimit: "combat" },

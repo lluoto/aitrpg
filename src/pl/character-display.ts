@@ -105,12 +105,41 @@ export function displayCharacterSheet(char: CoCGeneratedCharacter): string {
   }
   L(`  (\u5171 ${skillCount} \u9879\u6280\u80fd)`);
 
+  // Starting items
+  if (char.startingItems && char.startingItems.length > 0) {
+    L(`\n\u3010\u968f\u8eab\u7269\u54c1\u3011`);
+    for (const item of char.startingItems) {
+      L(`  \u2022 ${item}`);
+    }
+  }
+
+  // 背景故事八项 + 背景故事
+  const bp = char.backgroundProfile;
+  if (bp) {
+    L(`\n\u3010\u80cc\u666f\u6545\u4e8b\u3011`);
+    L(`  \u5f62\u8c61\u63cf\u8ff0: ${bp.appearance}`);
+    L(`  \u601d\u60f3\u4e0e\u4fe1\u5ff5: ${bp.beliefs}`);
+    L(`  \u91cd\u8981\u4e4b\u4eba: ${bp.significantPeople}`);
+    L(`  \u610f\u4e49\u975e\u51e1\u4e4b\u5730: ${bp.meaningfulPlace}`);
+    L(`  \u5b9d\u8d35\u4e4b\u7269: ${bp.treasuredPossession}`);
+    L(`  \u7279\u8d28: ${bp.traits}`);
+    L(`  \u4f24\u53e3\u548c\u75a4\u75d5: ${bp.woundsAndScars}`);
+    L(`  \u6050\u60e7\u75c7\u548c\u8e81\u72c2\u75c7: ${bp.phobiasAndManias}`);
+  }
+  if (char.backstory && char.backstory.length > 0) {
+    L(`\n\u3010\u80cc\u666f\u5c0f\u4f20\u3011`);
+    L(`  ${char.backstory}`);
+  }
+
   // Other info
   L(`\n\u3010\u5176\u4ed6\u3011`);
   L(`  \u5e74\u9f84: ${char.age}  CM: ${char.cthulhuMythos}%`);
+  if (char.startingItems && char.startingItems.length > 0) {
+    L(`  \u968f\u8eab\u7269\u54c1: ${char.startingItems.join(", ")}`);
+  }
   L(`  ${char.valid ? "\u2714 \u89d2\u8272\u6709\u6548" : "\u2718 \u89d2\u8272\u6709\u95ee\u9898"}`);
   if (char.warnings.length > 0) {
-    L(`  \u8b66\u544a: ${char.warnings.join("; ").slice(0, 120)}`);
+    L(`  \u8b66\u544a: ${char.warnings.join("; ")}`);
   }
   L("\u2501".repeat(60));
 

@@ -5,6 +5,7 @@
 import { calcDamageBonus, CoCEngine, type CoCCheckResult } from "../rules/coc-engine";
 import type { CharacterArchetype } from "./character-factory";
 import { ALL_ARCHETYPES } from "./character-factory";
+import { buildBaseBackgroundProfile } from "./background-profile";
 
 // ============================================================
 // 类型定义
@@ -47,9 +48,11 @@ export const SKILL_NAME_MAP: Record<string, string> = {
   "炮术": "artillery",
   "艺术与手艺": "art",
   "魅惑": "charm",
+  "取悦": "charm",
   "化学": "chemistry",
   "计算机使用": "computer_use",
   "信用评级": "credit_rating",
+  "信誉": "credit_rating",
   "克苏鲁神话": "cthulhu_mythos",
   "乔装": "disguise",
   "闪避": "dodge",
@@ -57,6 +60,7 @@ export const SKILL_NAME_MAP: Record<string, string> = {
   "电气维修": "electrical_repair",
   "电子学": "electronics",
   "话术": "fast_talk",
+  "社交": "fast_talk",
   "格斗(肉搏)": "fighting",
   "格斗(剑)": "fighting",
   "法庭学": "forensic",
@@ -69,8 +73,10 @@ export const SKILL_NAME_MAP: Record<string, string> = {
   "恐吓": "intimidate",
   "跳跃": "jump",
   "语言(其他)": "language_other",
+  "母语": "language_own",
   "法律": "law",
   "图书馆使用": "library_use",
+  "图书馆": "library_use",
   "聆听": "listen",
   "锁匠": "lockpick",
   "机械维修": "mechanical_repair",
@@ -104,6 +110,39 @@ for (const [cn, en] of Object.entries(SKILL_NAME_MAP)) {
   if (!(en in REVERSE_SKILL_MAP)) {
     REVERSE_SKILL_MAP[en] = cn;
   }
+}
+
+/**
+ * 属性名映射：中文/缩写属性名 → 角色 attributes/luck 字段 key
+ * CoC 7e 属性（STR/CON/SIZ/DEX/APP/INT/POW/EDU/LUCK）不是技能，
+ * 检定需从 attributes 或 luck 字段取值，而不是 skillValues。
+ */
+export const ATTRIBUTE_NAME_MAP: Record<string, string> = {
+  "力量": "strength", "STR": "strength", "strength": "strength",
+  "体质": "constitution", "CON": "constitution", "constitution": "constitution",
+  "体型": "size", "SIZ": "size", "size": "size",
+  "敏捷": "dexterity", "DEX": "dexterity", "dexterity": "dexterity",
+  "外貌": "appearance", "APP": "appearance", "appearance": "appearance",
+  "智力": "intelligence", "INT": "intelligence", "intelligence": "intelligence",
+  "意志": "power", "POW": "power", "power": "power",
+  "教育": "education", "EDU": "education", "education": "education",
+  "幸运": "luck", "LUCK": "luck", "luck": "luck",
+};
+
+/**
+ * 解析检定目标值：属性（幸运/力量等）从 attributes/luck 取，技能从 skillValues 取。
+ * 支持中文名、英文 key 与属性缩写，未知名称返回 0。
+ */
+export function resolveCheckValue(
+  pc: Pick<CoCGeneratedCharacter, "attributes" | "luck" | "skillValues">,
+  name: string,
+): number {
+  const attrKey = ATTRIBUTE_NAME_MAP[name];
+  if (attrKey) {
+    return attrKey === "luck" ? (pc.luck ?? 0) : (pc.attributes[attrKey] ?? 0);
+  }
+  const engKey = SKILL_NAME_MAP[name] ?? name;
+  return (pc.skillValues as Record<string, number>)[engKey] ?? 0;
 }
 
 /**
@@ -146,6 +185,31 @@ export interface CoCCharacterConfig {
   includeLuck?: boolean;
 }
 
+/**
+ * CoC 7e 车卡"背景故事"八项元素
+ * （调查员手册标准背景部分：个人描述/思想与信念/重要之人/意义非凡之地/
+ *   宝贵之物/特质/伤口与疤痕/恐惧症与躁狂症）
+ * 车卡流程要求先填齐八项，再据此撰写背景故事
+ */
+export interface BackgroundProfile {
+  /** 形象描述（外貌/穿着/气质） */
+  appearance: string;
+  /** 思想与信念 */
+  beliefs: string;
+  /** 重要之人 */
+  significantPeople: string;
+  /** 意义非凡之地 */
+  meaningfulPlace: string;
+  /** 宝贵之物 */
+  treasuredPossession: string;
+  /** 特质（性格特点） */
+  traits: string;
+  /** 伤口和疤痕（肉体与心灵创伤） */
+  woundsAndScars: string;
+  /** 恐惧症和躁狂症 */
+  phobiasAndManias: string;
+}
+
 /** CoC 7e 角色创建结果 */
 export interface CoCGeneratedCharacter {
   name: string;
@@ -154,6 +218,7 @@ export interface CoCGeneratedCharacter {
   luck: number;
   hp: number;
   maxHp: number;
+  ac: number;
   damageBonus: string;
   build: number;
   move: number;
@@ -181,6 +246,10 @@ export interface CoCGeneratedCharacter {
    * 由分配器自动生成，包含基础值 + 职业技能点 + 兴趣技能点
    */
   skillValues: Record<string, number>;
+  /** 背景故事八项元素（车卡必填项，由模板池生成，可被 LLM 增强） */
+  backgroundProfile?: BackgroundProfile;
+  /** 背景故事全文（由八项内容撰写，可被 LLM 增强） */
+  backstory?: string;
 }
 
 // ============================================================
@@ -217,10 +286,10 @@ function rollAttributes(): Record<CoCAttribute, number> {
 function pointBuyAttributes(
   budget: number = 460,
   minValue: number = 40,
-  maxValue: number = 90
+  maxValue: number = 90,
+  priorityAttrs?: string[], // archetype-recommended priority attributes
+  minAttrs?: Record<string, number>, // archetype-required minimum attributes
 ): Record<CoCAttribute, number> {
-  // 均分作为初始值
-  const base = Math.floor(budget / 8);
   const attrs: Record<CoCAttribute, number> = {
     strength: minValue, constitution: minValue, size: minValue,
     dexterity: minValue, appearance: minValue, intelligence: minValue,
@@ -228,15 +297,31 @@ function pointBuyAttributes(
   };
   let remaining = budget - minValue * 8;
 
-  // 按权重随机分配剩余点数（确保每项不超过 maxValue）
+  // Enforce archetype minimums BEFORE random distribution
+  if (minAttrs) {
+    for (const [attr, minVal] of Object.entries(minAttrs)) {
+      const key = attr as CoCAttribute;
+      if (key in attrs) {
+        const deficit = minVal - attrs[key];
+        if (deficit > 0) {
+          attrs[key] = minVal;
+          remaining -= deficit;
+        }
+      }
+    }
+  }
+
+  // Weighted random distribution: priority attributes get 2× weight
   const order: CoCAttribute[] = [...COC_ATTRIBUTES].sort(() => Math.random() - 0.5);
   while (remaining > 0) {
     for (const attr of order) {
       if (remaining <= 0) break;
       const space = maxValue - attrs[attr];
       if (space <= 0) continue;
+      // Priority attributes get larger allocation chunks
+      const maxChunk = priorityAttrs?.includes(attr) ? 15 : 10;
       const add = Math.min(
-        Math.floor(Math.random() * Math.min(space, 10)) + 1,
+        Math.floor(Math.random() * Math.min(space, maxChunk)) + 1,
         space,
         remaining
       );
@@ -282,6 +367,7 @@ export const COC_ATTR_LABELS: Record<string, string> = {
 export function validateOccupationConstraints(
   attrs: Record<string, number>,
   archetype: CharacterArchetype,
+  pointBudget?: number,
 ): string[] {
   const warnings: string[] = [];
 
@@ -294,9 +380,10 @@ export function validateOccupationConstraints(
   }
 
   // 2. 检查最高属性上限
+  // EDU 硬上限 99（90 是创建期点购软上限——年龄调整可合法超过，见 CoC 7e 规则）
   const globalMax: Record<string, number> = {
     strength: 90, constitution: 90, size: 90, dexterity: 90,
-    appearance: 90, intelligence: 90, power: 90, education: 90,
+    appearance: 90, intelligence: 90, power: 90, education: 99,
     luck: 99,
   };
   const maxAttr = archetype.attributeMaxConstraints ?? {};
@@ -320,11 +407,14 @@ export function validateOccupationConstraints(
     }
   }
 
-  // 4. 检查总点购预算
-  const totalPoints = COC_ATTRIBUTES.reduce((sum, a) => sum + (attrs[a] ?? 0), 0);
-  const maxBudget = 460; // 点购上限
-  if (totalPoints > maxBudget) {
-    warnings.push(WARN_MSG.totalOverBudget(totalPoints, maxBudget));
+  // 4. 检查总点购预算——仅用于手动/骰点属性（点购已在生成时校验过）
+  // 点购后可能因年龄调整导致属性值超过预算，这是正常规则行为（年龄调整是独立修正）
+  if (pointBudget !== undefined) {
+    const totalPoints = COC_ATTRIBUTES.reduce((sum, a) => sum + (attrs[a] ?? 0), 0);
+    const ageAdjustedBudget = pointBudget + 10; // 允许年龄调整带来的小幅上浮
+    if (totalPoints > ageAdjustedBudget) {
+      warnings.push(WARN_MSG.totalOverBudget(totalPoints, pointBudget));
+    }
   }
 
   return warnings;
@@ -339,21 +429,22 @@ export function calcCoCHP(constitution: number, size: number): number {
   return Math.max(1, Math.floor((constitution + size) / 10));
 }
 
-/** 计算移动力 */
+/** 计算 AC（基于 DEX）：10 + floor(DEX / 20) */
+export function calcCoCAC(dexterity: number): number {
+  return 10 + Math.floor(dexterity / 20);
+}
+
+/** 计算移动力（CoC 7e 标准规则：STR 和 DEX 均 < SIZ → 7，均 > SIZ → 9，否则 8） */
 export function calcCoCMove(strength: number, dexterity: number, size: number, age: number = 30): number {
   let move = 8;
-  // SIZ 和 STR 都低于 64 时 move+1
-  if (strength < 64 && size < 64) move += 1;
-  // DEX 和 STR 都低于 64 时再 +1
-  if (dexterity < 64 && strength < 64) move += 1;
-  // STR 或 SIZ ≥ 64 且 DEX < 64 → move-1
-  if ((strength >= 64 || size >= 64) && dexterity < 64) move -= 1;
-  // 年龄调整
-  if (age >= 40 && age < 50) move -= 1;
-  else if (age >= 50 && age < 60) move -= 2;
-  else if (age >= 60 && age < 70) move -= 3;
-  else if (age >= 70 && age < 80) move -= 4;
-  else if (age >= 80) move -= 5;
+  if (strength < size && dexterity < size) move = 7;
+  else if (strength > size && dexterity > size) move = 9;
+  // 年龄调整（逐级递减）
+  if (age >= 40) move -= 1;
+  if (age >= 50) move -= 1;
+  if (age >= 60) move -= 1;
+  if (age >= 70) move -= 1;
+  if (age >= 80) move -= 1;
   return Math.max(1, move);
 }
 
@@ -473,7 +564,7 @@ export async function createCoCCharacter(
       education: config.attributes.education ?? 50,
     };
   } else if (config.method === "point_buy") {
-    rawAttrs = pointBuyAttributes(config.pointBudget ?? 460);
+    rawAttrs = pointBuyAttributes(config.pointBudget ?? 460, 40, 90, archetype.priorityAttributes, archetype.minAttributes);
   } else {
     rawAttrs = rollAttributes();
   }
@@ -484,7 +575,7 @@ export async function createCoCCharacter(
   warnings.push(...ageResult.warnings);
 
   // 3. 校验职业约束
-  const constraintWarnings = validateOccupationConstraints(attrs, archetype);
+  const constraintWarnings = validateOccupationConstraints(attrs, archetype, config.pointBudget);
   warnings.push(...constraintWarnings);
 
   // 4. 生成信用评级
@@ -495,6 +586,7 @@ export async function createCoCCharacter(
     ? rollLuck()
     : 0;
   const hp = calcCoCHP(attrs.constitution, attrs.size);
+  const ac = calcCoCAC(attrs.dexterity);
   const { db: damageBonus, build } = calcDamageBonus(attrs.strength, attrs.size);
   const move = calcCoCMove(attrs.strength, attrs.dexterity, attrs.size, age);
 
@@ -516,6 +608,9 @@ export async function createCoCCharacter(
 
   const occupationSkills = (archetype as any).occupationSkills ?? archetype.skills ?? [];
 
+  // 7.5 背景故事八项（车卡必填项——先生成八项，背景故事由 play-module 层 LLM 撰写）
+  const backgroundProfile = buildBaseBackgroundProfile(archetype);
+
   return {
     name: config.name,
     archetypeId: archetype.id,
@@ -523,6 +618,7 @@ export async function createCoCCharacter(
     luck,
     hp,
     maxHp: hp,
+    ac,
     damageBonus,
     build,
     move,
@@ -538,6 +634,8 @@ export async function createCoCCharacter(
     warnings,
     cthulhuMythos: 0,
     skillValues,
+    backgroundProfile,
+    backstory: "",
   };
 }
 

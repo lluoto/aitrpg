@@ -35,6 +35,8 @@ import { QIANKUN_SUBCLASSES, getAllQiankunLegendaryTemplates } from "./character
 import { createCoCCharacter, getCoCArchetypes, type CoCGeneratedCharacter, getSkillValue, getBaseSkillValue } from "./character/coc-character";
 import { COC_WEAPONS_FULL } from "./rules/coc-equipment";
 import { NPCStore } from "./db/index";
+import { BARN_OF_PREMIER, NPC_STATS } from "./module/barn-of-premier";
+import { populateWorldFromModule } from "./world/module-loader";
 
 CharacterFactory.registerExtra(EXTRA_SUBCLASSES);
 CharacterFactory.registerExtra(PRESTIGE_CLASSES);
@@ -67,14 +69,73 @@ const cocAmmo: Map<string, { current: number; max: number; ammoType: string }> =
 const worldModel = new WorldModelLoader();
 worldModel.load("../世界模型/v18_output/v18_all_master.jsonl");
 const wmIntegrator = new WorldModelIntegrator(worldModel);
+// 克苏鲁神话世界模型（独立第二 loader，懒加载，失败静默降级为不可用）
+const cthulhuLoader = new WorldModelLoader();
+
+/**
+ * 构建克苏鲁神话世界模型上下文（追加段）。
+ * 独立懒加载 cthulhu_world_model.jsonl（145 条 / 小文件）；失败静默返回空串。
+ */
+function buildCthulhuContext(): string {
+  try {
+    if (!cthulhuLoader.isLoaded()) {
+      cthulhuLoader.load("../世界模型/cthulhu_extracted/cthulhu_world_model.jsonl");
+    }
+    if (!cthulhuLoader.isLoaded()) return "";
+
+    const lines: string[] = [];
+    lines.push("[克苏鲁神话上下文]");
+
+    const deities = cthulhuLoader.getByType("deity");
+    if (deities.length > 0) {
+      lines.push("神话存在:");
+      for (const d of deities.slice(0, 6)) {
+        const name = d.name || "未知";
+        const domains = (d as any).domains ? `(领域: ${(d as any).domains.join("、")})` : "";
+        const mechanic = d.mechanic ? ` ${d.mechanic.slice(0, 80)}` : "";
+        lines.push(`  - ${name}${domains}${mechanic}`);
+      }
+    }
+
+    const mechanics = [
+      ...cthulhuLoader.getByType("power_system"),
+      ...cthulhuLoader.getByType("game_mechanic"),
+      ...cthulhuLoader.getByType("crafting"),
+      ...cthulhuLoader.getByType("cosmology"),
+    ].slice(0, 8);
+    if (mechanics.length > 0) {
+      lines.push("神秘机制:");
+      for (const m of mechanics) {
+        const name = m.name || "未知";
+        const mechanic = m.mechanic ? m.mechanic.slice(0, 90) : (m.description || "").slice(0, 90);
+        lines.push(`  - ${name}: ${mechanic}`);
+      }
+    }
+
+    const causals = cthulhuLoader.getByType("causal").slice(0, 3);
+    if (causals.length > 0) {
+      lines.push("可推进的怪异事件方向:");
+      for (const c of causals) {
+        const name = c.name || "未知";
+        const mechanic = c.mechanic ? c.mechanic.slice(0, 90) : "";
+        lines.push(`  - ${name}: ${mechanic}`);
+      }
+    }
+
+    return lines.length > 1 ? lines.join("\n") : "";
+  } catch {
+    return "";
+  }
+}
 
 // 当前激活的规则集
 let activeRuleset = "dnd5e";
 // 当前激活的小说上下文（用于世界模型路由）
 let activeNovel = "";
 
-// 默认玩家（向后兼容：始终有一个"调查员"）
-session.join("p1", "调查员", "player", "farm_exterior");
+// 默认玩家（使用模组第一个场景）
+const firstSceneId = BARN_OF_PREMIER.scenes[0]?.id ?? "unknown";
+session.join("p1", "调查员", "player", firstSceneId);
 
 // NPC 持久化数据库
 const npcStore = new NPCStore();
@@ -93,22 +154,12 @@ registry.onEvent((name, event) => {
   }
 });
 
-// KP 指令
+// KP 指令（从模组数据生成）
+const moduleNpcList = BARN_OF_PREMIER.npcs.map(n => `${n.name}（${n.role}）`).join("、");
 const kpDirective: KPDirective = {
-  scene_description:
-    "普瑞米尔农场外围。夜色已深，月光透过薄云洒在谷仓的木板墙上。空气中有股淡淡的金属味——不像农场的味道。前方是谷仓正门，左侧能看到一扇破损的窗户。远处传来低沉的嗡鸣声。",
-  scene_elements: [
-    "谷仓正门（虚掩）",
-    "破损的窗户（可攀爬进入）",
-    "外围捕兽夹×3（陷阱）",
-    "远处嗡鸣声的来源不明",
-    "小屋透出微弱的灯光（艾德里安的住所）",
-  ],
-  plot_nodes: [
-    { id: "meet_adrian", description: "在小屋遇到看守人艾德里安", trigger: "玩家靠近小屋", done: false },
-    { id: "find_gabi", description: "在谷仓发现幸存者加比", trigger: "玩家深入谷仓", done: false },
-    { id: "discover_lab", description: "发现地下实验室", trigger: "玩家发现地下室入口", done: false },
-  ],
+  scene_description: BARN_OF_PREMIER.scenes[0]?.description ?? "",
+  scene_elements: BARN_OF_PREMIER.scenes.slice(0, 5).map(s => s.name),
+  plot_nodes: [],
   current_phase: "arrival",
   style: "lovecraft",
 };
@@ -116,54 +167,13 @@ const kpDirective: KPDirective = {
 const kp = new KPAgent(kpDirective, llm);
 
 // ============================================================
-// 初始化世界状态
+// 初始化世界状态（从模组数据加载）
 // ============================================================
 
-function seedWorld() {
-  // 场景
-  world.getDatabase().exec(`
-    INSERT OR REPLACE INTO scenes (id, name, description, lighting, dangers, exits, is_active) VALUES
-    ('farm_exterior', '农场外围',
-     '普瑞米尔农场外围。谷仓矗立在月光下，木板墙上爬满藤蔓。空气中有一股说不清的金属味。',
-     'moonlight', '["捕兽夹×3"]',
-     '[{"target":"barn_interior","desc":"谷仓正门(虚掩)","locked":false},{"target":"cabin","desc":"小屋(微弱灯光)","locked":false}]',
-     1),
-    ('barn_interior', '谷仓内部',
-     '昏暗的谷仓内部。几排空床铺，一堆干草。角落里有什么东西在动。地板上有暗红色的痕迹。',
-     'dim', '[]',
-     '[{"target":"farm_exterior","desc":"谷仓正门","locked":false},{"target":"basement","desc":"地下室暗门(需要搜索)","locked":true}]',
-     0),
-    ('cabin', '艾德里安的小屋',
-     '简陋但整洁的猎人小屋。桌上有一盏油灯和一本翻开的日记。墙上挂着一把旧猎枪。',
-     'warm_light', '[]',
-     '[{"target":"farm_exterior","desc":"小屋门","locked":false}]',
-     0),
-    ('basement', '地下室',
-     '楼梯通向黑暗。金属味越来越浓。墙壁上的符号在黑暗中微微发光。',
-     'dark', '["Mi-Go"]',
-     '[{"target":"barn_interior","desc":"暗门","locked":false}]',
-     0)
-  `);
+populateWorldFromModule(world, BARN_OF_PREMIER, NPC_STATS);
 
-  // 实体
-  world.seedEntities([
-    { id: "player", name: "调查员", type: "pc", hp: 12, maxHp: 12, ac: 12, status: [], position: "farm_exterior", scene_id: "farm_exterior" },
-    { id: "adrian", name: "艾德里安", type: "npc", hp: 20, maxHp: 20, ac: 14, status: [], position: "cabin", scene_id: "cabin", faction: "看守人" },
-    { id: "gabi", name: "加比", type: "npc", hp: 6, maxHp: 6, ac: 10, status: ["frightened"], position: "barn_interior", scene_id: "barn_interior", faction: "幸存者" },
-    { id: "migo", name: "米戈", type: "monster", hp: 45, maxHp: 45, ac: 16, status: [], position: "basement", scene_id: "basement", faction: "犹格斯访客" },
-    { id: "wolf_1", name: "野狼", type: "monster", hp: 11, maxHp: 11, ac: 13, status: [], position: "farm_exterior", scene_id: "farm_exterior", faction: "野兽" },
-    { id: "wolf_2", name: "野狼", type: "monster", hp: 9, maxHp: 11, ac: 13, status: [], position: "farm_exterior", scene_id: "farm_exterior", faction: "野兽" },
-  ]);
-
-  // 初始关系
-  world.setRelation("adrian", "player", "neutral", -10); // 不信任
-  world.setRelation("gabi", "player", "neutral", 20);     // 渴望被相信
-  world.setRelation("adrian", "gabi", "suspicious", -30);
-  world.setRelation("migo", "adrian", "neutral", 0);       // 交易关系
-  world.setRelation("migo", "player", "neutral", 0);
-}
-
-seedWorld();
+// 默认场景（模组首个场景）
+const INITIAL_SCENE = BARN_OF_PREMIER.scenes[0]?.id ?? "start";
 
 // ============================================================
 // 辅助
@@ -380,7 +390,12 @@ async function handlePlayerInput(input: string) {
     }
 
     // D&D / 通用世界模型
-    const injection = wmIntegrator.buildKPContext(ctx);
+    let injection = wmIntegrator.buildKPContext(ctx);
+    // 克苏鲁神话上下文（独立 loader，失败静默跳过）
+    const cthulhuText = buildCthulhuContext();
+    if (cthulhuText) {
+      injection = injection ? `${injection}\n\n${cthulhuText}` : cthulhuText;
+    }
     if (injection.length > 30) {
       const narration = await kp.narrateOutcome(
         "世界模型上下文",
@@ -564,7 +579,7 @@ async function handleMovement(
   turnMessages.push({ speaker: "KP", content: narration, type: "narration" });
 
   // 新场景中的 NPC 可能主动说话
-  const playerScene = targetScene || "farm_exterior";
+  const playerScene = targetScene || INITIAL_SCENE;
   const nearby = world.getEntitiesInScene(playerScene).filter(e => e.type === "npc" && e.id !== "player");
   for (const entity of nearby) {
     const npc = registry.get(entity.name);
@@ -669,7 +684,7 @@ async function handleInvestigation(
   };
 
   const state = world.getCurrentState();
-  const playerScene = state.entities["player"]?.position ?? "farm_exterior";
+  const playerScene = state.entities["player"]?.position ?? INITIAL_SCENE;
   const nearbyNPCs = Object.values(state.entities)
     .filter((e) => e.type === "npc" && e.position === playerScene)
     .map((e) => e.name);
@@ -1252,11 +1267,11 @@ async function main() {
     if (input.startsWith("/join ")) {
       const name = input.slice(6).trim();
       try {
-        session.join(name, name, `player_${name}`, "farm_exterior");
+        session.join(name, name, `player_${name}`, INITIAL_SCENE);
         // 在世界状态中注册新玩家实体
         world.upsertEntity({
           id: `player_${name}`, name, type: "pc", hp: 12, maxHp: 12, ac: 12, status: [],
-          position: "farm_exterior"
+          position: INITIAL_SCENE
         } as any);
         console.log(`  ✅ 玩家 "${name}" 加入游戏`);
       } catch (err: any) { console.log(`  ❌ ${err.message}`); }

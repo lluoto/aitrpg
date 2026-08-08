@@ -18,7 +18,7 @@ import { PlayerSession, type VisibilityRule } from "../session/player-session";
 import { InvestigationEngine } from "../investigation/investigation-engine";
 import { SpellEngine } from "../spell/spell-engine";
 import { WorldModelLoader } from "../world/world-model-loader";
-import { WorldModelIntegrator } from "../world/world-model-integrator";
+import { WorldModelIntegrator, type SceneContext, type NPCPresentProfile } from "../world/world-model-integrator";
 import { NPCStore } from "../db/index";
 import { assessModuleDifficulty } from "../rules/module-difficulty";
 import type { DifficultyProfile } from "../rules/module-difficulty";
@@ -73,6 +73,13 @@ function generateId(): string {
   return "sess_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
+/** 技能英文键 → 中文显示名（成长消息、传承记录共用） */
+const SKILL_DISPLAY_NAMES: Record<string, string> = {
+  stealth: "潜行", perception: "侦查", investigation: "调查", persuasion: "说服",
+  medicine: "医学", history: "历史", occult: "神秘", library_use: "图书馆使用",
+  listen: "聆听", psychology: "心理学", library: "图书馆", fight: "格斗",
+};
+
 export class GameSession {
   readonly id: string;
   readonly createdAt: number;
@@ -91,6 +98,8 @@ export class GameSession {
   readonly kp: KPAgent;
   readonly worldModel: WorldModelLoader;
   readonly wmIntegrator: WorldModelIntegrator;
+  /** 克苏鲁神话世界模型（独立第二 loader，懒加载，失败静默降级） */
+  readonly cthulhuLoader: WorldModelLoader;
   readonly npcStore: NPCStore;
   readonly companionManager: CompanionManager;
   readonly politicoEconomy: PoliticoEconomyEngine;
@@ -123,6 +132,8 @@ export class GameSession {
   public skillMarks: Record<string, number> = {};
   private _woundsTreated: boolean = false;
   private _moduleStartByPC: Map<string, { san: number; cm: number }> = new Map();
+  /** 各 PC 在休息时已结算的成长（skill → 新值），模组结算时并入传承记录 */
+  private _growthChangesByPC: Map<string, string[]> = new Map();
   private mythosSpells: Map<string, { sanCost: string; mpCost: number; description: string; effect?: string }> = new Map();
   public knownMythosSpells: string[] = [];
   private _lastPushedRoll: { skill: string; roll: number; target: number } | null = null;
@@ -159,7 +170,10 @@ export class GameSession {
     this.registry = new AgentRegistry();
     this.kp = new KPAgent({ scene_description: "", scene_elements: [], current_phase: "exploration", style: "standard", plot_nodes: [] }, this.llm);
     this.worldModel = new WorldModelLoader();
-    this.wmIntegrator = new WorldModelIntegrator();
+    this.wmIntegrator = new WorldModelIntegrator(this.worldModel);
+    this.cthulhuLoader = new WorldModelLoader();
+    // 世界模型懒加载：不在此处 load()（v18_all_master.jsonl ~240MB，会拖慢所有 GameSession 实例化，
+    // 测试与无模型场景均受影响）。首次需要注入时才在 injectWorldModelForScene() 里加载。
     this.npcStore = new NPCStore();
 
     this.sanity = new SanityEngine(50, 50);
@@ -288,8 +302,171 @@ export class GameSession {
     return state.entities["player"]?.position ?? state.scene ?? "tavern";
   }
 
+  /**
+   * 为当前场景构建世界模型上下文并注入 KP（权威事实层）。
+   * 世界模型未加载 / 加载失败时静默跳过，不影响叙事流程。
+   */
+  private injectWorldModelForScene() {
+    try {
+      // 懒加载：首次注入时才加载世界模型（~240MB / 1.5-2s）；失败静默降级，不影响叙事
+      if (!this.worldModel.isLoaded()) {
+        try {
+          this.worldModel.load();
+        } catch {
+          this.kp.setWorldModelContext("");
+          return;
+        }
+      }
+      const pos = this.getPlayerPosition();
+      const sceneName = this.sceneDisplayNames[pos] ?? pos;
+      // 读取模组原文场景描写（scenes 表 description，若已注册）
+      const sceneInfo = this.world.getScene(pos);
+      // 读取当前场景在场实体：NPC/怪物 → presentNPCs；item → presentItems
+      const presentEntities = this.world.getEntitiesInScene(pos);
+      const presentNPCs = presentEntities
+        .filter((e) => e.type === "npc" || e.type === "monster")
+        .map((e) => e.name);
+      const presentItems = presentEntities
+        .filter((e) => e.type === "item")
+        .map((e) => e.name);
+      // 组装在场 NPC 人设卡（权威元数据，防 LLM 臆造年龄/性别/状态）：
+      // 从已加载模组的 npcs 定义 + hooks 初始状态匹配
+      const npcProfiles = this.buildPresentNPCProfiles(presentNPCs);
+      // 读取已发现线索（调查引擎）
+      const discoveredClues = this.investigation.getSceneClues(sceneName);
+      const ctx: SceneContext = {
+        sceneId: pos,
+        sceneName,
+        sceneDescription: sceneInfo?.description ?? "",
+        keywords: [sceneName, pos].filter(Boolean),
+        presentNPCs,
+        npcProfiles,
+        discoveredClues,
+        presentItems,
+        round: this.round,
+        ruleset: this.activeRuleset,
+        gameTime: formatGameTime(this.gameTime),
+        periodAtmosphere: periodAtmosphere(this.gameTime.period),
+      };
+      let wmText = this.wmIntegrator.buildKPContext(ctx);
+      // 克苏鲁神话上下文（独立 loader，独立懒加载；失败静默跳过，不影响叙事）
+      const cthulhuText = this.buildCthulhuContext();
+      if (cthulhuText) {
+        wmText = wmText ? `${wmText}\n\n${cthulhuText}` : cthulhuText;
+      }
+      this.kp.setWorldModelContext(wmText);
+    } catch {
+      this.kp.setWorldModelContext("");
+    }
+  }
+
+  /**
+   * 组装在场 NPC 人设卡（权威元数据，供 KP 上下文注入）。
+   * 数据源：已加载模组的 npcs 定义（age/gender/personality/dialogHints）
+   *        + 模组 hooks 中 on_enter_scene 的初始状态描写（currentState）。
+   * currentState 匹配策略（NPC 专属场景，非普通场景描写）：
+   *   hook.condition 归一化后包含 NPC 全名（"菲碧_特里坎" ↔ "菲碧·特里坎"），
+   *   或包含 NPC 名字部分（"与艾德里安的会面" ↔ "艾德里安·埃斯特鲁姆"）。
+   *   普通场景 hook（如 "特里坎家"）不含 NPC 名/名字部分，不会被误匹配。
+   * 找不到权威定义时返回空数组 → buildKPContext 回退到纯名字列表。
+   */
+  private buildPresentNPCProfiles(presentNPCs: string[]): NPCPresentProfile[] {
+    if (!presentNPCs || presentNPCs.length === 0) return [];
+    const norm = (s: string) => s.replace(/[·、_\- ]/g, "");
+    const profiles: NPCPresentProfile[] = [];
+    for (const mod of this.registeredModules) {
+      if (!mod?.npcs || !Array.isArray(mod.npcs)) continue;
+      const hooks = (mod.hooks ?? []) as any[];
+      for (const npc of mod.npcs) {
+        if (!presentNPCs.includes(npc.name)) continue;
+        // 候选匹配键：全名 + 名字部分（"·"前，如 "艾德里安"）
+        const keys = [npc.name, String(npc.name).split("·")[0] ?? ""]
+          .map(norm)
+          .filter((k: string) => k.length >= 2);
+        // currentState：仅匹配 NPC 专属场景 hook（场景名不含 NPC 名时不会命中）
+        let currentState: string | undefined;
+        const npcHook = hooks.find((h: any) => {
+          if (h?.type !== "on_enter_scene" || !h?.condition) return false;
+          const cond = norm(String(h.condition));
+          return keys.some((k: string) => cond.includes(k) || k.includes(cond));
+        });
+        if (npcHook?.narration) {
+          currentState = String(npcHook.narration).split("。")[0]?.slice(0, 40) ?? undefined;
+        }
+        profiles.push({
+          name: npc.name,
+          age: npc.age,
+          gender: npc.gender,
+          role: npc.personality?.role,
+          currentState,
+          background: npc.personality?.background,
+          dialogHints: npc.dialogHints,
+        });
+      }
+    }
+    return profiles;
+  }
+
+  /**
+   * 构建克苏鲁神话世界模型上下文（权威事实层追加段）。
+   * 独立懒加载 cthulhu_world_model.jsonl（145 条 / 小文件，秒级）；
+   * 加载失败 / 文件缺失时静默返回空串，不影响叙事流程。
+   */
+  private buildCthulhuContext(): string {
+    try {
+      if (!this.cthulhuLoader.isLoaded()) {
+        this.cthulhuLoader.load("../世界模型/cthulhu_extracted/cthulhu_world_model.jsonl");
+      }
+      if (!this.cthulhuLoader.isLoaded()) return "";
+
+      const lines: string[] = [];
+      lines.push("[克苏鲁神话上下文]");
+
+      const deities = this.cthulhuLoader.getByType("deity");
+      if (deities.length > 0) {
+        lines.push("神话存在:");
+        for (const d of deities.slice(0, 6)) {
+          const name = d.name || "未知";
+          const domains = (d as any).domains ? `(领域: ${(d as any).domains.join("、")})` : "";
+          const mechanic = d.mechanic ? ` ${d.mechanic.slice(0, 80)}` : "";
+          lines.push(`  - ${name}${domains}${mechanic}`);
+        }
+      }
+
+      const mechanics = [
+        ...this.cthulhuLoader.getByType("power_system"),
+        ...this.cthulhuLoader.getByType("game_mechanic"),
+        ...this.cthulhuLoader.getByType("crafting"),
+        ...this.cthulhuLoader.getByType("cosmology"),
+      ].slice(0, 8);
+      if (mechanics.length > 0) {
+        lines.push("神秘机制:");
+        for (const m of mechanics) {
+          const name = m.name || "未知";
+          const mechanic = m.mechanic ? m.mechanic.slice(0, 90) : (m.description || "").slice(0, 90);
+          lines.push(`  - ${name}: ${mechanic}`);
+        }
+      }
+
+      const causals = this.cthulhuLoader.getByType("causal").slice(0, 3);
+      if (causals.length > 0) {
+        lines.push("可推进的怪异事件方向:");
+        for (const c of causals) {
+          const name = c.name || "未知";
+          const mechanic = c.mechanic ? c.mechanic.slice(0, 90) : "";
+          lines.push(`  - ${name}: ${mechanic}`);
+        }
+      }
+
+      return lines.length > 1 ? lines.join("\n") : "";
+    } catch {
+      return "";
+    }
+  }
+
   async getOpeningScene(): Promise<string> {
     try {
+      this.injectWorldModelForScene();
       const desc = await this.kp.describeScene();
       this.lastNarrative = desc;
       return desc;
@@ -395,17 +572,17 @@ export class GameSession {
   getSuggestions(): string[] {
     const following: string[] = [];
     if (this.combatActive) {
-      following.push("⚔️ 攻击敌人", "🛡�?防御", "💊 使用物品", "🏃 撤退");
+      following.push("⚔️ 攻击敌人", "🛡️ 防御", "💊 使用物品", "🏃 撤退");
     } else {
-      following.push("🔍 调查四周", "💬 �?NPC 交流", "🚶 前往其他场景");
+      following.push("🔍 调查四周", "💬 与 NPC 交流", "🚶 前往其他场景");
     }
     const comps = this.companionManager.getActiveCompanions();
-    if (comps.length > 0) following.push(`👥 指挥同伴 (${comps.length}�?`);
+    if (comps.length > 0) following.push(`👥 指挥同伴 (${comps.length}人)`);
     return following;
   }
 
   // ============================================================
-  // act() �?主游戏循"
+  // act() — 主游戏循环
   // ============================================================
 
   async act(input: string, actingCharacterName?: string): Promise<ActionResponse> {
@@ -477,7 +654,7 @@ export class GameSession {
       return this.buildActionResponse(turnMessages);
     }
 
-    // ── 意图派发（意图解�?�?结构化处理器）──
+    // ── 意图派发（意图解析 → 结构化处理器）──
     const intent = await parseIntent(input);
     if (intent.action !== "unknown") {
       const handled = await this.handleIntent(intent, input, turnMessages);
@@ -485,7 +662,7 @@ export class GameSession {
     }
 
     // 战斗检测：如果包含攻击关键词且 combatActive
-    if (this.combatActive || /^(攻击|射击|挥砍|�?攻击|�?使用)/.test(input)) {
+    if (this.combatActive || /^(攻击|射击|挥砍|向.+攻击|对.+使用)/.test(input)) {
       const state = this.world.getCurrentState();
       const enemies = Object.values(state.entities).filter(e => (e.type === "monster" || e.type === "npc") && e.hp > 0);
       if (enemies.length > 0) {
@@ -550,14 +727,15 @@ export class GameSession {
         const aliveEnemies = Object.values(state.entities).filter(e => (e.type === "monster" || e.type === "npc") && e.hp > 0);
         if (aliveEnemies.length === 0) {
           this.combatActive = false;
-          turnMessages.push({ speaker: "系统", content: "�?所有敌人已被击败，战斗结束", type: "system" });
+          turnMessages.push({ speaker: "系统", content: "✋ 所有敌人已被击败，战斗结束", type: "system" });
         }
 
         return this.buildActionResponse(turnMessages);
       }
     }
 
-    // LLM 叙事（含传奇模板上下文注入）
+    // LLM 叙事（含传奇模板上下文注入 + 世界模型权威事实注入）
+    this.injectWorldModelForScene();
     const epicContext = this.buildEpicContext();
     try {
       const narration = await this.kp.narrateOutcome(input, `玩家行动: ${input}${epicContext}`, turnMessages);
@@ -594,9 +772,9 @@ export class GameSession {
           const tp = args[0]?.toLowerCase();
           if (tp && ["dawn","morning","noon","afternoon","dusk","evening","night","late_night"].includes(tp)) {
             this.gameTime = { day: this.gameTime.day, period: tp as any, ticks: 0 };
-            msg(`�?时间设为: ${formatGameTime(this.gameTime)}`);
+            msg(`⏰ 时间设为: ${formatGameTime(this.gameTime)}`);
           } else {
-            msg(`�?当前: ${formatGameTime(this.gameTime)}\n${periodAtmosphere(this.gameTime.period)}`);
+            msg(`⏰ 当前: ${formatGameTime(this.gameTime)}\n${periodAtmosphere(this.gameTime.period)}`);
           }
           break;
         }
@@ -611,7 +789,7 @@ export class GameSession {
           const count = parseInt(args[1]) || 1;
           if (!tblName) {
             const tbls = listTables().map(t => `  ${t.name}`).join("\n");
-            msg(`📖 可用随机�?\n${tbls}`);
+            msg(`📖 可用随机表:\n${tbls}`);
           } else {
             try { msg(`🎲 ${tblName} (x${count}):\n  ${rollTable(tblName, count).join("\n  ")}`); }
             catch { msg("未找到该表"); }
@@ -644,8 +822,20 @@ export class GameSession {
     switch (intent.action) {
       case "help": return this.handleHelp(msg);
       case "status": return this.handleStatus(messages);
-      case "move": return this.handleMove(intent, msg);
-      case "look": msg("你环顾四周，观察着周围的环境…"); this.lastNarrative = "你仔细观察了周围的环境"; return true;
+      case "move":
+        // 模块模式：先解析目标场景名（匹配模组已注册场景并更新玩家位置），再回落 LLM 叙事
+        if (this.registeredModules.length > 0) {
+          this.tryResolveModuleScene(intent.target ?? input);
+          return false;
+        }
+        return this.handleMove(intent, msg);
+      case "look":
+        // 模块模式：同样先尝试解析目标场景名，再回落 LLM 叙事
+        if (this.registeredModules.length > 0) {
+          this.tryResolveModuleScene(intent.target ?? input);
+          return false;
+        }
+        msg("你环顾四周，观察着周围的环境…"); this.lastNarrative = "你仔细观察了周围的环境"; return true;
       case "inventory": return this.handleInventory(msg);
       case "flee": return this.handleFlee(messages, msg);
       case "rest": return this.handleRest(messages, msg);
@@ -667,7 +857,7 @@ export class GameSession {
       case "reload": return this.handleReload(intent, messages, msg);
       case "push": return this.handlePush(messages, msg);
       case "chase": return this.handleChase(messages, msg);
-      case "use_item": case "pickup": msg(`你尝�?{intent.action === "pickup" ? "捡起" : "使用"}物品。`); this.lastNarrative = `�?{intent.action === "pickup" ? "捡起" : "使用"}物品。`; return true;
+      case "use_item": case "pickup": msg(`你尝试${intent.action === "pickup" ? "捡起" : "使用"}物品。`); this.lastNarrative = `你${intent.action === "pickup" ? "捡起" : "使用"}物品。`; return true;
       case "talk": msg("你试图与周围的人交流…"); this.lastNarrative = "你试图与周围的人交流"; return true;
       case "spell_list": msg("当前可用法术：暂无已知法术"); this.lastNarrative = "你回忆了一下已知的法术"; return true;
       case "shop": msg("商店功能尚未开放"); this.lastNarrative = "商店功能尚未开放"; return true;
@@ -695,23 +885,23 @@ export class GameSession {
     const helpText = [
       "【操作指南",
       "",
-      "�?基础操作 ",
-      "  观察/环顾四周 �?查看当前场景",
-      "  移动�?地点> �?前往指定场景",
-      "  状�?角色�?�?查看角色属",
-      "  背包/物品�?�?查看携带物品",
-      "  帮助 �?显示操作指南",
+      "— 基础操作 —",
+      "  观察/环顾四周 → 查看当前场景",
+      "  移动到<地点> → 前往指定场景",
+      "  状态/角色卡 → 查看角色属性",
+      "  背包/物品栏 → 查看携带物品",
+      "  帮助 → 显示操作指南",
       "",
-      "�?战斗操作 ",
-      "  攻击<目标> �?攻击指定敌人",
-      "  逃跑 �?脱离战斗",
-      "  装填<武器> �?补充弹药",
-      "  燃运<N> 攻击<目标> �?消耗幸运值提升命",
+      "— 战斗操作 —",
+      "  攻击<目标> → 攻击指定敌人",
+      "  逃跑 → 脱离战斗",
+      "  装填<武器> → 补充弹药",
+      "  燃运<N> 攻击<目标> → 消耗幸运值提升命中",
       "",
-      "�?角色创建 ",
-      "  创建角色 �?创建新调查员",
-      "  创建角色 <职业> <姓名> �?指定职业创建",
-      "  职业列表 �?查看可选职",
+      "— 角色创建 —",
+      "  创建角色 → 创建新调查员",
+      "  创建角色 <职业> <姓名> → 指定职业创建",
+      "  职业列表 → 查看可选职业",
       "",
       "─ 技能与检查",
       "  调查<目标>/侦查<区域> — 进行技能检查",
@@ -747,7 +937,7 @@ export class GameSession {
     return true;
   }
 
-  // ── 状态显�?──
+  // ── 状态显示 ──
   private handleStatus(messages: AgentMessage[]): boolean {
     if (!this.activeCharacter) {
       this.lastNarrative = "你还没有创建角色。使用「创建角色<职业> <姓名>」来创建调查员";
@@ -757,7 +947,7 @@ export class GameSession {
     const c = this.activeCharacter;
     const san = this.getSanity();
     const lines: string[] = [];
-    lines.push(`━━�?${c.name} ━━━`);
+    lines.push(`━━━ ${c.name} ━━━`);
     if (this.activeRuleset === "coc7e") {
       const attrs = c.attributes ?? {};
       const str = attrs.strength ?? attrs.STR ?? 50;
@@ -783,7 +973,7 @@ export class GameSession {
         const skills = c.skills ?? c.skillValues ?? {};
         const skillEntries = Object.entries(skills).slice(0, 10);
         if (skillEntries.length > 0) {
-          lines.push("技�? " + skillEntries.map(([k, v]) => `${k}:${v}%`).join(", "));
+          lines.push("技能: " + skillEntries.map(([k, v]) => `${k}:${v}%`).join(", "));
         }
       }
     } else {
@@ -803,6 +993,71 @@ export class GameSession {
   }
 
   // ── 移动 ──
+
+  /**
+   * 模块模式：将移动/查看目标解析为已注册的模组场景并更新玩家位置。
+   * 匹配顺序：sceneDisplayNames/sceneAliases → scenes 表 name/id 精确 → 模糊包含。
+   * 匹配不到时不创建垃圾场景，返回 false（由调用方回落 LLM 叙事）。
+   */
+  private tryResolveModuleScene(targetOrInput: string): boolean {
+    const t = (targetOrInput ?? "").trim();
+    if (!t) return false;
+    // 1. sceneDisplayNames / sceneAliases 精确匹配
+    for (const [id, name] of Object.entries(this.sceneDisplayNames)) {
+      if (name === t || id === t) return this.movePlayerToScene(id);
+    }
+    for (const [id, aliases] of Object.entries(this.sceneAliases)) {
+      if (aliases.includes(t)) return this.movePlayerToScene(id);
+    }
+    // 2. scenes 表 name/id 精确 + 包含匹配
+    try {
+      const db = (this.world as any).getDatabase() as any;
+      const rows = db.query("SELECT id, name FROM scenes").all() as any[];
+      // 2a. 精确
+      for (const r of rows) {
+        if (r.id === t || r.name === t) return this.movePlayerToScene(r.id);
+      }
+      // 2b. 包含：目标包含场景名（"警察局了解案情" → 警察局）或场景名包含目标（"谷仓" → 谷仓内部）
+      let best: any = null;
+      for (const r of rows) {
+        const name = r.name ?? r.id ?? "";
+        if (!name || name === "unknown") continue;
+        if (t.includes(name)) { if (!best || name.length > (best.name ?? best.id ?? "").length) best = r; }
+        else if (name.includes(t) && t.length >= 2) { if (!best || name.length < (best.name ?? best.id ?? "").length) best = r; }
+      }
+      if (best) return this.movePlayerToScene(best.id);
+      // 2c. bigram 公共子串：处理非子串但语义相同（"艾德里安的住宅调查" → "艾德里安在镇子内的住宅"，公共 gram=5）
+      // 阈值 1：让"进入谷仓调查"也能匹配"谷仓形建筑"（公共 gram=谷仓）
+      const grams = new Set<string>();
+      for (let i = 0; i < t.length - 1; i++) grams.add(t.slice(i, i + 2));
+      let bestGram: any = null;
+      let bestGramScore = 0;
+      for (const r of rows) {
+        const name = r.name ?? r.id ?? "";
+        if (!name || name === "unknown") continue;
+        let score = 0;
+        for (let i = 0; i < name.length - 1; i++) if (grams.has(name.slice(i, i + 2))) score++;
+        if (score >= 1 && score > bestGramScore) { bestGramScore = score; bestGram = r; }
+      }
+      if (bestGram) return this.movePlayerToScene(bestGram.id);
+    } catch { /* 忽略 DB 错误 */ }
+    return false;
+  }
+
+  /** 将玩家移动到场景并设为活动场景（不创建垃圾场景） */
+  private movePlayerToScene(sceneId: string): boolean {
+    this.world.setActiveScene(sceneId);
+    const state = this.world.getCurrentState();
+    const player = state.entities["player"];
+    if (player) {
+      player.position = sceneId;
+      this.world.upsertEntity(player);
+    } else {
+      this.world.upsertEntity({ id: "player", name: this.activeCharacter?.name ?? "调查员", type: "pc", hp: 12, maxHp: 12, ac: 10, status: [], position: sceneId });
+    }
+    return true;
+  }
+
   private handleMove(intent: ActionIntent, msg: (s: string) => number): boolean {
     const target = intent.target ?? "";
     // 场景名称解析映射
@@ -813,7 +1068,7 @@ export class GameSession {
       "酒馆": "tavern", "旅店": "tavern",
     };
     const sceneId = sceneMap[target] ?? target;
-    // 确保场景�?DB 中存在并设为活动
+    // 确保场景在 DB 中存在并设为活动
     const db = (this.world as any).getDatabase() as any;
     db.run("INSERT OR IGNORE INTO scenes (id, name, description, is_active) VALUES (?, ?, ?, 0)", [sceneId, target, `${target}的场景`]);
     this.world.setActiveScene(sceneId);
@@ -826,7 +1081,7 @@ export class GameSession {
     } else {
       this.world.upsertEntity({ id: "player", name: this.activeCharacter?.name ?? "调查员", type: "pc", hp: 12, maxHp: 12, ac: 10, status: [], position: sceneId });
     }
-    msg(`你移动到了场�? ${this.sceneDisplayNames[sceneId] ?? sceneId}`);
+    msg(`你移动到了场景: ${this.sceneDisplayNames[sceneId] ?? sceneId}`);
     this.lastNarrative = `你走向了${target}。`;
     return true;
   }
@@ -854,7 +1109,7 @@ export class GameSession {
 
   // ── 休息 ──
   private handleRest(messages: AgentMessage[], msg: (s: string) => number): boolean {
-    // 获取角色 HP（优先从世界实体读取，回退�?activeCharacter"
+    // 获取角色 HP（优先从世界实体读取，回退到 activeCharacter）
     const state = this.world.getCurrentState();
     const playerEnt = state.entities["player"];
     let currentHp = playerEnt?.hp ?? this.activeCharacter?.hp ?? 12;
@@ -867,19 +1122,32 @@ export class GameSession {
     }
     const c = this.activeCharacter;
 
+    // 过夜休息：若已入夜（黄昏后），休息推进到次日清晨
+    const NIGHT_PERIODS = ["dusk", "evening", "night", "late_night"];
+    if (NIGHT_PERIODS.includes(this.gameTime.period)) {
+      this.gameTime = { day: this.gameTime.day + 1, period: "dawn", ticks: 0 };
+      msg(`🌙 你在休息中度过一夜，时间来到 ${formatGameTime(this.gameTime)}`);
+    }
+
     // 技能成长检定（有标记时"
     if (this.skillGrowthMarks && this.skillGrowthMarks.length > 0) {
       const marks = [...new Set(this.skillGrowthMarks)];
+      const pid = this.activePlayerId;
       for (const skill of marks) {
         const roll = Math.floor(Math.random() * 100) + 1;
         const currentSkill = (c.skillValues?.[skill] ?? c.skills?.[skill] ?? 50);
+        const display = SKILL_DISPLAY_NAMES[skill] ?? skill;
         if (roll > currentSkill) {
           const increase = Math.floor(Math.random() * 10) + 1;
           if (c.skillValues) c.skillValues[skill] = Math.min(99, currentSkill + increase);
           else if (c.skills) c.skills[skill] = Math.min(99, currentSkill + increase);
-          messages.push({ speaker: "系统", content: `🎲 技能成长检查d100=${roll} (当前=${currentSkill}%) �?成功�?{skill} +${increase}%`, type: "system" });
+          // 记录休息成长，模组结算时并入该 PC 的传承记录
+          const prev = this._growthChangesByPC.get(pid) ?? [];
+          prev.push(`${display}→${Math.min(99, currentSkill + increase)}`);
+          this._growthChangesByPC.set(pid, prev);
+          messages.push({ speaker: "系统", content: `🎲 技能成长检查d100=${roll} (当前=${currentSkill}%) → 成功！${display} +${increase}%`, type: "system" });
         } else {
-          messages.push({ speaker: "系统", content: `🎲 技能成长检查d100=${roll} (当前=${currentSkill}%) �?失败�?{skill} 无成长`, type: "system" });
+          messages.push({ speaker: "系统", content: `🎲 技能成长检查d100=${roll} (当前=${currentSkill}%) → 失败，${display} 无成长`, type: "system" });
         }
       }
       this.skillGrowthMarks = [];
@@ -916,18 +1184,18 @@ export class GameSession {
     const passed = result.passed;
     const loss = result.sanLoss;
     const roll = result.roll;
-    msg(`🧠 SAN 检查(${reason}): d100=${roll} (目标=${this.sanity.state.currentSAN}) �?${passed ? "通过" : "失败"}！SAN -${loss} (剩余: ${this.sanity.state.currentSAN})`);
+    msg(`🧠 SAN 检查(${reason}): d100=${roll} (目标=${this.sanity.state.currentSAN}) → ${passed ? "通过" : "失败"}！SAN -${loss} (剩余: ${this.sanity.state.currentSAN})`);
     if (result.temporaryInsanity) {
-      msg(`⚠️ 临时疯狂触发�?{result.boutOfMadness ?? ""}`);
+      msg(`⚠️ 临时疯狂触发！${result.boutOfMadness ?? ""}`);
     }
-    this.lastNarrative = `SAN 检定结�? ${passed ? "通过" : "失败"}, SAN -${loss}`;
+    this.lastNarrative = `SAN 检定结果: ${passed ? "通过" : "失败"}, SAN -${loss}`;
     return true;
   }
 
   // ── 技能检查──
   private handleSkillCheck(intent: ActionIntent, messages: AgentMessage[], msg: (s: string) => number): boolean {
     const skill = intent.skill ?? "investigation";
-    const skillDisplay = { stealth: "潜行", perception: "侦查", investigation: "调查", persuasion: "说服", medicine: "医学", history: "历史", occult: "神秘", library_use: "图书馆使用" }[skill] ?? skill;
+    const skillDisplay = SKILL_DISPLAY_NAMES[skill] ?? skill;
     const skillValue = this.activeCharacter?.skillValues?.[skill] ?? this.activeCharacter?.skills?.[skill] ?? 50;
     const roll = Math.floor(Math.random() * 100) + 1;
     const success = roll <= skillValue;
@@ -935,13 +1203,13 @@ export class GameSession {
     const isFumble = roll > 95;
     const resultText = isFumble ? "大失败！" : isCrit ? "暴击成功" : success ? "成功" : "失败";
 
-    // 记录技能标记（用于后续成长"
+    // 记录技能标记（用于后续成长）—— 仅失败时标记（CoC 7e 规则：失败才成长）
     this.lastRolls.push({ skill, roll, target: skillValue, success });
-    if (this.skillGrowthMarks && !this.skillGrowthMarks.includes(skill)) {
+    if (!success && this.skillGrowthMarks && !this.skillGrowthMarks.includes(skill)) {
       this.skillGrowthMarks.push(skill);
     }
 
-    msg(`🎲 ${skillDisplay}检查 d100=${roll} (目标=${skillValue}%) �?${resultText}`);
+    msg(`🎲 ${skillDisplay}检查 d100=${roll} (目标=${skillValue}%) → ${resultText}`);
     this.lastNarrative = `${skillDisplay}检查 ${resultText}。`;
     return true;
   }
@@ -956,7 +1224,7 @@ export class GameSession {
     const total = roll + abilityMod;
     const success = total >= dc;
     const abilityNames: Record<string, string> = { strength: "力量", dexterity: "敏捷", constitution: "体质", intelligence: "智力", wisdom: "感知", charisma: "魅力" };
-    msg(`🎲 ${abilityNames[ability] ?? ability}豁免 (${reason}): d20=${roll}+${abilityMod}=${total} (DC=${dc}) �?${success ? "通过" : "失败"}`);
+    msg(`🎲 ${abilityNames[ability] ?? ability}豁免 (${reason}): d20=${roll}+${abilityMod}=${total} (DC=${dc}) → ${success ? "通过" : "失败"}`);
     this.lastNarrative = `豁免检查 ${success ? "成功通过" : "失败"}。`;
     return true;
   }
@@ -972,13 +1240,13 @@ export class GameSession {
       const luckSpend = intent.luckSpend;
       if (this.activeCharacter && this.activeCharacter.luck !== undefined) {
         if (luckSpend > this.activeCharacter.luck) {
-          msg(`💫 幸运不足！当前幸�? ${this.activeCharacter.luck}，尝试消�? ${luckSpend}`);
+          msg(`💫 幸运不足！当前幸运: ${this.activeCharacter.luck}，尝试消耗: ${luckSpend}`);
           return true;
         }
         this.activeCharacter.luck -= luckSpend;
         effectiveRoll = Math.max(1, effectiveRoll - luckSpend);
         luckSpendMsg = ` (燃运${luckSpend})`;
-        msg(`💫 消�?${luckSpend} 点幸运！当前: ${this.activeCharacter.luck}`);
+        msg(`💫 消耗 ${luckSpend} 点幸运！当前: ${this.activeCharacter.luck}`);
       }
     }
 
@@ -988,7 +1256,7 @@ export class GameSession {
     const dmg = success ? (isCrit ? Math.floor(Math.random() * 12) + 6 : Math.floor(Math.random() * 6) + 1) : 0;
     const hitMsg = isFumble ? "大失败！" : isCrit ? "暴击" : success ? "命中" : "未命";
 
-    msg(`⚔️ 攻击检查d100=${effectiveRoll} (目标=${skill}%)${luckSpendMsg} �?${hitMsg}${dmg > 0 ? `，造成 ${dmg} 点伤害` : ""}`);
+    msg(`⚔️ 攻击检查d100=${effectiveRoll} (目标=${skill}%)${luckSpendMsg} → ${hitMsg}${dmg > 0 ? `，造成 ${dmg} 点伤害` : ""}`);
     if (dmg > 0) {
       const state = this.world.getCurrentState();
       const enemies = Object.values(state.entities).filter(e => (e.type === "monster" || e.type === "npc") && e.hp > 0);
@@ -1041,7 +1309,7 @@ export class GameSession {
         creditRating: ch.creditRating ?? 30,
         createdAt: new Date().toISOString(),
       });
-      msg(`角色创建完成�?{charName}�?{archetypeId}）已就绪。HP:${ch.hp}, SAN:${this.sanity.state.currentSAN}`);
+      msg(`角色创建完成！${charName}（${archetypeId}）已就绪。HP:${ch.hp}, SAN:${this.sanity.state.currentSAN}`);
       this.lastNarrative = `角色创建完成: ${charName}。`;
     } catch (e) {
       msg(`创建失败: ${(e as Error).message}。请检查职业名称是否正确。`);
@@ -1062,14 +1330,14 @@ export class GameSession {
       const occupations = archetypes.filter(a => !a.isPrestige).slice(0, 20);
       const lines = ["【调查员职业列表", ""];
       for (const a of occupations) {
-        lines.push(`  ${a.id.padEnd(20)} �?${a.label ?? a.id}`);
+        lines.push(`  ${a.id.padEnd(20)} — ${a.label ?? a.id}`);
       }
       const text = lines.join("\n");
       msg(text);
       this.lastNarrative = text;
     } catch {
-      msg("职业列表: 考古学家, 医生, 记�? 侦探, 教授, 士兵, 艺术�? 流浪�? 工程�? 律师, 警察, 牧师");
-      this.lastNarrative = "调查员职�? 考古学家, 医生, 记�? 侦探...";
+      msg("职业列表: 考古学家, 医生, 记者, 侦探, 教授, 士兵, 艺术家, 流浪者, 工程师, 律师, 警察, 牧师");
+      this.lastNarrative = "调查员职业: 考古学家, 医生, 记者, 侦探...";
     }
     return true;
   }
@@ -1081,8 +1349,8 @@ export class GameSession {
       msg("你想买什么？请指定物品名称");
       this.lastNarrative = "你想买什么？";
     } else {
-      msg(`�?{item}」没有找到。当前商店可能没有此物品。`);
-      this.lastNarrative = `没有找到�?{item}」。`;
+      msg(`「${item}」没有找到。当前商店可能没有此物品。`);
+      this.lastNarrative = `没有找到「${item}」。`;
     }
     return true;
   }
@@ -1094,8 +1362,8 @@ export class GameSession {
       msg("你想卖什么？请指定物品名称");
       this.lastNarrative = "你想卖什么？";
     } else {
-      msg(`你的背包中没有�?{item}」。`);
-      this.lastNarrative = `没有�?{item}」可出售。`;
+      msg(`你的背包中没有「${item}」。`);
+      this.lastNarrative = `没有「${item}」可出售。`;
     }
     return true;
   }
@@ -1123,8 +1391,8 @@ export class GameSession {
         creditRating: c.creditRating ?? 30,
         createdAt: new Date().toISOString(),
       });
-      msg(`角色�?{c.name}」已保存。`);
-      this.lastNarrative = `角色�?{c.name}」已保存。`;
+      msg(`角色「${c.name}」已保存。`);
+      this.lastNarrative = `角色「${c.name}」已保存。`;
       return true;
     }
     if (input.includes("传承列表") || input.includes("读档")) {
@@ -1142,12 +1410,12 @@ export class GameSession {
         }
         const snap = this.careerStore.getSnapshot(charName);
         if (!snap) {
-          msg(`未找到角色�?{charName}」。`);
-          this.lastNarrative = `未找到角色�?{charName}」。`;
+          msg(`未找到角色「${charName}」。`);
+          this.lastNarrative = `未找到角色「${charName}」。`;
           return true;
         }
-        msg(`角色�?{charName}」已加载�?HP:${snap.hp}, SAN:${snap.san})`);
-        this.lastNarrative = `角色�?{charName}」已加载。`;
+        msg(`角色「${charName}」已加载。(HP:${snap.hp}, SAN:${snap.san})`);
+        this.lastNarrative = `角色「${charName}」已加载。`;
         return true;
       }
       const chars = this.careerStore.listCharacters();
@@ -1166,9 +1434,9 @@ export class GameSession {
       "跨模组角色成长追踪系统",
       "",
       "命令:",
-      "  保存角色 �?保存当前角色快照",
-      "  传承列表 �?查看已保存的角色",
-      "  读档 <角色�? �?加载已保存的角色",
+      "  保存角色 — 保存当前角色快照",
+      "  传承列表 — 查看已保存的角色",
+      "  读档 <角色名> — 加载已保存的角色",
     ].join("\n");
     msg(helpText);
     this.lastNarrative = helpText;
@@ -1187,7 +1455,7 @@ export class GameSession {
       this.sceneDisplayNames[scene.id] = scene.name;
       this.sceneAliases[scene.id] = [scene.name];
     }
-    // �?displayNames �?aliases 合并场景"
+    // 从 displayNames 和 aliases 合并场景名
     for (const [id, name] of Object.entries(story.displayNames ?? {})) {
       this.sceneDisplayNames[id] = name;
     }
@@ -1225,6 +1493,14 @@ export class GameSession {
         addMessage: (speaker: string, content: string, type: string) => this.addMessage(speaker, content, type),
         activeRuleset: this.activeRuleset,
         currentRound: this.round,
+        // 读取模块：将模组原文场景描写写入 scenes 表（保留原文，供 KP 上下文注入）
+        registerScene: (sceneId: string, displayName: string, description?: string) => {
+          this.world.registerScene(sceneId, displayName, description);
+        },
+        // 读取模块：将模组线索注册进调查引擎（供场景线索注入）
+        registerSceneClue: (sceneName: string, clueType: string, description?: string) => {
+          this.investigation.registerSceneClue(sceneName, clueType, description);
+        },
       };
       (this as any)["_moduleLoader"] = new MythosModuleLoader(host);
       (this as any)["_loadedModules"] = new Map<string, boolean>();
@@ -1255,8 +1531,8 @@ export class GameSession {
     };
     if (!mod && moduleName) {
       const available = Object.keys(allModules).join(", ");
-      msg(`未找到模组�?{moduleName}」。可用模�? ${available}`);
-      this.lastNarrative = `未找到模组�?{moduleName}」。`;
+      msg(`未找到模组「${moduleName}」。可用模组: ${available}`);
+      this.lastNarrative = `未找到模组「${moduleName}」。`;
       return true;
     }
     if (!mod) {
@@ -1270,16 +1546,35 @@ export class GameSession {
       const loader = (this as any)["_moduleLoader"] as any;
       const loaded = (this as any)["_loadedModules"] as Map<string, boolean>;
       if (loaded.has(mod.id)) {
-        msg(`模组�?{mod.name}」已导入。`);
-        this.lastNarrative = `模组�?{mod.name}」已导入。`;
+        msg(`模组「${mod.name}」已导入。`);
+        this.lastNarrative = `模组「${mod.name}」已导入。`;
         return true;
       }
       const lines = loader.import(mod);
       loaded.set(mod.id, true);
       this.registeredModules.push(mod);
+      // 填充模组场景显示名/别名（scenes 表已由 registerScene 写入，含模组原文描写）
+      try {
+        const db = (this.world as any).getDatabase() as any;
+        const rows = db.query("SELECT id, name, description FROM scenes").all() as any[];
+        for (const r of rows) {
+          const name = r.name ?? r.id ?? "";
+          if (!name || name === "unknown") continue;
+          this.sceneDisplayNames[r.id] = name;
+          if (r.description && r.description.length > 0) this.sceneAliases[r.id] = [name];
+        }
+      } catch { /* 忽略 DB 错误 */ }
+      // 玩家初始位置 → 模组入口场景（优先 sceneDescriptions 第一个 key，兜底 scenes 表第一行），确保场景描写可注入
+      const pos = this.getPlayerPosition();
+      if (!pos || pos === "unknown" || pos === "tavern") {
+        const entryScene = mod.sceneDescriptions
+          ? Object.keys(mod.sceneDescriptions).find(k => k !== "unknown")
+          : Object.keys(this.sceneDisplayNames)[0];
+        if (entryScene) this.movePlayerToScene(entryScene);
+      }
       const resultText = lines.join("\n");
       msg(resultText);
-      this.lastNarrative = `已加载模�? ${mod.name}`;
+      this.lastNarrative = `已加载模组: ${mod.name}`;
     } catch (e) {
       msg(`模组加载失败: ${(e as Error).message}`);
       this.lastNarrative = `模组加载失败。`;
@@ -1287,58 +1582,77 @@ export class GameSession {
     return true;
   }
 
-  // ── 模组结算/技能成�?──
+  // ── 模组结算/技能成长 ──
   private handleSkillAdvancement(messages: AgentMessage[], msg: (s: string) => number): boolean {
-    if (!this.skillGrowthMarks || this.skillGrowthMarks.length === 0) {
+    const marks = this.skillGrowthMarks ? [...new Set(this.skillGrowthMarks)] : [];
+    const restGrowth = new Map(this._growthChangesByPC);
+
+    if (marks.length === 0 && restGrowth.size === 0) {
       msg("没有可结算的成长记录。在冒险中使用技能后，失败时自动记录成长标记");
       this.lastNarrative = "没有可结算的成长";
       return true;
     }
 
-    const c = this.activeCharacter;
-    const marks = [...new Set(this.skillGrowthMarks)];
     const growthResults: string[] = [];
-    const skillChanges: string[] = [];
 
-    for (const skill of marks) {
-      const roll = Math.floor(Math.random() * 100) + 1;
-      const currentSkill = c?.skillValues?.[skill] ?? c?.skills?.[skill] ?? 50;
-      if (roll > currentSkill) {
-        const increase = Math.floor(Math.random() * 10) + 1;
-        if (c?.skillValues) c.skillValues[skill] = Math.min(99, currentSkill + increase);
-        else if (c?.skills) c.skills[skill] = Math.min(99, currentSkill + increase);
-        growthResults.push(`${skill}: d100=${roll} > ${currentSkill}% �?成长 +${increase}%`);
-        skillChanges.push(`${skill}�?{Math.min(99, currentSkill + increase)}`);
-      } else {
-        growthResults.push(`${skill}: d100=${roll} <= ${currentSkill}% �?无成长`);
+    // 收集要结算的角色（characters 为空时回退到当前活跃角色）
+    const targets: Array<{ pid: string; char: any }> = [];
+    for (const [pid, char] of this.characters) {
+      if (char) targets.push({ pid, char });
+    }
+    if (targets.length === 0 && this.activeCharacter) {
+      targets.push({ pid: this.activePlayerId, char: this.activeCharacter });
+    }
+
+    for (const { pid, char } of targets) {
+      const skillChanges: string[] = [...(restGrowth.get(pid) ?? [])];
+      const pcGrowth: string[] = [];
+
+      for (const skill of marks) {
+        const roll = Math.floor(Math.random() * 100) + 1;
+        const currentSkill = char?.skillValues?.[skill] ?? char?.skills?.[skill] ?? 50;
+        const display = SKILL_DISPLAY_NAMES[skill] ?? skill;
+        if (roll > currentSkill) {
+          const increase = Math.floor(Math.random() * 10) + 1;
+          if (char?.skillValues) char.skillValues[skill] = Math.min(99, currentSkill + increase);
+          else if (char?.skills) char.skills[skill] = Math.min(99, currentSkill + increase);
+          pcGrowth.push(`${char.name}·${display}: d100=${roll} > ${currentSkill}% → 成长 +${increase}%`);
+          skillChanges.push(`${display}→${Math.min(99, currentSkill + increase)}`);
+        } else {
+          pcGrowth.push(`${char.name}·${display}: d100=${roll} <= ${currentSkill}% → 无成长`);
+        }
+      }
+
+      growthResults.push(...pcGrowth);
+
+      // 记录模组结算到 careerStore（每个角色各一条）
+      if (this.careerStore && char) {
+        const sanEngine = this.sanityEngines.get(pid) ?? this.sanity;
+        const startStats = this._moduleStartByPC.get(pid);
+        const sanBefore = startStats?.san ?? sanEngine.state.maxSAN;
+        const cmBefore = startStats?.cm ?? 0;
+        try {
+          this.careerStore.addEntry({
+            id: `ce_${Date.now().toString(36)}_${pid}`,
+            characterName: char.name,
+            moduleId: this.registeredModules[0]?.id ?? "unknown",
+            moduleName: this.registeredModules[0]?.name ?? "未知模组",
+            completedAt: new Date().toISOString(),
+            endingId: "completed",
+            endingName: "模组完成",
+            sanChange: sanEngine.state.currentSAN - sanBefore,
+            cmChange: (sanEngine.state.cthulhuMythos ?? 0) - cmBefore,
+            reputationChange: 0,
+            skillChanges,
+            rewardIds: [],
+            narrative: "模组结算完成",
+          });
+        } catch {}
       }
     }
 
     this.skillGrowthMarks = [];
-
-    // 记录模组结算�?careerStore
-    if (this.careerStore && c) {
-      const startStats = (this as any)._moduleStartByPC?.get(this.activePlayerId);
-      const sanBefore = startStats?.san ?? this.sanity.state.maxSAN;
-      const cmBefore = startStats?.cm ?? 0;
-      try {
-        this.careerStore.addEntry({
-          id: `ce_${Date.now().toString(36)}`,
-          characterName: c.name,
-          moduleId: this.registeredModules[0]?.id ?? "unknown",
-          moduleName: this.registeredModules[0]?.name ?? "未知模组",
-          completedAt: new Date().toISOString(),
-          endingId: "completed",
-          endingName: "模组完成",
-          sanChange: this.sanity.state.currentSAN - sanBefore,
-          cmChange: (this.sanity.state.cthulhuMythos ?? 0) - cmBefore,
-          reputationChange: 0,
-          skillChanges,
-          rewardIds: [],
-          narrative: "模组结算完成",
-        });
-      } catch {}
-    }
+    this._growthChangesByPC.clear();
 
     const resultText = ["【技能成长结算", ...growthResults].join("\n");
     msg(resultText);
@@ -1363,8 +1677,8 @@ export class GameSession {
     // 检查是否有已知神话法术
     if (this.knownMythosSpells.length > 0 && intent.action === "occult_cast") {
       const spellName = intent.spell ?? intent.target ?? "未知法术";
-      msg(`你尝试施展�?{spellName}」……`);
-      this.lastNarrative = `你尝试施展�?{spellName}」。`;
+      msg(`你尝试施展「${spellName}」……`);
+      this.lastNarrative = `你尝试施展「${spellName}」。`;
       return true;
     }
     if (intent.action === "occult_cast") {
@@ -1449,12 +1763,12 @@ export class GameSession {
     const isFumble = roll > 95;
     const resultText = isFumble ? "大失败！伤势可能加重" : success ? "成功！伤口得到了处理" : "失败，急救未能止血";
 
-    msg(`💊 急救检查d100=${roll} (医学/急救=${medicineSkill}%) �?${resultText}`);
+    msg(`💊 急救检查d100=${roll} (医学/急救=${medicineSkill}%) → ${resultText}`);
     if (success) {
       const healAmount = Math.floor(Math.random() * 3) + 1;
       c.hp = Math.min(c.maxHp ?? 12, (c.hp ?? 12) + healAmount);
       this._woundsTreated = true;
-      msg(`恢复�?${healAmount} �?HP (当前: ${c.hp}/${c.maxHp ?? 12})`);
+      msg(`恢复了 ${healAmount} 点 HP (当前: ${c.hp}/${c.maxHp ?? 12})`);
     }
     this.lastNarrative = `急救结果: ${resultText}。`;
     return true;
@@ -1463,7 +1777,7 @@ export class GameSession {
   // ── 装填 ──
   private handleReload(intent: ActionIntent, messages: AgentMessage[], msg: (s: string) => number): boolean {
     const weaponName = intent.weapon ?? intent.target ?? "武器";
-    msg(`你重新装填了�?{weaponName}」。弹药已补满。`);
+    msg(`你重新装填了「${weaponName}」。弹药已补满。`);
     this.lastNarrative = `你装填了${weaponName}。`;
     return true;
   }
@@ -1480,20 +1794,20 @@ export class GameSession {
     const success = newRoll <= target;
     const isFumble = newRoll > 95;
     const resultText = isFumble ? "大失败！后果严重" : success ? "推动成功" : "再次失败，情况恶";
-    msg(`🔄 推动检查(${skill}): d100=${newRoll} (目标=${target}%) �?${resultText}`);
+    msg(`🔄 推动检查(${skill}): d100=${newRoll} (目标=${target}%) → ${resultText}`);
     this._lastPushedRoll = null;
     this.lastNarrative = `推动检查 ${resultText}。`;
     return true;
   }
 
-  // ── 追�?──
+  // ── 追逐 ──
   private handleChase(messages: AgentMessage[], msg: (s: string) => number): boolean {
     const roll = Math.floor(Math.random() * 100) + 1;
     const dex = this.activeCharacter?.attributes?.dexterity ?? this.activeCharacter?.attributes?.DEX ?? 50;
     const success = roll <= dex;
     const resultText = success ? "你成功拉开了距离！" : "追逐仍在继续…";
-    msg(`🏃 追逐检查d100=${roll} (DEX=${dex}) �?${resultText}`);
-    this.lastNarrative = `追�? ${resultText}`;
+    msg(`🏃 追逐检查d100=${roll} (DEX=${dex}) → ${resultText}`);
+    this.lastNarrative = `追逐: ${resultText}`;
     return true;
   }
 
@@ -1505,17 +1819,17 @@ export class GameSession {
   // 传奇模板辅助
   // ============================================================
 
-  /** 构建 LLM 传奇上下文注�?*/
+  /** 构建 LLM 传奇上下文注入 */
   private buildEpicContext(): string {
     const template = this.activeCharacter?.legendaryTemplate;
     if (!template) return "";
     const ep = template.epicNarrative ?? "";
     const showTime = template.showTime;
-    const st = showTime ? `\n表演时间�?{showTime.name}」：${showTime.description}（持�?{showTime.duration}）` : "";
+    const st = showTime ? `\n表演时间「${showTime.name}」：${showTime.description}（持续${showTime.duration}）` : "";
     const actions = template.legendaryActions?.map(a =>
-      `�?{a.name}�?{a.description}（消�?${a.cost} 传奇点）`
+      `【${a.name}】${a.description}（消耗 ${a.cost} 传奇点）`
     ).join("\n") ?? "";
-    return `\n\n=== 传奇角色上下�?===\n${ep}${st}\n${actions}\n当前角色已超越凡人极限。请以匹配的史诗级别描绘其行动与叙事。`;
+    return `\n\n=== 传奇角色上下文 ===\n${ep}${st}\n${actions}\n当前角色已超越凡人极限。请以匹配的史诗级别描绘其行动与叙事。`;
   }
 
   private execDiceExpr(expr: string): { total: number; detail: string; bonus?: number } {

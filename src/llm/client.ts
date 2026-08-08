@@ -13,7 +13,7 @@ export interface ChatOptions {
   maxTokens?: number;
   /** Force JSON output (OpenAI/DeepSeek compatible) */
   jsonMode?: boolean;
-  /** 超时时间（毫秒），默认 8000 */
+  /** 超时时间（毫秒），默认 120000（ECNU/DeepSeek 代理实测生成 100 tokens 需 ~80s） */
   timeout?: number;
 }
 
@@ -29,13 +29,35 @@ export class LLMClient {
   /** 重置熔断（切换 API key 时调用） */
   static resetDefeat() { LLMClient._defeated = false; }
 
+  /**
+   * 兼容 ECNU/qwen 代理：多条 system 消息会触发 500。
+   * 将连续的所有 system 消息合并为一条（按出现顺序拼接），保留 user/assistant 顺序。
+   */
+  private normalizeMessages(messages: Message[]): Message[] {
+    const sys: string[] = [];
+    const out: Message[] = [];
+    for (const m of messages) {
+      if (m.role === "system") {
+        sys.push(m.content);
+      } else {
+        if (sys.length > 0) {
+          out.push({ role: "system", content: sys.join("\n\n") });
+          sys.length = 0;
+        }
+        out.push(m);
+      }
+    }
+    if (sys.length > 0) out.push({ role: "system", content: sys.join("\n\n") });
+    return out;
+  }
+
   /** Non-streaming chat — returns full response */
   async chat(messages: Message[], options: ChatOptions = {}): Promise<string> {
     if (LLMClient._defeated) throw new Error("LLM 已熔断（之前连接失败）");
 
     const body: Record<string, unknown> = {
       model: this.config.model,
-      messages,
+      messages: this.normalizeMessages(messages),
       temperature: options.temperature ?? this.config.temperature,
       max_tokens: options.maxTokens ?? this.config.maxTokens,
     };
@@ -44,37 +66,44 @@ export class LLMClient {
       body.response_format = { type: "json_object" };
     }
 
-    const timeout = options.timeout ?? 8000;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-    let resp: Response;
-    try {
-      resp = await fetch(`${this.config.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.config.apiKey}`,
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-    } catch (err: any) {
+    const timeout = options.timeout ?? 300000;
+    // ECNU/qwen 代理响应波动大（3s~90s+）：超时/瞬时错误自动重试 1 次
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      let resp: Response;
+      try {
+        resp = await fetch(`${this.config.baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.config.apiKey}`,
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        const isTimeout = err.name === "AbortError";
+        if (!isTimeout) LLMClient._defeated = true;
+        if (isTimeout && attempt === 0) continue; // 超时重试 1 次
+        throw new Error(`LLM 连接失败: ${isTimeout ? "超时" : err.message}`);
+      }
       clearTimeout(timeoutId);
-      LLMClient._defeated = true; // 熔断：后续调用立即抛错
-      throw new Error(`LLM 连接失败: ${err.name === "AbortError" ? "超时" : err.message}`);
-    }
-    clearTimeout(timeoutId);
 
-    if (!resp.ok) {
-      const err = await resp.text().slice(0, 500);
-      throw new Error(`LLM API error ${resp.status}: ${err}`);
-    }
+      if (!resp.ok) {
+        const err = (await resp.text()).slice(0, 500);
+        // 5xx 服务端瞬时错误：重试 1 次
+        if (resp.status >= 500 && attempt === 0) continue;
+        throw new Error(`LLM API error ${resp.status}: ${err}`);
+      }
 
-    const json: any = await resp.json();
-    const content = json.choices?.[0]?.message?.content;
-    if (!content) throw new Error("LLM returned empty response");
-    return content;
+      const json: any = await resp.json();
+      const content = json.choices?.[0]?.message?.content;
+      if (!content) throw new Error("LLM returned empty response");
+      return content;
+    }
+    throw new Error("LLM 重试仍失败");
   }
 
   /** Streaming chat — yields text chunks as they arrive */
@@ -84,7 +113,7 @@ export class LLMClient {
   ): AsyncGenerator<string> {
     const body: Record<string, unknown> = {
       model: this.config.model,
-      messages,
+      messages: this.normalizeMessages(messages),
       temperature: options.temperature ?? this.config.temperature,
       max_tokens: options.maxTokens ?? this.config.maxTokens,
       stream: true,
@@ -96,7 +125,7 @@ export class LLMClient {
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? 300000);
 
     let resp: Response;
     try {
@@ -111,13 +140,14 @@ export class LLMClient {
       });
     } catch (err: any) {
       clearTimeout(timeoutId);
-      LLMClient._defeated = true;
-      throw new Error(`LLM 连接失败: ${err.name === "AbortError" ? "超时(8s)" : err.message}`);
+      // 超时 = 生成慢（非不可用），不触发永久熔断；仅真连接错误熔断
+      if (err.name !== "AbortError") LLMClient._defeated = true;
+      throw new Error(`LLM 连接失败: ${err.name === "AbortError" ? "超时" : err.message}`);
     }
     clearTimeout(timeoutId);
 
     if (!resp.ok) {
-      const err = await resp.text().slice(0, 500);
+      const err = (await resp.text()).slice(0, 500);
       throw new Error(`LLM API error ${resp.status}: ${err}`);
     }
 

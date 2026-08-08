@@ -304,6 +304,27 @@ export class WorldStateManager {
     this.db.run("UPDATE scenes SET is_active = 1 WHERE id = ?", [sceneId]);
   }
 
+  /** 读取场景（含模组原文描写与出口）。不存在返回 null。 */
+  getScene(sceneId: string): { id: string; name: string; description: string; exits: string[] } | null {
+    const row: any = this.db
+      .query("SELECT id, name, description, exits FROM scenes WHERE id = ?")
+      .get(sceneId);
+    if (!row) return null;
+    let exits: string[] = [];
+    try { exits = JSON.parse(row.exits || "[]"); } catch { /* 忽略损坏的 exits */ }
+    return { id: row.id, name: row.name, description: row.description ?? "", exits };
+  }
+
+  /** 注册场景（模组原文导入用）。INSERT OR REPLACE，保留原文描写。 */
+  registerScene(sceneId: string, displayName: string, description?: string) {
+    const existing = this.getScene(sceneId);
+    this.db.run(
+      `INSERT OR REPLACE INTO scenes (id, name, description, is_active)
+       VALUES (?, ?, ?, ?)`,
+      [sceneId, displayName ?? sceneId, description ?? existing?.description ?? "", existing ? 0 : 0]
+    );
+  }
+
   setRelation(a: string, b: string, relation: string, attitude: number = 0) {
     this.db.run(
       `INSERT OR REPLACE INTO relationships (entity_a, entity_b, relation, attitude, updated_at)

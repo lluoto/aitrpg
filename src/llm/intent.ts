@@ -42,6 +42,9 @@ const INTENT_PATTERNS: Array<{ verb: RegExp; intent: Partial<ActionIntent>; requ
   // CoC 压制/扫射/掩护射击
   { verb: /(?:压制|扫射|掩护)/, intent: { action: "attack", method: "suppress" } },
   { verb: ATTACK_VERBS, intent: { action: "attack", method: "melee" }, requiresTarget: false },
+  // 移动+动作组合：优先解析为 move（"前往艾德里安的住宅调查" → 移动而非仅检定）
+  // 注意：目标列表不含"休息"——"前往旅店休息" 语义上是休息（过夜/恢复），应落入下方 rest 意图
+  { verb: /(?:前往|走到|进入|来到|抵达|走向|去往).*(?:调查|检查|查看|了解|探查|寻找|搜索|探索|见|打听|询问)/, intent: { action: "move" } },
   { verb: /(?:移动|走|跑|前进|前往).*(?:到|向|往|去)/, intent: { action: "move" } },
   { verb: /^去\s*\S+/, intent: { action: "move" } }, // "去谷仓" 等简短指令
   { verb: /(?:使用|释放|施放|施展).*(?:法术|魔法|咒语)/, intent: { action: "cast" } },
@@ -50,7 +53,7 @@ const INTENT_PATTERNS: Array<{ verb: RegExp; intent: Partial<ActionIntent>; requ
   { verb: /(?:急救|包扎|止血|医疗|治疗).*(?:伤口|伤势|出血|伤)/, intent: { action: "first_aid" } },
   { verb: /(?:和|跟|与|对).*(?:说话|交谈|对话|聊聊|询问|问)/, intent: { action: "talk" } },
   { verb: /(?:休息|休息一下|休整|休养|睡觉|睡眠|治疗|包扎)/, intent: { action: "rest" } },
-  { verb: /(?:环顾|环视|环顾四周|看看四周|周围|看.*环境|看.*场景|扫视|扫了一眼)/, intent: { action: "look" } },
+  { verb: /(?:环顾|环视|环顾四周|看看四周|周围|看.*环境|看.*场景|扫视|扫了一眼|查看|探索|搜查)/, intent: { action: "look" } },
   { verb: /(?:潜行|躲藏|隐蔽|隐匿)/, intent: { action: "skill_check", skill: "stealth" } },
   { verb: /(?:侦查|观察|搜索|寻找|环顾)/, intent: { action: "skill_check", skill: "perception" } },
   { verb: /(?:说服|交涉|谈判|劝说|聊天|对话)/, intent: { action: "skill_check", skill: "persuasion" } },

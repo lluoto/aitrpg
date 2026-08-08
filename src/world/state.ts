@@ -2,11 +2,13 @@
 // 管理：当前场景、发现的线索、NPC 状态、场景历史
 // 为 KP 提示生成提供上下文
 
-import type { ModuleData, Scene, ModuleState, NPCInstanceState } from "../module/types";
+import type { ModuleData, Scene, ModuleState, NPCInstanceState, Clue } from "../module/types";
 
 export class WorldState {
   private module: ModuleData;
   private state: ModuleState;
+  /** 各线索连续检定失败次数（用于 failback 兜底触发） */
+  private clueFailCounts = new Map<string, number>();
 
   constructor(module: ModuleData) {
     this.module = module;
@@ -17,6 +19,12 @@ export class WorldState {
       npcStates: new Map<string, NPCInstanceState>(),
       sceneHistory: [],
       currentRound: 0,
+      // 剧情状态变量：以各场景声明（Scene.stateVars）为初始值
+      sceneStateVars: new Map<string, Record<string, boolean | string>>(
+        module.scenes
+          .filter(s => s.stateVars && Object.keys(s.stateVars).length > 0)
+          .map(s => [s.id, { ...(s.stateVars as Record<string, boolean | string>) }]),
+      ),
     };
 
     // 初始化所有 NPC 状态
@@ -83,21 +91,89 @@ export class WorldState {
     return this.getSceneClues().filter((c) => !c.found);
   }
 
-  /** 标记一个线索已发现 */
+  /** 标记一个线索已发现（连锁触发 unlocks） */
   discoverClue(clueId: string): void {
+    if (this.state.discoveredClues.has(clueId)) return;
     this.state.discoveredClues.add(clueId);
+    // One-level unlock: 发现线索时自动发现 unlocks 中指定的线索
+    const clue = this.findClueById(clueId);
+    if (clue?.unlocks) {
+      for (const linkedId of clue.unlocks) {
+        if (!this.state.discoveredClues.has(linkedId)) {
+          this.state.discoveredClues.add(linkedId);
+        }
+      }
+    }
+    // 剧情状态联动：线索携带 setStateVar 时自动写入对应场景的状态变量
+    if (clue?.setStateVar) {
+      const scene = this.module.scenes.find(s => s.clues.some(c => c.id === clueId));
+      if (scene) {
+        this.setStateVar(scene.id, clue.setStateVar.key, clue.setStateVar.value);
+      }
+    }
+  }
+
+  /** 读取某场景的剧情状态变量（含 Scene.stateVars 初始值 + 运行时修改） */
+  getStateVars(sceneId: string): Record<string, boolean | string> {
+    return { ...(this.state.sceneStateVars.get(sceneId) ?? {}) };
+  }
+
+  /** 读取单个剧情状态变量 */
+  getStateVar(sceneId: string, key: string): boolean | string | undefined {
+    return this.state.sceneStateVars.get(sceneId)?.[key];
+  }
+
+  /** 写入剧情状态变量（引擎专用；LLM 不参与写入） */
+  setStateVar(sceneId: string, key: string, value: boolean | string): void {
+    const vars = this.state.sceneStateVars.get(sceneId) ?? {};
+    vars[key] = value;
+    this.state.sceneStateVars.set(sceneId, vars);
+  }
+
+  /** 在所有场景的线索中查找指定 ID 的线索 */
+  private findClueById(clueId: string): Clue | undefined {
+    for (const scene of this.module.scenes) {
+      for (const clue of scene.clues) {
+        if (clue.id === clueId) return clue;
+      }
+    }
+    return undefined;
   }
 
   isClueFound(clueId: string): boolean {
     return this.state.discoveredClues.has(clueId);
   }
 
+  /** 记录一次线索检定失败（用于 failback 兜底）；返回累计失败次数 */
+  incrementClueFail(clueId: string): number {
+    const next = (this.clueFailCounts.get(clueId) ?? 0) + 1;
+    this.clueFailCounts.set(clueId, next);
+    return next;
+  }
+
+  /** 查询某线索累计失败次数 */
+  getClueFailCount(clueId: string): number {
+    return this.clueFailCounts.get(clueId) ?? 0;
+  }
+
+  /** 线索被发现后清零失败计数 */
+  resetClueFails(clueId: string): void {
+    this.clueFailCounts.delete(clueId);
+  }
+
   /** 切换场景 */
   moveToScene(sceneId: string): boolean {
     const exists = this.module.scenes.some((s) => s.id === sceneId);
     if (!exists) return false;
+    // 记录场景历史
+    this.state.sceneHistory.push(sceneId);
     this.state.currentSceneId = sceneId;
     return true;
+  }
+
+  /** 是否访问过某场景 */
+  isSceneVisited(sceneId: string): boolean {
+    return this.state.sceneHistory.includes(sceneId);
   }
 
   /** 获取当前场景可以前往的场景 */

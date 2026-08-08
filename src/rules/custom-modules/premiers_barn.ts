@@ -237,6 +237,7 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
       ac: 10,
       faction: "人类",
       sceneId: "艾德里安的农场",
+      gender: "male",
       attributes: { strength: 50, dexterity: 65, power: 80, constitution: 70, appearance: 55, education: 75, size: 70, intelligence: 80 },
       skills: { "斗殴": 65, "手枪": 60, "步枪/霰弹枪": 60, "闪避": 60, "生物学": 75, "神秘学": 50, "克苏鲁": 20, "侦查": 50, "聆听": 50, "图书馆": 80, "法语": 40 },
       personality: {
@@ -257,6 +258,7 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
       ac: 10,
       faction: "人类",
       sceneId: "艾米丽与爱莉的棺材",
+      gender: "female",
       attributes: { power: 60, constitution: 15, education: 82, size: 5, intelligence: 92 },
       skills: { "聆听": 70, "电子学": 92, "神秘学": 30, "克苏鲁": 20, "图书馆": 80, "博物学": 80 },
       personality: {
@@ -275,6 +277,8 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
       ac: 10,
       faction: "人类",
       sceneId: "艾米丽与爱莉的棺材",
+      gender: "female",
+      age: 0,
       attributes: {  },
       personality: {
         role: "婴儿/缸中脑",
@@ -292,6 +296,7 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
       ac: 10,
       faction: "人类",
       sceneId: "特里坎家",
+      gender: "female",
       attributes: { size: 50, appearance: 55 },
       personality: {
         role: "银行职员",
@@ -311,6 +316,8 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
       ac: 10,
       faction: "人类",
       sceneId: "加比的拖车房",
+      gender: "male",
+      age: 17,
       attributes: { size: 65, appearance: 50 },
       personality: {
         role: "无业游民",
@@ -328,6 +335,8 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
       ac: 10,
       faction: "人类",
       sceneId: "特里坎家",
+      gender: "female",
+      age: 5,
       attributes: { size: 24, appearance: 60 },
       personality: {
         role: "儿童",
@@ -346,6 +355,7 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
       ac: 10,
       faction: "人类",
       sceneId: "农场外围",
+      gender: "male",
       attributes: { dexterity: 50 },
       skills: { "斗殴": 45, "闪避": 55 },
       personality: {
