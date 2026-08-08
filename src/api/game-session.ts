@@ -184,6 +184,16 @@ export class GameSession {
     this.equippedWeaponsMap.set("p1", []);
     this.equippedArmorMap.set("p1", []);
 
+    // 注册玩家到会话（始终执行：无玩家时 join 设为活动玩家，已存在则切换）
+    // 历史消息记录依赖活动玩家的 messageHistory，缺失会导致 getHistory 恒空
+    if (!this.session.getActive()) {
+      try {
+        this.session.join("p1", characterName ?? "调查员", "p1", "");
+      } catch { /* 已存在则忽略 */ }
+    } else {
+      this.session.switchActive("p1");
+    }
+
     // 创建初始角色
     if (archetypeId) {
       try {
@@ -194,7 +204,6 @@ export class GameSession {
         );
         this.activeCharacter = char;
         this.characters.set("p1", char);
-        this.session.switchActive("p1");
         // 创建角色卡档案（独立目录"
         const careerDir = `data/careers/${this.id}`;
         try { rmSync(careerDir, { recursive: true }); } catch {}
@@ -795,7 +804,13 @@ export class GameSession {
     this.injectWorldModelForScene();
     const epicContext = this.buildEpicContext();
     try {
-      const narration = await this.kp.narrateOutcome(input, `玩家行动: ${input}${epicContext}`, turnMessages);
+      // 将最近历史（含 NPC 对话）并入 recentMessages，让 KP 感知玩家与 NPC 的交流
+      const recentHistory = this.session.getRecentGlobal(8);
+      const narration = await this.kp.narrateOutcome(
+        input,
+        `玩家行动: ${input}${epicContext}`,
+        [...recentHistory, ...turnMessages]
+      );
       this.lastNarrative = narration;
       turnMessages.push({ speaker: "守秘人", content: narration, type: "narration" });
     } catch {
@@ -1344,7 +1359,12 @@ export class GameSession {
       const ch = CharacterFactory.generate(charName, archetypeId, this.activeRuleset);
       this.activeCharacter = ch;
       this.characters.set("p1", ch);
-      this.session.switchActive("p1");
+      // 注册玩家到会话（无玩家时 join 会设为活动玩家；已存在则仅切换）
+      if (!this.session.getActive()) {
+        this.session.join("p1", charName, "p1", "");
+      } else {
+        this.session.switchActive("p1");
+      }
       // 创建世界实体
       this.world.upsertEntity({
         id: "player", name: charName, type: "pc",

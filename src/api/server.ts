@@ -280,7 +280,7 @@ async function handleRequest(req: Request): Promise<Response> {
         summary: session.getSummary(),
         state: session.getState(),
         sanity: session.getSanity(),
-        history: session.getHistory().slice(-10),
+        history: session.getHistory().messages.slice(-10),
       });
     }
 
@@ -289,8 +289,8 @@ async function handleRequest(req: Request): Promise<Response> {
       const limit = parseInt(query.get("limit") || "50");
       const history = session.getHistory();
       return respondJson({
-        messages: history.slice(-limit),
-        total: history.length,
+        messages: history.messages.slice(-limit),
+        total: history.total,
       });
     }
 
@@ -472,8 +472,8 @@ async function handleRequest(req: Request): Promise<Response> {
         return respondJson({
           session: summary,
           exportedAt: new Date().toISOString(),
-          messageCount: history.length,
-          messages: history,
+          messageCount: history.total,
+          messages: history.messages,
         });
       }
 
@@ -491,7 +491,7 @@ async function handleRequest(req: Request): Promise<Response> {
           `---`,
           ``,
         ];
-        for (const msg of history) {
+        for (const msg of history.messages) {
           const ts = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString("zh-CN") : "";
           const speaker = msg.speaker ?? "系统";
           const tag = msg.type === "narration" ? "*旁白*" : msg.type === "action" ? `**${speaker}**` : `_${speaker}_`;
