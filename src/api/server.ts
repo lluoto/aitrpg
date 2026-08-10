@@ -6,7 +6,8 @@ import { GameSession, type ActionResponse, type SessionSummary } from "./game-se
 import type { RulesetId } from "../rules/rules-engine";
 import { loadConfig } from "../config";
 import { loadSessionIds, loadSessionMeta, saveSessionMeta, deleteSessionFile, listStoredSessions } from "./session-store";
-import { saveCharacter, loadCharacter, listCharacters } from "./character-store";
+import { saveCharacter, loadCharacter, listCharacters, type StoredCharacter } from "./character-store";
+import type { MessageType } from "../agent/types";
 import { createWsClient, removeWsClient, broadcastToSession, wsStats } from "./ws-handler";
 import { listSavedModules, loadModuleFile, saveModuleFile, deleteModuleFile, createBlankModule } from "./module-editor";
 import { CharacterFactory } from "../character/character-factory";
@@ -140,9 +141,11 @@ async function handleRequest(req: Request): Promise<Response> {
 
   // POST /api/characters — 保存角色卡
   if (method === "POST" && segments[0] === "api" && segments[1] === "characters" && segments.length === 2) {
-    const body = await req.json().catch(() => ({}));
-    if (!body.name) return respondError("角色名不能为空", 400);
-    saveCharacter(body.name, body);
+    const body = await readJsonBody(req);
+    const character = parseStoredCharacter(body);
+    if (!character) return respondError("角色名不能为空", 400);
+    // 展开原始 body 保留未建模字段，再用解析结果覆盖必需字段。
+    saveCharacter(character.name, { ...body, ...character });
     return respondJson({ success: true });
   }
 
@@ -162,16 +165,16 @@ async function handleRequest(req: Request): Promise<Response> {
 
   // POST /api/modules — 新建或保存模块
   if (method === "POST" && segments[0] === "api" && segments[1] === "modules" && segments.length === 2) {
-    const body = await req.json().catch(() => ({}));
-    if (!body.id || !body.name) return respondError("模组 ID 和名称不能为空", 400);
+    const body = await readJsonBody(req);
+    if (!bodyString(body, "id") || !bodyString(body, "name")) return respondError("模组 ID 和名称不能为空", 400);
     saveModuleFile(body);
     return respondJson({ success: true });
   }
 
   // PUT /api/modules/:id — 更新模组
   if (method === "PUT" && segments[0] === "api" && segments[1] === "modules" && segments.length === 3) {
-    const body = await req.json().catch(() => ({}));
-    if (!body.name) return respondError("模组名称不能为空", 400);
+    const body = await readJsonBody(req);
+    if (!bodyString(body, "name")) return respondError("模组名称不能为空", 400);
     const existing = loadModuleFile(segments[2]);
     if (!existing) return respondError("模组不存在", 404);
     saveModuleFile({ ...existing, ...body, id: segments[2] });
@@ -192,10 +195,11 @@ async function handleRequest(req: Request): Promise<Response> {
     let archetypeId: string | undefined;
     let characterName: string | undefined;
     try {
-      const body = await req.json().catch(() => ({}));
-      if (body.ruleset === "dnd5e" || body.ruleset === "grail") ruleset = body.ruleset;
-      if (body.archetype) archetypeId = body.archetype;
-      if (body.characterName) characterName = body.characterName;
+      const body = await readJsonBody(req);
+      const requestedRuleset = bodyString(body, "ruleset");
+      if (requestedRuleset === "dnd5e" || requestedRuleset === "grail") ruleset = requestedRuleset;
+      archetypeId = bodyString(body, "archetype") ?? archetypeId;
+      characterName = bodyString(body, "characterName") ?? characterName;
     } catch {}
 
     const id = generateId();
@@ -328,73 +332,51 @@ async function handleRequest(req: Request): Promise<Response> {
     // POST /api/sessions/:id/kp/:action — KP 操作
     if (method === "POST" && segments[3] === "kp" && segments.length === 5) {
       const kpAction = segments[4];
-      const body = await req.json().catch(() => ({}));
+      const body = await readJsonBody(req);
 
       try {
         switch (kpAction) {
           case "send-message": {
-            const msg = (body.message || "").trim();
+            const msg = (bodyString(body, "message") ?? "").trim();
             if (!msg) return respondError("消息不能为空", 400);
-            const speaker = body.speaker || "守秘人";
-            session.sendMessage(speaker, msg, body.type || "system");
+            const speaker = bodyString(body, "speaker") || "守秘人";
+            const messageType = bodyString(body, "type");
+            session.sendMessage(speaker, msg, isMessageType(messageType) ? messageType : "system");
             return respondJson({ success: true });
           }
           case "set-san": {
-            const pid = body.playerId || session.activePlayerId;
-            const value = parseInt(body.value);
-            if (isNaN(value)) return respondError("SAN 值无效", 400);
+            const pid = bodyString(body, "playerId") || session.activePlayerId;
+            const value = bodyNumber(body, "value");
+            if (value === undefined) return respondError("SAN 值无效", 400);
             session.setPlayerSan(pid, value);
             return respondJson({ success: true });
           }
           case "set-hp": {
-            const pid = body.playerId || session.activePlayerId;
-            const value = parseInt(body.value);
-            if (isNaN(value)) return respondError("HP 值无效", 400);
+            const pid = bodyString(body, "playerId") || session.activePlayerId;
+            const value = bodyNumber(body, "value");
+            if (value === undefined) return respondError("HP 值无效", 400);
             session.setPlayerHp(pid, value);
             return respondJson({ success: true });
           }
           case "apply-damage": {
-            const target = (body.target || "").trim();
-            const dmg = parseInt(body.damage);
-            if (!target || isNaN(dmg)) return respondError("目标或伤害值无效", 400);
+            const target = (bodyString(body, "target") ?? "").trim();
+            const dmg = bodyNumber(body, "damage");
+            if (!target || dmg === undefined) return respondError("目标或伤害值无效", 400);
             await session.applyDamage(target, dmg);
             return respondJson({ success: true });
           }
           case "set-scene": {
-            const sceneId = (body.sceneId || "").trim();
+            const sceneId = (bodyString(body, "sceneId") ?? "").trim();
             if (!sceneId) return respondError("场景 ID 无效", 400);
             session.setScene(sceneId);
             return respondJson({ success: true });
           }
           case "set-difficulty": {
-            const diff = (body.difficulty || "").trim();
-            if (!["easy", "medium", "hard", "nightmare"].includes(diff)) {
+            const diff = (bodyString(body, "difficulty") ?? "").trim();
+            if (!isDifficulty(diff)) {
               return respondError("难度需要 easy/medium/hard/nightmare", 400);
-    }
-
-    // POST /api/sessions/:id/character — 更新角色属性
-    if (method === "POST" && segments[3] === "character") {
-      const body = await req.json().catch(() => ({}));
-      try {
-        const ch = session.activeCharacter;
-        if (!ch) throw new Error("无活跃角色");
-        if (body.hp !== undefined) ch.hp = Math.max(0, Math.min(body.hp, ch.maxHp ?? 99));
-        if (body.maxHp !== undefined) ch.maxHp = body.maxHp;
-        if (body.skills && typeof body.skills === "object") Object.assign(ch.skillValues ?? (ch.skillValues = {}), body.skills);
-        if (body.inventory && Array.isArray(body.inventory)) session.inventoryMap.set(session.activePlayerId, body.inventory);
-        if (body.weapons && Array.isArray(body.weapons)) session.equippedWeaponsMap.set(session.activePlayerId, body.weapons);
-        if (body.luck !== undefined) ch.luck = body.luck;
-        if (body.creditRating !== undefined) ch.creditRating = body.creditRating;
-        if (body.attributes && typeof body.attributes === "object") Object.assign(ch.attributes ?? (ch.attributes = {}), body.attributes);
-        // 同步世界实体
-        const ent = session.world.getEntity("player");
-        if (ent) { ent.hp = ch.hp; session.world.upsertEntity(ent); }
-        return respondJson({ success: true, character: ch });
-      } catch (err: any) {
-        return respondError(`更新角色失败: ${err.message}`, 400);
-      }
-    }
-            session.setDifficulty(diff as any);
+            }
+            session.setDifficulty(diff);
             return respondJson({ success: true });
           }
           default:
@@ -405,10 +387,41 @@ async function handleRequest(req: Request): Promise<Response> {
       }
     }
 
+    // POST /api/sessions/:id/character — 更新角色属性
+    if (method === "POST" && segments[3] === "character") {
+      const body = await readJsonBody(req);
+      try {
+        const ch = session.activeCharacter;
+        if (!ch) throw new Error("无活跃角色");
+        const hp = bodyNumber(body, "hp");
+        if (hp !== undefined) ch.hp = Math.max(0, Math.min(hp, ch.maxHp ?? 99));
+        const maxHp = bodyNumber(body, "maxHp");
+        if (maxHp !== undefined) ch.maxHp = maxHp;
+        const skills = bodyRecord(body, "skills");
+        if (skills) Object.assign(ch.skillValues ?? (ch.skillValues = {}), skills);
+        const inventory = bodyStringArray(body, "inventory");
+        if (inventory) session.inventoryMap.set(session.activePlayerId, inventory);
+        const weapons = bodyStringArray(body, "weapons");
+        if (weapons) session.equippedWeaponsMap.set(session.activePlayerId, weapons);
+        const luck = bodyNumber(body, "luck");
+        if (luck !== undefined) ch.luck = luck;
+        const creditRating = bodyNumber(body, "creditRating");
+        if (creditRating !== undefined) ch.creditRating = creditRating;
+        const attributes = bodyRecord(body, "attributes");
+        if (attributes) Object.assign(ch.attributes ?? (ch.attributes = {}), attributes);
+        // 同步世界实体
+        const ent = session.world.getEntity("player");
+        if (ent) { ent.hp = ch.hp; session.world.upsertEntity(ent); }
+        return respondJson({ success: true, character: ch });
+      } catch (err: any) {
+        return respondError(`更新角色失败: ${err.message}`, 400);
+      }
+    }
+
     // POST /api/sessions/:id/action — 核心：玩家输入
     if (method === "POST" && segments[3] === "action") {
-      const body = await req.json().catch(() => ({}));
-      const input = (body.input || "").trim();
+      const body = await readJsonBody(req);
+      const input = (bodyString(body, "input") ?? "").trim();
 
       if (!input) {
         return respondError("请输入行动", 400);
@@ -440,9 +453,9 @@ async function handleRequest(req: Request): Promise<Response> {
 
     // POST /api/sessions/:id/npc-chat — NPC 对话
     if (method === "POST" && segments[3] === "npc-chat") {
-      const body = await req.json().catch(() => ({}));
-      const npcName = (body.npc || "").trim();
-      const playerMsg = (body.message || "").trim();
+      const body = await readJsonBody(req);
+      const npcName = (bodyString(body, "npc") ?? "").trim();
+      const playerMsg = (bodyString(body, "message") ?? "").trim();
       if (!npcName || !playerMsg) return respondError("NPC 名称和消息不能为空", 400);
       try {
         // 从 registry 找 NPC agent
@@ -460,8 +473,8 @@ async function handleRequest(req: Request): Promise<Response> {
 
     // POST /api/sessions/:id/luck-spend — 幸运消耗
     if (method === "POST" && segments[3] === "luck-spend") {
-      const body = await req.json().catch(() => ({}));
-      const amount = parseInt(body.amount) || 0;
+      const body = await readJsonBody(req);
+      const amount = bodyNumber(body, "amount") ?? 0;
       const ch = session.activeCharacter;
       if (!ch) return respondError("无活跃角色", 400);
       if (amount <= 0 || amount > (ch.luck ?? 0)) return respondError("幸运不足", 400);
@@ -515,6 +528,92 @@ async function handleRequest(req: Request): Promise<Response> {
 
   }
   return respondError("未找到路由", 404);
+}
+
+// ============================================================
+// 请求体解析 — 边界处一次性把 unknown 收成可安全读取的形状
+// ============================================================
+
+type JsonRecord = Record<string, unknown>;
+
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const DIFFICULTIES = ["easy", "medium", "hard", "nightmare"] as const;
+type Difficulty = (typeof DIFFICULTIES)[number];
+
+function isDifficulty(value: string): value is Difficulty {
+  return (DIFFICULTIES as readonly string[]).includes(value);
+}
+
+const MESSAGE_TYPES = ["dialogue", "narration", "system", "action"] as const;
+
+function isMessageType(value: string | undefined): value is MessageType {
+  return value !== undefined && (MESSAGE_TYPES as readonly string[]).includes(value);
+}
+
+/** 请求体一律经此读取：非法 JSON、数组、null 全部退化为空对象，与原有 .catch(() => ({})) 行为一致。 */
+async function readJsonBody(req: Request): Promise<JsonRecord> {
+  const raw = await req.json().catch(() => null);
+  return isJsonRecord(raw) ? raw : {};
+}
+
+function bodyString(body: JsonRecord, key: string): string | undefined {
+  const value = body[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+/** 数字字段兼容字符串写法（前端表单常传字符串），与原先的 parseInt 行为保持一致。 */
+function bodyNumber(body: JsonRecord, key: string): number | undefined {
+  const value = body[key];
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value === "string") {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function bodyRecord(body: JsonRecord, key: string): JsonRecord | undefined {
+  const value = body[key];
+  return isJsonRecord(value) ? value : undefined;
+}
+
+function bodyStringArray(body: JsonRecord, key: string): string[] | undefined {
+  const value = body[key];
+  if (!Array.isArray(value)) return undefined;
+  return value.every((item): item is string => typeof item === "string") ? value : undefined;
+}
+
+/**
+ * 角色卡是持久化数据，在边界补齐 StoredCharacter 要求的字段。
+ * 返回值只覆盖必需字段；调用方仍会把原始 body 一并展开写入，
+ * 以免静默丢掉前端存过、这里尚未建模的额外字段。
+ */
+function parseStoredCharacter(body: JsonRecord): StoredCharacter | null {
+  const name = bodyString(body, "name");
+  if (!name) return null;
+
+  const rawSkills = bodyRecord(body, "skills") ?? {};
+  const skills: Record<string, number> = {};
+  for (const [key, value] of Object.entries(rawSkills)) {
+    if (typeof value === "number" && Number.isFinite(value)) skills[key] = value;
+  }
+
+  return {
+    name,
+    ruleset: bodyString(body, "ruleset") ?? "cosmic-horror",
+    archetype: bodyString(body, "archetype") ?? "",
+    archetypeLabel: bodyString(body, "archetypeLabel"),
+    hp: bodyNumber(body, "hp") ?? 0,
+    maxHp: bodyNumber(body, "maxHp") ?? 0,
+    san: bodyNumber(body, "san") ?? 0,
+    maxSan: bodyNumber(body, "maxSan") ?? 0,
+    skills,
+    inventory: bodyStringArray(body, "inventory") ?? [],
+    createdAt: bodyNumber(body, "createdAt") ?? Date.now(),
+  };
 }
 
 // ============================================================
