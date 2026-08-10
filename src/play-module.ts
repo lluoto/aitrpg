@@ -65,7 +65,7 @@ function analyseNpcData(npc: ModuleNPC): {
 } {
   const t = npc.personality.traits ?? [];
   const s = npc.personality.speech ?? "";
-  const age: number | undefined = (npc as any).age;
+  const age = npc.age;
 
   // Age band — affects language complexity at generation time
   const isToddler = age !== undefined && age < 7;
@@ -1150,7 +1150,7 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
     function buildPcImpression(npc: ModuleNPC): string {
       const name = npc.name.replace(/[（(].*[）)]$/, "").trim();
       const role = (npc.role || "").replace(/[（(].*[）)]$/, "").trim();
-      const age = (npc as any).age;
+      const age = npc.age;
       const rawTraits = npc.personality.traits ?? [];
       const desc = npc.description || "";
 

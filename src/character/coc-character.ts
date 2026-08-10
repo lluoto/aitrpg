@@ -16,7 +16,7 @@ export type CoCAttribute =
   | "strength" | "constitution" | "size" | "dexterity"
   | "appearance" | "intelligence" | "power" | "education";
 
-/** 全部 9 项（含 luck） */
+/** 8 项核心属性。幸运不在其中——它是独立字段，见 CoCGeneratedCharacter.luck。 */
 export const COC_ATTRIBUTES: CoCAttribute[] = [
   "strength", "constitution", "size", "dexterity",
   "appearance", "intelligence", "power", "education",
@@ -386,9 +386,10 @@ export function validateOccupationConstraints(
     appearance: 90, intelligence: 90, power: 90, education: 99,
     luck: 99,
   };
-  const maxAttr = archetype.attributeMaxConstraints ?? {};
-  const allMax = { ...globalMax, ...maxAttr };
-  for (const [attr, maxVal] of Object.entries(allMax)) {
+  // 这里原本还并入 archetype.attributeMaxConstraints，但该字段在整个仓库里
+  // 只出现于这一处读取：没有任何职业数据提供它，CharacterArchetype 也没有声明它，
+  // 取值恒为 undefined，`?? {}` 后对上限没有任何影响。按职业定制上限属于未接线的功能。
+  for (const [attr, maxVal] of Object.entries(globalMax)) {
     const current = attrs[attr];
     if (current !== undefined && current > maxVal) {
       warnings.push(WARN_MSG.aboveMaxAttr(COC_ATTR_LABELS[attr] ?? attr, current, maxVal));
@@ -498,14 +499,14 @@ interface AgeMod {
 }
 
 const AGE_MODS: AgeMod[] = [
-  { minAge: 15, maxAge: 19, mods: { strength: -5, size: -5, education: -5, appearance: 5, dexterity: 5, luck: 5 } },
+  { minAge: 15, maxAge: 19, mods: { strength: -5, size: -5, education: -5, appearance: 5, dexterity: 5 } },
   { minAge: 20, maxAge: 29, mods: {} },
-  { minAge: 30, maxAge: 39, mods: { strength: -5, constitution: -5, appearance: -5, education: 5, intelligence: 5, luck: 5 } },
-  { minAge: 40, maxAge: 49, mods: { strength: -10, constitution: -10, dexterity: -5, appearance: -10, education: 10, intelligence: 5, luck: 5 } },
-  { minAge: 50, maxAge: 59, mods: { strength: -15, constitution: -15, dexterity: -10, appearance: -15, education: 15, intelligence: 10, luck: 5 } },
+  { minAge: 30, maxAge: 39, mods: { strength: -5, constitution: -5, appearance: -5, education: 5, intelligence: 5 } },
+  { minAge: 40, maxAge: 49, mods: { strength: -10, constitution: -10, dexterity: -5, appearance: -10, education: 10, intelligence: 5 } },
+  { minAge: 50, maxAge: 59, mods: { strength: -15, constitution: -15, dexterity: -10, appearance: -15, education: 15, intelligence: 10 } },
   { minAge: 60, maxAge: 69, mods: { strength: -20, constitution: -20, dexterity: -15, appearance: -20, education: 20, intelligence: 15 } },
-  { minAge: 70, maxAge: 79, mods: { strength: -25, constitution: -25, dexterity: -20, appearance: -25, education: 25, intelligence: 20, luck: -5 } },
-  { minAge: 80, maxAge: 150, mods: { strength: -30, constitution: -30, dexterity: -25, appearance: -30, education: 30, intelligence: 25, luck: -10 } },
+  { minAge: 70, maxAge: 79, mods: { strength: -25, constitution: -25, dexterity: -20, appearance: -25, education: 25, intelligence: 20 } },
+  { minAge: 80, maxAge: 150, mods: { strength: -30, constitution: -30, dexterity: -25, appearance: -30, education: 30, intelligence: 25 } },
 ];
 
 /** 应用年龄调整 */
@@ -520,9 +521,11 @@ export function applyAgeMods(
     return { attrs: { ...attrs }, warnings };
   }
 
+  // 幸运不参与年龄调整：它不是 8 项核心属性之一，由 createCoCCharacter 单独生成。
+  // AGE_MODS 里原本写了 luck 增减，但这里一直 continue 跳过——是从未生效的死数据，已删除。
+  // 现在 mods 的类型 Partial<Record<CoCAttribute, number>> 本身就排除了 luck，无需再运行时判断。
   const result: Record<string, number> = { ...attrs };
   for (const [attr, delta] of Object.entries(mod.mods)) {
-    if (attr === "luck") continue; // luck 非核心属性，由 createCoCCharacter 单独生成
     const cur = result[attr] ?? 50;
     const newVal = Math.max(15, Math.min(99, cur + delta));
     result[attr] = newVal;

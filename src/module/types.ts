@@ -51,7 +51,11 @@ export interface ModuleItem {
 export interface Scene {
   id: string;
   name: string;
-  order: number; // 建议游玩顺序
+  /**
+   * 建议游玩顺序。可选：现有模组数据都没写，且仓库内没有任何代码读取它，
+   * 声明成必填只会逼着每个场景补一个没人消费的数字。
+   */
+  order?: number;
   description: string; // KP 用的场景描述
   /** 场景中的可交互线索 */
   clues: Clue[];
@@ -181,6 +185,12 @@ export interface ModuleNPC {
   secrets: string[];
   /** NPC 在当前场景中的位置 */
   sceneId: string;
+  /**
+   * 年龄。模组数据一直在写，世界模型也用它做年龄相关的行为门控
+   * （world-model-integrator 对 7 岁以下 / 18 岁以下有分支），
+   * 但此前未声明，导致读取方只能写 (npc as any).age。
+   */
+  age?: number;
   /** 行为触发器 */
   behaviors?: NPCBehavior[];
   /** LLM预生成的自然对话扩展。不为空时代替模板链 */
@@ -328,8 +338,12 @@ export interface ModuleSupport {
   trapSceneId: string;
   /** 陷阱检测标记线索 ID（已检测则不触发） */
   trapClueId: string;
-  /** 调查员配置（按顺序创建 PC） */
-  players: ModulePlayerSetup[];
+  /**
+   * 调查员配置（按顺序创建 PC）。可选：模组运行器已改为自行随机生成调查员
+   * （见 play-module「模块 players 配置仅作为人设/兜底参考，不再写死身份」），
+   * 现有模组都没有提供它，仓库内也没有任何读取方。
+   */
+  players?: ModulePlayerSetup[];
 }
 
 /** 导入叙事 — 模块作者编写的开场白，插槽填入角色信息 */
