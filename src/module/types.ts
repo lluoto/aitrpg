@@ -20,6 +20,18 @@ export interface ModuleData {
     /** 未来扩展：BGM 提示 */
     bgmHints?: Record<string, string>;
   };
+  /** 结局定义 */
+  endings: Ending[];
+  /** 模组中的可交互物品 */
+  items: ModuleItem[];
+  /** 导入叙事 */
+  prologue?: PrologueEntry;
+  /** 团队聚合信息 — 每个调查员独立如何卷入 */
+  partySetup?: PartySetup;
+  /** 后日谈条目 */
+  epilogues?: EpilogueEntry[];
+}
+
 /** 模组中的可拾取/可交互物品 */
 export interface ModuleItem {
   id: string;
@@ -33,18 +45,6 @@ export interface ModuleItem {
   revelation?: string;
   /** 物品属性（武器用） */
   properties?: Record<string, string | number>;
-}
-
-  /** 结局定义 */
-  endings: Ending[];
-  /** 模组中的可交互物品 */
-  items: ModuleItem[];
-  /** 导入叙事 */
-  prologue?: PrologueEntry;
-  /** 团队聚合信息 — 每个调查员独立如何卷入 */
-  partySetup?: PartySetup;
-  /** 后日谈条目 */
-  epilogues?: EpilogueEntry[];
 }
 
 /** 场景 */

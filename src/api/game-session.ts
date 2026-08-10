@@ -7,7 +7,7 @@ import { parseIntent } from "../llm/intent";
 import { generateNarrative, setNarratorLLM } from "../llm/narrator";
 import { RuleEngine } from "../engine/rule-engine";
 import { RulesEngine, type RulesetId } from "../rules/rules-engine";
-import { SanityEngine, CoCEngine, calcDamageBonus, rollDamageBonus, getHitLocationEffect, checkMajorWound, opposedCheck } from "../rules/coc-engine";
+import { SanityEngine, CoCEngine, calcDamageBonus, rollDamageBonus, getHitLocationEffect, checkMajorWound, opposedCheck, sanOutcomeLabel } from "../rules/coc-engine";
 import { NPCAgent } from "../agent/npc-agent";
 import type { NPCPersonality } from "../agent/types";
 import { KPAgent } from "../agent/kp-agent";
@@ -1268,11 +1268,11 @@ export class GameSession {
     const passed = result.passed;
     const loss = result.sanLoss;
     const roll = result.roll;
-    msg(`🧠 SAN 检查(${reason}): d100=${roll} (目标=${this.sanity.state.currentSAN}) → ${passed ? "通过" : "失败"}！SAN -${loss} (剩余: ${this.sanity.state.currentSAN})`);
+    msg(`🧠 SAN 检查(${reason}): d100=${roll} (目标=${this.sanity.state.currentSAN}) → ${sanOutcomeLabel(passed)}！SAN -${loss} (剩余: ${this.sanity.state.currentSAN})`);
     if (result.temporaryInsanity) {
       msg(`⚠️ 临时疯狂触发！${result.boutOfMadness ?? ""}`);
     }
-    this.lastNarrative = `SAN 检定结果: ${passed ? "通过" : "失败"}, SAN -${loss}`;
+    this.lastNarrative = `SAN 检定结果: ${sanOutcomeLabel(passed)}, SAN -${loss}`;
     return true;
   }
 

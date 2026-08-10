@@ -17,7 +17,7 @@ import { parseIntent, setIntentLLM } from "./llm/intent";
 import { generateNarrative, setNarratorLLM } from "./llm/narrator";
 import { RuleEngine } from "./engine/rule-engine";
 import { RulesEngine, type RulesetId } from "./rules/rules-engine";
-import { CoCEngine, SanityEngine, SUCCESS_LEVEL_LABELS } from "./rules/coc-engine";
+import { CoCEngine, SanityEngine, SUCCESS_LEVEL_LABELS, sanOutcomeLabel } from "./rules/coc-engine";
 import { NPCAgent } from "./agent/npc-agent";
 import { KPAgent } from "./agent/kp-agent";
 import { AgentRegistry } from "./agent/agent-registry";
@@ -237,7 +237,7 @@ function checkSanity(reason: string, sanCost: string): string | null {
   const result = sanity.sanityCheck(sanCost);
   if (result.sanLoss <= 0) return null;
 
-  let msg = `[SAN 检定] ${reason}: ${result.passed ? "成功" : "失败"}，SAN -${result.sanLoss} (当前 ${sanity.state.currentSAN}/${sanity.state.maxSAN})`;
+  let msg = `[SAN 检定] ${reason}: ${sanOutcomeLabel(result.passed)}，SAN -${result.sanLoss} (当前 ${sanity.state.currentSAN}/${sanity.state.maxSAN})`;
   if (result.boutOfMadness) {
     msg += `\n  💥 临时疯狂！${result.boutOfMadness}`;
   }

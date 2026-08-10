@@ -59,6 +59,16 @@ export const SUCCESS_LEVEL_LABELS: Record<CoCSuccessLevel, string> = {
   fumble: "大失败",
 };
 
+/**
+ * SAN 检定结果标签。
+ *
+ * 此前 CLI 说「成功」、API 说「通过」，同一件事两种说法。统一取「通过」：
+ * SAN 检定是二元的通过/失败，用「成功」会和上面的成功等级（大成功/常规成功）语义撞车。
+ */
+export function sanOutcomeLabel(passed: boolean): string {
+  return passed ? "通过" : "失败";
+}
+
 export interface CoCCheckResult {
   roll: number;
   skillValue: number;

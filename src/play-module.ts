@@ -5,7 +5,7 @@
 
 import { createCoCCharacter, getCoCArchetypes, resolveCheckValue, type CoCGeneratedCharacter, type BackgroundProfile } from "./character/coc-character";
 import { randomCoCName, buildBaseBackgroundProfile, composeBackstory, pickDistinctArchetypes, randomPersonAnchors, type PersonAnchors } from "./character/background-profile";
-import { CoCEngine, SanityEngine, SUCCESS_LEVEL_LABELS, type CoCCheckResult } from "./rules/coc-engine";
+import { CoCEngine, SanityEngine, SUCCESS_LEVEL_LABELS, sanOutcomeLabel, type CoCCheckResult } from "./rules/coc-engine";
 import { BARN_OF_PREMIER, BARN_SUPPORT, renderPrologue, renderPartySetup, evaluateEpilogues } from "./module/barn-of-premier";
 import { WorldState } from "./world/state";
 import { PlayerAgent, createPlayerCharacter } from "./agent/player-agent";
@@ -315,7 +315,7 @@ function failFlavor(fumble: boolean): string {
 // ── SAN 检定 ──
 function sanCheck(pcName: string, engine: SanityEngine, sanCost: string): void {
   const result = engine.sanityCheck(sanCost);
-  const outcome = result.passed ? "成功" : "失败";
+  const outcome = sanOutcomeLabel(result.passed);
   sayMech(`🧠 ${pcName} 【理智检定】 SAN ${engine.state.currentSAN + result.sanLoss} → d100=${result.roll} → ${outcome}，损失 ${result.sanLoss} SAN (剩余 ${engine.state.currentSAN})`);
   if (result.temporaryInsanityTriggered) {
     say(`\n⚠ ${pcName} 陷入了临时疯狂！${result.boutOfMadness ?? ""}`);

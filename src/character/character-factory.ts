@@ -36,16 +36,38 @@ export type SkillBonus = { skills: string[]; bonus: number; };
 export type ExtraAttack = { count: number; };
 export type CustomTag = string;
 
+/** 特性/专长的作用方式 */
+export type FeatureKind = "passive" | "active" | "supernatural" | "bonus_action" | "reaction";
+
 export interface LevelFeature {
   level: number;
   name: string;
   description: string;
+  /** 作用方式 */
+  type?: FeatureKind;
+  /** 每日使用次数描述，如 "1次/长休" */
+  usesPerDay?: string;
+  /**
+   * 结构化效果。目前只有数据目录在写，仓库内没有任何消费方读取它，
+   * 因此不为其编造精确 schema——等真有人读的时候再收紧。
+   */
+  effects?: Record<string, unknown>;
+}
+
+/** featChoices.options 的元素 */
+export interface FeatOption {
+  name: string;
+  description: string;
+  type?: FeatureKind;
+  /** 每日使用次数描述，如 "1次/长休" */
+  usesPerDay?: string;
 }
 
 export interface FeatChoice {
   level: number;
-  count: number;
-  options: string[];
+  /** 可选数量。消费方（index.ts 升级流程）读的是 pick，此前声明成 count 是错的。 */
+  pick: number;
+  options: FeatOption[];
 }
 
 export interface Prerequisite {
@@ -92,6 +114,8 @@ export interface CharacterArchetype {
   /** 施法能力 */
   spellcaster?: boolean;
   spellcastingType?: "full" | "half" | "pact" | "third";
+  /** 已知法术数量。目前只有数据目录在写，暂无消费方读取。 */
+  knownSpellsCount?: number;
 
   /** 满级 */
   maxLevel?: number;
