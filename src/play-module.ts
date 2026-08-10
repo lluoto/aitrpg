@@ -10,11 +10,11 @@ import { BARN_OF_PREMIER, BARN_SUPPORT, renderPrologue, renderPartySetup, evalua
 import { WorldState } from "./world/state";
 import { PlayerAgent, createPlayerCharacter } from "./agent/player-agent";
 import { displayCharacterSheet, characterSummary, getHighlightedSkills } from "./pl/character-display";
-import type { Clue, Scene, ModuleNPC, ModuleData, ModuleSupport, NPCInstanceState } from "./module/types";
+import type { Clue, Scene, SceneConnection, ModuleNPC, ModuleData, ModuleSupport, NPCInstanceState } from "./module/types";
 import type { PlayerDecision } from "./agent/player-agent";
 import { buildNpcContext, generateNpcReply, generatePcQuestion, generateNpcTransition, generateOpeningTransition, generateFailRescue, generateClueRevelation } from "./llm/npc-dialogue-prompts";
 import type { SceneContext, WorldContext } from "./llm/npc-dialogue-prompts";
-import { LLMClient } from "./llm/client";
+import { LLMClient, extractMessageContent } from "./llm/client";
 import { applyAllLlmExpandedWithLLM } from "./llm/generate-llm-expanded";
 import { analyzeThreats, getWeaponPolicy } from "./module/threat-analyzer";
 import { checkDialogueText } from "./world/world-constraint";
@@ -176,7 +176,7 @@ async function llmOnce(system: string, user: string, maxTokens = 500): Promise<s
     });
     if (!resp.ok) return "";
     const data = await resp.json();
-    return (data.choices?.[0]?.message?.content ?? "").trim();
+    return extractMessageContent(data).trim();
   } catch {
     return "";
   }
@@ -185,7 +185,7 @@ async function llmOnce(system: string, user: string, maxTokens = 500): Promise<s
 /** LLM 增强八项背景元素：按 职业+时代+案件+人设锚点 从零塑造八项（草稿仅作失败兜底，不喂给 LLM） */
 async function enhanceBackgroundProfile(
   base: BackgroundProfile,
-  ctx: { name: string; occupation: string; era: number; caseSummary: string; anchors: PersonAnchors },
+  ctx: { name: string; occupation: string; era: string; caseSummary: string; anchors: PersonAnchors },
 ): Promise<BackgroundProfile> {
   const prompt = [
     `为以下 CoC 7e 调查员塑造"背景故事八项"。`,
@@ -227,7 +227,7 @@ async function enhanceBackgroundProfile(
 /** LLM 依据八项撰写背景故事（3-5 句连贯叙事）；失败回退模板拼接 */
 async function writeBackstory(
   profile: BackgroundProfile,
-  ctx: { name: string; occupation: string; era: number; caseSummary: string },
+  ctx: { name: string; occupation: string; era: string; caseSummary: string },
 ): Promise<string> {
   const fallback = composeBackstory(profile, { name: ctx.name, occupation: ctx.occupation, era: ctx.era });
   const prompt = [
@@ -554,7 +554,7 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
       `名字: ${a.name}`,
       `职业: ${a.pc.occupation}`,
       `性格: ${a.pc.personality}`,
-      `背景: ${a.pc.background}`,
+      `背景: ${a.pc.backstory}`,
       ...(hookText(0, a.name, a.pc.occupation) ? [`卷入方式: ${hookText(0, a.name, a.pc.occupation)}`] : []),
       `目标: ${a.motive}`,
       ``,
@@ -562,7 +562,7 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
       `名字: ${b.name}`,
       `职业: ${b.pc.occupation}`,
       `性格: ${b.pc.personality}`,
-      `背景: ${b.pc.background}`,
+      `背景: ${b.pc.backstory}`,
       ...(hookText(1, b.name, b.pc.occupation) ? [`卷入方式: ${hookText(1, b.name, b.pc.occupation)}`] : []),
       `目标: ${b.motive}`,
       ``,
@@ -606,7 +606,7 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
         });
         if (resp.ok) {
           const data = await resp.json();
-          const content: string = data.choices?.[0]?.message?.content?.trim() ?? "";
+          const content = extractMessageContent(data).trim();
           if (content) {
             const lines = content.split("\n").filter(l => l.trim()).map(l => l.trim());
             // 世界模型约束：开场叙事不得含时代科技/ meta 词汇，命中 → 降级模块文案
@@ -636,13 +636,13 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
       );
     }
 
-    // Last-resort fallback — 无 partySetup/prologue 时用模块元数据兜底
-    const [ctx0, ...ctxRest] = module.partySetup?.context ?? [];
+    // Last-resort fallback — 无 partySetup/prologue 时用模块元数据兜底。
+    // 上面的 if (module.partySetup) 分支必定 return，所以走到这里 partySetup 一定为空：
+    // 原先这里读 partySetup?.context / ?.closing，取值恒为 undefined，等同于下面的字面量。
     return [
-      ctx0 ?? `${module.era}年。`,
-      ...(ctxRest ?? []),
+      `${module.era}年。`,
       `一封委托信递到了${a.name}的手中。`,
-      `${a.name}和${b.name}在约定地点碰头——${module.partySetup?.closing?.[0] ?? `调查开始了。`}`,
+      `${a.name}和${b.name}在约定地点碰头——调查开始了。`,
       `他们的调查，从这里开始……`,
     ];
   }
@@ -881,7 +881,7 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
   }
 
   // ── Scene processor: entry → exploration → analysis → advance ──
-  async function processScene(): Promise<sceneConnection | null> {
+  async function processScene(): Promise<SceneConnection | null> {
     const scene = world.currentScene!;
     world.advanceRound();
     const round = world.round;
@@ -1082,10 +1082,10 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
           }
           revealNpcKnowledge(npc, world, speechProfile);
           world.adjustRelationship(npc.id, 1);
-          // 自由对话：PL 可以追问 NPC 1-2 轮
-          if (firstMeeting && speechProfile.type !== "coma_rapid" && speechProfile.type !== "none") {
-            await conductNpcConversation(npc, world);
-          }
+          // 自由对话：PL 可以追问 NPC 1-2 轮。
+          // 此处无需再判 firstMeeting 或排除 coma_rapid/none：外层已是 else if (firstMeeting)，
+          // 且上面的 if/else if 链已把这两种 type 分流走，条件恒为真。
+          await conductNpcConversation(npc, world);
         }
       } else {
         // Returning encounter
@@ -1922,7 +1922,9 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
       ];
 
       // ── 战斗行动 & 伤害叙事 ──
-      const actionVariants: Record<string, string[][]> = {
+      // 值是扁平的 string[]（每个键一组候选台词），此前误写成 string[][]，
+      // 导致 pick() 的返回类型被推成 string[]，下游 fmt() 才会报参数类型不符。
+      const actionVariants: Record<string, string[]> = {
         [`${p0.shortName}_格斗`]: [
           "抄起身边的家伙迎了上去！", "握紧拳头沉身逼近！", "抓起一张椅子猛砸过去！",
           "顺手抄起一根铁管挥去！", "低喝一声侧身冲上前！",
@@ -2070,7 +2072,7 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
     // what to do. Loop until they choose to move (or run out of options).
 
     /** Gather available scene-level connections, filtered by state */
-    function getUnlockedConnections(): sceneConnection[] {
+    function getUnlockedConnections(): SceneConnection[] {
       return scene.connections.filter(c => {
         if (c.requiredClueId && !world.isClueFound(c.requiredClueId)) return false;
         const tgt = module.scenes.find(s => s.id === c.targetSceneId);
@@ -2085,7 +2087,7 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
           }
         }
         return true;
-      }) as sceneConnection[];
+      }) as SceneConnection[];
     }
 
     /** 如果线索有 SAN 损失定义，触发检定 */
@@ -2248,8 +2250,8 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
 
     // Single move option — just take it without LLM call
     if (unlocked.length === 1) {
-      say(`\n${(unlocked[0] as sceneConnection).condition}。`);
-      return unlocked[0] as sceneConnection;
+      say(`\n${(unlocked[0] as SceneConnection).condition}。`);
+      return unlocked[0] as SceneConnection;
     }
 
     // Multiple move options — let LLM decide
@@ -2296,8 +2298,8 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
     const anyCoreUndiscovered = allScenes.some(s =>
       s.clues.some(cl => cl.importance === "core" && !world.isClueFound(cl.id))
     );
-    const sortedUnlocked = [...unlocked as sceneConnection[]].sort((a, b) => {
-      const score = (c: sceneConnection): number => {
+    const sortedUnlocked = [...unlocked as SceneConnection[]].sort((a, b) => {
+      const score = (c: SceneConnection): number => {
         const tgt = module.scenes.find(s => s.id === c.targetSceneId);
         const tgtHasCore = tgt
           ? tgt.clues.some(cl => cl.importance === "core" && !world.isClueFound(cl.id))
@@ -2332,14 +2334,14 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
     const decision = await pl1.decideViaLLM(plContext, [], moveLabels);
 
     // Match LLM output to a connection
-    let chosenConn: sceneConnection | null = null;
-    for (const c of unlocked as sceneConnection[]) {
+    let chosenConn: SceneConnection | null = null;
+    for (const c of unlocked as SceneConnection[]) {
       const core = c.condition.replace(/^(前往|进入|返回|去|到)\s*/, "").slice(0, 8);
       if (decision.action.includes(core)) { chosenConn = c; break; }
     }
     if (!chosenConn) {
       // Score-based fallback
-      const scored = (unlocked as sceneConnection[]).map(c => {
+      const scored = (unlocked as SceneConnection[]).map(c => {
         let score = 0;
         const tgt = module.scenes.find(s => s.id === c.targetSceneId);
         if (!tgt) return { conn: c, score: -5 };

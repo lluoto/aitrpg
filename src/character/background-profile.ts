@@ -233,7 +233,7 @@ export function randomPersonAnchors(): PersonAnchors {
 /** 八项 → 基础背景故事（模板拼接，LLM 不可用时的兜底） */
 export function composeBackstory(
   profile: BackgroundProfile,
-  ctx: { name: string; occupation: string; era: number },
+  ctx: { name: string; occupation: string; era: string },
 ): string {
   return [
     `${ctx.name}，${ctx.era}年的${ctx.occupation}。${profile.appearance}`,

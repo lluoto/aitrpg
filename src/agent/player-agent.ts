@@ -3,6 +3,7 @@
 // 有 LLM 时用 LLM，无 LLM 时用性格模板
 
 import type { CoCGeneratedCharacter } from "../character/coc-character";
+import { extractMessageContent } from "../llm/client";
 
 export interface PlayerCharacter {
   name: string;
@@ -188,13 +189,6 @@ export class PlayerAgent {
     this.pc = pc;
   }
 
-  /** 角色名 */
-  get name(): string { return this.pc.name; }
-  /** 角色背景（别名 backstory） */
-  get background(): string { return this.pc.backstory; }
-  /** 角色动机（别名 currentGoal） */
-  get motive(): string { return this.pc.currentGoal; }
-
   /** 构建 LLM 提示 — 当前情景 + 角色信息 */
   buildPrompt(kpNarration: string, availableClues: string[], availableActions: string[]): string {
     const bp = this.pc.char.backgroundProfile;
@@ -270,8 +264,7 @@ export class PlayerAgent {
         return this.fallbackDecision(kpNarration, availableActions, { availableClues });
       }
 
-      const json = await resp.json();
-      const content: string = json.choices?.[0]?.message?.content?.trim();
+      const content = extractMessageContent(await resp.json()).trim();
       if (!content) return this.fallbackDecision(kpNarration, availableActions, { availableClues });
 
       this.isLLMAvailable = true;

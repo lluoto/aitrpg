@@ -17,6 +17,25 @@ export interface ChatOptions {
   timeout?: number;
 }
 
+/**
+ * 从 chat-completion 响应里取正文。
+ *
+ * 响应来自外部 API，`resp.json()` 的类型是 unknown；此前各调用点要么各写一遍
+ * `json.choices?.[0]?.message?.content` 这条链，要么用 `const json: any` 绕开检查。
+ * 形状不符一律回退空串，由调用方自行决定抛错还是降级。
+ */
+export function extractMessageContent(payload: unknown): string {
+  if (typeof payload !== "object" || payload === null) return "";
+  const { choices } = payload as { choices?: unknown };
+  if (!Array.isArray(choices)) return "";
+  const first: unknown = choices[0];
+  if (typeof first !== "object" || first === null) return "";
+  const { message } = first as { message?: unknown };
+  if (typeof message !== "object" || message === null) return "";
+  const { content } = message as { content?: unknown };
+  return typeof content === "string" ? content : "";
+}
+
 export class LLMClient {
   private config: LLMConfig;
   /** 全局熔断：首次连接失败后跳过所有后续调用 */
@@ -98,8 +117,7 @@ export class LLMClient {
         throw new Error(`LLM API error ${resp.status}: ${err}`);
       }
 
-      const json: any = await resp.json();
-      const content = json.choices?.[0]?.message?.content;
+      const content = extractMessageContent(await resp.json());
       if (!content) throw new Error("LLM returned empty response");
       return content;
     }
