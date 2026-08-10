@@ -21,9 +21,9 @@ import { SpellEngine } from "../spell/spell-engine";
 import { WorldModelLoader } from "../world/world-model-loader";
 import { WorldModelIntegrator, type SceneContext, type NPCPresentProfile } from "../world/world-model-integrator";
 import { NPCStore } from "../db/index";
-import { assessModuleDifficulty } from "../rules/module-difficulty";
+import { assessModuleDifficulty, getDifficultyProfile } from "../rules/module-difficulty";
 import type { DifficultyProfile } from "../rules/module-difficulty";
-import { CharacterFactory, type GeneratedCharacter } from "../character/character-factory";
+import { CharacterFactory, getArchetype, type GeneratedCharacter } from "../character/character-factory";
 import { StoryGenerator } from "../rules/story-generator";
 import { CareerFileStore } from "../character/career-file";
 import { createGameTime, advanceTime, formatGameTime, periodAtmosphere, type GameTime } from "../rules/game-time";
@@ -210,7 +210,9 @@ export class GameSession {
         this.careerStore = new CareerFileStore(careerDir);
         this.careerStore.saveSnapshot({
           characterName: char.name,
-          occupation: char.archetype?.label ?? char.archetype ?? (archetypeId ?? "investigator"),
+          // archetype 存的是 id 字符串，取显示名要过 getArchetype；
+          // 此前写 char.archetype?.label 恒为 undefined，职业栏一直落成英文 id。
+          occupation: getArchetype(char.archetype)?.label ?? char.archetype ?? archetypeId ?? "investigator",
           attributes: { ...(char.attributes ?? {}) },
           skills: char.skillValues ? { ...char.skillValues } : {},
           san: this.sanity.state.currentSAN,
@@ -259,13 +261,18 @@ export class GameSession {
     const inScene = [...present.values()];
     const npcs = inScene.filter(e => e.type === "npc" && e.hp > 0);
     const monsters = inScene.filter(e => e.type === "monster" && e.hp > 0);
-    const comps = this.companionManager.getActiveCompanions().map(c => ({
-      id: c.config.id, name: c.config.name, hp: c.hp, maxHp: c.config.maxHp,
-      ac: c.config.ac, morale: c.morale, behavior: c.behavior, control: c.control,
-      position: c.position, inventory: c.inventory, motivation: c.config.motivation,
-      traits: c.config.traits ?? null, skills: c.config.skills ?? null,
-      resolveState: c.resolveState,
-    }));
+    // 同伴的血量/位置在世界实体上，CompanionState 只持有 entityId。
+    // 此前直接读 c.hp / c.position，两者都不存在，返回给前端的一直是 undefined。
+    const comps = this.companionManager.getActiveCompanions().map(c => {
+      const ent = this.world.getEntity(c.entityId);
+      return {
+        id: c.config.id, name: c.config.name, hp: ent?.hp ?? 0, maxHp: c.config.maxHp,
+        ac: c.config.ac, morale: c.morale, behavior: c.behavior, control: c.control,
+        position: ent?.position ?? "", inventory: c.inventory, motivation: c.config.motivation,
+        traits: c.config.traits ?? null, skills: c.config.skills ?? null,
+        resolveState: c.resolveState,
+      };
+    });
     return {
       scene: state.scene, round: this.round,
       player: playerEnt ? { name: playerEnt.name, hp: playerEnt.hp, maxHp: playerEnt.maxHp, ac: this.activeRuleset === "cosmic-horror" ? 0 : playerEnt.ac, status: playerEnt.status } : { name: "调查员", hp: 12, maxHp: 12, ac: 0, status: [] },
@@ -586,12 +593,15 @@ export class GameSession {
       ruleset: this.activeRuleset,
       scene: this.sceneDisplayNames[pos] ?? pos,
       characters, combatActive: this.combatActive,
-      companions: companions.map(c => ({
-        id: c.config.id, name: c.config.name, hp: c.hp, maxHp: c.config.maxHp,
-        ac: c.config.ac, morale: c.morale, behavior: c.behavior,
-        control: c.control, position: c.position, inventory: c.inventory,
-        skills: c.config.skills, resolveState: c.resolveState,
-      })),
+      companions: companions.map(c => {
+        const ent = this.world.getEntity(c.entityId);
+        return {
+          id: c.config.id, name: c.config.name, hp: ent?.hp ?? 0, maxHp: c.config.maxHp,
+          ac: c.config.ac, morale: c.morale, behavior: c.behavior,
+          control: c.control, position: ent?.position ?? "", inventory: c.inventory,
+          skills: c.config.skills, resolveState: c.resolveState,
+        };
+      }),
       npcs: Object.values(worldState.entities).filter(e => (e.type === "npc" || e.type === "monster") && e.hp > 0).map(e => ({ name: e.name, type: e.type, hp: e.hp, maxHp: e.maxHp })),
       sceneItems, difficulty: this.activeDifficulty,
       module: curModule ? { id: curModule.id, name: curModule.name, difficulty: curModule.difficulty } : null,
@@ -640,13 +650,11 @@ export class GameSession {
     this.world.getCurrentState().scene = sceneId;
   }
   setDifficulty(diff: "easy" | "medium" | "hard" | "nightmare") {
-    const profiles: Record<string, DifficultyProfile> = {
-      easy: { label: "简", description: "线索充裕，敌人较", penaltyDice: -1, sanMultiplier: 0.8, clueOnFail: "generous" },
-      medium: { label: "标准", description: "平衡的挑", penaltyDice: 0, sanMultiplier: 1.0, clueOnFail: "partial" },
-      hard: { label: "困难", description: "线索稀缺，敌人凶悍", penaltyDice: 1, sanMultiplier: 1.2, clueOnFail: "minimal" },
-      nightmare: { label: "噩梦", description: "九死一", penaltyDice: 2, sanMultiplier: 1.5, clueOnFail: "hidden" },
-    };
-    this.activeDifficulty = profiles[diff];
+    // 直接用 module-difficulty 的权威难度表。
+    // 此前这里内联了一份退化副本：label 填的是中文显示名，而权威表里 label 是判别式
+    // （getPushNarration 对它做 switch），clueOnFail 还用了 "generous"/"hidden" 这两个
+    // 并不存在的取值，同时丢掉了 pushAllowed / pushCostMultiplier / failureGuidance。
+    this.activeDifficulty = getDifficultyProfile(diff);
   }
 
   // ============================================================
@@ -771,7 +779,9 @@ export class GameSession {
             target.status.push("重伤:" + mw.location);
             target.status.push("流血");
             if (mw.unconscious) target.status.push("昏迷");
-            msg("💀 " + mw.description);
+            // 此处原为 msg(...)，但 msg 只是另外两个方法内部的局部箭头函数，
+            // 在本方法作用域里不存在——重伤一旦触发就会 ReferenceError。
+            turnMessages.push({ speaker: "系统", content: "💀 " + mw.description, type: "system" });
           }
           this.world.upsertEntity(target);
         }
@@ -791,7 +801,10 @@ export class GameSession {
         // 同伴协作攻击
         const comps = this.companionManager.getActiveCompanions();
         for (const c of comps) {
-          if (c.hp > 0 && c.behavior !== "defensive") {
+          // 同伴血量在世界实体上；此前读 c.hp 恒为 undefined，
+          // 条件永远为假，同伴协助攻击从未真正发生过。
+          const cEnt = this.world.getEntity(c.entityId);
+          if ((cEnt?.hp ?? 0) > 0 && c.behavior !== "defensive") {
             const cRoll = Math.floor(Math.random() * 100) + 1;
             const cSkill = c.config.skills?.fight ?? 30;
             if (cRoll <= cSkill && enemies.length > 0) {
@@ -1277,7 +1290,9 @@ export class GameSession {
     const loss = result.sanLoss;
     const roll = result.roll;
     msg(`🧠 SAN 检查(${reason}): d100=${roll} (目标=${this.sanity.state.currentSAN}) → ${sanOutcomeLabel(passed)}！SAN -${loss} (剩余: ${this.sanity.state.currentSAN})`);
-    if (result.temporaryInsanity) {
+    // 字段名是 temporaryInsanityTriggered；此前写成 temporaryInsanity，
+    // 取值恒为 undefined，Web 路径的临时疯狂提示从未出现过。
+    if (result.temporaryInsanityTriggered) {
       msg(`⚠️ 临时疯狂触发！${result.boutOfMadness ?? ""}`);
     }
     this.lastNarrative = `SAN 检定结果: ${sanOutcomeLabel(passed)}, SAN -${loss}`;
@@ -1398,7 +1413,7 @@ export class GameSession {
         this.careerStore = new CareerFileStore(careerDir);
       }
       this.careerStore.saveSnapshot({
-        characterName: ch.name, occupation: ch.archetype?.label ?? ch.archetype ?? archetypeId,
+        characterName: ch.name, occupation: getArchetype(ch.archetype)?.label ?? ch.archetype ?? archetypeId,
         attributes: { ...(ch.attributes ?? {}) },
         skills: ch.skillValues ? { ...ch.skillValues } : {},
         san: this.sanity.state.currentSAN, maxSan: this.sanity.state.maxSAN,
