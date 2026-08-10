@@ -27,7 +27,7 @@ import { PlayerSession, type VisibilityRule } from "./session/player-session";
 import { InvestigationEngine } from "./investigation/investigation-engine";
 import { WorldModelLoader } from "./world/world-model-loader";
 import { WorldModelIntegrator } from "./world/world-model-integrator";
-import { CharacterFactory, type GeneratedCharacter } from "./character/character-factory";
+import { CharacterFactory, getArchetype, type GeneratedCharacter, type CharacterArchetype } from "./character/character-factory";
 import { PRESTIGE_CLASSES } from "./character/prestige-classes";
 import { QIANKUN_SUBCLASSES, getAllQiankunLegendaryTemplates } from "./character/qiankun-subclasses";
 import { createCoCCharacter, getCoCArchetypes, type CoCGeneratedCharacter, getSkillValue, getBaseSkillValue } from "./character/coc-character";
@@ -207,6 +207,20 @@ const playerCharacter = {
 // 角色卡（可被 /create 替换）
 let activeCharacter: GeneratedCharacter | null = null;
 
+/**
+ * GeneratedCharacter.archetype 存的是职业 id 字符串，不是目录对象。
+ * 此前多处直接写 activeArchetypeLabel() / .featChoices / .levelFeatures，
+ * 运行时全是 undefined —— 等级特性与专长提示因此从未触发过。
+ */
+function activeArchetype(): CharacterArchetype | undefined {
+  return activeCharacter ? getArchetype(activeCharacter.archetype) : undefined;
+}
+
+/** 职业显示名；目录里查不到时退回 id。 */
+function activeArchetypeLabel(): string {
+  return activeArchetype()?.label ?? activeCharacter?.archetype ?? "未知";
+}
+
 function divider(char = "─", len = 60) {
   return char.repeat(len);
 }
@@ -282,7 +296,7 @@ function getPlayerAttributes(): { name: string; id: string; proficiency: number;
       name: activeCharacter.name, id: "player",
       proficiency: 2,
       abilities: activeCharacter.attributes,
-      hasSneakAttack: activeCharacter.archetype.id === "scout",
+      hasSneakAttack: activeCharacter.archetype === "scout",
     };
   }
   return playerCharacter;
@@ -1064,7 +1078,7 @@ async function main() {
       try {
         activeCharacter = CharacterFactory.generate(charName, archetypeId, activeRuleset);
         const acCreate = CharacterFactory.computeAC(activeCharacter);
-        console.log(`\n  📜 ${activeCharacter.name} [${activeCharacter.archetype.label}]`);
+        console.log(`\n  📜 ${activeCharacter.name} [${activeArchetypeLabel()}]`);
         console.log(`  HP:${activeCharacter.hp} AC:${acCreate}`);
         console.log(`  属性: ${Object.entries(activeCharacter.attributes).map(([k,v])=>`${k}=${v}`).join(" ")}`);
         if (activeCharacter.warnings.length > 0) console.log(`  ⚠ ${activeCharacter.warnings.join("; ")}`);
@@ -1101,10 +1115,11 @@ async function main() {
         if (guidance !== "你的神智目前清醒。") console.log(`  🧠 ${guidance.slice(0, 80)}...`);
       } else if (activeCharacter) {
         const acSheet = CharacterFactory.computeAC(activeCharacter);
-        console.log(`\n  📜 ${activeCharacter.name} [${activeCharacter.archetype.label}]`);
+        console.log(`\n  📜 ${activeCharacter.name} [${activeArchetypeLabel()}]`);
         console.log(`  HP:${activeCharacter.hp}/${activeCharacter.maxHp} AC:${acSheet} Lv:${activeCharacter.totalLevel} BAB:${activeCharacter.baseAttackBonus}`);
-        const baseAc = activeCharacter.ac;
-        if (acSheet !== baseAc) console.log(`  (基础 AC ${baseAc} + 特性 ${acSheet - baseAc})`);
+        // 原先这里打印「基础 AC X + 特性 Y」，但 GeneratedCharacter 没有 ac 字段，
+        // 而 computeAC 就是 10+敏捷调整值、不含任何特性加成，所以那行只会输出
+        // "基础 AC undefined + 特性 NaN"。特性加成需要 accumulateEffects 真正实现后再加回。
         console.log(`  属性: ${Object.entries(activeCharacter.attributes).map(([k,v])=>`${k}=${v}`).join(" ")}`);
         console.log(`  技能: ${activeCharacter.skills.join(", ")}`);
         if (activeCharacter.classLevels.size > 1) {
@@ -1114,19 +1129,11 @@ async function main() {
           console.log(`  特性: ${activeCharacter.activeFeatures.map(f=>`${f.name}`).join(", ")}`);
         }
         if (activeCharacter.selectedFeats.length > 0) {
-          console.log(`  专长: ${activeCharacter.selectedFeats.map(f=>f.name).join(", ")}`);
+          console.log(`  专长: ${activeCharacter.selectedFeats.join(", ")}`);
         }
-        const effects = CharacterFactory.accumulateEffects(activeCharacter);
-        const effectParts: string[] = [];
-        if (effects.attackBonus) effectParts.push(`攻击+${effects.attackBonus}`);
-        if (effects.damageBonus) effectParts.push(`伤害+${effects.damageBonus}`);
-        if (effects.damageDice) effectParts.push(`额外${effects.damageDice}`);
-        if (effects.acBonus) effectParts.push(`AC+${effects.acBonus}`);
-        if (effects.saveBonus) effectParts.push(`豁免: ${Object.entries(effects.saveBonus).map(([a,b])=>`${a}+${b}`).join(" ")}`);
-        if (effects.saveAdvantage?.length) effectParts.push(`豁免优势: ${effects.saveAdvantage.join(",")}`);
-        if (effects.resistances?.length) effectParts.push(`抗性: ${effects.resistances.join(",")}`);
-        if (effects.extraAttack) effectParts.push(`额外攻击+${effects.extraAttack}`);
-        if (effectParts.length > 0) console.log(`  效果: ${effectParts.join(" | ")}`);
+        // 特性效果汇总（攻击/伤害/AC/豁免加成）待 CharacterFactory.accumulateEffects
+        // 真正实现后再接回来：它目前是 `return []` 的空桩，这里读 effects.attackBonus
+        // 之类的字段在数组上永远是 undefined，整段展示从来没有输出过内容。
       } else { console.log("  ℹ 使用 /create <职业id> [角色名] 或 /horror-create <职业id> [角色名] 创建角色"); }
       rl.prompt(); continue;
     }
@@ -1141,15 +1148,15 @@ async function main() {
           rl.prompt(); continue;
         }
         activeCharacter = CharacterFactory.advance(activeCharacter, prestigeId, 1);
-        console.log(`  ⬆ 进阶成功! ${activeCharacter.name} 成为 ${activeCharacter.archetype.label} Lv${activeCharacter.classLevels.get(prestigeId)}`);
+        console.log(`  ⬆ 进阶成功! ${activeCharacter.name} 成为 ${activeArchetypeLabel()} Lv${activeCharacter.classLevels.get(prestigeId)}`);
         console.log(`  总等级: ${activeCharacter.totalLevel} | BAB: ${activeCharacter.baseAttackBonus}`);
         if (activeCharacter.activeFeatures.length > 0) {
           console.log(`  新特性: ${activeCharacter.activeFeatures.slice(-3).map(f=>`${f.name}(${f.description.slice(0,30)}...)`).join(", ")}`);
         }
         // 检查是否到达专长选择等级
-        if (activeCharacter.archetype.featChoices) {
-          for (const fc of activeCharacter.archetype.featChoices) {
-            const alreadyChosen = activeCharacter.selectedFeats.some(sf => fc.options.some(o => o.name === sf.name));
+        if (activeArchetype()?.featChoices) {
+          for (const fc of activeArchetype()?.featChoices) {
+            const alreadyChosen = activeCharacter.selectedFeats.some(sf => fc.options.some(o => o.name === sf));
             if (fc.level <= activeCharacter.totalLevel && !alreadyChosen) {
               const options = fc.options.map(o => o.name).join("、");
               console.log(`  💡 达到 Lv${fc.level}！可用 /choose-feat 从以下专长中选择: ${options}`);
@@ -1165,7 +1172,7 @@ async function main() {
       const levels = parseInt(input.slice(7).trim()) || 1;
       activeCharacter.totalLevel += levels;
       // 更新当前子职等级
-      const classId = activeCharacter.archetype.id;
+      const classId = activeCharacter.archetype;
       const current = activeCharacter.classLevels.get(classId) ?? 1;
       activeCharacter.classLevels.set(classId, current + levels);
       // 增加 HP
@@ -1174,9 +1181,9 @@ async function main() {
       }
       activeCharacter.hp = activeCharacter.maxHp;
       // 激活新等级的 levelFeatures
-      if (activeCharacter.archetype.levelFeatures) {
+      if (activeArchetype()?.levelFeatures) {
         const oldCount = activeCharacter.activeFeatures.length;
-        for (const lf of activeCharacter.archetype.levelFeatures) {
+        for (const lf of activeArchetype()?.levelFeatures) {
           if (lf.level <= activeCharacter.totalLevel && !activeCharacter.activeFeatures.some(f => f.name === lf.name)) {
             activeCharacter.activeFeatures.push(lf);
           }
@@ -1187,9 +1194,9 @@ async function main() {
       }
       console.log(`  ⬆ ${activeCharacter.name} 升至 Lv${activeCharacter.totalLevel}！HP:${activeCharacter.maxHp}`);
       // 提示专长选择
-      if (activeCharacter.archetype.featChoices) {
-        for (const fc of activeCharacter.archetype.featChoices) {
-          const alreadyChosen = activeCharacter.selectedFeats.some(sf => fc.options.some(o => o.name === sf.name));
+      if (activeArchetype()?.featChoices) {
+        for (const fc of activeArchetype()?.featChoices) {
+          const alreadyChosen = activeCharacter.selectedFeats.some(sf => fc.options.some(o => o.name === sf));
           if (fc.level <= activeCharacter.totalLevel && !alreadyChosen) {
             const options = fc.options.map(o => o.name).join("、");
             console.log(`  💡 达到 Lv${fc.level}！可用 /choose-feat 从以下专长中选择: ${options}`);
@@ -1214,27 +1221,27 @@ async function main() {
     // ── /feats 查看专长 ──
     if (input === "/feats" || input === "专长") {
       if (!activeCharacter) { console.log("  ℹ 使用 /create <职业id> 创建角色"); rl.prompt(); continue; }
-      const arch = activeCharacter.archetype;
-      console.log(`\n  ⚔ ${arch.label} 专长树`);
-      // 已选专长
+      const arch = activeArchetype();
+      console.log(`\n  ⚔ ${activeArchetypeLabel()} 专长树`);
+      // 已选专长（selectedFeats 存的是专长名字符串）
       if (activeCharacter.selectedFeats.length > 0) {
         console.log(`  ✅ 已选专长:`);
-        for (const f of activeCharacter.selectedFeats) {
-          console.log(`    ${f.name}: ${f.description}`);
+        for (const featName of activeCharacter.selectedFeats) {
+          console.log(`    ${featName}`);
         }
       } else {
         console.log(`  ⚪ 尚未选择任何专长`);
       }
       // 可用选择点
-      if (arch.featChoices) {
+      if (arch?.featChoices) {
         console.log(`  📋 专长选择点:`);
         for (const fc of arch.featChoices) {
-          const alreadyChosen = activeCharacter.selectedFeats.some(sf => fc.options.some(o => o.name === sf.name));
+          const alreadyChosen = activeCharacter.selectedFeats.some(sf => fc.options.some(o => o.name === sf));
           if (alreadyChosen) continue;
           const canTake = activeCharacter.totalLevel >= fc.level ? "" : ` (需 Lv${fc.level})`;
           console.log(`    Lv${fc.level} (选${fc.pick}):${canTake}`);
           for (const opt of fc.options) {
-            const chosen = activeCharacter.selectedFeats.some(sf => sf.name === opt.name);
+            const chosen = activeCharacter.selectedFeats.some(sf => sf === opt.name);
             const mark = chosen ? "✅" : (activeCharacter.totalLevel >= fc.level ? "  ·" : "  ·");
             console.log(`      ${mark} ${opt.name}: ${opt.description}`);
           }
