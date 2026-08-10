@@ -5,10 +5,27 @@
 import type { ServerWebSocket } from "bun";
 
 /** 连接角色 */
-type WsRole = "kp" | "player" | "observer";
+export type WsRole = "kp" | "player" | "observer";
+
+export const WS_ROLES: readonly WsRole[] = ["kp", "player", "observer"];
+
+export function isWsRole(value: string | null): value is WsRole {
+  return value !== null && (WS_ROLES as readonly string[]).includes(value);
+}
+
+/**
+ * upgrade 时挂到 socket 上的数据。
+ * 与 WsClient 分开：WsClient 是服务端的连接记录（含 ws 自身与 label），
+ * 而这里只是握手时从查询串取到的三个字段。
+ */
+export interface WsConnectionData {
+  sessionId: string;
+  role: WsRole;
+  playerId?: string;
+}
 
 interface WsClient {
-  ws: ServerWebSocket<WsClient>;
+  ws: ServerWebSocket<WsConnectionData>;
   sessionId: string;
   role: WsRole;
   playerId?: string;
@@ -20,7 +37,7 @@ const clients = new Map<number, WsClient>();
 let nextId = 1;
 
 export function createWsClient(
-  ws: ServerWebSocket<WsClient>,
+  ws: ServerWebSocket<WsConnectionData>,
   sessionId: string,
   role: WsRole = "observer",
   playerId?: string,
@@ -36,7 +53,7 @@ export function createWsClient(
   return client;
 }
 
-export function removeWsClient(ws: ServerWebSocket<WsClient>): void {
+export function removeWsClient(ws: ServerWebSocket<WsConnectionData>): void {
   for (const [id, c] of clients) {
     if (c.ws === ws) { clients.delete(id); break; }
   }

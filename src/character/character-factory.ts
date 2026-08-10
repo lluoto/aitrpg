@@ -1027,7 +1027,10 @@ export class CharacterFactory {
   /**
    * 列出指定规则集的所有可用职业（含已注册的扩展）
    */
-  static listArchetypes(ruleset: string): CharacterArchetype[] {
+  static listArchetypes(ruleset?: string): CharacterArchetype[] {
+    // 不给规则集即不过滤。此前签名要求 string，而 HTTP 路由传的是可选查询参数，
+    // 省略 ruleset 时会 filter(includes(undefined)) 得到空列表——那不是「不过滤」的语义。
+    if (!ruleset) return [...ALL_ARCHETYPES];
     return ALL_ARCHETYPES.filter(a => a.rulesets.includes(ruleset));
   }
 

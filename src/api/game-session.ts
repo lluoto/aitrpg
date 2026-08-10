@@ -625,6 +625,14 @@ export class GameSession {
     }
     this.world.upsertEntity(ent);
   }
+  /** 覆盖指定玩家的背包内容（HTTP 角色卡编辑用）。 */
+  setPlayerInventory(pid: string, items: string[]) {
+    this.inventoryMap.set(pid, items);
+  }
+  /** 覆盖指定玩家已装备的武器（HTTP 角色卡编辑用）。 */
+  setPlayerWeapons(pid: string, weapons: string[]) {
+    this.equippedWeaponsMap.set(pid, weapons);
+  }
   applyDamage(entityId: string, damage: number) {
     this.world.applyDamage(entityId, Math.max(0, damage));
   }

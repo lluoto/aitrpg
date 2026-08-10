@@ -88,6 +88,11 @@ export interface AgentMessage {
   type: "dialogue" | "narration" | "system" | "action";
   /** 谁可见（per-receiver 预留） */
   visible_to?: string[];
+  /**
+   * 入会话时间（epoch ms），由 PlayerSession.push 统一打上。
+   * 可选：早先存档里的历史消息没有这个字段。
+   */
+  timestamp?: number;
 }
 
 /**

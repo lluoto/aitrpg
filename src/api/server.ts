@@ -8,7 +8,7 @@ import { loadConfig } from "../config";
 import { loadSessionIds, loadSessionMeta, saveSessionMeta, deleteSessionFile, listStoredSessions } from "./session-store";
 import { saveCharacter, loadCharacter, listCharacters, type StoredCharacter } from "./character-store";
 import type { MessageType } from "../agent/types";
-import { createWsClient, removeWsClient, broadcastToSession, wsStats } from "./ws-handler";
+import { createWsClient, removeWsClient, broadcastToSession, wsStats, isWsRole, type WsRole, type WsConnectionData } from "./ws-handler";
 import { listSavedModules, loadModuleFile, saveModuleFile, deleteModuleFile, createBlankModule } from "./module-editor";
 import { CharacterFactory } from "../character/character-factory";
 import { log } from "../log";
@@ -400,9 +400,9 @@ async function handleRequest(req: Request): Promise<Response> {
         const skills = bodyRecord(body, "skills");
         if (skills) Object.assign(ch.skillValues ?? (ch.skillValues = {}), skills);
         const inventory = bodyStringArray(body, "inventory");
-        if (inventory) session.inventoryMap.set(session.activePlayerId, inventory);
+        if (inventory) session.setPlayerInventory(session.activePlayerId, inventory);
         const weapons = bodyStringArray(body, "weapons");
-        if (weapons) session.equippedWeaponsMap.set(session.activePlayerId, weapons);
+        if (weapons) session.setPlayerWeapons(session.activePlayerId, weapons);
         const luck = bodyNumber(body, "luck");
         if (luck !== undefined) ch.luck = luck;
         const creditRating = bodyNumber(body, "creditRating");
@@ -838,7 +838,7 @@ window.addEventListener('load', async () => {
 
 const PORT = parseInt(process.env.PORT || "3099");
 
-Bun.serve({
+Bun.serve<WsConnectionData, never>({
   port: PORT,
   hostname: "0.0.0.0",
   fetch(req, server) {
@@ -846,7 +846,8 @@ Bun.serve({
     const url = new URL(req.url);
     if (url.pathname === "/ws") {
       const sessionId = url.searchParams.get("session") || "";
-      const role = (url.searchParams.get("role") as "kp" | "player") || "observer";
+      const rawRole = url.searchParams.get("role");
+      const role: WsRole = isWsRole(rawRole) ? rawRole : "observer";
       const playerId = url.searchParams.get("playerId") || undefined;
       const upgraded = server.upgrade(req, {
         data: { sessionId, role, playerId },

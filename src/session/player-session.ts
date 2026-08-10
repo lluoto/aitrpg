@@ -126,24 +126,28 @@ export class PlayerSession {
     discoverer?: string,
     targets?: string[]
   ) {
+    // 入会话即打时间戳：Markdown 导出依赖它显示时间，此前该字段从未被写入，
+    // 导出的时间列因此一直是空的。已有 timestamp 的消息（回放/存档）保持原值。
+    const stamped: AgentMessage =
+      message.timestamp === undefined ? { ...message, timestamp: Date.now() } : message;
+
     // 全局日志记录完整消息
-    this.globalMessages.push(message);
+    this.globalMessages.push(stamped);
 
     // 根据可见性规则分发
     switch (visibility) {
       case "public":
         for (const player of this.players.values()) {
-          player.messageHistory.push(message);
+          player.messageHistory.push(stamped);
         }
         break;
 
       case "scene_restricted": {
-        const scene = message.speaker === "KP" ? undefined : undefined;
         // 简化：所有同场景的玩家可见
         const activeScene = this.getActive()?.currentScene ?? "";
         for (const player of this.players.values()) {
           if (player.currentScene === activeScene) {
-            player.messageHistory.push(message);
+            player.messageHistory.push(stamped);
           }
         }
         break;
@@ -153,7 +157,7 @@ export class PlayerSession {
         if (discoverer) {
           const player = this.players.get(discoverer);
           if (player) {
-            player.messageHistory.push(message);
+            player.messageHistory.push(stamped);
             // KP 也记录（DM 总是知道一切）
           }
         }
@@ -163,7 +167,7 @@ export class PlayerSession {
         if (targets) {
           for (const t of targets) {
             const player = this.players.get(t);
-            if (player) player.messageHistory.push(message);
+            if (player) player.messageHistory.push(stamped);
           }
         }
         break;
@@ -171,7 +175,7 @@ export class PlayerSession {
       case "private": {
         const active = this.getActive();
         if (active) {
-          active.messageHistory.push(message);
+          active.messageHistory.push(stamped);
           // KP 在全局日志中可见此消息
         }
         break;
