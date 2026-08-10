@@ -1,6 +1,10 @@
 # D&D 5e SRD 法术 YAML
-# CC-BY-4.0 — Wizards of the Coast
 # 仅 POC 阶段需要的法术子集（含戏法到 3 环）
+#
+# 本文件含取自 System Reference Document 5.1（"SRD 5.1"）的素材，
+# 版权归 Wizards of the Coast LLC，依 CC-BY-4.0 授权使用。
+# 已修改：翻译为中文、改写为本项目的 YAML 结构、并做了删减。
+# 完整署名与修改说明见仓库根目录 NOTICE.md。
 
 spells:
   # ── 戏法（Cantrips, 0 环）──

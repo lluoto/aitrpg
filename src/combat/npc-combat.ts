@@ -41,7 +41,7 @@ export class NPCCombatEngine {
 
   constructor() {
     this.loadConfig("dnd5e", "./src/combat/dnd-npc.yaml");
-    this.loadConfig("coc7e", "./src/combat/coc-npc.yaml");
+    this.loadConfig("cosmic-horror", "./src/combat/coc-npc.yaml");
     this.loadConfig("grail", "./src/combat/grail-npc.yaml");
   }
 
@@ -54,7 +54,7 @@ export class NPCCombatEngine {
    * 为 NPC 决定本轮战斗行动
    * @param npc NPC 实体
    * @param world 世界状态管理器
-   * @param ruleset 规则集："dnd5e" | "coc7e" | "grail"
+   * @param ruleset 规则集："dnd5e" | "cosmic-horror" | "grail"
    * @returns ActionIntent，如果 NPC 不行动（逃跑/投降/无目标）返回 null
    */
   decide(
@@ -328,7 +328,7 @@ export class NPCCombatEngine {
 
   private pickWeapon(npc: WorldEntity, ruleset: string): string {
     // 简化：根据规则集和 NPC 类型选默认武器
-    if (ruleset === "coc7e") return "fist"; // CoC 很少自带武器——或用爪击
+    if (ruleset === "cosmic-horror") return "fist"; // CoC 很少自带武器——或用爪击
     return "shortsword"; // D&D 默认
   }
 

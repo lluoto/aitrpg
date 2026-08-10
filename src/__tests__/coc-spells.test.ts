@@ -10,7 +10,7 @@ let session: GameSession;
 beforeEach(() => {
   process.env.LLM_API_KEY = "";
   process.env.OPENAI_API_KEY = "";
-  session = new GameSession("spell-test", "coc7e", {
+  session = new GameSession("spell-test", "cosmic-horror", {
     apiKey: "sk-placeholder",
     baseUrl: "http://localhost:9999",
     model: "mock",

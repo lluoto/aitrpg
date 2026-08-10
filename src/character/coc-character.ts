@@ -711,7 +711,7 @@ export function getSkillValue(
 
 /** 列出所有合法的 CoC 7e 职业 */
 export function getCoCArchetypes(): CharacterArchetype[] {
-  return ALL_ARCHETYPES.filter(a => a.rulesets.includes("coc7e"));
+  return ALL_ARCHETYPES.filter(a => a.rulesets.includes("cosmic-horror"));
 }
 
 // ============================================================

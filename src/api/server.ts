@@ -9,6 +9,8 @@ import { loadSessionIds, loadSessionMeta, saveSessionMeta, deleteSessionFile, li
 import { saveCharacter, loadCharacter, listCharacters } from "./character-store";
 import { createWsClient, removeWsClient, broadcastToSession, wsStats } from "./ws-handler";
 import { listSavedModules, loadModuleFile, saveModuleFile, deleteModuleFile, createBlankModule } from "./module-editor";
+import { CharacterFactory } from "../character/character-factory";
+import { log } from "../log";
 
 // ============================================================
 // 会话存储
@@ -74,12 +76,12 @@ setInterval(() => {
       cleaned++;
     }
   }
-  if (cleaned > 0) console.log(`[cleanup] 清理了 ${cleaned} 个过期会话`);
+  if (cleaned > 0) log.info("cleanup", `清理了 ${cleaned} 个过期会话`);
 }, CLEANUP_INTERVAL_MS);
 
 async function handleRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
-  const { segments, query } = parseUrl(url.pathname);
+  const { segments, query } = parseUrl(url.pathname + url.search);
   const method = req.method;
 
   // OPTIONS → CORS preflight
@@ -186,7 +188,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
   // POST /api/sessions — 创建新会话
   if (method === "POST" && segments[0] === "api" && segments[1] === "sessions" && segments.length === 2) {
-    let ruleset: RulesetId = "coc7e";
+    let ruleset: RulesetId = "cosmic-horror";
     let archetypeId: string | undefined;
     let characterName: string | undefined;
     try {
@@ -301,6 +303,11 @@ async function handleRequest(req: Request): Promise<Response> {
         sanity: session.getSanity(),
         summary: session.getSummary(),
       });
+    }
+
+    // GET /api/sessions/:id/suggestions — 当前可选行动
+    if (method === "GET" && segments[3] === "suggestions") {
+      return respondJson({ suggestions: session.getSuggestions() });
     }
 
     // GET /api/sessions/:id/character — 角色属性
@@ -633,7 +640,7 @@ function updateStatus(state, sanity, summary) {
 }
 
 async function createSession() {
-  const res = await fetch('/api/sessions', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ruleset:'coc7e'}) });
+  const res = await fetch('/api/sessions', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ruleset:'cosmic-horror'}) });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   sessionId = data.sessionId;

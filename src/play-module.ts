@@ -5,7 +5,7 @@
 
 import { createCoCCharacter, getCoCArchetypes, resolveCheckValue, type CoCGeneratedCharacter, type BackgroundProfile } from "./character/coc-character";
 import { randomCoCName, buildBaseBackgroundProfile, composeBackstory, pickDistinctArchetypes, randomPersonAnchors, type PersonAnchors } from "./character/background-profile";
-import { CoCEngine, SanityEngine, type CoCCheckResult } from "./rules/coc-engine";
+import { CoCEngine, SanityEngine, SUCCESS_LEVEL_LABELS, type CoCCheckResult } from "./rules/coc-engine";
 import { BARN_OF_PREMIER, BARN_SUPPORT, renderPrologue, renderPartySetup, evaluateEpilogues } from "./module/barn-of-premier";
 import { WorldState } from "./world/state";
 import { PlayerAgent, createPlayerCharacter } from "./agent/player-agent";
@@ -288,8 +288,7 @@ async function createRandomPlayerSetup(
 // ── 检定 ──
 function check(skillVal: number, pcName: string, skillLabel: string, diff: "regular"|"hard"|"extreme" = "regular"): CoCCheckResult {
   const r = CoCEngine.skillCheck(skillVal, diff);
-  const labels: Record<string,string> = { critical:"大成功★", extreme:"极限成功", hard:"困难成功", regular:"成功", fail:"失败", fumble:"大失败" };
-  sayMech(`➜ ${pcName} 【${skillLabel}】 ${skillVal}% → d100=${r.roll} → ${labels[r.successLevel]||r.successLevel}`);
+  sayMech(`➜ ${pcName} 【${skillLabel}】 ${skillVal}% → d100=${r.roll} → ${SUCCESS_LEVEL_LABELS[r.successLevel]}`);
   return r;
 }
 
@@ -485,7 +484,7 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
       presentNPCs: scene?.npcIds ?? [],
       discoveredClues: scene?.clues.filter(c => w.isClueFound(c.id)).map(c => c.name) ?? [],
       round: w.round,
-      ruleset: "coc7e",
+      ruleset: "cosmic-horror",
     };
     let wmText = wmIntegrator.buildKPContext(wmCtx);
     // 克苏鲁神话上下文（独立 loader，失败静默跳过；随缓存一并复用）
@@ -1980,8 +1979,7 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
 
         say(`${name}${fmt(actionText)}`);
         const r = CoCEngine.skillCheck(effectiveSkill, "hard", 0, f.penaltyDice);
-        const labels: Record<string,string> = { critical:"大成功★", extreme:"极限成功", hard:"困难成功", regular:"成功", fail:"失败", fumble:"大失败" };
-        sayMech(`➜ ${name} 【${skillLabel}】 ${effectiveSkill}%${f.skillPenalty > 0 ? `(-${f.skillPenalty}疲劳)` : ""}${f.penaltyDice > 0 ? ` [惩罚骰×${f.penaltyDice}]` : ""} → d100=${r.roll} → ${labels[r.successLevel]||r.successLevel}`);
+        sayMech(`➜ ${name} 【${skillLabel}】 ${effectiveSkill}%${f.skillPenalty > 0 ? `(-${f.skillPenalty}疲劳)` : ""}${f.penaltyDice > 0 ? ` [惩罚骰×${f.penaltyDice}]` : ""} → d100=${r.roll} → ${SUCCESS_LEVEL_LABELS[r.successLevel]}`);
 
         if (r.isSuccess) {
           // 伤害：格斗 1d6，射击 1d8 + 暴击加成

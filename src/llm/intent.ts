@@ -46,6 +46,8 @@ const INTENT_PATTERNS: Array<{ verb: RegExp; intent: Partial<ActionIntent>; requ
   // 注意：目标列表不含"休息"——"前往旅店休息" 语义上是休息（过夜/恢复），应落入下方 rest 意图
   { verb: /(?:前往|走到|进入|来到|抵达|走向|去往).*(?:调查|检查|查看|了解|探查|寻找|搜索|探索|见|打听|询问)/, intent: { action: "move" } },
   { verb: /(?:移动|走|跑|前进|前往).*(?:到|向|往|去)/, intent: { action: "move" } },
+  // 独立移动动词 + 目标名（"前往加比的拖车房"→move；需在"前往…调查"组合之后，避免与 skill_check 冲突）
+  { verb: /^(?:前往|走到|走进|进入|来到|抵达|走向|去往|跑去|前往到)\s*\S+/, intent: { action: "move" } },
   { verb: /^去\s*\S+/, intent: { action: "move" } }, // "去谷仓" 等简短指令
   { verb: /(?:使用|释放|施放|施展).*(?:法术|魔法|咒语)/, intent: { action: "cast" } },
   { verb: /(?:使用|用|装备).*(?:道具|物品|药水|绷带|急救包|武器)/, intent: { action: "use_item" } },

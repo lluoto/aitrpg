@@ -1,6 +1,8 @@
 // LLM configuration loaded from environment
 // Bun auto-loads .env files — no dotenv needed
 
+import { log } from "./log";
+
 export interface LLMConfig {
   apiKey: string;
   baseUrl: string;
@@ -15,9 +17,12 @@ export function loadConfig(): LLMConfig {
     || process.env.DEEPSEEK_API_KEY;
 
   if (!apiKey) {
-    console.warn("⚠  No LLM_API_KEY set. Set LLM_API_KEY in .env or environment.");
-    console.warn("   Supported env vars: LLM_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY");
-    console.warn("   Copy .env.example to .env and fill in your values.\n");
+    log.warn(
+      "config",
+      "No LLM_API_KEY set. Set LLM_API_KEY in .env or environment.\n" +
+        "     Supported env vars: LLM_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY\n" +
+        "     Copy .env.example to .env and fill in your values.",
+    );
   }
 
   return {

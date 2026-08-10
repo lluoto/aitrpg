@@ -1,6 +1,6 @@
 const BASE = '/api'
 
-export async function createSession({ ruleset = 'coc7e', archetype, characterName } = {}) {
+export async function createSession({ ruleset = 'cosmic-horror', archetype, characterName } = {}) {
   const body = { ruleset }
   if (archetype) body.archetype = archetype
   if (characterName) body.characterName = characterName
@@ -13,7 +13,7 @@ export async function createSession({ ruleset = 'coc7e', archetype, characterNam
   return res.json()
 }
 
-export async function getArchetypes(ruleset = 'coc7e') {
+export async function getArchetypes(ruleset = 'cosmic-horror') {
   const res = await fetch(`${BASE}/archetypes?ruleset=${ruleset}`)
   return res.json()
 }

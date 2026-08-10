@@ -315,7 +315,7 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
       maxHp: 8,
       ac: 10,
       faction: "人类",
-      sceneId: "加比的拖车房",
+      sceneId: "建筑内",
       gender: "male",
       age: 17,
       attributes: { size: 65, appearance: 50 },

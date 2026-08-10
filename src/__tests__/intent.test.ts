@@ -93,11 +93,11 @@ describe("parseIntent regex fallback — 移动", () => {
     expect(r.action).toBe("move");
   });
 
-  it("前往小屋 (不含到/向/往/去 → unmatched, 已知)", async () => {
+  it("前往小屋 (独立移动动词+目标名 → move, 2026-08 修复)", async () => {
     const r = await parseIntent("前往小屋");
-    // 当前 regex: 移动/走/跑/前进/前往 后需要到/向/往/去
-    // "前往小屋" 缺此 → unknown
-    expect(r.action).toBe("unknown");
+    // 修复: 旧 regex 要求"前往"后还有"到/向/往/去"位置词，"前往小屋"被误判为 unknown
+    // 现在"前往 X"独立匹配 move
+    expect(r.action).toBe("move");
   });
 });
 

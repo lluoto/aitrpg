@@ -1,5 +1,10 @@
 # POC 核心规则集 — D&D 5e SRD
 # 仅 POC 阶段需要的规则，约 5-8 条
+#
+# 本文件含取自 System Reference Document 5.1（"SRD 5.1"）的素材，
+# 版权归 Wizards of the Coast LLC，依 CC-BY-4.0 授权使用。
+# 已修改：翻译为中文、改写为本项目的 YAML 结构、并做了删减。
+# 完整署名与修改说明见仓库根目录 NOTICE.md。
 
 rules:
   - id: attack_roll

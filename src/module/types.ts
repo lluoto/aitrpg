@@ -6,7 +6,7 @@ export interface ModuleData {
   id: string;
   title: string;
   version: string;
-  ruleset: "coc7e";
+  ruleset: "cosmic-horror";
   era: string;
   summary: string;
   scenes: Scene[];

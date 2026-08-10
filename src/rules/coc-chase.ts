@@ -4,6 +4,16 @@
 
 import { CoCEngine, type CoCSuccessLevel } from "./coc-engine";
 
+/**
+ * 累积惩罚的下界。
+ *
+ * CoCEngine.skillCheck 只读 netDice 的符号来决定掷奖励骰/惩罚骰/常规骰，
+ * 数值大小不影响结果——因此无下界的累积只会产生无意义的账面漂移
+ * （实测 20 轮可累积到 -26，等同于 26 颗惩罚骰，而 CoC 7e 惩罚骰上限是 2）。
+ * 取 -2 对齐该上限，使该字段第一次具备可解释的量纲。
+ */
+const MIN_CHASE_PENALTY = -2;
+
 // ============================================================
 // 类型定义
 // ============================================================
@@ -644,7 +654,7 @@ export class ChaseEngine {
     // 更新参与者 penalty
     for (const r of results) {
       const p = state.participants.find(pp => pp.name === r.name);
-      if (p) p.currentPenalty = Math.min(0, p.currentPenalty + r.penaltyChange);
+      if (p) p.currentPenalty = Math.max(MIN_CHASE_PENALTY, Math.min(0, p.currentPenalty + r.penaltyChange));
     }
 
     // 记录使用的障碍物

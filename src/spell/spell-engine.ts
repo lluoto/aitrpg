@@ -5,6 +5,7 @@ import { readFileSync } from "fs";
 import { parse as parseYaml } from "yaml";
 import type { RuleEngine } from "../engine/rule-engine";
 import type { CombatResult } from "../types";
+import { log } from "../log";
 
 // ============================================================
 // YAML 类型
@@ -102,7 +103,7 @@ export class SpellEngine {
         }
       }
     } catch (err) {
-      console.warn(`  ⚠ 法术系统 YAML 加载失败: ${(err as Error).message}`);
+      log.warn("spell", `法术系统 YAML 加载失败: ${(err as Error).message}`);
     }
   }
 

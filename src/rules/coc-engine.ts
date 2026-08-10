@@ -44,6 +44,21 @@ export function regularD100(): number {
 
 export type CoCSuccessLevel = "critical" | "extreme" | "hard" | "regular" | "fail" | "fumble";
 
+/**
+ * 成功等级的中文标签 — CLI / 模组 / API 各层共用。
+ *
+ * 各层此前各写一份（play-module 内部就有两份逐字相同的拷贝），措辞还出现漂移。
+ * 标签是语义层，装饰（emoji、缩进、markdown 加粗）留给各自的渲染层。
+ */
+export const SUCCESS_LEVEL_LABELS: Record<CoCSuccessLevel, string> = {
+  critical: "大成功",
+  extreme: "极限成功",
+  hard: "困难成功",
+  regular: "常规成功",
+  fail: "失败",
+  fumble: "大失败",
+};
+
 export interface CoCCheckResult {
   roll: number;
   skillValue: number;

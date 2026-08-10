@@ -311,8 +311,13 @@ describe("追逐成功等级影响", () => {
       ChaseEngine.resolveRound(state);
       totalPenalty = state.participants.reduce((s, p) => s + p.currentPenalty, 0);
     }
-    // 惩罚不会无限累积（顶级技能可能通过大成功解除）
-    expect(totalPenalty).toBeGreaterThanOrEqual(-20); // 最多每人-10
+    // 惩罚有硬下界，不会无限累积（大成功还可解除一点）
+    // 原断言 >= -20 是概率性的：无下界时 20 轮可累积到 -26，约 0.55% 概率误报。
+    for (const p of state.participants) {
+      expect(p.currentPenalty).toBeLessThanOrEqual(0);
+      expect(p.currentPenalty).toBeGreaterThanOrEqual(-2); // MIN_CHASE_PENALTY
+    }
+    expect(totalPenalty).toBeGreaterThanOrEqual(-4); // 2 人 × -2
   });
 });
 

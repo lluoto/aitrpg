@@ -16,3 +16,11 @@ analysis/
 play-records/
 src/module/raw/
 src/module/*.md
+
+# 遗留的根目录 SQLite 库（现行代码用 data/*.db 与 :memory:，不再打开它们）
+/coc7e
+/dnd5e
+/dnd5e-wal
+*.sqlite
+*-wal
+*-shm

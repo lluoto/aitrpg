@@ -19,6 +19,7 @@ import type { ModuleNPC } from "../module/types";
 import type { LLMClient } from "./client";
 import { checkDialogueText } from "../world/world-constraint";
 import { MYTHOS_CREATURES } from "../rules/mythos-expansion";
+import { log } from "../log";
 
 /** 模板生成的 llmExpanded 标记（区别于手写黄金标准，允许被 LLM 结果覆盖） */
 const templateGenerated = new WeakSet<object>();
@@ -343,7 +344,7 @@ export function applyLlmExpanded(npc: ModuleNPC): void {
     const firstHit = npc.llmExpanded.firstEncounter && checkDialogueText(npc.llmExpanded.firstEncounter);
     const revisitHit = npc.llmExpanded.revisitEncounter && checkDialogueText(npc.llmExpanded.revisitEncounter);
     if (revealHits > 0 || firstHit || revisitHit) {
-      console.warn(
+      log.warn("llm", 
         `  ⚠ 模组数据 ${npc.name} 的 llmExpanded 含跨时代内容 ` +
         `(reveals=${revealHits}, first=${!!firstHit}, revisit=${!!revisitHit}) — 建议人工修订`,
       );

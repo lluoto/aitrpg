@@ -19,6 +19,7 @@ import {
 import { NPCStore } from "../db/index";
 import { applyConstraints } from "./constraints";
 import { checkDialogueText } from "../world/world-constraint";
+import { log } from "../log";
 
 const MAX_RECENT_MEMORIES = 20;
 const SYSTEM_PROMPT_PREAMBLE = `你是一个 TRPG 非玩家角色（NPC）。你必须始终以角色的身份说话，不要跳出角色、不要评论游戏机制、不要替其他角色发言。
@@ -256,20 +257,20 @@ export class NPCAgent {
       // 输出约束层 — 检查并改写
       const constraintResult = applyConstraints(response, this.personality, this.mood, this.relationship);
       if (!constraintResult.passed) {
-        console.warn(`  ⚠ NPC ${this.name} 约束拦截: ${constraintResult.warnings.join("; ")}`);
+        log.warn("npc", `NPC ${this.name} 约束拦截: ${constraintResult.warnings.join("; ")}`);
         response = constraintResult.sanitized;
       }
 
       // 时代约束层 — 1920s 世界模型：LLM 输出含跨时代科技词 → 拦截并替换为安全话术
       if (checkDialogueText(response)) {
-        console.warn(`  ⚠ NPC ${this.name} 时代约束拦截（输出含现代科技词）`);
+        log.warn("npc", `NPC ${this.name} 时代约束拦截（输出含现代科技词）`);
         response = this.anachronismSafeReply();
       }
 
       this.rememberDialogue(this.name, response);
       return response;
     } catch (err: any) {
-      console.warn(`  ⚠ NPC ${this.name} 回应 LLM 失败: ${err.message.slice(0, 60)}`);
+      log.warn("npc", `NPC ${this.name} 回应 LLM 失败: ${err.message.slice(0, 60)}`);
       // LLM 不可用时，用角色性格生成模板回应
       return this.templateReply(context);
     }
@@ -314,20 +315,20 @@ export class NPCAgent {
       // 输出约束层
       const constraintResult = applyConstraints(response, this.personality, this.mood, this.relationship);
       if (!constraintResult.passed) {
-        console.warn(`  ⚠ NPC ${this.name} 主动发言约束拦截: ${constraintResult.warnings.join("; ")}`);
+        log.warn("npc", `NPC ${this.name} 主动发言约束拦截: ${constraintResult.warnings.join("; ")}`);
         response = constraintResult.sanitized;
       }
 
       // 时代约束层 — 1920s 世界模型：主动发言含跨时代科技词 → 替换为安全话术
       if (checkDialogueText(response)) {
-        console.warn(`  ⚠ NPC ${this.name} 主动发言时代约束拦截（含现代科技词）`);
+        log.warn("npc", `NPC ${this.name} 主动发言时代约束拦截（含现代科技词）`);
         response = this.anachronismSafeReply();
       }
 
       this.rememberDialogue(this.name, response, 6);
       return response;
     } catch (err: any) {
-      console.warn(`  ⚠ NPC ${this.name} 主动发言 LLM 失败: ${err.message.slice(0, 60)}`);
+      log.warn("npc", `NPC ${this.name} 主动发言 LLM 失败: ${err.message.slice(0, 60)}`);
       // LLM 不可用时用模板
       return this.templateSpeakUp(trigger);
     }

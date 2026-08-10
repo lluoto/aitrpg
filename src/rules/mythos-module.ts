@@ -22,6 +22,7 @@
  *   - 可叠放：多个模组可叠加导入，互不冲突
  */
 
+import type { MessageType } from "../agent/types";
 import type { MythosCreature, MythosTome, MythosSpellDef } from "./mythos-expansion";
 import { MYTHOS_CREATURES } from "./mythos-expansion";
 
@@ -277,7 +278,7 @@ export interface MythosModuleHost {
     }): void;
     logEvent?(params: { round: number; timestamp: number; event_type: string; actor: string; description: string }): void;
   };
-  addMessage(speaker: string, content: string, type: string): void;
+  addMessage(speaker: string, content: string, type: MessageType): void;
   activeRuleset?: string;
   currentRound?: number;
 

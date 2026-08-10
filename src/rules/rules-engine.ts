@@ -6,7 +6,7 @@ import { CoCEngine, getCalledShotPenalty, type HitLocation } from "./coc-engine"
 import { GrailEngine, type GrailRank } from "./grail-engine";
 import type { WorldEntity, ActionIntent, CombatResult } from "../types";
 
-export type RulesetId = "dnd5e" | "coc7e" | "grail" | "pulpcoc";
+export type RulesetId = "dnd5e" | "cosmic-horror" | "grail";
 
 export interface UnifiedCombatResult {
   hit: boolean;
@@ -76,7 +76,7 @@ export class RulesEngine {
     switch (ruleset) {
       case "dnd5e":
         return this.adjudicateDnD(intent, attacker, defender, hasAdvantage ?? false, hasDisadvantage ?? false, weaponName ?? "shortsword");
-      case "coc7e":
+      case "cosmic-horror":
         return this.adjudicateCoC(intent, attacker, defender, attackerSkill ?? 40, defenderDodge ?? 30, intent.method, damageDice, penaltyDiceOverride, isFightBack, fightBackDamageDice, attackerDb);
       case "grail":
         return this.adjudicateGrail(attacker as any, defender, "1d8");
@@ -153,7 +153,7 @@ export class RulesEngine {
       result: hpEffect,
       critical: result.isCritical,
       details: result.result,
-      ruleset: "coc7e",
+      ruleset: "cosmic-horror",
       cocRoll: result.roll,
       cocSuccessLevel: result.successLevel,
       hitLocation: result.hitLocation,

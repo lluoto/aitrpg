@@ -3,6 +3,7 @@
 // 向后兼容 integrator 的 queryCausal/queryBehavior/getFactionRelations 接口
 
 import { readFileSync, existsSync } from "fs";
+import { log } from "../log";
 
 // ============================================================
 // v18 统一条目类型（v15+v16+v17 联合）
@@ -80,7 +81,7 @@ export class WorldModelLoader {
    */
   load(path: string = "../世界模型/v18_output/v18_all_master.jsonl") {
     if (!existsSync(path)) {
-      console.warn(`  ⚠ 世界模型文件未找到: ${path}`);
+      log.warn("world", `世界模型文件未找到: ${path}`);
       return;
     }
 

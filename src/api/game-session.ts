@@ -33,14 +33,14 @@ import { MythosModuleLoader } from "../rules/mythos-module";
 import { PoliticoEconomyEngine } from "../economy/politic-economy-engine";
 import { PREMIERS_BARN_MODULE, ARKHAM_LIBRARY_MODULE, INNSMOUTH_MODULE } from "../rules/mythos-module";
 import { getModule as getCustomModule } from "../rules/custom-modules/index";
-import { cocWeaponsRef, cocChaseRef, cocInsanityRef, cocReferenceHelp } from "../rules/coc-reference";
 import { saveSessionMeta, deleteSessionFile } from "./session-store";
 import type { CombatResult, WorldEntity, ActionIntent, CoCWeaponDef } from "../types";
-import type { NPCPersonality, AgentMessage, TurnRecord } from "../agent/types";
+import type { NPCPersonality, AgentMessage, MessageType, TurnRecord } from "../agent/types";
+import { log } from "../log";
 
 export interface ActionResponse {
   narrative: string;
-  events: { speaker: string; content: string; type: string }[];
+  events: { speaker: string; content: string; type: MessageType }[];
   state: {
     scene: string;
     round: number;
@@ -105,7 +105,7 @@ export class GameSession {
   readonly companionManager: CompanionManager;
   readonly politicoEconomy: PoliticoEconomyEngine;
 
-  activeRuleset: RulesetId = "coc7e";
+  activeRuleset: RulesetId = "cosmic-horror";
   activePlayerId: string = "p1";
   activeCharacter: any = null;
   round: number = 0;
@@ -141,7 +141,7 @@ export class GameSession {
 
   constructor(
     id: string,
-    ruleset: RulesetId = "coc7e",
+    ruleset: RulesetId = "cosmic-horror",
     llmConfig?: LLMConfig,
     archetypeId?: string,
     characterName?: string,
@@ -222,7 +222,7 @@ export class GameSession {
           createdAt: new Date().toISOString(),
         });
       } catch (e) {
-        console.warn("角色创建失败", e);
+        log.warn("session", "角色创建失败", e);
       }
     }
   }
@@ -247,8 +247,18 @@ export class GameSession {
   getState(): ActionResponse["state"] {
     const state = this.world.getCurrentState();
     const playerEnt = state.entities["player"];
-    const npcs = Object.values(state.entities).filter(e => e.type === "npc" && e.hp > 0);
-    const monsters = Object.values(state.entities).filter(e => e.type === "monster" && e.hp > 0);
+    // 在场名单必须限定在玩家当前场景，与 injectWorldModelForScene() 的事实口径一致；
+    // 否则前端会把模组里所有 NPC 都显示为「在场」，与 KP 叙事互相矛盾。
+    // 位置同时写在 scene_id 与 position 两个字段（setPlayerHp 只写 position），故取并集。
+    const pos = this.getPlayerPosition();
+    const present = new Map<string, WorldEntity>();
+    for (const e of this.world.getEntitiesInScene(pos)) present.set(e.id, e);
+    for (const e of Object.values(state.entities)) {
+      if (e.position === pos) present.set(e.id, e);
+    }
+    const inScene = [...present.values()];
+    const npcs = inScene.filter(e => e.type === "npc" && e.hp > 0);
+    const monsters = inScene.filter(e => e.type === "monster" && e.hp > 0);
     const comps = this.companionManager.getActiveCompanions().map(c => ({
       id: c.config.id, name: c.config.name, hp: c.hp, maxHp: c.config.maxHp,
       ac: c.config.ac, morale: c.morale, behavior: c.behavior, control: c.control,
@@ -258,7 +268,7 @@ export class GameSession {
     }));
     return {
       scene: state.scene, round: this.round,
-      player: playerEnt ? { name: playerEnt.name, hp: playerEnt.hp, maxHp: playerEnt.maxHp, ac: this.activeRuleset === "coc7e" ? 0 : playerEnt.ac, status: playerEnt.status } : { name: "调查员", hp: 12, maxHp: 12, ac: 0, status: [] },
+      player: playerEnt ? { name: playerEnt.name, hp: playerEnt.hp, maxHp: playerEnt.maxHp, ac: this.activeRuleset === "cosmic-horror" ? 0 : playerEnt.ac, status: playerEnt.status } : { name: "调查员", hp: 12, maxHp: 12, ac: 0, status: [] },
       npcs: npcs.map(e => ({ name: e.name, hp: e.hp, maxHp: e.maxHp, status: e.status })),
       monsters: monsters.map(e => ({ name: e.name, hp: e.hp, maxHp: e.maxHp, status: e.status })),
       companions: comps,
@@ -291,8 +301,8 @@ export class GameSession {
     return { messages: msgs.slice(-(limit ?? msgs.length)), total: msgs.length };
   }
 
-  addMessage(speaker: string, content: string, type: string = "dialogue", visibility: VisibilityRule = "public", discoverer?: string) {
-    this.session.push({ speaker, content, type: type as any }, visibility, discoverer);
+  addMessage(speaker: string, content: string, type: MessageType = "dialogue", visibility: VisibilityRule = "public", discoverer?: string) {
+    this.session.push({ speaker, content, type }, visibility, discoverer);
   }
 
   private buildActionResponse(turnMessages: AgentMessage[]): ActionResponse {
@@ -405,7 +415,7 @@ export class GameSession {
       this.registry.register(card);
     } catch (e: any) {
       // 已注册或注册失败不阻塞模组加载
-      console.warn(`  ⚠️ NPC Agent 注册跳过: ${npcName} — ${e?.message ?? e}`);
+      log.warn("session", `NPC Agent 注册跳过: ${npcName} — ${e?.message ?? e}`);
     }
   }
 
@@ -421,7 +431,7 @@ export class GameSession {
         if (id === npcPersonalityId || name === npcPersonalityId || name === npcName) return item;
       }
     } catch (e: any) {
-      console.warn(`  ⚠️ npcs.yaml 加载失败: ${e?.message ?? e}`);
+      log.warn("session", `npcs.yaml 加载失败: ${e?.message ?? e}`);
     }
     return undefined;
   }
@@ -590,7 +600,7 @@ export class GameSession {
     };
   }
 
-  sendMessage(speaker: string, content: string, type: string = "system") {
+  sendMessage(speaker: string, content: string, type: MessageType = "system") {
     this.addMessage(speaker, content, type);
   }
   setPlayerSan(pid: string, value: number) {
@@ -1005,8 +1015,6 @@ export class GameSession {
       "  急救/包扎 — 处理伤口",
       "  阅读<典籍> — 阅读神话典籍",
       "  施法<法术名> — 施展法术",
-      "",
-      cocReferenceHelp(),
     ].join("\n");
     this.lastNarrative = helpText;
     msg(helpText);
@@ -1024,7 +1032,7 @@ export class GameSession {
     const san = this.getSanity();
     const lines: string[] = [];
     lines.push(`━━━ ${c.name} ━━━`);
-    if (this.activeRuleset === "coc7e") {
+    if (this.activeRuleset === "cosmic-horror") {
       const attrs = c.attributes ?? {};
       const str = attrs.strength ?? attrs.STR ?? 50;
       const con = attrs.constitution ?? attrs.CON ?? 50;
@@ -1401,9 +1409,9 @@ export class GameSession {
 
   // ── 职业列表 ──
   private handleListOccupations(messages: AgentMessage[], msg: (s: string) => number): boolean {
-    if (this.activeRuleset !== "coc7e") {
-      msg("当前不是克苏鲁的呼唤模式");
-      this.lastNarrative = "当前不是克苏鲁的呼唤模式";
+    if (this.activeRuleset !== "cosmic-horror") {
+      msg("当前不是宇宙恐怖模式");
+      this.lastNarrative = "当前不是宇宙恐怖模式";
       return true;
     }
     try {
@@ -1571,7 +1579,7 @@ export class GameSession {
         sceneItems: this.sceneItems,
         itemDescriptions: new Map<string, string>(),
         world: this.world,
-        addMessage: (speaker: string, content: string, type: string) => this.addMessage(speaker, content, type),
+        addMessage: (speaker: string, content: string, type: MessageType) => this.addMessage(speaker, content, type),
         activeRuleset: this.activeRuleset,
         currentRound: this.round,
         // 读取模块：将模组原文场景描写写入 scenes 表（保留原文，供 KP 上下文注入）
@@ -1749,9 +1757,9 @@ export class GameSession {
 
   // ── 施法 ──
   private handleCast(intent: ActionIntent, input: string, messages: AgentMessage[], msg: (s: string) => number): boolean {
-    if (intent.action === "occult_cast" && this.activeRuleset !== "coc7e") {
-      msg("神话法术仅支持克苏鲁的呼唤模式");
-      this.lastNarrative = "神话法术仅支持克苏鲁的呼唤模式";
+    if (intent.action === "occult_cast" && this.activeRuleset !== "cosmic-horror") {
+      msg("神话法术仅支持宇宙恐怖模式");
+      this.lastNarrative = "神话法术仅支持宇宙恐怖模式";
       return true;
     }
     if (!this.activeCharacter) {

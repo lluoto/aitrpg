@@ -13,6 +13,7 @@ import { CoCEngine } from "../rules/coc-engine";
 import type { RuleEngine } from "../engine/rule-engine";
 import type { WorldState, WorldEntity } from "../types";
 import type { DifficultyProfile } from "../rules/module-difficulty";
+import { log } from "../log";
 
 // ============================================================
 // YAML 类型
@@ -163,7 +164,7 @@ export class InvestigationEngine {
         }
       }
     } catch (err) {
-      console.warn(`  ⚠ 调查系统 YAML 加载失败: ${(err as Error).message}`);
+      log.warn("investigation", `调查系统 YAML 加载失败: ${(err as Error).message}`);
     }
   }
 

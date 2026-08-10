@@ -58,7 +58,7 @@ export interface NPCPersonality {
   /** 对其他角色的态度 */
   attitudes?: Record<string, string>; // character_name → attitude_description
   /** 适用的规则集（留空表示适用于所有规则集） */
-  ruleset?: "coc7e" | "dnd5e" | "grail";
+  ruleset?: "cosmic-horror" | "dnd5e" | "grail";
   /** 结构化性格特质（缺省时使用 DEFAULT_NPC_TRAITS） */
   traits?: NPCTraits;
   /** 所属阵营 */
@@ -89,6 +89,12 @@ export interface AgentMessage {
   /** 谁可见（per-receiver 预留） */
   visible_to?: string[];
 }
+
+/**
+ * 消息类型 — API 响应、CLI、模组宿主接口共用同一套取值。
+ * 单独导出，避免各层各自写 `string` 而丢失联合类型约束。
+ */
+export type MessageType = AgentMessage["type"];
 
 // ============================================================
 // 游戏轮次记录

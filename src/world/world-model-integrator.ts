@@ -41,7 +41,7 @@ export interface SceneContext {
   round: number;
   /** 可选：当前激活的小说上下文（如 "黎明之剑"） */
   activeNovel?: string;
-  /** 可选：当前规则集（"dnd5e" | "coc7e" | "grail"） */
+  /** 可选：当前规则集（"dnd5e" | "cosmic-horror" | "grail"） */
   ruleset?: string;
   /** 可选：模组原文场景描写（来自场景表 description，权威事实层） */
   sceneDescription?: string;
@@ -271,6 +271,11 @@ export class WorldModelIntegrator {
     // ── 层 -1: 模组原文场景描写（权威事实层，优先于世界模型推断）──
     if (ctx.sceneDescription && ctx.sceneDescription.trim()) {
       lines.push(`[模组场景描写] ${ctx.sceneDescription.trim()}`);
+      // 事实边界约束（世界状态层）：场景描写是「静态事实清单」，禁止对物品状态推断其原因。
+      // 例：被褥凌乱 ≠ 挣扎/搏斗；玻璃破损 ≠ 闯入；地面痕迹 ≠ 血迹——除非玩家调查/线索明确指向。
+      lines.push(
+        "[事实边界] 以上场景描写是静态事实（物品存在、状态如此），不代表其成因。禁止把静态状态（乱、脏、旧、破损、痕迹、未整理）脑补成事件因果（挣扎、搏斗、绑架、闯入、血迹、离奇事件），除非玩家明确调查或已有线索指向该结论。严格以原文列出的物品、状态和空间为闭世界；不得凭空添加原文没有的物品、声音、气味、天气、光线、时间或动作。推断留给玩家自己做。"
+      );
     }
 
     if (ctx.presentNPCs && ctx.presentNPCs.length > 0) {
@@ -309,12 +314,12 @@ export class WorldModelIntegrator {
             lines.push(`  【禁止】${hardRules.join("；")}`);
           }
         }
-        lines.push("以上 NPC 此刻就在当前场景中，叙事中必须至少让一位以举止、神态或言语方式在场，且人设必须与上述权威信息严格一致，不得臆造与之冲突的外貌、年龄、性别或行为。");
+        lines.push("仅上述 NPC 已确认在当前场景中；模组中存在但未列出的角色、仅在背景中提及的角色，以及失踪、被绑架、昏迷或位于其他场景的角色，均不得自行现身。叙事中必须至少让一位已列 NPC 以举止、神态或言语方式在场，且人设必须与上述权威信息严格一致，不得臆造与之冲突的外貌、年龄、性别或行为。");
       } else {
         lines.push(`[必须在叙事中呈现的在场 NPC] ${ctx.presentNPCs.join("、")}。以上 NPC 出现在当前场景，描写玩家所见时务必让其中至少一位以举止、神态或言语方式在场，不得只描写环境而不写 NPC。`);
       }
     } else {
-      lines.push(`[提示] 当前场景没有需要强制呈现的 NPC，可以自由描写环境。`);
+      lines.push(`[在场角色] 当前场景没有已确认在场的 NPC。未列出的角色（包括仅在模组背景中提及、失踪、被绑架、昏迷或位于其他场景的角色）不得现身；本轮仅描写有原文依据的环境与玩家可观察事实。`);
     }
 
     if (ctx.presentItems && ctx.presentItems.length > 0) {
@@ -333,7 +338,7 @@ export class WorldModelIntegrator {
     }
 
     // 规则参考：仅当模组指定对应规则集时才引入（避免 D&D 规则污染 CoC 模组叙事）。
-    // v18 无 CoC 规则库 → coc7e 模组跳过规则参考，但保留常规世界模型信息（势力/行为/事件/资源）。
+    // v18 无 CoC 规则库 → cosmic-horror 模组跳过规则参考，但保留常规世界模型信息（势力/行为/事件/资源）。
     if (ctx.ruleset === "dnd5e" && injection.dndRuleHints.length > 0) {
       lines.push("D&D 规则参考:");
       for (const hint of injection.dndRuleHints) {
@@ -353,6 +358,10 @@ export class WorldModelIntegrator {
       for (const evt of injection.availableEvents) {
         lines.push(`  - ${evt.cause} → ${evt.effect} [${evt.confidence}]`);
       }
+    }
+
+    if (ctx.sceneDescription && ctx.sceneDescription.trim()) {
+      lines.push("[叙事输出最终约束] 本场景必须严格受模组原文约束。只描写原文明确列出的物品、空间、状态，以及玩家已明确执行的动作结果；不得新增原文未列出的气味、声音、天气、光线、时间、人物、动作或因果。若信息不足，保持中性，不要补全。上述约束优先于世界模型参考与常识联想。");
     }
 
     return lines.join("\n");
@@ -404,7 +413,7 @@ export class WorldModelIntegrator {
     }
 
     // CoC: 从 behavior/causal 条目提取源
-    if (ruleset === "coc7e") {
+    if (ruleset === "cosmic-horror") {
       const causals = novel
         ? this.loader.getByNovelAndType(novel, "causal")
         : this.loader.getByType("causal");

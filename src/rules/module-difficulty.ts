@@ -12,6 +12,7 @@
  */
 
 import type { MythosModule } from "./mythos-module";
+import { log } from "../log";
 
 // ============================================================
 // 难度画像
@@ -109,7 +110,7 @@ export function assessModuleDifficulty(module?: MythosModule | null): Difficulty
   }
   const base = DIFFICULTY_TABLE[module.difficulty];
   if (!base) {
-    console.warn(`[difficulty] 未知难度 "${module.difficulty}"，回退到 medium`);
+    log.warn("difficulty", `未知难度 "${module.difficulty}"，回退到 medium`);
     return { ...DIFFICULTY_TABLE.medium };
   }
   return { ...base };

@@ -46,7 +46,7 @@ const moduleData: ModuleData = {
   id: "premiers_barn",
   title: "普瑞米尔的谷仓",
   version: "ver1.03",
-  ruleset: "coc7e",
+  ruleset: "cosmic-horror",
   era: "1921",
   summary: `模组为线性半 City 类模组。长度中短，比较适合新人 PL 适应 COC 的环境，且难度不高。因为事件已经完成，调查员可以说类似于去收尾的警察一般。即使调查员失败，也不会失去更多的东西了。`,
 

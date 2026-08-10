@@ -17,8 +17,7 @@ import { parseIntent, setIntentLLM } from "./llm/intent";
 import { generateNarrative, setNarratorLLM } from "./llm/narrator";
 import { RuleEngine } from "./engine/rule-engine";
 import { RulesEngine, type RulesetId } from "./rules/rules-engine";
-import { CoCEngine, SanityEngine } from "./rules/coc-engine";
-import { cocWeaponsRef, cocChaseRef, cocInsanityRef, cocReferenceHelp } from "./rules/coc-reference";
+import { CoCEngine, SanityEngine, SUCCESS_LEVEL_LABELS } from "./rules/coc-engine";
 import { NPCAgent } from "./agent/npc-agent";
 import { KPAgent } from "./agent/kp-agent";
 import { AgentRegistry } from "./agent/agent-registry";
@@ -29,7 +28,6 @@ import { InvestigationEngine } from "./investigation/investigation-engine";
 import { WorldModelLoader } from "./world/world-model-loader";
 import { WorldModelIntegrator } from "./world/world-model-integrator";
 import { CharacterFactory, type GeneratedCharacter } from "./character/character-factory";
-import { EXTRA_SUBCLASSES } from "./character/subclasses-extra";
 import { PRESTIGE_CLASSES } from "./character/prestige-classes";
 import { QIANKUN_SUBCLASSES, getAllQiankunLegendaryTemplates } from "./character/qiankun-subclasses";
 import { createCoCCharacter, getCoCArchetypes, type CoCGeneratedCharacter, getSkillValue, getBaseSkillValue } from "./character/coc-character";
@@ -38,13 +36,13 @@ import { NPCStore } from "./db/index";
 import { BARN_OF_PREMIER, NPC_STATS } from "./module/barn-of-premier";
 import { populateWorldFromModule } from "./world/module-loader";
 
-CharacterFactory.registerExtra(EXTRA_SUBCLASSES);
 CharacterFactory.registerExtra(PRESTIGE_CLASSES);
 CharacterFactory.registerExtra(QIANKUN_SUBCLASSES);
 CharacterFactory.registerLegendaryTemplates(getAllQiankunLegendaryTemplates());
 
 import type { NPCPersonality, AgentMessage, TurnRecord, KPDirective } from "./agent/types";
 import type { GameEvent } from "./state/event-types";
+import { log } from "./log";
 
 // ============================================================
 // 初始化
@@ -62,7 +60,7 @@ const npcCombat = new NPCCombatEngine();
 const session = new PlayerSession();
 const investigation = new InvestigationEngine("./src/rules/investigation.yaml");
 const sanity = new SanityEngine(55);
-// CoC 角色（由 /coc-create 生成，替代 D&D activeCharacter）
+// CoC 角色（由 /horror-create 生成，替代 D&D activeCharacter）
 let cocCharacter: CoCGeneratedCharacter | null = null;
 // CoC 弹药追踪: weaponKey → { current, max, ammoType }
 const cocAmmo: Map<string, { current: number; max: number; ammoType: string }> = new Map();
@@ -235,7 +233,7 @@ function findCoCWeaponKey(weapon: string): string | null {
 
 /** SAN 检定辅助 — 触发 sanityCheck 并输出到控制台和消息 */
 function checkSanity(reason: string, sanCost: string): string | null {
-  if (activeRuleset !== "coc7e") return null;
+  if (activeRuleset !== "cosmic-horror") return null;
   const result = sanity.sanityCheck(sanCost);
   if (result.sanLoss <= 0) return null;
 
@@ -264,7 +262,7 @@ function getActiveScene(): string {
 }
 
 function getPlayerAttributes(): { name: string; id: string; proficiency: number; abilities: Record<string, number>; hasSneakAttack: boolean; cocAttrs?: Record<string, number>; getSkill?: (key: string) => number } {
-  if (activeRuleset === "coc7e" && cocCharacter) {
+  if (activeRuleset === "cosmic-horror" && cocCharacter) {
     return {
       name: cocCharacter.name, id: "player",
       proficiency: 2,
@@ -378,8 +376,8 @@ async function handlePlayerInput(input: string) {
     const ctx = buildSceneContext();
 
     // CoC 规则线索
-    if (activeRuleset === "coc7e") {
-      const cocHints = wmIntegrator.getRuleHints("coc7e", ctx);
+    if (activeRuleset === "cosmic-horror") {
+      const cocHints = wmIntegrator.getRuleHints("cosmic-horror", ctx);
       if (cocHints.length > 0) {
         const hintText = "[CoC 神话线索]\n" + cocHints.map(h => `  - ${h}`).join("\n");
         const narration = await kp.narrateOutcome("CoC 神话线索", hintText, getPlayerHistory());
@@ -458,7 +456,7 @@ async function handleCombat(
   let cocSkill = 0;
   let cocDodge = 0;
   let damageDice: string | undefined;
-  if (activeRuleset === "coc7e" && attacker.getSkill) {
+  if (activeRuleset === "cosmic-horror" && attacker.getSkill) {
     const meleeWeapons = ["匕首", "小刀", "棍棒", "短剑", "手斧", "刀", "剑", "拳", "爪", "棒", "格斗"];
     const pistolWeapons = ["手枪", "左轮", ".38", ".45"];
     const rifleWeapons = ["步枪", "猎枪", "霰弹枪", "冲锋枪", ".22", ".30"];
@@ -645,7 +643,7 @@ async function handleInvestigation(
   else if (input.includes("仪式") || input.includes("法阵") || input.includes("符号") || input.includes("图案")) clueType = "ritual_site";
 
   // ── CoC 7e 路径：使用角色实际技能 + CoC 百分位检定 ──
-  if (activeRuleset === "coc7e" && cocCharacter) {
+  if (activeRuleset === "cosmic-horror" && cocCharacter) {
     const attrs = cocCharacter.attributes;
     const cocSkills: Record<string, number> = {};
     const skillKeys = ["medicine", "history", "occult", "spot_hidden", "psychology", "library_use", "appraise", "art", "chemistry", "education", "science_chemistry", "anthropology", "archaeology", "forensic", "language_other", "navigate", "natural_history"];
@@ -655,10 +653,9 @@ async function handleInvestigation(
     }
 
     const result = investigation.investigateCoC(clueType, cocSkills, playerName);
-    const slLabel: Record<string, string> = { critical: "大成功", extreme: "极限成功", hard: "困难成功", regular: "常规成功", fail: "失败", fumble: "大失败" };
 
     console.log(`  🔍 [CoC] ${result.revelation.split("\n")[0]}`);
-    console.log(`  🎲 ${result.skillValue}% → d100=${result.roll} → ${slLabel[result.successLevel] ?? result.successLevel}`);
+    console.log(`  🎲 ${result.skillValue}% → d100=${result.roll} → ${SUCCESS_LEVEL_LABELS[result.successLevel] ?? result.successLevel}`);
 
     if (result.sanLost > 0) {
       sanity.state.currentSAN = Math.max(0, sanity.state.currentSAN - result.sanLost);
@@ -738,7 +735,7 @@ async function resolveNPCAction(
   // CoC: NPC 技能推定
   let npcSkill: number | undefined;
   let npcDodge: number | undefined;
-  if (activeRuleset === "coc7e") {
+  if (activeRuleset === "cosmic-horror") {
     npcSkill = intent.weapon ? 40 : 30; // 有武器=格斗40%，无=肉搏30%
     npcDodge = Math.floor(((npcAttacker.abilities.dexterity ?? 10) / 10) * 8);
   }
@@ -852,8 +849,8 @@ async function main() {
     input: process.stdin, output: process.stdout,
     prompt: `\n🎲 [${session.getActive()?.name ?? "?"}] 你要怎么做？ `,
   });
-  console.log("\n  💡 /create <职业> [名] | /coc-create <职业> [名] | /sheet | 调查 检查 | 快照 /wm");
-  console.log("     /规则 dnd|coc | /push <技能> | /luck <点数> <技能> | /reload | /ref weapons");
+  console.log("\n  💡 /create <职业> [名] | /horror-create <职业> [名] | /sheet | 调查 检查 | 快照 /wm");
+  console.log("     /规则 dnd|coc | /push <技能> | /luck <点数> <技能> | /reload");
   rl.prompt();
 
   for await (const line of rl) {
@@ -868,7 +865,7 @@ async function main() {
       console.log(`\n  📊 回合: ${round} | 规则: ${activeRuleset}`);
       console.log(`  场景: ${kp.getDirective().current_phase}`);
       console.log(`  当前玩家: ${active?.name ?? "无"}`);
-      if (activeRuleset === "coc7e" && cocCharacter) {
+      if (activeRuleset === "cosmic-horror" && cocCharacter) {
         console.log(`  角色: ${cocCharacter.name} [${cocCharacter.archetypeId}] HP:${cocCharacter.hp}/${cocCharacter.maxHp} SAN:${sanity.state.currentSAN}/${sanity.state.maxSAN} 幸运:${cocCharacter.luck}`);
         console.log(`  CM:${sanity.state.cthulhuMythos}%${sanity.state.temporaryInsanity ? " [临时疯狂!]" : ""}${sanity.state.indefiniteInsanity ? ` [${sanity.state.indefiniteLevel}不定疯狂]` : ""}`);
         if (sanity.state.phobias.length > 0) console.log(`  恐惧症: ${sanity.state.phobias.join(", ")}`);
@@ -915,9 +912,9 @@ async function main() {
       console.log(`  D&D 规则: ${stats.dndGameRules.toLocaleString()} | D&D 映射: ${stats.dndMappings.toLocaleString()} | 幻觉风险: ${stats.hallucinationRisky}`);
       rl.prompt(); continue;
     }
-    // ── /coc-create 创建 CoC 调查员 ──
-    if (input.startsWith("/coc-create ") || input === "/coc-create") {
-      const parts = input.startsWith("/coc-create ") ? input.slice(12).trim().split(/\s+/) : [];
+    // ── /horror-create 创建 CoC 调查员 ──
+    if (input.startsWith("/horror-create ") || input === "/horror-create") {
+      const parts = input.startsWith("/horror-create ") ? input.slice(15).trim().split(/\s+/) : [];
       if (parts.length < 1) {
         const archs = getCoCArchetypes();
         console.log(`\n  📋 可用 CoC 职业 (${archs.length} 个):`);
@@ -925,8 +922,8 @@ async function main() {
           console.log(`    ${a.id}: ${a.label} — ${(a.description || "").slice(0, 50)}`);
         }
         if (archs.length > 15) console.log(`    ... 还有 ${archs.length - 15} 个职业`);
-        console.log(`  用法: /coc-create <职业id> [角色名]`);
-        console.log(`  示例: /coc-create investigator 张明`);
+        console.log(`  用法: /horror-create <职业id> [角色名]`);
+        console.log(`  示例: /horror-create investigator 张明`);
         rl.prompt(); continue;
       }
       const archetypeId = parts[0];
@@ -945,7 +942,7 @@ async function main() {
         cocCharacter = cocChar;
         sanity.state.currentSAN = cocChar.attributes.power ?? 50;
         sanity.state.maxSAN = cocChar.attributes.power ?? 50;
-        activeRuleset = "coc7e";
+        activeRuleset = "cosmic-horror";
         console.log(`\n  📜 ${cocChar.name} [${archetype.label}] - CoC 7e`);
         console.log(`  HP:${cocChar.hp}  AC:${cocChar.ac}  MOV:${cocChar.move}  DB:${cocChar.damageBonus}`);
         console.log(`  属性: STR=${cocChar.attributes.strength} CON=${cocChar.attributes.constitution} SIZ=${cocChar.attributes.size}`);
@@ -959,15 +956,15 @@ async function main() {
       }
       rl.prompt(); continue;
     }
-    // ── /coc-check 技能检定 ──
-    if ((input.startsWith("/coc-check ") || input.startsWith("/cc ")) && activeRuleset === "coc7e") {
-      const skillName = (input.startsWith("/coc-check ") ? input.slice(11) : input.slice(4)).trim();
+    // ── /horror-check 技能检定 ──
+    if ((input.startsWith("/horror-check ") || input.startsWith("/cc ")) && activeRuleset === "cosmic-horror") {
+      const skillName = (input.startsWith("/horror-check ") ? input.slice(14) : input.slice(4)).trim();
       if (!cocCharacter) {
-        console.log("  ❌ 请先使用 /coc-create 创建角色");
+        console.log("  ❌ 请先使用 /horror-create 创建角色");
         rl.prompt(); continue;
       }
       if (!skillName) {
-        console.log("  用法: /coc-check <技能名/key>");
+        console.log("  用法: /horror-check <技能名/key>");
         console.log(`  可用 key: fighting, firearms_pistol, spot_hidden, listen, stealth, library_use, occult, psychology, medicine, dodge, persuade, fast_talk, intimidate, etc.`);
         rl.prompt(); continue;
       }
@@ -984,10 +981,10 @@ async function main() {
       rl.prompt(); continue;
     }
     // ── /push 推动检定 ──
-    if ((input.startsWith("/push ") || input === "/push") && activeRuleset === "coc7e") {
+    if ((input.startsWith("/push ") || input === "/push") && activeRuleset === "cosmic-horror") {
       const skillName = input === "/push" ? "" : input.slice(6).trim();
       if (!cocCharacter) {
-        console.log("  ❌ 请先使用 /coc-create 创建角色");
+        console.log("  ❌ 请先使用 /horror-create 创建角色");
         rl.prompt(); continue;
       }
       if (!skillName) {
@@ -1010,7 +1007,7 @@ async function main() {
       rl.prompt(); continue;
     }
     // ── /luck 燃运 ──
-    if ((input.startsWith("/luck ") || input.startsWith("/cc-luck ")) && activeRuleset === "coc7e") {
+    if ((input.startsWith("/luck ") || input.startsWith("/cc-luck ")) && activeRuleset === "cosmic-horror") {
       const parts = (input.startsWith("/luck ") ? input.slice(6) : input.slice(9)).trim().split(/\s+/);
       if (parts.length < 2) {
         console.log("  用法: /luck <点数> <技能名>   — 消耗幸运降低骰值");
@@ -1024,7 +1021,7 @@ async function main() {
       }
       const skillName = parts.slice(1).join(" ");
       if (!cocCharacter) {
-        console.log("  ❌ 请先使用 /coc-create 创建角色");
+        console.log("  ❌ 请先使用 /horror-create 创建角色");
         rl.prompt(); continue;
       }
       if (luckAmount > cocCharacter.luck) {
@@ -1044,7 +1041,7 @@ async function main() {
       rl.prompt(); continue;
     }
     // ── /reload 装弹 ──
-    if (input === "/reload" && activeRuleset === "coc7e") {
+    if (input === "/reload" && activeRuleset === "cosmic-horror") {
       if (cocAmmo.size === 0) {
         console.log("  ℹ 没有需要装弹的武器");
       } else {
@@ -1075,7 +1072,7 @@ async function main() {
       rl.prompt(); continue;
     }
     if (input === "/sheet" || input === "角色卡") {
-      if (activeRuleset === "coc7e" && cocCharacter) {
+      if (activeRuleset === "cosmic-horror" && cocCharacter) {
         const c = cocCharacter;
         console.log(`\n  📜 ${c.name} [${c.archetypeId}]`);
         console.log(`  HP:${c.hp}/${c.maxHp} AC:${c.ac} MOV:${c.move} DB:${c.damageBonus}`);
@@ -1130,7 +1127,7 @@ async function main() {
         if (effects.resistances?.length) effectParts.push(`抗性: ${effects.resistances.join(",")}`);
         if (effects.extraAttack) effectParts.push(`额外攻击+${effects.extraAttack}`);
         if (effectParts.length > 0) console.log(`  效果: ${effectParts.join(" | ")}`);
-      } else { console.log("  ℹ 使用 /create <职业id> [角色名] 或 /coc-create <职业id> [角色名] 创建角色"); }
+      } else { console.log("  ℹ 使用 /create <职业id> [角色名] 或 /horror-create <职业id> [角色名] 创建角色"); }
       rl.prompt(); continue;
     }
     // ── /advance 进阶职业 ──
@@ -1311,29 +1308,21 @@ async function main() {
       console.log(`  可用线索类型: ${investigation.listClueTypes().join(", ")}`);
       rl.prompt(); continue;
     }
-    // ── /ref CoC 参考 ──
-    if (input.startsWith("/ref ")) {
-      const topic = input.slice(5).trim();
-      if (topic === "weapons" || topic === "武器") {
-        console.log(`\n${cocWeaponsRef()}`);
-      } else if (topic === "chase" || topic === "追逐") {
-        console.log(`\n${cocChaseRef()}`);
-      } else if (topic === "insanity" || topic === "疯狂" || topic === "san") {
-        console.log(`\n${cocInsanityRef()}`);
-      } else {
-        console.log(`\n${cocReferenceHelp()}`);
-      }
+    // ── /ref 规则速查 ──
+    // 规则速查内容不再内置：由已加载模组或用户提供的规则书提供。
+    if (input.startsWith("/ref")) {
+      console.log("\n  ℹ 本系统不内置规则书速查内容。请查阅你自己的规则书，或加载包含规则说明的模组。");
       rl.prompt(); continue;
     }
     // ── /规则 切换规则集 ──
     if (input.startsWith("/规则 ") || input.startsWith("/ruleset ")) {
       const ruleset = input.split(/\s+/)[1];
-      if (["dnd", "coc", "grail"].includes(ruleset)) {
-        const map: Record<string, string> = { dnd: "dnd5e", coc: "coc7e", grail: "grail" };
+      if (["dnd", "horror", "grail"].includes(ruleset)) {
+        const map: Record<string, string> = { dnd: "dnd5e", horror: "cosmic-horror", grail: "grail" };
         activeRuleset = map[ruleset];
         console.log(`  ⚙ 规则集切换: ${activeRuleset}`);
       } else {
-        console.log("  ⚠ 可用规则集: dnd | coc | grail");
+        console.log("  ⚠ 可用规则集: dnd | horror | grail");
       }
       rl.prompt(); continue;
     }
@@ -1387,6 +1376,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("致命错误:", err);
+  log.error("cli", "致命错误:", err);
   process.exit(1);
 });

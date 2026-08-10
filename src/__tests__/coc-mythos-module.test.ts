@@ -12,6 +12,7 @@ import {
   type MythosModuleHost,
 } from "../rules/mythos-module";
 import { MYTHOS_CREATURES, MYTHOS_TOMES, MYTHOS_SPELLS } from "../rules/mythos-expansion";
+import type { MessageType } from "../agent/types";
 
 // ============================================================
 // MYTHOS_CREATURE_MAP — 生物名索引
@@ -113,10 +114,10 @@ function createMockHost(): MythosModuleHost {
       upsertEntity(_e: any) { /* mock */ },
       logEvent(_p: any) { /* mock */ },
     },
-    addMessage(speaker: string, content: string, type: string) {
+    addMessage(speaker: string, content: string, type: MessageType) {
       messages.push({ s: speaker, c: content, t: type });
     },
-    activeRuleset: "coc7e",
+    activeRuleset: "cosmic-horror",
     currentRound: 1,
   };
 }

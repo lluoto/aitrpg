@@ -11,11 +11,11 @@ import * as path from "path";
 let session: GameSession;
 
 beforeEach(() => {
-  // 确保每个测试获得新的 GameSession（coc7e, 无 archetype, 默认 LLM key → MockLLM）
+  // 确保每个测试获得新的 GameSession（cosmic-horror, 无 archetype, 默认 LLM key → MockLLM）
   // 将环境变量临时置空触发 MockLLM
   process.env.LLM_API_KEY = "";
   process.env.OPENAI_API_KEY = "";
-  session = new GameSession("test-session", "coc7e", {
+  session = new GameSession("test-session", "cosmic-horror", {
     apiKey: "sk-placeholder",
     baseUrl: "http://localhost:9999",
     model: "mock",
@@ -37,7 +37,7 @@ describe("GameSession 生命周期", () => {
   it("getSummary 返回基本信息", () => {
     const summary = session.getSummary();
     expect(summary.id).toBe("test-session");
-    expect(summary.ruleset).toBe("coc7e");
+    expect(summary.ruleset).toBe("cosmic-horror");
     expect(summary.round).toBe(0);
   });
 
@@ -313,7 +313,7 @@ describe("CoC 追逐", () => {
   beforeEach(() => {
     process.env.LLM_API_KEY = "";
     process.env.OPENAI_API_KEY = "";
-    chaseSession = new GameSession("chase-test", "coc7e", {
+    chaseSession = new GameSession("chase-test", "cosmic-horror", {
       apiKey: "sk-placeholder",
       baseUrl: "http://localhost:9999",
       model: "mock",
@@ -359,7 +359,7 @@ describe("CoC 技能成长", () => {
   beforeEach(() => {
     process.env.LLM_API_KEY = "";
     process.env.OPENAI_API_KEY = "";
-    growthSession = new GameSession("growth-test", "coc7e", {
+    growthSession = new GameSession("growth-test", "cosmic-horror", {
       apiKey: "sk-placeholder",
       baseUrl: "http://localhost:9999",
       model: "mock",
@@ -468,7 +468,7 @@ describe("CoC 角色创建", () => {
       model: "mock", maxTokens: 1024, temperature: 0.7,
     });
     const res = await dndSession.act("职业列表");
-    const event = res.events.find(e => e.content.includes("当前不是克苏鲁的呼唤模式"));
+    const event = res.events.find(e => e.content.includes("当前不是宇宙恐怖模式"));
     // D&D 模式可能不返回此消息，只需不崩溃
     expect(res).toBeDefined();
   });
@@ -556,7 +556,7 @@ describe("CoC 传承系统", () => {
 
 describe("CoC 休息（RAW 周结算）", () => {
   it("未接受治疗时休息不恢复 HP", async () => {
-    const restSession = new GameSession("rest-hp-test", "coc7e", {
+    const restSession = new GameSession("rest-hp-test", "cosmic-horror", {
       apiKey: "sk-placeholder", baseUrl: "http://localhost:9999",
       model: "mock", maxTokens: 1024, temperature: 0.7,
     }, undefined, "调查员");
@@ -586,7 +586,7 @@ describe("CoC 休息（RAW 周结算）", () => {
   });
 
   it("接受治疗后休息可恢复 CON/10 HP", async () => {
-    const restSession = new GameSession("rest-hp-test2", "coc7e", {
+    const restSession = new GameSession("rest-hp-test2", "cosmic-horror", {
       apiKey: "sk-placeholder", baseUrl: "http://localhost:9999",
       model: "mock", maxTokens: 1024, temperature: 0.7,
     }, undefined, "调查员");
@@ -620,7 +620,7 @@ describe("CoC 休息（RAW 周结算）", () => {
   });
 
   it("满血时休息显示身体状况良好", async () => {
-    const restSession2 = new GameSession("rest-hp-test3", "coc7e", {
+    const restSession2 = new GameSession("rest-hp-test3", "cosmic-horror", {
       apiKey: "sk-placeholder", baseUrl: "http://localhost:9999",
       model: "mock", maxTokens: 1024, temperature: 0.7,
     }, undefined, "调查员");
@@ -633,7 +633,7 @@ describe("CoC 休息（RAW 周结算）", () => {
   });
 
   it("模组结算可触发技能成长", async () => {
-    const restSession3 = new GameSession("rest-hp-test4", "coc7e", {
+    const restSession3 = new GameSession("rest-hp-test4", "cosmic-horror", {
       apiKey: "sk-placeholder", baseUrl: "http://localhost:9999",
       model: "mock", maxTokens: 1024, temperature: 0.7,
     }, undefined, "调查员");
@@ -653,7 +653,7 @@ describe("CoC 休息（RAW 周结算）", () => {
   });
 
   it("无技能标记时技能成长提示无进步", async () => {
-    const session = new GameSession("rest-hp-test5", "coc7e", {
+    const session = new GameSession("rest-hp-test5", "cosmic-horror", {
       apiKey: "sk-placeholder", baseUrl: "http://localhost:9999",
       model: "mock", maxTokens: 1024, temperature: 0.7,
     }, undefined, "调查员");
@@ -678,7 +678,7 @@ describe("CoC 休息（RAW 周结算）", () => {
 
 describe("CoC 状态显示 CoC 特有字段", () => {
   it("创建角色后状态显示 CR/DB/Build/Move/幸运/MP", async () => {
-    const statusSession = new GameSession("status-coc-test", "coc7e", {
+    const statusSession = new GameSession("status-coc-test", "cosmic-horror", {
       apiKey: "sk-placeholder", baseUrl: "http://localhost:9999",
       model: "mock", maxTokens: 1024, temperature: 0.7,
     }, undefined, "调查员");
@@ -698,7 +698,7 @@ describe("CoC 状态显示 CoC 特有字段", () => {
   });
 
   it("状态显示 SAN 和燃运信息", async () => {
-    const statusSession2 = new GameSession("status-coc-test2", "coc7e", {
+    const statusSession2 = new GameSession("status-coc-test2", "cosmic-horror", {
       apiKey: "sk-placeholder", baseUrl: "http://localhost:9999",
       model: "mock", maxTokens: 1024, temperature: 0.7,
     }, undefined, "调查员");
@@ -723,7 +723,7 @@ describe("CoC 状态显示 CoC 特有字段", () => {
  * 避免依赖 handleCreateCharacter 做延迟车卡
  */
 function createSessionWithChar(id: string, charName: string, archetype: string = "investigator"): GameSession {
-  return new GameSession(id, "coc7e", {
+  return new GameSession(id, "cosmic-horror", {
     apiKey: "sk-placeholder", baseUrl: "http://localhost:9999",
     model: "mock", maxTokens: 1024, temperature: 0.7,
   }, archetype, charName);
@@ -752,7 +752,7 @@ describe("角色卡传承集成", () => {
 
   it("模组结算后 CareerEntry 被记录", async () => {
     const { store: careerStore, dir } = createTestStore("career_entry");
-    const session = new GameSession("career-entry-test", "coc7e", {
+    const session = new GameSession("career-entry-test", "cosmic-horror", {
       apiKey: "sk-placeholder", baseUrl: "http://localhost:9999",
       model: "mock", maxTokens: 1024, temperature: 0.7,
     }, "investigator", "鲍勃");
@@ -852,7 +852,7 @@ describe("角色卡传承集成", () => {
   });
 
   it("不存在 careerStore 时模组结算不报错（向后兼容）", async () => {
-    const session = new GameSession("career-none-test", "coc7e", {
+    const session = new GameSession("career-none-test", "cosmic-horror", {
       apiKey: "sk-placeholder", baseUrl: "http://localhost:9999",
       model: "mock", maxTokens: 1024, temperature: 0.7,
     }, undefined, "张三");
