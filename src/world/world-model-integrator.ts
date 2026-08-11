@@ -81,12 +81,28 @@ export interface WorldModelInjection {
 // 公用字段提取（兼容 v15+v16 flat 字段 + v17 flat 字段）
 // ============================================================
 
+/**
+ * 把 v18 条目字段压成文本。
+ *
+ * V18Entry 用 `[key: string]: unknown` 兜底，cause/effect/mechanism/
+ * direction_confidence 都未显式声明，因此取值类型是 unknown。而且不能想当然当成
+ * string——实测 20 万条数据：effect 有 2 条是对象、2 条是数组，mechanism 有 4 条是数组。
+ * 直接拼接会把 "[object Object]" 或逗号串喂进注入给 KP 的世界模型上下文。
+ */
+function asText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map(asText).filter(Boolean).join("；");
+  if (value && typeof value === "object") return Object.values(value).map(asText).filter(Boolean).join("；");
+  return "";
+}
+
 function getEntryName(e: V18Entry): string {
-  return e.name || e.trigger || e.cause || e.type || "未知";
+  return asText(e.name) || asText(e.trigger) || asText(e.cause) || asText(e.type) || "未知";
 }
 
 function getEntryDescription(e: V18Entry): string {
-  return e.description || e.response || e.effect || e.mechanism || "";
+  return asText(e.description) || asText(e.response) || asText(e.effect) || asText(e.mechanism) || "";
 }
 
 function getEntryText(e: V18Entry): string {
@@ -119,11 +135,11 @@ function extractBehaviorText(e: V18Entry): string {
 
 /** 提取因果文本 */
 function extractCausalText(e: V18Entry): { cause: string; effect: string; mechanism: string; confidence: string } {
-  const cause = e.cause || e.name || "未知原因";
-  const effect = e.effect || e.description || "未知结果";
-  const mechanism = (e.mechanism || e.mechanic || "").slice(0, 120);
-  const confidence = e.direction_confidence
-    || (e.causal_precheck?.direction_confidence as string)
+  const cause = asText(e.cause) || asText(e.name) || "未知原因";
+  const effect = asText(e.effect) || asText(e.description) || "未知结果";
+  const mechanism = (asText(e.mechanism) || asText(e.mechanic)).slice(0, 120);
+  const confidence = asText(e.direction_confidence)
+    || asText(e.causal_precheck?.direction_confidence)
     || "inferred";
   return { cause, effect, mechanism, confidence };
 }
