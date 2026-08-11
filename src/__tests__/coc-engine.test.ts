@@ -221,19 +221,30 @@ describe("CoCEngine.combatCheck()", () => {
   });
 
   it("暴击无视闪避", () => {
-    // 暴击判定: roll ≤ skillValue/5 或 roll=1
-    // 高技能+多次取样, 确保暴击时必定命中
-    let critFound = false;
-    for (let i = 0; i < 500; i++) {
+    // 直接构造「攻击方大成功 + 防御方闪避成功」这一局面，而不是靠随机采样撞出暴击。
+    //
+    // 原实现循环 500 次等 critical 出现，但 critical 只在 roll===1 时成立（1%），
+    // 原注释写的「1%+20%(极限)=21%」把极限成功也算进去了，是错的。
+    // 1% 之下 500 次全不中的概率是 0.99^500 ≈ 0.66%，测试因此会偶发假失败。
+    //
+    // combatCheck 的取随机顺序是固定的：先攻击方 skillCheck，再防御方 skillCheck；
+    // bonusDice/penaltyDice 为 0 时每次 skillCheck 恰好消耗一次 Math.random
+    // （regularD100 → rollD100 → 单次 Math.random）。据此按序喂值即可。
+    const sequence = [
+      0,     // 攻击方 d100 = 1 → critical
+      0.49,  // 防御方 d100 = 50，技能 99 → 常规成功（正常情况下足以闪避）
+    ];
+    let call = 0;
+    const realRandom = Math.random;
+    Math.random = () => (call < sequence.length ? sequence[call++]! : 0.5);
+
+    try {
       const r = CoCEngine.combatCheck(99, 99, "1d6");
-      if (r.successLevel === "critical") {
-        critFound = true;
-        expect(r.hit).toBe(true); // 暴击无视闪避
-        break;
-      }
+      expect(r.successLevel).toBe("critical");
+      expect(r.hit).toBe(true); // 防御方闪避成功，但暴击照样命中
+    } finally {
+      Math.random = realRandom;
     }
-    // 99 技能值下 freq=1%+20%(极限)=21%, 500 次极大概率至少出现一次 crit
-    expect(critFound).toBe(true);
   });
 
   it("穿刺武器暴击伤害 ×1.5", () => {
