@@ -4,7 +4,7 @@
 
 ---
 
-## 1. 优先级约束层（硬规则）
+## 1. 优先级约束层（硬规则）（✓ 已实现）
 
 **来源**: §十一（状态/规则优先级）、§五.2（Minari 多代理失败原因）
 
@@ -12,37 +12,45 @@
 当前模组特殊规则 > 当前场景与已确认世界事实 > CoC通用规则 > LLM的一般常识
 ```
 
-**当前实现**: `worldModelItemFilter()` (coc-cr.ts) 和 `worldPenetrationCheck()` (npc-dialogue-prompts.ts) 各自独立，优先级隐式。
+**当前实现**: `ConstraintEngine` (`src/world/world-constraint.ts`) 已统一该层。
+- 约束携带 `priority: ConstraintPriority`，注册时按优先级降序排序，不再是隐式顺序。
+- 模组约束的优先级高于 `COC_GENERAL`，即模组可 override 通用规则。
+- `worldModelItemFilter()` 与对话穿透过滤都接入了同一套约束。
 
-**TODO**: 统一为 `WorldModelConstraint` 层，显式编码优先级。模组可通过声明 `"这条规则 override 通用规则"` 来提升某条约束的优先级。
+**不需要改动**。
 
 ---
 
-## 2. 结构化状态 > LLM 自由生成
+## 2. 结构化状态 > LLM 自由生成（✓ 已实现）
 
 **来源**: §三（Function Calling: 0.461 vs 0.267）、§四（PAYADOR: 只结构化影响后续的属性）
 
-**当前实现**: 没有专门的结构化状态层。物品通过 `getStartingItems()` 生成，但剧情关键变量（顾绍棠状态、主托座控制权等）没有作为显式字段。
+**当前实现**: `ModuleState` 接口已定义（`src/module/types.ts`），承载 `currentSceneId`、
+`discoveredClues` 等剧情推进变量。`WorldState` (`src/world/state.ts`) 以它作为内部状态，
+并通过 `getSnapshot(): ModuleState` 对外提供快照——写入与读取都由引擎负责，LLM 只依据
+状态生成旁白。
 
-**TODO**: 
-- 定义 `ModuleState` 接口，包含剧情推进所需的结构化变量
-- 引擎负责写入和读取，LLM 只负责根据状态生成旁白
-- 旧对话压缩为事件摘要，不替代显式变量
+**不需要改动**。
 
 ---
 
-## 3. 行动分类（替代 binary 接受/拒绝）
+## 3. 行动分类（替代 binary 接受/拒绝）（✓ 已实现）
 
 **来源**: §六（SENNA 世界内后果引导，TRPG 迎合性实验）
 
-**当前实现**: `worldPenetrationCheck` 返回 blocked → `fallbackSilence()`（直接静默拒绝）。
+**当前实现**: `ConstraintAction` (`src/world/world-constraint.ts`) 提供四种处置，替代了原先
+的 binary block/pass：
 
-**TODO**: 行动应分类为：
-1. 可以直接完成（显然是当前场景允许的）
-2. 需要检定（骰点决定成败）
-3. 可以尝试但有代价（消耗资源/触发新事件）
-4. 与世界事实冲突（直接拒绝，需附带世界内解释）
-5. 超出模组边界（NPC 引导回正轨，不是硬拒绝）
+| 处置 | 对应本节原列的分类 |
+|------|--------------------|
+| `block`（附 `blockMessage` 世界内解释） | 4. 与世界事实冲突 |
+| `allow_with_cost`（附 `costDescription`） | 3. 可以尝试但有代价 |
+| `redirect` | 5. 超出模组边界，引导回正轨 |
+| `replace` | 以合规内容替换（如时代不符的物品） |
+
+分类 1（直接完成）与 2（需要检定）不经约束层——未命中任何约束即走常规检定路径。
+
+**不需要改动**。
 
 ---
 
@@ -85,7 +93,7 @@ llmExpanded: {
 
 ---
 
-## 6. 回归测试矩阵（✓ 41 tests, all pass）
+## 6. 回归测试矩阵（✓ 48 tests, all pass）
 
 **来源**: §十一（原备忘录中的回归测试）、§三（Function Calling 单元测试）
 
@@ -93,7 +101,7 @@ llmExpanded: {
 
 | 测试组 | 用例数 | 覆盖范围 |
 |--------|--------|----------|
-| ConstraintEngine 基本 | 7 | 默认约束存在性、优先级、物品匹配、对话匹配、大小写 |
+| ConstraintEngine 基本 | 14 | 默认约束存在性、优先级、物品匹配、对话匹配、大小写 |
 | 优先级排序 | 2 | 高优先级优先、模组 override |
 | 动作类型 | 4 | block / replace / redirect / allow_with_cost |
 | 年代范围 | 3 | 范围内命中、范围外放过、无年份保守命中 |
