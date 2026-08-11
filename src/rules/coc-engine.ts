@@ -1429,8 +1429,8 @@ export function getHitLocationEffect(
 
 export interface OpposedResult {
   winner: "attacker" | "defender" | "tie" | "double_fail";
-  attackerRoll: SkillCheckResult;
-  defenderRoll: SkillCheckResult;
+  attackerRoll: CoCCheckResult;
+  defenderRoll: CoCCheckResult;
   attackerDegree: "critical" | "extreme" | "hard" | "regular" | "fail" | "fumble";
   defenderDegree: "critical" | "extreme" | "hard" | "regular" | "fail" | "fumble";
 }
@@ -1448,22 +1448,16 @@ export function opposedCheck(
   attackerLabel?: string,
   defenderLabel?: string,
 ): OpposedResult {
-  const attackerRoll = skillCheck(attackerSkill, "regular");
-  const defenderRoll = skillCheck(defenderSkill, "regular");
+  // skillCheck 是 CoCEngine 的静态方法，模块内没有同名自由函数；
+  // 原先的裸调用会让 opposedCheck 每次执行都抛 ReferenceError。
+  const attackerRoll = CoCEngine.skillCheck(attackerSkill, "regular");
+  const defenderRoll = CoCEngine.skillCheck(defenderSkill, "regular");
 
-  const getDegree = (r: SkillCheckResult): OpposedResult["attackerDegree"] => {
-    if (r.successLevel === "fumble") return "fumble";
-    if (r.successLevel === "critical") return "critical";
-    if (r.isSuccess) {
-      if (r.isExtreme) return "extreme";
-      if (r.isHard) return "hard";
-      return "regular";
-    }
-    return "fail";
-  };
-
-  const attackerDegree = getDegree(attackerRoll);
-  const defenderDegree = getDegree(defenderRoll);
+  // successLevel 已经就是成功度，取值与 OpposedResult 的 degree 完全一致。
+  // 原先的 getDegree 用 r.isExtreme / r.isHard 重新推导，而 CoCCheckResult 并无这两个字段：
+  // 取值恒为 undefined，导致极限成功与困难成功全部被降级成 regular，成功度比较因此失真。
+  const attackerDegree = attackerRoll.successLevel;
+  const defenderDegree = defenderRoll.successLevel;
 
   const degreeOrder: Record<string, number> = {
     fumble: -1,
