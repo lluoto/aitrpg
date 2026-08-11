@@ -9,7 +9,7 @@ import { loadSessionIds, loadSessionMeta, saveSessionMeta, deleteSessionFile, li
 import { saveCharacter, loadCharacter, listCharacters, type StoredCharacter } from "./character-store";
 import type { MessageType } from "../agent/types";
 import { createWsClient, removeWsClient, broadcastToSession, wsStats, isWsRole, type WsRole, type WsConnectionData } from "./ws-handler";
-import { listSavedModules, loadModuleFile, saveModuleFile, deleteModuleFile, createBlankModule } from "./module-editor";
+import { listSavedModules, loadModuleFile, saveModuleFile, deleteModuleFile, createBlankModule, parseMythosModule } from "./module-editor";
 import { CharacterFactory } from "../character/character-factory";
 import { log } from "../log";
 
@@ -166,18 +166,21 @@ async function handleRequest(req: Request): Promise<Response> {
   // POST /api/modules — 新建或保存模块
   if (method === "POST" && segments[0] === "api" && segments[1] === "modules" && segments.length === 2) {
     const body = await readJsonBody(req);
-    if (!bodyString(body, "id") || !bodyString(body, "name")) return respondError("模组 ID 和名称不能为空", 400);
-    saveModuleFile(body);
+    const parsed = parseMythosModule(body);
+    if (!parsed.ok) return respondError(parsed.error, 400);
+    saveModuleFile(parsed.module);
     return respondJson({ success: true });
   }
 
   // PUT /api/modules/:id — 更新模组
   if (method === "PUT" && segments[0] === "api" && segments[1] === "modules" && segments.length === 3) {
     const body = await readJsonBody(req);
-    if (!bodyString(body, "name")) return respondError("模组名称不能为空", 400);
     const existing = loadModuleFile(segments[2]);
     if (!existing) return respondError("模组不存在", 404);
-    saveModuleFile({ ...existing, ...body, id: segments[2] });
+    // 合并后再解析：局部更新也不能把文档改成非法形状。
+    const parsed = parseMythosModule({ ...existing, ...body, id: segments[2] });
+    if (!parsed.ok) return respondError(parsed.error, 400);
+    saveModuleFile(parsed.module);
     return respondJson({ success: true });
   }
 

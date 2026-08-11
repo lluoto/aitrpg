@@ -34,6 +34,81 @@ export function loadModuleFile(id: string): MythosModule | null {
   return JSON.parse(readFileSync(fp, "utf-8"));
 }
 
+// ============================================================
+// 边界解析 — HTTP 传入的模组文档在落盘前必须过这一关
+// ============================================================
+
+const MODULE_DIFFICULTIES = ["easy", "medium", "hard", "nightmare"] as const;
+const ACTIVATION_TYPES = ["manual", "location_enter", "item_found", "read_tome", "san_threshold"] as const;
+
+type ModuleDifficulty = (typeof MODULE_DIFFICULTIES)[number];
+type ActivationType = (typeof ACTIVATION_TYPES)[number];
+
+export type ModuleParseResult =
+  | { ok: true; module: MythosModule }
+  | { ok: false; error: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * 解析外部传入的模组文档。
+ *
+ * 只校验 MythosModule 的必填字段与两个枚举，其余可选字段（scenes/npcs/clues/
+ * hooks/kpNotes 等创作数据）原样透传——编辑器需要无损往返，为每种嵌套结构编造
+ * schema 既无依据也会阻碍作者扩展。
+ *
+ * 这一关拦的是真实故障：畸形文档被写进 data/modules，之后 loadModuleFile 直接
+ * JSON.parse 并断言成 MythosModule，问题要到加载模组时才暴露。
+ */
+export function parseMythosModule(input: unknown): ModuleParseResult {
+  if (!isRecord(input)) return { ok: false, error: "模组文档必须是一个 JSON 对象" };
+
+  // id/name/version 是标识与文件名来源，不允许空串；description 允许空（新建骨架即为空）。
+  for (const key of ["id", "name", "version"] as const) {
+    const value = input[key];
+    if (typeof value !== "string" || value.trim() === "") {
+      return { ok: false, error: `字段 ${key} 必须是非空字符串` };
+    }
+  }
+  if (typeof input.description !== "string") {
+    return { ok: false, error: "字段 description 必须是字符串" };
+  }
+
+  const difficulty = input.difficulty;
+  if (typeof difficulty !== "string" || !(MODULE_DIFFICULTIES as readonly string[]).includes(difficulty)) {
+    return { ok: false, error: `字段 difficulty 必须是 ${MODULE_DIFFICULTIES.join(" / ")} 之一` };
+  }
+
+  const activation = input.activation;
+  if (!isRecord(activation)) return { ok: false, error: "字段 activation 必须是对象" };
+  const activationType = activation.type;
+  if (typeof activationType !== "string" || !(ACTIVATION_TYPES as readonly string[]).includes(activationType)) {
+    return { ok: false, error: `activation.type 必须是 ${ACTIVATION_TYPES.join(" / ")} 之一` };
+  }
+  if (typeof activation.condition !== "string") {
+    return { ok: false, error: "activation.condition 必须是字符串" };
+  }
+
+  return {
+    ok: true,
+    module: {
+      ...input,
+      id: input.id as string,
+      name: input.name as string,
+      version: input.version as string,
+      description: input.description,
+      difficulty: difficulty as ModuleDifficulty,
+      activation: {
+        ...activation,
+        type: activationType as ActivationType,
+        condition: activation.condition,
+      },
+    } as MythosModule,
+  };
+}
+
 /** 保存模组（新建或更新） */
 export function saveModuleFile(module: MythosModule): void {
   ensureDir();
