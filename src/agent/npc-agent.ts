@@ -5,7 +5,7 @@
 //   NPC 不管理世界状态（那是律书的事）
 //   NPC 只做角色扮演——以自己的身份说话和行动
 
-import type { LLMClient, Message as LLMMessage } from "../llm/client";
+import type { LLMLike, Message as LLMMessage } from "../llm/client";
 import type { NPCPersonality, MemoryEntry, AgentMessage, NPCMood } from "./types";
 import { DEFAULT_NPC_TRAITS } from "./types";
 import {
@@ -76,7 +76,7 @@ function formatMemories(memories: MemoryEntry[]): string {
 export class NPCAgent {
   readonly name: string;
   readonly personality: NPCPersonality;
-  private llm: LLMClient;
+  private llm: LLMLike;
   private memories: MemoryEntry[] = [];
   private systemPrompt: string;
   private db?: NPCStore;
@@ -88,7 +88,7 @@ export class NPCAgent {
   /** 对玩家的态度记录 */
   private playerInteractionCount: number = 0;
 
-  constructor(personality: NPCPersonality, llm: LLMClient, db?: NPCStore) {
+  constructor(personality: NPCPersonality, llm: LLMLike, db?: NPCStore) {
     this.name = personality.name;
     this.personality = personality;
     this.llm = llm;

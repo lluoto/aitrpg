@@ -18,6 +18,16 @@ export interface ChatOptions {
 }
 
 /**
+ * 会话与各 Agent 实际依赖的 LLM 调用面。
+ *
+ * 没有 API key 时装配的是 MockLLMClient，它与 LLMClient 没有共同基类，
+ * 但 chat 的签名完全一致。消费方按本接口声明参数，就不必再假装拿到的一定是 LLMClient。
+ */
+export interface LLMLike {
+  chat(messages: Message[], options?: ChatOptions): Promise<string>;
+}
+
+/**
  * 从 chat-completion 响应里取正文。
  *
  * 响应来自外部 API，`resp.json()` 的类型是 unknown；此前各调用点要么各写一遍

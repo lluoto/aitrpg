@@ -1,7 +1,7 @@
 import { readFileSync, rmSync } from "fs";
 import { parse as parseYaml } from "yaml";
 import { loadConfig, type LLMConfig } from "../config";
-import { LLMClient } from "../llm/client";
+import { LLMClient, type LLMLike } from "../llm/client";
 import { MockLLMClient } from "../llm/mock-client";
 import { parseIntent } from "../llm/intent";
 import { generateNarrative, setNarratorLLM } from "../llm/narrator";
@@ -9,7 +9,6 @@ import { RuleEngine } from "../engine/rule-engine";
 import { RulesEngine, type RulesetId } from "../rules/rules-engine";
 import { SanityEngine, CoCEngine, calcDamageBonus, rollDamageBonus, getHitLocationEffect, checkMajorWound, opposedCheck, sanOutcomeLabel } from "../rules/coc-engine";
 import { NPCAgent } from "../agent/npc-agent";
-import type { NPCPersonality } from "../agent/types";
 import { KPAgent } from "../agent/kp-agent";
 import { AgentRegistry } from "../agent/agent-registry";
 import { WorldStateManager } from "../state/world-state-manager";
@@ -86,7 +85,9 @@ export class GameSession {
   readonly createdAt: number;
   lastActiveAt: number;
   readonly config: LLMConfig;
-  readonly llm: LLMClient;
+  // 无可用 API key 时装配 MockLLMClient，两者调用面一致但没有共同基类，
+  // 因此字段类型必须是联合，而不是只写 LLMClient。
+  readonly llm: LLMLike;
   readonly ruleEngine: RuleEngine;
   readonly rules: RulesEngine;
   readonly world: WorldStateManager;
@@ -160,7 +161,7 @@ export class GameSession {
       : new MockLLMClient();
 
     this.ruleEngine = new RuleEngine();
-    this.rules = new RulesEngine(ruleset);
+    this.rules = new RulesEngine();
     this.session = new PlayerSession();
     this.world = new WorldStateManager(`:memory:`);
     this.npcCombat = new NPCCombatEngine();
@@ -177,7 +178,7 @@ export class GameSession {
     // 世界模型懒加载：不在此处 load()（v18_all_master.jsonl ~240MB，会拖慢所有 GameSession 实例化，
     // 测试与无模型场景均受影响）。首次需要注入时才在 injectWorldModelForScene() 里加载。
 
-    this.sanity = new SanityEngine(50, 50);
+    this.sanity = new SanityEngine(50);
     this.sanityEngines.set("p1", this.sanity);
 
     this.inventoryMap.set("p1", []);
@@ -241,7 +242,10 @@ export class GameSession {
       id: this.id, round: this.round, ruleset: this.activeRuleset,
       scene: this.sceneDisplayNames[state.scene] ?? state.scene,
       playerName: this.activeCharacter?.name ?? "调查员",
-      archetype: this.activeCharacter?.archetype?.id ?? null,
+      // 两种角色形状的职业字段名不同：CoC 是 archetypeId，D&D 是 archetype（字符串 id）。
+      // 原写法统一取 .id —— 对 undefined 和对字符串取 .id 都是 undefined，
+      // 因此这个字段一直恒为 null。
+      archetype: this.activeCharacter?.archetypeId ?? this.activeCharacter?.archetype ?? null,
       messageCount: msgs.length, npcCount, createdAt: this.createdAt,
     };
   }
@@ -616,7 +620,11 @@ export class GameSession {
   setPlayerSan(pid: string, value: number) {
     let eng = this.sanityEngines.get(pid);
     if (!eng) {
-      eng = new SanityEngine(value, Math.max(value, 50));
+      // SanityEngine(pow) 只接受一个参数，并把 currentSAN 与 maxSAN 同时设为它。
+      // 原写法 new SanityEngine(value, Math.max(value, 50)) 的第二个参数被静默忽略，
+      // 结果 maxSAN 被压成 value——KP 给新玩家设 SAN 30，其理智上限就永久变成 30。
+      // 这里用目标上限构造，再单独压低当前值。
+      eng = new SanityEngine(Math.max(value, 50));
       this.sanityEngines.set(pid, eng);
     }
     eng.state.currentSAN = Math.max(0, Math.min(value, eng.state.maxSAN));
@@ -715,7 +723,7 @@ export class GameSession {
       const [, name, cls] = recruitMatch;
       const ch = CharacterFactory.generate(name, cls, this.activeRuleset);
       const pid = `p${this.characters.size + 1}`;
-      const san = new SanityEngine(50, 50);
+      const san = new SanityEngine(50);
       this.characters.set(pid, ch);
       this.sanityEngines.set(pid, san);
       this.inventoryMap.set(pid, []);

@@ -6,7 +6,7 @@
 //   - 实体死亡 → 自动注销对应 Agent
 //   - 玩家或 KP 触发 → 即时创建新 NPC 并注册
 
-import type { LLMClient } from "../llm/client";
+import type { LLMLike } from "../llm/client";
 import type { NPCPersonality } from "./types";
 import { NPCAgent } from "./npc-agent";
 import { NPCStore } from "../db/index";
@@ -16,11 +16,11 @@ export type RegistryHook = (name: string, event: RegistryEvent) => void;
 
 export class AgentRegistry {
   private agents: Map<string, NPCAgent> = new Map();
-  private llm: LLMClient;
+  private llm: LLMLike;
   private hooks: RegistryHook[] = [];
   private db?: NPCStore;
 
-  constructor(llm: LLMClient, db?: NPCStore) {
+  constructor(llm: LLMLike, db?: NPCStore) {
     this.llm = llm;
     this.db = db;
   }

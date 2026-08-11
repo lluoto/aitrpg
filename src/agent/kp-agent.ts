@@ -6,7 +6,7 @@
 //   KP 不判定规则（那是律书的事）
 //   KP 只做三件事：描述环境、推进剧情、控制节奏
 
-import type { LLMClient, Message as LLMMessage } from "../llm/client";
+import type { LLMLike, Message as LLMMessage } from "../llm/client";
 import type { KPDirective, TurnRecord, AgentMessage } from "./types";
 import { fallbackNarrative, fallbackSceneDescription, DEGRADATION_NOTICE } from "../llm/fallback";
 import { log } from "../log";
@@ -26,13 +26,13 @@ const KP_SYSTEM_PROMPT = `你是一个 TRPG 主持人（KP/DM）。你的任务�
 格式：每次输出一个场景描述块。如果需要玩家行动，以"你要怎么做？"结尾。`;
 
 export class KPAgent {
-  private llm: LLMClient;
+  private llm: LLMLike;
   private directive: KPDirective;
   private turns: TurnRecord[] = [];
   /** 世界模型权威事实注入（可选）：由会话层在叙事前设置，作为 system 上下文注入 */
   private worldModelContext: string = "";
 
-  constructor(directive: KPDirective, llm: LLMClient) {
+  constructor(directive: KPDirective, llm: LLMLike) {
     this.directive = directive;
     this.llm = llm;
   }
