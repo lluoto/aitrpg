@@ -2,7 +2,7 @@
 // 审卡时 KP 检查玩家携带物品是否超出等级合理范围
 
 import type { WorldModelLoader } from "../world/world-model-loader";
-import type { GeneratedCharacter } from "../character/character-factory";
+import { getArchetype, type GeneratedCharacter } from "../character/character-factory";
 
 // ============================================================
 // 校验结果
@@ -196,6 +196,9 @@ export class ItemValidator {
   reviewLoadout(character: GeneratedCharacter, items: string[]): LoadoutReview {
     const results: ItemCheckResult[] = [];
     const level = character.totalLevel;
+    // character.archetype 存的是职业 id（如 "investigator"），不是职业对象。
+    // 原写法取 .label 恒为 undefined，KP 备注里会直接出现 "undefined"。
+    const archetypeLabel = getArchetype(character.archetype)?.label ?? character.archetype;
 
     for (const item of items) {
       const check = this.checkItem(item, level);
@@ -208,7 +211,7 @@ export class ItemValidator {
     let kpNotes = "";
     if (!approved) {
       const criticalItems = flagged.map((f) => f.itemName).join("、");
-      kpNotes = `[物品警告] ${criticalItems} 超出${character.archetype.label} Lv${level}的合理携带范围。建议调整或补充背景说明。`;
+      kpNotes = `[物品警告] ${criticalItems} 超出${archetypeLabel} Lv${level}的合理携带范围。建议调整或补充背景说明。`;
     } else {
       kpNotes = "物品清单在合理范围内，可以批准。";
     }
@@ -225,7 +228,7 @@ export class ItemValidator {
     return {
       character: character.name,
       level,
-      archetype: character.archetype.label,
+      archetype: archetypeLabel,
       items: results,
       approved,
       kpNotes,
