@@ -344,7 +344,17 @@ export function setIntentLLM(client: LLMClient | null) {
   _llmClient = client;
 }
 
+/**
+ * 显式命令前缀 —— 意图由前缀唯一确定，不交给模型判断。
+ *
+ * 「加载模组 阿卡姆档案检查」曾被判成技能检定：模组名里的「检查」把模型带偏，
+ * handleSkillCheck 抢先 return，该模组因此永远加载不了。前缀已经给出确定答案，
+ * 再问一遍模型只会引入这类误判 —— 名字里含「攻击」「移动」的模组同样会中招。
+ */
+const LOAD_MODULE_PREFIX = /^\s*(?:加载|装载|载入|导入|启用|使用)\s*(?:模组|剧本|模块)/;
+
 export async function parseIntent(input: string): Promise<ActionIntent> {
+  if (LOAD_MODULE_PREFIX.test(input)) return { action: "load_module" };
   if (_llmClient) {
     try {
       return await parseIntentLLM(input, _llmClient);

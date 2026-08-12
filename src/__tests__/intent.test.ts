@@ -429,3 +429,33 @@ describe("parseIntent regex fallback — 未知/杂项", () => {
     expect(r.action).toBe("flee");
   });
 });
+
+describe("parseIntent — 显式命令前缀优先于模组名里的关键词", () => {
+  // 回归：模组注册名「阿卡姆档案检查」里的「检查」曾把意图带成 skill_check，
+  // handleSkillCheck 抢先 return，该模组通过自然语言永远加载不了。
+  // 前缀已唯一确定意图，任何模组名都不该改变它。
+  it("加载模组 阿卡姆档案检查 → load_module（而非 skill_check）", async () => {
+    const r = await parseIntent("加载模组 阿卡姆档案检查");
+    expect(r.action).toBe("load_module");
+  });
+
+  it("模组名含「攻击」不改变意图", async () => {
+    const r = await parseIntent("加载模组 血色攻击事件");
+    expect(r.action).toBe("load_module");
+  });
+
+  it("模组名含「移动」不改变意图", async () => {
+    const r = await parseIntent("载入剧本 移动的迷宫");
+    expect(r.action).toBe("load_module");
+  });
+
+  it("普通模组名照常加载", async () => {
+    const r = await parseIntent("加载模组 印斯茅斯的阴影");
+    expect(r.action).toBe("load_module");
+  });
+
+  it("非前缀开头的「检查」仍是技能检定", async () => {
+    const r = await parseIntent("检查书架");
+    expect(r.action).not.toBe("load_module");
+  });
+});
