@@ -34,6 +34,11 @@ const archetypeLabel = computed(() => {
   const found = archetypes.value.find(a => a.id === session.archetype)
   return found?.label || session.archetype
 })
+// 世界状态在还没有激活场景时返回哨兵字符串 "unknown"。
+// 它是后端内部用来判断"未定场景"的值，不该原样显示给玩家，
+// 而 ?? 兜底对非空字符串不生效，所以这里显式处理。
+const SCENE_UNSET = 'unknown'
+const sceneLabel = computed(() => (!session.scene || session.scene === SCENE_UNSET ? '序幕' : session.scene))
 const activeThemeRuleset = computed(() => {
   const ruleset = screen.value === 'game' ? session.ruleset : selectedRuleset.value
   return String(ruleset).toLowerCase().includes('dnd') ? 'dnd5e' : 'cosmic-horror'
@@ -256,7 +261,7 @@ function onInputKeydown(e) {
         <div class="status-bar__row">
           <div class="status-bar__info"><span class="status-bar__label">会话</span><span class="status-bar__value status-bar__value--mono">{{ session.id.slice(-6) || '—' }}</span></div>
           <div class="status-bar__info"><span class="status-bar__label">{{ session.ruleset === 'dnd5e' ? '回合' : '轮' }}</span><span class="status-bar__value">{{ session.round || '—' }}</span></div>
-          <div class="status-bar__info"><span class="status-bar__label">场景</span><span class="status-bar__value">{{ session.scene || '—' }}</span></div>
+          <div class="status-bar__info"><span class="status-bar__label">场景</span><span class="status-bar__value">{{ sceneLabel }}</span></div>
           <div class="status-bar__info" v-if="session.archetype"><span class="status-bar__label">职业</span><span class="status-bar__value">{{ archetypeLabel }}</span></div>
         </div>
         <div class="status-bar__stats">
@@ -270,7 +275,7 @@ function onInputKeydown(e) {
         </div>
       </header>
 
-      <SceneOverview v-if="session.scene" :scene="session.scene" :npcs="npcs" :monsters="monsters" :companions="companions" @chat="(n) => { chattingNpc = n; npcChatVisible = true }" @inspect="(c) => { if (c._type === 'companion') openCharCard(c) }" />
+      <SceneOverview v-if="session.scene" :scene="sceneLabel" :npcs="npcs" :monsters="monsters" :companions="companions" @chat="(n) => { chattingNpc = n; npcChatVisible = true }" @inspect="(c) => { if (c._type === 'companion') openCharCard(c) }" />
       <div v-if="session.id" class="suggestion-bar"><span class="suggestion-bar__hint">💡 你可以：</span><button v-for="s in suggestions" :key="s" class="suggestion-bar__chip" :disabled="loading" @click="submitAction(s)">{{ s }}</button></div>
       <CombatGrid v-if="companions.length > 0 || npcs.length > 0 || monsters.length > 0" :player="session" :companions="companions" :npcs="npcs" :monsters="monsters" @inspect="(e) => { if (e._type === 'companion') { const found = companions.find(c => c.id === e._id); if (found) openCharCard(found) } }" />
 
