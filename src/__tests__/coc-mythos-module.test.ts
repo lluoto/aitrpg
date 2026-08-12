@@ -280,6 +280,39 @@ describe("MythosModuleLoader NPC 生成", () => {
     expect(upserted[0].ac).toBe(10);
     expect(upserted[0].faction).toBe("友善");
   });
+
+  it("NPC 属性与技能应被转发到 upsertEntity 有效载荷", () => {
+    const host = createMockHost();
+    const upserted: Parameters<MythosModuleHost["world"]["upsertEntity"]>[0][] = [];
+    host.world.upsertEntity = (entity) => upserted.push(entity);
+    const loader = new MythosModuleLoader(host);
+
+    const module: MythosModule = {
+      id: "test_npc_attrs",
+      name: "属性技能测试",
+      version: "1",
+      description: "",
+      difficulty: "easy",
+      activation: { type: "manual", condition: "" },
+      npcs: [{
+        id: "scholar",
+        name: "学者",
+        type: "npc",
+        hp: 6,
+        maxHp: 6,
+        ac: 10,
+        faction: "学者",
+        sceneId: "library",
+        attributes: { str: 8 },
+        skills: { "侦查": 60 },
+      }],
+    };
+
+    loader.import(module);
+
+    expect(upserted[0]?.attributes).toEqual({ str: 8 });
+    expect(upserted[0]?.skills).toEqual({ "侦查": 60 });
+  });
 });
 
 // ============================================================

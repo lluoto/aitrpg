@@ -275,6 +275,8 @@ export interface MythosModuleHost {
       position: string;
       faction: string;
       scene_id?: string;
+      attributes?: Record<string, number>;
+      skills?: Record<string, number>;
     }): void;
     logEvent?(params: { round: number; timestamp: number; event_type: string; actor: string; description: string }): void;
   };
@@ -558,8 +560,8 @@ export class MythosModuleLoader {
           position: n.sceneId,
           faction: entityFaction,
           scene_id: n.sceneId,
-          attributes: (n as any).attributes ?? {},
-          skills: (n as any).skills ?? {},
+          attributes: n.attributes ?? {},
+          skills: n.skills ?? {},
         });
 
         // NPC 人格注册（内联 personality 或 npcPersonalityId 引用）
