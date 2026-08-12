@@ -656,8 +656,19 @@ export class GameSession {
   applyDamage(entityId: string, damage: number) {
     this.world.applyDamage(entityId, Math.max(0, damage));
   }
-  setScene(sceneId: string) {
-    this.world.getCurrentState().scene = sceneId;
+  /**
+   * KP 手动切换活动场景。
+   *
+   * 必须走 setActiveScene()：getCurrentState() 每次都新建并返回一个对象，
+   * 对它的 .scene 赋值只会落在临时对象上，数据库里的 is_active 不会变。
+   *
+   * 场景必须已注册；未注册时返回 false 而不是顺手建一个垃圾场景，
+   * 由调用方决定如何报错。
+   */
+  setScene(sceneId: string): boolean {
+    if (!this.world.getScene(sceneId)) return false;
+    this.world.setActiveScene(sceneId);
+    return true;
   }
   setDifficulty(diff: "easy" | "medium" | "hard" | "nightmare") {
     // 直接用 module-difficulty 的权威难度表。
@@ -1576,6 +1587,8 @@ export class GameSession {
     for (const scene of story.scenes) {
       this.sceneDisplayNames[scene.id] = scene.name;
       this.sceneAliases[scene.id] = [scene.name];
+      // 必须落到 scenes 表：setActiveScene() 是 UPDATE，行不存在就静默失配。
+      this.world.registerScene(scene.id, scene.name, scene.description);
     }
     // 从 displayNames 和 aliases 合并场景名
     for (const [id, name] of Object.entries(story.displayNames ?? {})) {
@@ -1592,7 +1605,7 @@ export class GameSession {
 
     // 设置当前场景为第一个场"
     if (story.scenes.length > 0) {
-      this.world.getCurrentState().scene = story.scenes[0].id;
+      this.world.setActiveScene(story.scenes[0].id);
     }
 
     const sceneNames = story.scenes.map(s => s.name).join(", ");

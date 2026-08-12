@@ -1,8 +1,13 @@
-// 场景在场过滤 — getState() 暴露给前端/API 的在场名单必须限定在玩家当前场景。
+// 场景状态 — getState() 暴露给前端/API 的场景与在场名单。
 //
-// 回归背景：模组加载后所有 NPC 都被写入世界状态，getState() 未按场景过滤，
+// 回归背景 1（在场过滤）：模组加载后所有 NPC 都被写入世界状态，getState() 未按场景过滤，
 // 导致「前往警察局」时返回的 npcs 里同时含有菲碧、加比、酒吧保镖等根本不在场的角色。
 // 这会让前端在场名单与 KP 叙事（injectWorldModelForScene 已按场景过滤）相互矛盾。
+//
+// 回归背景 2（KP 切换场景无效）：setScene() 曾写 `world.getCurrentState().scene = id`，
+// 而 getCurrentState() 每次都新建并返回一个对象，赋值落在临时对象上、随即被丢弃，
+// 数据库中的 scenes.is_active 从未变更。KP 面板点「切换」后端照样返回 success:true，
+// 前端场景纹丝不动，且没有任何报错。正确写法是 world.setActiveScene()。
 
 import { describe, expect, test } from "bun:test";
 import { GameSession } from "../api/game-session";
@@ -63,5 +68,41 @@ describe("场景在场过滤", () => {
     seedEntity(session, "player", "调查员", "pc", "维森酒吧");
 
     expect(session.getState().npcs.map((n) => n.name)).toEqual(["酒吧保镖"]);
+  });
+});
+
+describe("KP 切换场景", () => {
+  test("切换到已注册场景后 getState().scene 随之变更", () => {
+    const session = new GameSession("t_kp_scene_ok", "cosmic-horror");
+    session.world.registerScene("barn_interior", "谷仓内部");
+
+    expect(session.setScene("barn_interior")).toBe(true);
+    expect(session.getState().scene).toBe("barn_interior");
+  });
+
+  test("切换到未注册场景应报告失败，而不是静默成功", () => {
+    const session = new GameSession("t_kp_scene_missing", "cosmic-horror");
+    session.world.registerScene("barn_interior", "谷仓内部");
+    session.setScene("barn_interior");
+
+    expect(session.setScene("never_registered")).toBe(false);
+    // 失败不得污染当前场景
+    expect(session.getState().scene).toBe("barn_interior");
+  });
+
+  test("连续切换以最后一次为准，不残留多个活动场景", () => {
+    const session = new GameSession("t_kp_scene_switch", "cosmic-horror");
+    session.world.registerScene("barn_interior", "谷仓内部");
+    session.world.registerScene("farm_exterior", "农场外围");
+
+    session.setScene("barn_interior");
+    session.setScene("farm_exterior");
+
+    expect(session.getState().scene).toBe("farm_exterior");
+    const active = session.world
+      .getDatabase()
+      .query("SELECT COUNT(*) AS n FROM scenes WHERE is_active = 1")
+      .get() as { n: number };
+    expect(active.n).toBe(1);
   });
 });

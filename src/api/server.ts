@@ -371,7 +371,9 @@ async function handleRequest(req: Request): Promise<Response> {
           case "set-scene": {
             const sceneId = (bodyString(body, "sceneId") ?? "").trim();
             if (!sceneId) return respondError("场景 ID 无效", 400);
-            session.setScene(sceneId);
+            if (!session.setScene(sceneId)) {
+              return respondError(`场景不存在: ${sceneId}`, 404);
+            }
             return respondJson({ success: true });
           }
           case "set-difficulty": {
