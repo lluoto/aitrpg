@@ -69,7 +69,9 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
     "谷仓形建筑": "dread",
     "建筑内": "dread",
     "中控室": "dread",
-    "下水道": "dread",
+    // 下水道是通往设施的过道，不是恐怖核心本身 —— 用 underground 与核心区分开，
+    // 玩家从"潮湿封闭"走进"机械不安"时能听出空间性质变了。
+    "下水道": "underground",
     "维修间": "dread",
     "比较大的奇怪管道": "dread",
     "艾米丽与爱莉的棺材": "dread",

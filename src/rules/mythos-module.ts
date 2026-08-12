@@ -707,6 +707,11 @@ export const INNSMOUTH_MODULE: MythosModule = {
     type: "location_enter",
     condition: "innsmouth_docks",
   },
+  sceneBgm: {
+    innsmouth_docks: "coast",
+    innsmouth_reef: "coast",
+    innsmouth_church: "sacred",
+  },
   introNarration:
     "铅灰色的海面在冬日低垂的云层下无尽延伸。腐烂的木质栈桥伸向海中，" +
     "空气中弥漫着鱼腥和腐败盐渍的刺鼻气味。远处的礁石上，有什么东西在潮湿的雾中发出反光。" +
@@ -819,6 +824,11 @@ export const ARKHAM_LIBRARY_MODULE: MythosModule = {
     type: "location_enter",
     condition: "arkham_miskatonic",
   },
+  sceneBgm: {
+    arkham_miskatonic: "library",
+    arkham_library_vault: "library",
+    arkham_library_basement: "underground",
+  },
   introNarration:
     "密斯卡托尼克大学图书馆的大厅弥漫着旧书和皮革的混合气味。" +
     "高大的拱形窗户让午后的阳光在飘浮的灰尘中形成一道道可见的光柱。" +
@@ -895,6 +905,14 @@ export const PREMIERS_BARN_MODULE: MythosModule = {
   activation: {
     type: "manual",
     condition: "premiers_barn",
+  },
+  // 本文件内的 premiers_barn 用 ASCII 场景 id；custom-modules/premiers_barn.ts
+  // 是同一模组的详版，用中文场景 id。两套 id 各自映射，互不干扰。
+  sceneBgm: {
+    premiers_barn: "dread",
+    premiers_sewer: "underground",
+    tricam_house: "domestic",
+    gabis_trailer: "domestic",
   },
   introNarration:
     "1921年的普瑞米尔笼罩在早春的薄雾中。铁轨把小镇切成两半，" +
