@@ -28,6 +28,12 @@ const session = reactive({
   tempInsanity: false, indefInsanity: false, dead: false,
   luck: 0, creditRating: 0, skills: {}, inventory: [], weapons: [], attributes: {},
 })
+// session.archetype 存的是职业 id（investigator），状态栏要显示中文名。
+// 职业表没加载到（例如直接恢复旧会话）时退回显示 id，而不是显示空白。
+const archetypeLabel = computed(() => {
+  const found = archetypes.value.find(a => a.id === session.archetype)
+  return found?.label || session.archetype
+})
 const activeThemeRuleset = computed(() => {
   const ruleset = screen.value === 'game' ? session.ruleset : selectedRuleset.value
   return String(ruleset).toLowerCase().includes('dnd') ? 'dnd5e' : 'cosmic-horror'
@@ -135,7 +141,14 @@ async function submitAction(inputText, actingPc) {
   try {
     const data = await sendAction(session.id, trimmed)
     if (data.narrative) messages.value.push({ id: Date.now() + 1, type: 'narration', speaker: '守秘人', content: data.narrative })
-    if (data.events) { for (const ev of data.events) messages.value.push({ id: Date.now() + Math.random(), type: ev.type || 'system', speaker: ev.speaker || '系统', content: ev.content || '' }) }
+    if (data.events) {
+      for (const ev of data.events) {
+        // 服务端会把玩家这次输入也回显在 events 里，而上面已经乐观插入过一条，
+        // 直接全量追加会让每个行动在日志中出现两次。
+        if ((ev.speaker || '') === speaker && (ev.content || '') === trimmed) continue
+        messages.value.push({ id: Date.now() + Math.random(), type: ev.type || 'system', speaker: ev.speaker || '系统', content: ev.content || '' })
+      }
+    }
     if (data.dice && data.dice.length > 0) { for (const d of data.dice) messages.value.push({ id: Date.now() + Math.random(), type: 'roll', speaker: '🎲', content: d.expr + ' = **' + d.total + '**' + (d.detail ? ' (' + d.detail + ')' : '') }) }
     if (data.rolls && data.rolls.length > 0) { for (const r of data.rolls) messages.value.push({ id: Date.now() + Math.random(), type: 'roll', speaker: '🎲', content: r.skill + ' d100=' + r.roll + ' (目标=' + r.target + '%) → ' + (r.success ? '成功' : '失败') }) }
     if (data.state) { session.round = data.state.round ?? session.round; session.scene = data.state.scene ?? session.scene }
@@ -244,7 +257,7 @@ function onInputKeydown(e) {
           <div class="status-bar__info"><span class="status-bar__label">会话</span><span class="status-bar__value status-bar__value--mono">{{ session.id.slice(-6) || '—' }}</span></div>
           <div class="status-bar__info"><span class="status-bar__label">{{ session.ruleset === 'dnd5e' ? '回合' : '轮' }}</span><span class="status-bar__value">{{ session.round || '—' }}</span></div>
           <div class="status-bar__info"><span class="status-bar__label">场景</span><span class="status-bar__value">{{ session.scene || '—' }}</span></div>
-          <div class="status-bar__info" v-if="session.archetype"><span class="status-bar__label">职业</span><span class="status-bar__value">{{ session.archetype }}</span></div>
+          <div class="status-bar__info" v-if="session.archetype"><span class="status-bar__label">职业</span><span class="status-bar__value">{{ archetypeLabel }}</span></div>
         </div>
         <div class="status-bar__stats">
           <div class="stat"><span class="stat__label">HP</span><div class="stat__track"><div class="stat__fill" :style="{ width: hpPercent + '%', background: hpColor }"></div></div><span class="stat__num">{{ session.hp }}/{{ session.maxHp }}</span></div>
