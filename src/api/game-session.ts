@@ -39,7 +39,7 @@ import { log } from "../log";
 
 export interface ActionResponse {
   narrative: string;
-  events: { speaker: string; content: string; type: MessageType }[];
+  events: { speaker: string; content: string; type: MessageType; verbatim?: boolean }[];
   state: {
     scene: string;
     round: number;
@@ -314,15 +314,19 @@ export class GameSession {
     return { messages: msgs.slice(-(limit ?? msgs.length)), total: msgs.length };
   }
 
-  addMessage(speaker: string, content: string, type: MessageType = "dialogue", visibility: VisibilityRule = "public", discoverer?: string) {
-    this.session.push({ speaker, content, type }, visibility, discoverer);
+  /**
+   * @param verbatim 内容为模组原文逐字输出（非 LLM 生成）时置 true。
+   *   只在标记为真时写入该字段，避免每条消息都带 `verbatim: false` 污染存档。
+   */
+  addMessage(speaker: string, content: string, type: MessageType = "dialogue", visibility: VisibilityRule = "public", discoverer?: string, verbatim?: boolean) {
+    this.session.push({ speaker, content, type, ...(verbatim ? { verbatim: true } : {}) }, visibility, discoverer);
   }
 
   private buildActionResponse(turnMessages: AgentMessage[]): ActionResponse {
     const state = this.getState();
     return {
       narrative: this.lastNarrative,
-      events: turnMessages.map(m => ({ speaker: m.speaker, content: m.content, type: m.type })),
+      events: turnMessages.map(m => ({ speaker: m.speaker, content: m.content, type: m.type, ...(m.verbatim ? { verbatim: true as const } : {}) })),
       state,
       dead: this.dead,
       sanity: this.getSanity(),
@@ -1630,7 +1634,8 @@ export class GameSession {
         sceneItems: this.sceneItems,
         itemDescriptions: new Map<string, string>(),
         world: worldAdapter,
-        addMessage: (speaker: string, content: string, type: MessageType) => this.addMessage(speaker, content, type),
+        addMessage: (speaker: string, content: string, type: MessageType, verbatim?: boolean) =>
+          this.addMessage(speaker, content, type, "public", undefined, verbatim),
         activeRuleset: this.activeRuleset,
         currentRound: this.round,
         // 读取模块：将模组原文场景描写写入 scenes 表（保留原文，供 KP 上下文注入）

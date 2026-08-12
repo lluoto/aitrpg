@@ -86,6 +86,14 @@ export interface AgentMessage {
   speaker: string; // NPC 名字 或 "KP" 或 "玩家"
   content: string;
   type: "dialogue" | "narration" | "system" | "action";
+  /**
+   * 内容是否为模组原文逐字输出（而非 LLM 生成）。
+   *
+   * 用可选标记而不是新增 type 分支：`type === "narration"` 已有 4 处消费者
+   * （NPC 记忆、旁白前缀、导出标签、前端叙事筛选），新增联合分支会让模组原文
+   * 静默掉出这些路径。标记是纯增量的，老消费者行为不变。
+   */
+  verbatim?: boolean;
   /** 谁可见（per-receiver 预留） */
   visible_to?: string[];
   /**

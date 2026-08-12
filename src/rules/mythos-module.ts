@@ -288,7 +288,8 @@ export interface MythosModuleHost {
      */
     getDatabase?(): Database;
   };
-  addMessage(speaker: string, content: string, type: MessageType): void;
+  /** @param verbatim 内容为模组原文逐字输出（非 LLM 生成）时置 true */
+  addMessage(speaker: string, content: string, type: MessageType, verbatim?: boolean): void;
   activeRuleset?: string;
   currentRound?: number;
 
@@ -614,7 +615,9 @@ export class MythosModuleLoader {
 
     // 7. 模组叙事
     if (module.introNarration) {
-      this.host.addMessage("KP", module.introNarration, "narration");
+      // 模组开场白按跑团惯例逐字朗读，不经 LLM 改写 —— 标记出来，
+      // 使前端与后续语音路由能区分「照读原文」与「KP 即兴叙述」。
+      this.host.addMessage("KP", module.introNarration, "narration", true);
     }
 
     // 8. 初始状态变更

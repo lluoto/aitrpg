@@ -130,7 +130,7 @@ async function resumeSession(s) {
   try {
     session.id = s.id; session.round = s.round ?? 0; session.scene = s.scene ?? ''
     session.playerName = s.playerName ?? '调查员'; session.ruleset = s.ruleset ?? '宇宙恐怖（百分位）'
-    try { const hist = await getHistory(s.id, 100); messages.value = (hist.messages || []).map((m) => ({ id: Date.now() + Math.random(), type: m.type || 'system', speaker: m.speaker || '', content: m.content || '' })) }
+    try { const hist = await getHistory(s.id, 100); messages.value = (hist.messages || []).map((m) => ({ id: Date.now() + Math.random(), type: m.type || 'system', speaker: m.speaker || '', content: m.content || '', verbatim: m.verbatim === true })) }
     catch { messages.value = [] }
     screen.value = 'game'
   } catch (e) { error.value = e.message }
@@ -151,7 +151,7 @@ async function submitAction(inputText, actingPc) {
         // 服务端会把玩家这次输入也回显在 events 里，而上面已经乐观插入过一条，
         // 直接全量追加会让每个行动在日志中出现两次。
         if ((ev.speaker || '') === speaker && (ev.content || '') === trimmed) continue
-        messages.value.push({ id: Date.now() + Math.random(), type: ev.type || 'system', speaker: ev.speaker || '系统', content: ev.content || '' })
+        messages.value.push({ id: Date.now() + Math.random(), type: ev.type || 'system', speaker: ev.speaker || '系统', content: ev.content || '', verbatim: ev.verbatim === true })
       }
     }
     if (data.dice && data.dice.length > 0) { for (const d of data.dice) messages.value.push({ id: Date.now() + Math.random(), type: 'roll', speaker: '🎲', content: d.expr + ' = **' + d.total + '**' + (d.detail ? ' (' + d.detail + ')' : '') }) }
@@ -296,7 +296,7 @@ function onInputKeydown(e) {
       <main class="narrative-log" ref="logEl">
         <div class="log-filter"><button v-for="f in [{k:'all',l:'全部'},{k:'narration',l:'叙事'},{k:'action',l:'行动'},{k:'system',l:'系统'},{k:'roll',l:'骰子'}]" :key="f.k" class="log-filter__btn" :class="{ 'log-filter__btn--active': logFilter === f.k }" @click="logFilter = f.k">{{ f.l }}</button></div>
         <div class="narrative-log__inner">
-          <div v-for="msg in filteredMessages" :key="msg.id" class="message" :class="'message--' + msg.type"><span v-if="msg.speaker" class="message__speaker">{{ msg.speaker }}</span><p class="message__content">{{ msg.content }}</p></div>
+          <div v-for="msg in filteredMessages" :key="msg.id" class="message" :class="['message--' + msg.type, { 'message--verbatim': msg.verbatim }]"><span v-if="msg.speaker" class="message__speaker">{{ msg.speaker }}<span v-if="msg.verbatim" class="message__tag">模组原文</span></span><p class="message__content">{{ msg.content }}</p></div>
           <div v-if="loading" class="message message--loading"><span class="message__dots"><span class="message__dot">·</span><span class="message__dot">·</span><span class="message__dot">·</span></span><p class="message__content">思考中…</p></div>
         </div>
       </main>
@@ -418,6 +418,10 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0b1210; colo
 .message--roll .message__speaker { color: var(--accent-strong); font-size: 1.1rem; }
 .message--roll .message__content { color: var(--text-secondary); font-family: monospace; }
 .message__speaker { font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 2px; }
+/* 模组原文逐字朗读 —— 与 KP 即兴叙述区分开，沿用跑团「框文」的视觉惯例 */
+.message--verbatim { border-left: 2px solid var(--accent-strong); padding-left: 10px; }
+.message--verbatim .message__content { font-style: italic; color: var(--text-secondary); }
+.message__tag { margin-left: 6px; padding: 0 4px; border: 1px solid var(--text-muted); border-radius: 2px; font-size: 0.65rem; letter-spacing: 0.02em; }
 .message__content { line-height: 1.5; font-size: 0.95rem; }
 .message--loading { text-align: center; color: var(--text-muted); }
 .death-overlay { position: fixed; inset: 0; z-index: 8000; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; }
