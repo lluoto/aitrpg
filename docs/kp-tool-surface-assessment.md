@@ -27,8 +27,10 @@
 | 状态修改方法 | 9：`addMessage`, `applyDamage`, `registerModuleNPCPersonality`, `setDifficulty`, `setPlayerHp`, `setPlayerInventory`, `setPlayerSan`, `setPlayerWeapons`, `setScene` |
 | 对外 KP 操作 | 6：`apply-damage`, `send-message`, `set-difficulty`, `set-hp`, `set-san`, `set-scene`（`src/api/server.ts`） |
 | 状态转移无合法性校验 | `setPlayerSan()` 直接写入，不判断该转移在当前剧情状态下是否允许 |
+| 已有真相源，但被绕过 | `WorldStateManager` 头注释即写明「Bun 原生 SQLite 真相源／LLM 只看不写」，但 7 个状态写入中只有 `setPlayerHp`、`applyDamage` 真正落到它；SAN 在 `sanityEngines`、物品在 `inventoryMap`、武器在 `equippedWeaponsMap`，均为进程内状态 |
+| 真相源写入曾整条失效 | `setScene()` 与 `handleGenerateStory()` 都写 `world.getCurrentState().scene = id`，而该方法每次新建对象返回，赋值落在临时对象上（已修复，见 §八） |
 
-**读法**：`ActionIntent` 已经在扮演 `propose_action()` 的角色，代码分派已经在扮演 `apply_action()` 的位置。差的是后者的**校验层**，以及一份被显式建模的世界状态。
+**读法**：`ActionIntent` 已经在扮演 `propose_action()`，代码分派已经在扮演 `apply_action()` 的位置，`WorldStateManager` 已经在扮演真相源——三者都不缺。缺的是**让写入必须经过真相源的强制**，以及真相源之上的**校验层**。
 
 ---
 
@@ -47,7 +49,7 @@
 - **§5 PAYADOR**（arXiv 2504.07304）：不预先穷举玩家可执行的全部动作，只定义关键状态如何变化。→ 直接支持「单一 `apply_action` + 状态机」，反对为每种动作各开一个 mutator。
 - **§6 Static vs Agentic**（arXiv 2502.19519）：不应无限增加智能体，多智能体增加调试复杂度，不能仅凭 "agentic" 标签假设更可靠。→ 支持压小工具面。
 - **§7 RPGBENCH**（arXiv 2502.00595）：先进模型仍常在长程、复杂状态与可验证规则上失败。→ 状态权威必须在程序侧，不能寄望模型自持。
-- **§三.1 最小世界状态**：备忘录已为《璀璨欢宴》列出 8 个状态变量及其取值域（顾绍棠：存活／重伤／死亡；主托座：沈滨控制／调查员控制／失活；检验片：同前；药物覆盖：完整／削弱／中止；地下供养：完整／受损；服务入口：掌握／部分掌握／未掌握；许佩华：合作／有限合作／拒绝；沈滨警觉：低／高）。这正是 `apply_action` 应当校验的目标类型。
+- **§三.1 最小世界状态**：备忘录已为《璀璨欢宴》列出 8 个状态变量及其取值域（顾绍棠：存活／重伤／死亡；主托座：沈滨控制／调查员控制／失活；检验片：同前；药物覆盖：完整／削弱／中止；地下供养：完整／受损；服务入口：掌握／部分掌握／未掌握；许佩华：合作／有限合作／拒绝；沈滨警觉：低／高）。这是 `apply_action` 校验目标类型的**范式示例**——但须注意：**《璀璨欢宴》并不在本仓库内**。全仓检索该剧本的 5 个专名（璀璨欢宴／顾绍棠／沈滨／许佩华／托座），仅命中本文件自身。项目实际加载的模组是 `premiers_barn`《首演之夜的谷仓》。因此这 8 个变量只能作为建模方法的样板，不能照抄成本项目的类型。
 
 ---
 
@@ -68,7 +70,7 @@ BFCL-V4 数据（Qwen3.5-4B 50.3 / 9B 66.1，用户提供）指向的判断成�
 
 按影响排序：
 
-1. **没有被显式建模的世界状态。** 备忘录 §三.1 的 8 个变量目前散落在 SQLite 实体表、`sanityEngines`、`investigation` 等处，没有单一真相源，因此也无从校验转移合法性。
+1. **真相源存在，但不被强制。** `WorldStateManager` 已声明为唯一真相源，实际只有 HP 与伤害写入它；SAN、物品、武器停留在进程内 Map——重启即失，KP 与规则引擎都看不到。校验层必须先有一个「所有写入都必须经过的地方」，才谈得上校验转移是否合法。
 2. **没有统一写入口。** 9 个 mutation 方法 + 6 个 HTTP KP 操作各自直写，`apply_action` 没有落点。
 3. **没有幂等/重复触发防护。** 备忘录 §三.2 明确要求「事件是否已发生，避免重复触发」「SAN 奖励是否已经结算」，当前无对应记录。
 4. **`game-session.ts` 已 2022 行。** 25 个 handler 与 9 个 mutator 同处一文件，是上述三点的物理成因。`apply_action` 收敛与该文件拆分是同一件事。
@@ -79,10 +81,13 @@ BFCL-V4 数据（Qwen3.5-4B 50.3 / 9B 66.1，用户提供）指向的判断成�
 
 分四阶段，每阶段独立可验证、可回滚。
 
-### 阶段 1：把世界状态显式化（无行为变更）
-- 新建 `src/state/campaign-state.ts`，用字面量联合类型表达备忘录 §三.1 的 8 个变量，例如 `type GuShaotang = "存活" | "重伤" | "死亡"`。
-- 仅新增类型与读取适配器，从现有存储投影出来；不改任何写入路径。
-- 验收：`bun test` 不变；新增单测覆盖投影正确性。
+### 阶段 1：让所有状态写入都到达真相源（无对外行为变更）
+
+> 本阶段已相对初稿改写。初稿写的是「为备忘录 §三.1 的 8 个变量建类型」，但那套变量属于不在本仓库的《璀璨欢宴》，照建等于写一批无数据可投影的推测代码。真正该做的是把已声明的真相源坐实。
+
+- 把 SAN、物品、武器三类状态从进程内 Map 迁入 `WorldStateManager`，使 `getCurrentState()` 成为完整快照而非部分快照。
+- 全仓排查「读起来像写入、实际不是」的写法，重点是对 `getCurrentState()` 返回值的赋值——已发现 2 例，均为静默失效。
+- 验收：新增单测断言每类状态在会话重新读取后仍然一致；`bun test` 全绿。
 
 ### 阶段 2：建立 `applyAction()` 校验闸门
 - 新建 `src/rules/apply-action.ts`，签名接受一个受判别联合约束的 `ProposedAction`，返回 `Result<StateDelta, RejectReason>`。
@@ -126,3 +131,7 @@ BFCL-V4 数据（Qwen3.5-4B 50.3 / 9B 66.1，用户提供）指向的判断成�
 本轮修复中出现过一次真实回归：`MythosModuleLoader` 通过 `(host.world as any).getDatabase()` 依赖了宿主契约里从未声明的能力，宿主换成窄适配器后运行时变为 `undefined`，被 `catch` 降级成一行警告，模组场景出口整段失效。类型检查与 710 个测试全绿，只有真实跑团暴露了它。
 
 这对 `apply_action` 设计的直接含义：**闸门的能力面必须显式声明并被类型约束，任何 `as any` 形式的隐式依赖都会在替换实现时静默断裂**。同时，闸门内的失败必须结构化上报，而不是降级成一行文本警告——否则与当前 `catch` 吞异常是同一类问题。
+
+写完本文后立即发现同类的第二例，且更严重：`setScene()` 与 `handleGenerateStory()` 都用 `world.getCurrentState().scene = id` 表达「切换场景」，而 `getCurrentState()` 每次都新建并返回一个对象，赋值全部落在临时对象上随即被丢弃。数据库中的 `scenes.is_active` 从未变更，KP 面板的「切换场景」按钮完全无效，后端却仍返回 `success: true`。类型检查与 710 个测试同样全绿。
+
+两例合起来指向同一条设计约束：**真相源只应暴露「写入方法」，不应暴露「看起来能写的快照」**。`getCurrentState()` 返回可变对象，本身就在邀请这类错误。因此 `apply_action` 的返回值应当是不可变的 `StateDelta`，对它的任何赋值都应被类型系统拒绝，而不是静默丢弃；写入能力只经由具名方法暴露。
