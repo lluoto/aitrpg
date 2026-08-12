@@ -22,18 +22,18 @@ import { WorldModelIntegrator, type SceneContext, type NPCPresentProfile } from 
 import { NPCStore } from "../db/index";
 import { assessModuleDifficulty, getDifficultyProfile } from "../rules/module-difficulty";
 import type { DifficultyProfile } from "../rules/module-difficulty";
-import { CharacterFactory, getArchetype, type GeneratedCharacter } from "../character/character-factory";
+import { CharacterFactory, getArchetype, type GeneratedCharacter, type LegendaryAction } from "../character/character-factory";
 import { StoryGenerator } from "../rules/story-generator";
 import { CareerFileStore } from "../character/career-file";
 import { createGameTime, advanceTime, formatGameTime, periodAtmosphere, type GameTime } from "../rules/game-time";
 import { listTables, rollTable } from "../rules/random-tables";
 import { listStatusDefs, getStatusDef, createStatus, formatStatus, type StatusEffect } from "../rules/status-effects";
-import { MythosModuleLoader } from "../rules/mythos-module";
+import { MythosModuleLoader, type MythosModuleHost } from "../rules/mythos-module";
 import { PoliticoEconomyEngine } from "../economy/politic-economy-engine";
 import { PREMIERS_BARN_MODULE, ARKHAM_LIBRARY_MODULE, INNSMOUTH_MODULE } from "../rules/mythos-module";
 import { getModule as getCustomModule } from "../rules/custom-modules/index";
 import { saveSessionMeta, deleteSessionFile } from "./session-store";
-import type { CombatResult, WorldEntity, ActionIntent, CoCWeaponDef } from "../types";
+import type { CombatResult, WorldEntity, ActionIntent, CoCWeaponDef, CombatPersonalityTraits } from "../types";
 import type { NPCPersonality, AgentMessage, MessageType, TurnRecord } from "../agent/types";
 import { log } from "../log";
 
@@ -50,7 +50,7 @@ export interface ActionResponse {
       id: string; name: string; hp: number; maxHp: number; ac: number;
       morale: number; behavior: string; control: string; position: string;
       inventory: string[]; motivation?: string;
-      traits: Record<string, number> | null; skills: Record<string, number> | null;
+      traits: CombatPersonalityTraits | null; skills: Record<string, number> | null;
       resolveState: string;
     }[];
   };
@@ -139,6 +139,8 @@ export class GameSession {
   private mythosSpells: Map<string, { sanCost: string; mpCost: number; description: string; effect?: string }> = new Map();
   public knownMythosSpells: string[] = [];
   private _lastPushedRoll: { skill: string; roll: number; target: number } | null = null;
+  private _moduleLoader?: MythosModuleLoader;
+  private _loadedModules: Map<string, boolean> = new Map();
 
   constructor(
     id: string,
@@ -1603,13 +1605,16 @@ export class GameSession {
   private handleLoadModule(intent: ActionIntent, input: string, messages: AgentMessage[], msg: (s: string) => number): boolean {
     const moduleName = input.replace(/^(?:加载|装载|载入|启用|使用)\s*(?:模组|剧本|模块)\s*/, "").trim();
 
-    if (!this["_moduleLoader"]) {
-      const host = {
+    if (!this._moduleLoader) {
+      const worldAdapter: MythosModuleHost["world"] = {
+        upsertEntity: (entity) => this.world.upsertEntity(entity),
+      };
+      const host: MythosModuleHost = {
         mythosSpells: this.mythosSpells,
         knownMythosSpells: this.knownMythosSpells,
         sceneItems: this.sceneItems,
         itemDescriptions: new Map<string, string>(),
-        world: this.world,
+        world: worldAdapter,
         addMessage: (speaker: string, content: string, type: MessageType) => this.addMessage(speaker, content, type),
         activeRuleset: this.activeRuleset,
         currentRound: this.round,
@@ -1626,8 +1631,7 @@ export class GameSession {
           this.registerModuleNPCPersonality(npcName, personality, npcPersonalityId);
         },
       };
-      (this as any)["_moduleLoader"] = new MythosModuleLoader(host);
-      (this as any)["_loadedModules"] = new Map<string, boolean>();
+      this._moduleLoader = new MythosModuleLoader(host);
     }
 
     // 优先从自定义模组库查"
@@ -1667,8 +1671,11 @@ export class GameSession {
     }
 
     try {
-      const loader = (this as any)["_moduleLoader"] as any;
-      const loaded = (this as any)["_loadedModules"] as Map<string, boolean>;
+      if (!this._moduleLoader) {
+        throw new Error("Module loader not initialized");
+      }
+      const loader = this._moduleLoader;
+      const loaded = this._loadedModules;
       if (loaded.has(mod.id)) {
         msg(`模组「${mod.name}」已导入。`);
         this.lastNarrative = `模组「${mod.name}」已导入。`;
@@ -1950,7 +1957,7 @@ export class GameSession {
     const ep = template.epicNarrative ?? "";
     const showTime = template.showTime;
     const st = showTime ? `\n表演时间「${showTime.name}」：${showTime.description}（持续${showTime.duration}）` : "";
-    const actions = template.legendaryActions?.map(a =>
+    const actions = template.legendaryActions?.map((a: LegendaryAction) =>
       `【${a.name}】${a.description}（消耗 ${a.cost} 传奇点）`
     ).join("\n") ?? "";
     return `\n\n=== 传奇角色上下文 ===\n${ep}${st}\n${actions}\n当前角色已超越凡人极限。请以匹配的史诗级别描绘其行动与叙事。`;
