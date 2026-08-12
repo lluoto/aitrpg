@@ -134,6 +134,16 @@ describe("剧本杀模组导入", () => {
     const content = res2.events.map(e => e.content).join("\n");
     expect(content).toMatch(/已导入/);
   });
+
+  it("加载模组后应真的建成场景出口，而不是降级成一行警告", async () => {
+    // 出口连接靠宿主提供数据库能力。宿主适配器少给这个能力时，
+    // 加载器会把异常吞成 "⚠️ 场景出口连接失败"，模组场景之间从此走不通，
+    // 而类型检查和其余用例都照样通过——所以这里必须直接盯住结果。
+    const res = await session.act("加载模组 普瑞米尔的谷仓");
+    const content = res.events.map(e => e.content).join("\n");
+    expect(content).not.toMatch(/场景出口连接失败/);
+    expect(content).toMatch(/构建 \d+ (?:条模组场景显式出口|个模组场景出口)/);
+  });
 });
 
 // ============================================================

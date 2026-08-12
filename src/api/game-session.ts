@@ -1608,6 +1608,8 @@ export class GameSession {
     if (!this._moduleLoader) {
       const worldAdapter: MythosModuleHost["world"] = {
         upsertEntity: (entity) => this.world.upsertEntity(entity),
+        // 模组要靠它连接场景出口；不转发的话出口构建会整段失败。
+        getDatabase: () => this.world.getDatabase(),
       };
       const host: MythosModuleHost = {
         mythosSpells: this.mythosSpells,

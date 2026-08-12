@@ -22,6 +22,7 @@
  *   - 可叠放：多个模组可叠加导入，互不冲突
  */
 
+import type { Database } from "bun:sqlite";
 import type { MessageType } from "../agent/types";
 import type { MythosCreature, MythosTome, MythosSpellDef } from "./mythos-expansion";
 import { MYTHOS_CREATURES } from "./mythos-expansion";
@@ -279,6 +280,13 @@ export interface MythosModuleHost {
       skills?: Record<string, number>;
     }): void;
     logEvent?(params: { round: number; timestamp: number; event_type: string; actor: string; description: string }): void;
+    /**
+     * 构建模组场景出口时要直接读写 scenes 表。
+     * 这个依赖以前只靠 (host.world as any).getDatabase() 存在，契约里查不到，
+     * 宿主换成窄适配器就会在运行时变成 undefined。这里明确声明出来。
+     * 纯内存宿主（如测试 mock）可以不提供，加载器会跳过出口连接。
+     */
+    getDatabase?(): Database;
   };
   addMessage(speaker: string, content: string, type: MessageType): void;
   activeRuleset?: string;
@@ -433,7 +441,9 @@ export class MythosModuleLoader {
 
     // ── 构建模组场景出口连接 ──
     try {
-      const db = (this.host.world as any).getDatabase() as any;
+      const getDb = this.host.world.getDatabase;
+      if (!getDb) throw new Error("宿主未提供数据库能力，无法连接场景出口");
+      const db = getDb.call(this.host.world);
       if (module.exits) {
         // 使用模组定义的显式出口
         let exitCount = 0;
