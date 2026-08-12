@@ -94,6 +94,14 @@ export interface AgentMessage {
    * 静默掉出这些路径。标记是纯增量的，老消费者行为不变。
    */
   verbatim?: boolean;
+  /**
+   * 说这句话时 NPC 的情绪。
+   *
+   * 必须在生成时刻捕获：mood 是状态机（8 种触发驱动转移），播放或回放时
+   * 回查 `NPCAgent.getMood()` 拿到的是当时的情绪而非说这句话时的情绪。
+   * 取值与主流情感 TTS 的 style 参数基本对应，是未来语音层的音色输入。
+   */
+  mood?: NPCMood;
   /** 谁可见（per-receiver 预留） */
   visible_to?: string[];
   /**

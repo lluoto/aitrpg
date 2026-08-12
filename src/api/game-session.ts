@@ -34,7 +34,7 @@ import { PREMIERS_BARN_MODULE, ARKHAM_LIBRARY_MODULE, INNSMOUTH_MODULE } from ".
 import { getModule as getCustomModule } from "../rules/custom-modules/index";
 import { saveSessionMeta, deleteSessionFile } from "./session-store";
 import type { CombatResult, WorldEntity, ActionIntent, CoCWeaponDef, CombatPersonalityTraits } from "../types";
-import type { NPCPersonality, AgentMessage, MessageType, TurnRecord } from "../agent/types";
+import type { NPCPersonality, AgentMessage, MessageType, NPCMood, TurnRecord } from "../agent/types";
 import { log } from "../log";
 
 export interface ActionResponse {
@@ -320,6 +320,15 @@ export class GameSession {
    */
   addMessage(speaker: string, content: string, type: MessageType = "dialogue", visibility: VisibilityRule = "public", discoverer?: string, verbatim?: boolean) {
     this.session.push({ speaker, content, type, ...(verbatim ? { verbatim: true } : {}) }, visibility, discoverer);
+  }
+
+  /**
+   * NPC 台词入口。与 addMessage 分开而不是再加一个位置参数，是因为情绪
+   * 必须在生成时刻固定：mood 是状态机，事后回查 NPCAgent 拿到的是当时的
+   * 情绪，不是说这句话时的情绪。
+   */
+  addNPCDialogue(speaker: string, content: string, mood?: NPCMood) {
+    this.session.push({ speaker, content, type: "dialogue", ...(mood ? { mood } : {}) }, "public");
   }
 
   private buildActionResponse(turnMessages: AgentMessage[]): ActionResponse {
