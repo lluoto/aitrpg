@@ -27,6 +27,7 @@ const session = reactive({
   ruleset: '', hp: 0, maxHp: 0, san: 0, maxSAN: 0,
   tempInsanity: false, indefInsanity: false, dead: false,
   luck: 0, creditRating: 0, skills: {}, inventory: [], weapons: [], attributes: {},
+  bgm: '',
 })
 // session.archetype 存的是职业 id（investigator），状态栏要显示中文名。
 // 职业表没加载到（例如直接恢复旧会话）时退回显示 id，而不是显示空白。
@@ -39,6 +40,58 @@ const archetypeLabel = computed(() => {
 // 而 ?? 兜底对非空字符串不生效，所以这里显式处理。
 const SCENE_UNSET = 'unknown'
 const sceneLabel = computed(() => (!session.scene || session.scene === SCENE_UNSET ? '序幕' : session.scene))
+
+// ── 环境音 ────────────────────────────────────────────────────────
+// 后端给的是空间性质标识（town / dread 之类），不是每个房间一首曲子。
+// 三条硬性约束：音频缺失要静默、浏览器拦截自动播放要静默、音量压在叙事之下。
+// 环境音任何情况下都不该挡住或打断叙事流程。
+const BGM_VOLUME = 0.35
+const bgmMuted = ref(true) // 默认关：未经用户交互的自动播放会被浏览器拒绝
+let bgmEl = null
+let bgmTimer = null
+
+function fadeTo(el, target, done) {
+  clearInterval(bgmTimer)
+  bgmTimer = setInterval(() => {
+    const step = target > el.volume ? 0.05 : -0.05
+    const next = el.volume + step
+    if ((step > 0 && next >= target) || (step < 0 && next <= target)) {
+      el.volume = target
+      clearInterval(bgmTimer)
+      if (done) done()
+    } else {
+      el.volume = Math.max(0, Math.min(1, next))
+    }
+  }, 50)
+}
+
+function applyBgm(id) {
+  if (!bgmEl) {
+    bgmEl = new Audio()
+    bgmEl.loop = true
+    bgmEl.volume = 0
+    // 没有对应音频文件时不报错、不提示，视作该场景无环境音
+    bgmEl.addEventListener('error', () => { clearInterval(bgmTimer) })
+  }
+  if (bgmMuted.value || !id) {
+    fadeTo(bgmEl, 0, () => bgmEl.pause())
+    return
+  }
+  const src = `/bgm/${id}.mp3`
+  if (bgmEl.src && bgmEl.src.endsWith(src)) {
+    if (bgmEl.paused) bgmEl.play().catch(() => {})
+    fadeTo(bgmEl, BGM_VOLUME)
+    return
+  }
+  // 换床：先淡出旧的再切源，避免硬切造成的爆音
+  fadeTo(bgmEl, 0, () => {
+    bgmEl.src = src
+    bgmEl.play().then(() => fadeTo(bgmEl, BGM_VOLUME)).catch(() => {})
+  })
+}
+
+watch(() => session.bgm, (id) => applyBgm(id))
+watch(bgmMuted, () => applyBgm(session.bgm))
 const activeThemeRuleset = computed(() => {
   const ruleset = screen.value === 'game' ? session.ruleset : selectedRuleset.value
   return String(ruleset).toLowerCase().includes('dnd') ? 'dnd5e' : 'cosmic-horror'
@@ -119,6 +172,7 @@ async function startGame() {
     if (data.state?.companions) companions.value = data.state.companions
     if (data.state?.npcs) npcs.value = data.state.npcs
     if (data.state?.monsters) monsters.value = data.state.monsters
+    session.bgm = data.state?.bgm ?? ''
     messages.value = [{ id: Date.now(), type: 'narration', speaker: '守秘人', content: data.opening || '夜幕降临，故事由此开始……' }]
     screen.value = 'game'
   } catch (e) { error.value = e.message || '创建游戏失败' }
@@ -156,7 +210,7 @@ async function submitAction(inputText, actingPc) {
     }
     if (data.dice && data.dice.length > 0) { for (const d of data.dice) messages.value.push({ id: Date.now() + Math.random(), type: 'roll', speaker: '🎲', content: d.expr + ' = **' + d.total + '**' + (d.detail ? ' (' + d.detail + ')' : '') }) }
     if (data.rolls && data.rolls.length > 0) { for (const r of data.rolls) messages.value.push({ id: Date.now() + Math.random(), type: 'roll', speaker: '🎲', content: r.skill + ' d100=' + r.roll + ' (目标=' + r.target + '%) → ' + (r.success ? '成功' : '失败') }) }
-    if (data.state) { session.round = data.state.round ?? session.round; session.scene = data.state.scene ?? session.scene }
+    if (data.state) { session.round = data.state.round ?? session.round; session.scene = data.state.scene ?? session.scene; session.bgm = data.state.bgm ?? '' }
     if (data.state?.player) { session.hp = data.state.player.hp ?? session.hp; session.maxHp = data.state.player.maxHp ?? session.maxHp }
     if (data.state?.companions) companions.value = data.state.companions
     if (data.state?.npcs) npcs.value = data.state.npcs
@@ -261,7 +315,7 @@ function onInputKeydown(e) {
         <div class="status-bar__row">
           <div class="status-bar__info"><span class="status-bar__label">会话</span><span class="status-bar__value status-bar__value--mono">{{ session.id.slice(-6) || '—' }}</span></div>
           <div class="status-bar__info"><span class="status-bar__label">{{ session.ruleset === 'dnd5e' ? '回合' : '轮' }}</span><span class="status-bar__value">{{ session.round || '—' }}</span></div>
-          <div class="status-bar__info"><span class="status-bar__label">场景</span><span class="status-bar__value">{{ sceneLabel }}</span></div>
+          <div class="status-bar__info"><span class="status-bar__label">场景</span><span class="status-bar__value">{{ sceneLabel }}</span><button v-if="session.bgm" class="bgm-toggle" :class="{ 'bgm-toggle--on': !bgmMuted }" @click="bgmMuted = !bgmMuted">{{ bgmMuted ? '环境音 关' : '环境音 开' }}</button></div>
           <div class="status-bar__info" v-if="session.archetype"><span class="status-bar__label">职业</span><span class="status-bar__value">{{ archetypeLabel }}</span></div>
         </div>
         <div class="status-bar__stats">
@@ -418,6 +472,8 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0b1210; colo
 .message--roll .message__speaker { color: var(--accent-strong); font-size: 1.1rem; }
 .message--roll .message__content { color: var(--text-secondary); font-family: monospace; }
 .message__speaker { font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 2px; }
+.bgm-toggle { margin-left: 8px; padding: 1px 6px; background: none; border: 1px solid var(--text-muted); border-radius: 2px; color: var(--text-muted); font-size: 0.65rem; cursor: pointer; }
+.bgm-toggle--on { border-color: var(--accent-strong); color: var(--accent-strong); }
 /* 模组原文逐字朗读 —— 与 KP 即兴叙述区分开，沿用跑团「框文」的视觉惯例 */
 .message--verbatim { border-left: 2px solid var(--accent-strong); padding-left: 10px; }
 .message--verbatim .message__content { font-style: italic; color: var(--text-secondary); }

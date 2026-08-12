@@ -42,6 +42,8 @@ export interface ActionResponse {
   events: { speaker: string; content: string; type: MessageType; verbatim?: boolean }[];
   state: {
     scene: string;
+    /** 当前场景的配乐标识（模组静态数据）。无映射时缺省，前端静默不放。 */
+    bgm?: string;
     round: number;
     player: { name: string; hp: number; maxHp: number; ac: number; status: string[] };
     npcs: { name: string; hp: number; maxHp: number; status: string[]; attitude?: string }[];
@@ -123,6 +125,11 @@ export class GameSession {
   private sceneAliases: Record<string, string[]> = {};
   private registeredModules: any[] = [];
   private lastNarrative: string = "";
+  /**
+   * 场景 → 配乐标识。模组静态数据，与显示名/别名同层，**不属于世界状态**，
+   * 因此留在进程内而不进真相源：它不会被玩法改变，重载模组即可重建。
+   */
+  private sceneBgm: Record<string, string> = {};
   private lastDiceRoll: { expr: string; total: number; detail?: string; bonus?: number } | null = null;
   private lastRolls: Array<{skill: string; roll: number; target: number; success: boolean}> = [];
   private gameTime: GameTime = createGameTime();
@@ -280,7 +287,7 @@ export class GameSession {
       };
     });
     return {
-      scene: state.scene, round: this.round,
+      scene: state.scene, bgm: this.sceneBgm[pos], round: this.round,
       player: playerEnt ? { name: playerEnt.name, hp: playerEnt.hp, maxHp: playerEnt.maxHp, ac: this.activeRuleset === "cosmic-horror" ? 0 : playerEnt.ac, status: playerEnt.status } : { name: "调查员", hp: 12, maxHp: 12, ac: 0, status: [] },
       npcs: npcs.map(e => ({ name: e.name, hp: e.hp, maxHp: e.maxHp, status: e.status })),
       monsters: monsters.map(e => ({ name: e.name, hp: e.hp, maxHp: e.maxHp, status: e.status })),
@@ -1763,6 +1770,7 @@ export class GameSession {
     if (targets.length === 0 && this.activeCharacter) {
       targets.push({ pid: this.activePlayerId, char: this.activeCharacter });
     }
+      if (mod.sceneBgm) Object.assign(this.sceneBgm, mod.sceneBgm);
 
     for (const { pid, char } of targets) {
       const skillChanges: string[] = [...(restGrowth.get(pid) ?? [])];

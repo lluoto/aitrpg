@@ -176,6 +176,13 @@ export interface MythosModule {
   exits?: Record<string, Array<{ target: string; desc?: string }>>;
   /** 场景描述映射（场景ID → 描述文本），在 registerScene 时传入 */
   sceneDescriptions?: Record<string, string>;
+  /**
+   * 场景配乐映射（场景ID → 音轨标识）。
+   *
+   * 只存标识不存路径：路径拼装是前端的事，模组不该关心资源目录结构。
+   * 缺省或找不到对应音频时前端静默不放，不影响任何叙事流程。
+   */
+  sceneBgm?: Record<string, string>;
   /** 模组激活时的KP旁白 */
   introNarration?: string;
   /** 注册到 mythosSpells 的法术 */
