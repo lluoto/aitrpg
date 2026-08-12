@@ -29,8 +29,6 @@ export interface UnifiedCombatResult {
   // CoC 战斗字段
   hitLocation?: string;
   isImpale?: boolean;
-  counterDamage?: number;
-  counterHit?: boolean;
   /** 反击/格挡命中时，反击方对攻击者造成的伤害 */
   counterDamage?: number;
   counterHit?: boolean;

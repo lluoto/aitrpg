@@ -21,16 +21,18 @@ function weightedPick(entries: WeightedEntry[]): string {
   let r = Math.random() * total;
   for (const e of entries) {
     r -= e.weight;
-    if (r <= 0) {
-      const v = e.value;
-      return Array.isArray(v) ? pickOne(v) : v;
-    }
+    if (r <= 0) return resolveValue(e.value);
   }
-  return entries[0].value as string;
+  return resolveValue(entries[0].value);
 }
 
 function pickOne(arr: string[]): string {
   return arr[Math.floor(Math.random() * arr.length)];
+}
+
+/** entry.value 可以是单个词条，也可以是候选列表；两种都要收敛成一个字符串。 */
+function resolveValue(value: string | string[]): string {
+  return Array.isArray(value) ? pickOne(value) : value;
 }
 
 // ── 随机表注册表 ──────────────────────────────────────────
@@ -61,12 +63,10 @@ export function rollTable(name: string, count = 1): string[] {
       // compose: 每个 entry 独立掷，可能组合
       const parts: string[] = [];
       for (const e of table.entries) {
-        if (Math.random() * 100 < e.weight) {
-          const v = e.value;
-          parts.push(Array.isArray(v) ? pickOne(v) : v);
-        }
+        if (Math.random() * 100 < e.weight) parts.push(resolveValue(e.value));
       }
-      results.push(parts.join("") || pickOne(table.entries).value as string);
+      // 所有 entry 都没掷中时回退到加权抽取，而不是把 WeightedEntry 当字符串数组去索引。
+      results.push(parts.join("") || weightedPick(table.entries));
     }
   }
   return results;
