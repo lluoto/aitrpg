@@ -14,6 +14,7 @@
 
 import { Database } from "bun:sqlite";
 import type { NPCPersonality, NPCMood, MemoryEntry } from "../agent/types";
+import { asNPCMood } from "../agent/types";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -82,19 +83,15 @@ interface StateRow {
 // 库里存的是裸字符串，取出来要先确认它还在合法取值里再当联合类型用。
 // 老库、手改过的库、以及将来改了枚举而没迁移的库都会在这里被挡住 ——
 // 直接 as 会把一个不存在的情绪值放进整个系统。
-const MOODS: readonly NPCMood[] = [
-  "neutral", "friendly", "angry", "fearful", "suspicious", "excited", "sad", "calm",
-];
+//
+// 情绪的校验用 agent/types 里的共享版本：那八个取值已经在三处入口被检查，
+// 各自抄一份迟早会漏掉其中一处。
 const RULESETS: readonly NonNullable<NPCPersonality["ruleset"]>[] = [
   "cosmic-horror", "dnd5e", "grail",
 ];
 const MEMORY_TYPES: readonly MemoryEntry["type"][] = [
   "observation", "dialogue", "event", "decision",
 ];
-
-function asMood(v: string | null | undefined): NPCMood | undefined {
-  return v && MOODS.includes(v as NPCMood) ? (v as NPCMood) : undefined;
-}
 
 function asRuleset(v: string | null | undefined): NPCPersonality["ruleset"] {
   const r = v as NonNullable<NPCPersonality["ruleset"]>;
@@ -406,7 +403,7 @@ export class NPCStore {
     if (!row) return null;
     return {
       // 库里存的是裸字符串；越界值退回 neutral，不让它冒充成合法情绪往下走
-      mood: asMood(row.mood) ?? "neutral",
+      mood: asNPCMood(row.mood) ?? "neutral",
       relationship: row.relationship,
       interactionCount: row.player_interaction_count,
     };
@@ -444,7 +441,7 @@ function rowToPersonality(row: PersonalityRow): NPCPersonality {
     ruleset: asRuleset(row.ruleset),
     traits: safeJSONParse(row.traits, undefined),
     factions: safeJSONParse(row.factions, undefined),
-    initialMood: asMood(row.initial_mood),
+    initialMood: asNPCMood(row.initial_mood),
   };
 }
 

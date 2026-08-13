@@ -42,6 +42,26 @@ export interface NPCFaction {
 /** NPC 情绪状态 */
 export type NPCMood = "neutral" | "friendly" | "angry" | "fearful" | "suspicious" | "excited" | "sad" | "calm";
 
+/** 运行时可枚举的同一份取值。与上面的联合类型手工同步——加取值时两处一起改。 */
+export const NPC_MOODS: readonly NPCMood[] = [
+  "neutral", "friendly", "angry", "fearful", "suspicious", "excited", "sad", "calm",
+];
+
+/**
+ * 把来路不明的值收成 NPCMood，不合法就返回 undefined。
+ *
+ * 情绪有三个不经编译器的入口：npcs.yaml（运行时 parse，any）、编辑器存的模组
+ * JSON（边界解析器有意透传创作字段）、以及历史数据库里的旧值。
+ * 而下游是按这八个取值分派的 —— 越界值不会报错，只会让每个分支都落空：
+ * 语音层选不到音色，情绪相关的判断静默失效。实测曾从 /history 里拿到过
+ * "paranoid"，模组数据里一共躺着六个这样的值。
+ */
+export function asNPCMood(value: unknown): NPCMood | undefined {
+  return typeof value === "string" && NPC_MOODS.includes(value as NPCMood)
+    ? (value as NPCMood)
+    : undefined;
+}
+
 // ============================================================
 // NPC 人格卡
 // ============================================================

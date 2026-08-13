@@ -37,6 +37,7 @@ import { getModule as getCustomModule } from "../rules/custom-modules/index";
 import { saveSessionMeta, deleteSessionFile } from "./session-store";
 import type { CombatResult, WorldEntity, ActionIntent, CoCWeaponDef, CombatPersonalityTraits } from "../types";
 import type { NPCPersonality, AgentMessage, MessageType, NPCMood, TurnRecord } from "../agent/types";
+import { asNPCMood } from "../agent/types";
 import { log } from "../log";
 
 export interface ActionResponse {
@@ -528,7 +529,10 @@ export class GameSession {
       attitudes: p.attitudes,
       ruleset: this.activeRuleset as any,
       traits: p.traits,
-      initialMood: p.initialMood,
+      // 人格可能来自模组内联定义，也可能来自运行时解析的 npcs.yaml（any），
+      // 后者完全不受编译器约束。这里是两条来路唯一的汇合点，越界值在此丢弃，
+      // 不让它冒充成合法情绪流进消息与语音层。
+      initialMood: asNPCMood(p.initialMood),
     };
     try {
       this.registry.register(card);
