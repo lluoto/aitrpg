@@ -351,22 +351,25 @@ async function handleRequest(req: Request): Promise<Response> {
             const pid = bodyString(body, "playerId") || session.activePlayerId;
             const value = bodyNumber(body, "value");
             if (value === undefined) return respondError("SAN 值无效", 400);
-            session.setPlayerSan(pid, value);
-            return respondJson({ success: true });
+            const result = session.setPlayerSan(pid, value);
+            if (!result.ok) return respondError(`SAN 设置被拒绝: ${result.error.code}`, 400);
+            return respondJson({ success: true, delta: result.value });
           }
           case "set-hp": {
             const pid = bodyString(body, "playerId") || session.activePlayerId;
             const value = bodyNumber(body, "value");
             if (value === undefined) return respondError("HP 值无效", 400);
-            session.setPlayerHp(pid, value);
-            return respondJson({ success: true });
+            const result = session.setPlayerHp(pid, value);
+            if (!result.ok) return respondError(`HP 设置被拒绝: ${result.error.code}`, 400);
+            return respondJson({ success: true, delta: result.value });
           }
           case "apply-damage": {
             const target = (bodyString(body, "target") ?? "").trim();
             const dmg = bodyNumber(body, "damage");
             if (!target || dmg === undefined) return respondError("目标或伤害值无效", 400);
-            await session.applyDamage(target, dmg);
-            return respondJson({ success: true });
+            const result = session.applyDamage(target, dmg);
+            if (!result.ok) return respondError(`伤害应用被拒绝: ${result.error.code}`, 400);
+            return respondJson({ success: true, delta: result.value });
           }
           case "set-scene": {
             const sceneId = (bodyString(body, "sceneId") ?? "").trim();
@@ -381,8 +384,9 @@ async function handleRequest(req: Request): Promise<Response> {
             if (!isDifficulty(diff)) {
               return respondError("难度需要 easy/medium/hard/nightmare", 400);
             }
-            session.setDifficulty(diff);
-            return respondJson({ success: true });
+            const result = session.setDifficulty(diff);
+            if (!result.ok) return respondError(`难度设置被拒绝: ${result.error.code}`, 400);
+            return respondJson({ success: true, delta: result.value });
           }
           default:
             return respondError(`未知 KP 操作: ${kpAction}`, 400);
