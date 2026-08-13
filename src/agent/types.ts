@@ -75,7 +75,20 @@ export interface MemoryEntry {
   timestamp: number;
   type: "observation" | "dialogue" | "event" | "decision";
   content: string;
-  importance: number; // 1-10, 越高越不遗忘
+  importance: number; // 1-10, 越大越重要
+
+  // 以下三项 npc_memories 表都有对应列，写入与回读的代码也都在，
+  // 只是此前没有声明在类型上 —— 写入端靠 as any 去读，读回端靠
+  // `as MemoryEntry & any` 混出来。目前没有调用方填过它们，
+  // 于是 getSceneMemories 永远查不到东西、pruneMemories 的"保留摘要"
+  // 也从未生效。声明出来是为了让这个缺口可见且可填，不改变现有行为。
+
+  /** 记忆发生的场景 ID；getSceneMemories 按它筛选 */
+  scene_id?: string;
+  /** 与这条记忆相关的实体名 */
+  related_entities?: string[];
+  /** 是否为压缩摘要；pruneMemories 不删摘要条目 */
+  is_summary?: boolean;
 }
 
 // ============================================================

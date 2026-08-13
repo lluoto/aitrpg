@@ -194,8 +194,8 @@ export class NPCStore {
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         npcId, entry.type, entry.content, entry.importance, entry.timestamp,
-        (entry as any).scene_id ?? "",
-        JSON.stringify((entry as any).related_entities ?? []),
+        entry.scene_id ?? "",
+        JSON.stringify(entry.related_entities ?? []),
       ]
     );
   }
@@ -210,8 +210,8 @@ export class NPCStore {
       for (const e of entries) {
         insert.run(
           npcId, e.type, e.content, e.importance, e.timestamp,
-          (e as any).scene_id ?? "",
-          JSON.stringify((e as any).related_entities ?? [])
+          e.scene_id ?? "",
+          JSON.stringify(e.related_entities ?? [])
         );
       }
     });
@@ -371,7 +371,7 @@ function rowToMemory(row: any): MemoryEntry {
     scene_id: row.scene_id || undefined,
     related_entities: safeJSONParse(row.related_entities, undefined),
     is_summary: row.is_summary === 1,
-  } as MemoryEntry & any;
+  };
 }
 
 function safeJSONParse(str: string | undefined, fallback: any): any {
