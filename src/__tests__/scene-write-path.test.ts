@@ -71,3 +71,40 @@ describe("场景切换的写入路径", () => {
     expect(session.world.getCurrentState().scene).toBe("study_room");
   });
 });
+
+// StoryGenerator 已经把场景连通关系整套算好了：SceneTemplate.exits 声明哪些场景
+// 相连，生成时展开成 {target, desc, locked}，末尾还有兜底保证每个场景至少一个出口。
+// 但 handleGenerateStory() 调的是 registerScene(id, name, description)——没有 exits
+// 参数，于是这份数据在落库那一刻被整体丢弃，scenes.exits 停在 schema 默认的 '[]'。
+describe("生成故事的场景连通关系", () => {
+  it("生成后场景出口被持久化，而不是停在空数组", async () => {
+    await session.act("生成故事");
+
+    const scenes = session.world.listScenes();
+    expect(scenes.length).toBeGreaterThan(1);
+    expect(scenes.some((s) => s.exits.length > 0)).toBe(true);
+  });
+
+  it("出口指向的目标都是真实存在的场景，不是悬空 id", async () => {
+    await session.act("生成故事");
+
+    const scenes = session.world.listScenes();
+    const ids = new Set(scenes.map((s) => s.id));
+    const targets = scenes.flatMap((s) => s.exits.map((e) => e.target));
+
+    expect(targets.length).toBeGreaterThan(0);
+    for (const target of targets) {
+      expect(ids.has(target)).toBe(true);
+    }
+  });
+
+  it("出口带有可读的通行描述", async () => {
+    await session.act("生成故事");
+
+    const exits = session.world.listScenes().flatMap((s) => s.exits);
+    expect(exits.length).toBeGreaterThan(0);
+    for (const exit of exits) {
+      expect(exit.desc.length).toBeGreaterThan(0);
+    }
+  });
+});

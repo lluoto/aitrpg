@@ -416,6 +416,20 @@ export class WorldStateManager {
 
   // name 在 schema 里是 NOT NULL，所以不做 `?? id` 回落——那是在防一个
   // 数据库已经禁止的状态。空串是允许的，由调用方自己判 falsy。
+  /**
+   * 覆写场景出口。
+   *
+   * 与 registerScene() 分开而不是给它加第四个参数：出口往往在场景注册之后才
+   * 确定（模组导入分三个阶段补出口，故事生成器先选模板再连边），硬塞进注册
+   * 签名会逼调用方在还不知道出口时先传一个占位值。
+   */
+  setSceneExits(sceneId: string, exits: readonly SceneExit[]) {
+    this.db.run("UPDATE scenes SET exits = ? WHERE id = ?", [
+      JSON.stringify(exits.map((e) => ({ target: e.target, desc: e.desc }))),
+      sceneId,
+    ]);
+  }
+
   private toSceneRecord(row: any): SceneRecord {
     return {
       id: row.id,

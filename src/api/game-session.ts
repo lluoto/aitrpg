@@ -1799,6 +1799,14 @@ export class GameSession {
       this.sceneAliases[scene.id] = [scene.name];
       // 必须落到 scenes 表：setActiveScene() 是 UPDATE，行不存在就静默失配。
       this.world.registerScene(scene.id, scene.name, scene.description);
+      // 连通关系也要落库。StoryGenerator 把它整套算好了——SceneTemplate.exits
+      // 声明哪些场景相连，生成时展开成 {target, desc, locked}，末尾还兜底保证
+      // 每个场景至少一个出口——但 registerScene() 没有 exits 参数，此前这份
+      // 数据在落库那一刻被整体丢弃，scenes.exits 一直停在 schema 默认的 '[]'。
+      //
+      // locked 不落库：目前没有任何消费方，存一个没人读的字段只是另一种死数据。
+      // 真要做上锁的门时再连同它的消费方一起加。
+      this.world.setSceneExits(scene.id, scene.exits);
     }
     // 从 displayNames 和 aliases 合并场景名
     for (const [id, name] of Object.entries(story.displayNames ?? {})) {
