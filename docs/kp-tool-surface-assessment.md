@@ -141,6 +141,34 @@ BFCL-V4 数据（Qwen3.5-4B 50.3 / 9B 66.1，用户提供）指向的判断成�
 
 ---
 
+## 六点五、已建成但从未接线的子系统
+
+排查闸门迁移时顺带发现的。这些不是缺陷，是**未完成的接线**——代码、数据、测试都在，只是没有任何生产路径调用它们。记在这里是为了避免两种误判：以为它们在工作，或者以为它们不存在而重新造一遍。
+
+**1. 调查子系统（`InvestigationEngine`）**
+
+14 个公开方法，生产代码只调用 2 个：`getSceneClues()` 与 `registerSceneClue()`（均在 `game-session.ts`）。核心的 `investigate()` 与 `investigateCoC()` 零调用方，随之未接线的还有 `markDiscovered` / `isDiscoveredBy` / `getDiscoveredBy` / `resetAttempts` / `getUndiscoveredSceneClues` / `setDifficultyProfile` / `addClueType` 等。
+
+后果：技能检定、线索发现判定、难度缩放全部不参与实际游戏；线索目前只被注册和列出用于显示。
+
+一个连带事实：`investigateCoC()` 里 `sanLost` 算完后被直接拼进给玩家看的叙述（`【SAN -N】`）并随结果返回，但**没有任何消费方把它扣到 SanityEngine 上**。一旦接线，必须同时接上扣除，否则就是「叙述说掉了理智、数值没动」——与 §八 记录的「返回 success 却什么都没做」同一族。
+
+另注：`setDifficultyProfile()` 无人调用意味着 `difficultyProfile` 恒为 null，而 `investigateCoC()` 里存在对 `profile.sanMultiplier` 的解引用。接线前需要先补这个守卫，否则第一次调用即抛。
+
+**2. 神话生物的 SAN 消耗（`NPCCombatEngine.getSanCost`）**
+
+`coc-npc.yaml` 为每种生物定义了 `san_cost`（修格斯 `1d6/1d20`、深潜者 `0/1d6` 等），`getSanCost()` 读它——但该方法零调用方。
+
+后果：遭遇神话生物从不触发它自己的 SAN 值。当前实际生效的 SAN 路径只有三条：玩家主动 `san_check`（固定默认 `1/1d6`，与看到什么无关）、阅读魔法书、以及调查线索（而调查本身未接线，见上条）。
+
+**3. NPC 技能（`upsertEntity` 的 `skills`）**
+
+`MythosModuleLoader` 的宿主契约声明 `skills?: Record<string, number>`，模组也确实传了进来，但 `entities` 表**没有 skills 列**，`upsertEntity` 的 SQL 里也没有它——整份技能数据在落库时被丢弃。
+
+与 §八 的关系：这三条都不会报错、不会让测试变红，只会让「本该发生的事」安静地不发生。第 1、2 条的接线点都在 `game-session.ts`，且都需要先做玩法决定（多久检定一次、遭遇即扣还是首次遭遇才扣），不属于纯接线工作。
+
+---
+
 ## 七、回归测试基线
 
 备忘录 §三.3 已给出 8 条，直接作为阶段 4 的验收脚本，且阶段 2 的闸门应能在无模型参与下静态复现其中的状态判断：
