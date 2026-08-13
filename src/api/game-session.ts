@@ -11,17 +11,19 @@ import { SanityEngine, CoCEngine, calcDamageBonus, rollDamageBonus, getHitLocati
 import { NPCAgent } from "../agent/npc-agent";
 import { KPAgent } from "../agent/kp-agent";
 import { AgentRegistry } from "../agent/agent-registry";
-import { WorldStateManager } from "../state/world-state-manager";
+import { WorldStateManager, type SceneRecord } from "../state/world-state-manager";
 import { NPCCombatEngine } from "../combat/npc-combat";
 import { CompanionManager } from "../combat/companion-manager";
 import { PlayerSession, type VisibilityRule } from "../session/player-session";
 import { InvestigationEngine } from "../investigation/investigation-engine";
 import { SpellEngine } from "../spell/spell-engine";
-import { WorldModelLoader } from "../world/world-model-loader";
+import { WorldModelLoader, sharedWorldModel } from "../world/world-model-loader";
 import { WorldModelIntegrator, type SceneContext, type NPCPresentProfile } from "../world/world-model-integrator";
 import { NPCStore } from "../db/index";
 import { assessModuleDifficulty, getDifficultyProfile } from "../rules/module-difficulty";
 import type { DifficultyProfile } from "../rules/module-difficulty";
+import { applyAction, type GateState, type RejectReason, type Result, type StateDelta } from "../rules/apply-action";
+import { boundedIntegerGateState, boundedIntegerScenario, buildDifficultyGateState, COC_SESSION_SCENARIO, isDifficultyLabel } from "../rules/coc-session-scenario";
 import { CharacterFactory, getArchetype, type GeneratedCharacter, type LegendaryAction } from "../character/character-factory";
 import { StoryGenerator } from "../rules/story-generator";
 import { CareerFileStore } from "../character/career-file";
@@ -82,6 +84,9 @@ const SKILL_DISPLAY_NAMES: Record<string, string> = {
   listen: "聆听", psychology: "心理学", library: "图书馆", fight: "格斗",
 };
 
+/** 克苏鲁神话世界模型路径。共享 loader 按路径分桶，因此这里必须是同一个常量。 */
+const CTHULHU_MODEL_PATH = "../世界模型/cthulhu_extracted/cthulhu_world_model.jsonl";
+
 export class GameSession {
   readonly id: string;
   readonly createdAt: number;
@@ -116,20 +121,22 @@ export class GameSession {
   combatActive: boolean = false;
 
   private characters: Map<string, any> = new Map();
+  /**
+   * SAN 引擎是带行为的对象（检定、疯狂判定），这里只作进程内缓存；
+   * 其 state 的真相源是 WorldStateManager，落库点见 persistSanity()。
+   * 背包 / 武器 / 护甲没有进程内副本，一律直读直写真相源。
+   */
   private sanityEngines: Map<string, SanityEngine> = new Map();
-  private inventoryMap: Map<string, string[]> = new Map();
-  private equippedWeaponsMap: Map<string, string[]> = new Map();
-  private equippedArmorMap: Map<string, string[]> = new Map();
   private sceneItems: Map<string, string[]> = new Map();
   private sceneDisplayNames: Record<string, string> = {};
   private sceneAliases: Record<string, string[]> = {};
-  private registeredModules: any[] = [];
-  private lastNarrative: string = "";
   /**
    * 场景 → 配乐标识。模组静态数据，与显示名/别名同层，**不属于世界状态**，
    * 因此留在进程内而不进真相源：它不会被玩法改变，重载模组即可重建。
    */
   private sceneBgm: Record<string, string> = {};
+  private registeredModules: any[] = [];
+  private lastNarrative: string = "";
   private lastDiceRoll: { expr: string; total: number; detail?: string; bonus?: number } | null = null;
   private lastRolls: Array<{skill: string; roll: number; target: number; success: boolean}> = [];
   private gameTime: GameTime = createGameTime();
@@ -181,18 +188,18 @@ export class GameSession {
     this.npcStore = new NPCStore();
     this.registry = new AgentRegistry(this.llm, this.npcStore);
     this.kp = new KPAgent({ scene_description: "", scene_elements: [], current_phase: "exploration", style: "standard", plot_nodes: [] }, this.llm);
-    this.worldModel = new WorldModelLoader();
+    // 进程内共享：这两份是只读参考数据，不是会话状态。每会话各建一个会让
+    // 383688 条的 v18 主库按会话数重复加载与驻留（实测 3 会话 = 3 次加载 / 1938MB）。
+    this.worldModel = sharedWorldModel();
     this.wmIntegrator = new WorldModelIntegrator(this.worldModel);
-    this.cthulhuLoader = new WorldModelLoader();
+    this.cthulhuLoader = sharedWorldModel(CTHULHU_MODEL_PATH);
     // 世界模型懒加载：不在此处 load()（v18_all_master.jsonl ~240MB，会拖慢所有 GameSession 实例化，
     // 测试与无模型场景均受影响）。首次需要注入时才在 injectWorldModelForScene() 里加载。
 
     this.sanity = new SanityEngine(50);
     this.sanityEngines.set("p1", this.sanity);
-
-    this.inventoryMap.set("p1", []);
-    this.equippedWeaponsMap.set("p1", []);
-    this.equippedArmorMap.set("p1", []);
+    this.world.registerPlayer("p1");
+    this.persistSanity("p1");
 
     // 注册玩家到会话（始终执行：无玩家时 join 设为活动玩家，已存在则切换）
     // 历史消息记录依赖活动玩家的 messageHistory，缺失会导致 getHistory 恒空
@@ -214,6 +221,22 @@ export class GameSession {
         );
         this.activeCharacter = char;
         this.characters.set("p1", char);
+        // 角色卡与世界实体必须同时诞生。此前实体要等 setPlayerHp 或移动流程
+        // 顺手 upsert 才出现，于是开局的 KP 伤害因为找不到实体而失败
+        // （改造前抛异常兜成 500），而 getState() 的硬编码兜底又让面板照常
+        // 显示 12/12，两相抵消，谁都看不出来。
+        this.world.upsertEntity({
+          id: "p1",
+          name: char.name,
+          type: "pc",
+          hp: char.hp,
+          maxHp: char.maxHp,
+          // GeneratedCharacter 没有 ac 字段；与另外两处懒建点取同一个常量。
+          // CoC 规则下 getState() 本就把对外的 ac 覆盖成 0。
+          ac: 10,
+          status: [],
+          position: this.world.getCurrentState().scene ?? "unknown",
+        });
         // 创建角色卡档案（独立目录"
         const careerDir = `data/careers/${this.id}`;
         try { rmSync(careerDir, { recursive: true }); } catch {}
@@ -261,7 +284,14 @@ export class GameSession {
 
   getState(): ActionResponse["state"] {
     const state = this.world.getCurrentState();
-    const playerEnt = state.entities["player"];
+    // KP setter 和角色卡以 activePlayerId（默认 p1）为主键写入；这里若固定
+    // 读 "player"，会读到移动流程懒建的另一份实体，面板就永远显示旧 HP。
+    //
+    // 且不能只从 state.entities 取：getCurrentState() 走 getAllAliveEntities()，
+    // 玩家 HP 归零后就从快照里消失，于是落到下面的兜底值，KP 把 PC 打死、
+    // 面板反而显示满血 12/12。玩家自身的状态必须始终可读，与存活无关，
+    // 所以死亡时回退到不过滤存活的 getEntity()。NPC / 怪物那边的存活过滤保持原样。
+    const playerEnt = state.entities[this.activePlayerId] ?? this.world.getEntity(this.activePlayerId);
     // 在场名单必须限定在玩家当前场景，与 injectWorldModelForScene() 的事实口径一致；
     // 否则前端会把模组里所有 NPC 都显示为「在场」，与 KP 叙事互相矛盾。
     // 位置同时写在 scene_id 与 position 两个字段（setPlayerHp 只写 position），故取并集。
@@ -342,7 +372,36 @@ export class GameSession {
     this.session.push({ speaker, content, type: "dialogue", ...(mood ? { mood } : {}) }, "public");
   }
 
+  /**
+   * 回合出口。这里是两条互不相交的链路唯一交汇的地方，改动时请分别对待：
+   *
+   * - **消息链路**（verbatim 模组原文标记）：turnMessages → events，以及
+   *   addMessage → PlayerSession.messageHistory → GET /history。
+   *   注意模组开场白走的是后者：MythosModuleLoader 经 host.addMessage 直接入
+   *   messageHistory，不进 turnMessages，因此它只出现在 /history 里，
+   *   当回合的 events 中没有 verbatim 项——这是预期，不是丢标记。
+   *   前端两条路径都读（action 读 ev.verbatim，恢复会话读 m.verbatim）。
+   * - **状态链路**（真相源迁移阶段 1）：persistSanity() 把本回合内 SanityEngine
+   *   就地改动的 state 落到 WorldStateManager。SAN/背包/武器/护甲的权威值在库里，
+   *   不在进程内 Map。
+   *
+   * 两者不共享数据，只共享这一个调用点：消息不承载状态，状态不进消息体。
+   */
   private buildActionResponse(turnMessages: AgentMessage[]): ActionResponse {
+    // 回合出口统一落库：本回合内 SanityEngine 就地改动的 state 在此刻进入真相源。
+    this.persistSanity();
+
+    // 回合消息入会话历史。act() 只把玩家行动、KP 叙述、系统提示攒在局部数组里，
+    // 此前它们从不经过 session.push()，导致 GET /history 与 getSummary().messageCount
+    // 在正常跑团后恒空——前端恢复会话拿到空日志，语音层也读不到要念的内容。
+    //
+    // 写在回合出口而不是每个 turnMessages.push() 处：出口是唯一汇合点，act() 的
+    // 每条返回路径都经过它，逐点改 20 余处既冗余又易漏。代价是回合内顺序——
+    // 经 addMessage() 直入历史的消息（模组开场白、流血提示）按各自写入时刻排，
+    // 回合消息统一排在其后。彻底统一属于 docs/voice-readiness.md §六 第 2 步
+    // 「addMessage 尾参收成 options 对象」那次重构的范围，不在此处提前做。
+    for (const m of turnMessages) this.session.push(m);
+
     const state = this.getState();
     return {
       narrative: this.lastNarrative,
@@ -528,7 +587,7 @@ export class GameSession {
   private buildCthulhuContext(): string {
     try {
       if (!this.cthulhuLoader.isLoaded()) {
-        this.cthulhuLoader.load("../世界模型/cthulhu_extracted/cthulhu_world_model.jsonl");
+        this.cthulhuLoader.load(CTHULHU_MODEL_PATH);
       }
       if (!this.cthulhuLoader.isLoaded()) return "";
 
@@ -602,9 +661,9 @@ export class GameSession {
     const characters: any[] = [];
     for (const [pid, ch] of this.characters) {
       const sanEng = this.sanityEngines.get(pid) ?? this.sanity;
-      const inv = this.inventoryMap.get(pid) ?? [];
-      const weps = this.equippedWeaponsMap.get(pid) ?? [];
-      const armors = this.equippedArmorMap.get(pid) ?? [];
+      const inv = this.world.getPlayerInventory(pid);
+      const weps = this.world.getPlayerWeapons(pid);
+      const armors = this.world.getPlayerArmor(pid);
       characters.push({
         playerId: pid, name: ch.name,
         archetype: ch.archetype?.label ?? ch.archetype?.id ?? "调查员",
@@ -614,7 +673,12 @@ export class GameSession {
         temporaryInsanity: sanEng.state.temporaryInsanity,
         indefiniteInsanity: sanEng.state.indefiniteInsanity,
         luck: ch.luck ?? 60, skills: ch.skillValues ?? {},
-        inventory: inv, weapons: weps, armor: armors.map((a: any) => a?.name ?? a),
+        // armor 全链路是 string[]：唯一写入方是 setPlayerArmor(armor: string[])，
+        // 存进去的是 JSON.stringify(string[])，读出来经 parseJsonColumn<string[]> 还原。
+        // 原写法 `armors.map((a: any) => a?.name ?? a)` 在防一个「元素是带 name 的对象」
+        // 的形状，但没有任何代码路径能产生它——与 exits 那次不同，那次能找到三个
+        // 真实写对象的写入点，这次一个都没有。防不可能的形状只换来一个 any。
+        inventory: inv, weapons: weps, armor: armors,
       });
     }
 
@@ -643,23 +707,60 @@ export class GameSession {
   sendMessage(speaker: string, content: string, type: MessageType = "system") {
     this.addMessage(speaker, content, type);
   }
-  setPlayerSan(pid: string, value: number) {
-    let eng = this.sanityEngines.get(pid);
-    if (!eng) {
-      // SanityEngine(pow) 只接受一个参数，并把 currentSAN 与 maxSAN 同时设为它。
-      // 原写法 new SanityEngine(value, Math.max(value, 50)) 的第二个参数被静默忽略，
-      // 结果 maxSAN 被压成 value——KP 给新玩家设 SAN 30，其理智上限就永久变成 30。
-      // 这里用目标上限构造，再单独压低当前值。
-      eng = new SanityEngine(Math.max(value, 50));
-      this.sanityEngines.set(pid, eng);
-    }
-    eng.state.currentSAN = Math.max(0, Math.min(value, eng.state.maxSAN));
+  /**
+   * KP 设置指定玩家的当前 SAN。
+   *
+   * 不再懒建 SanityEngine：原写法用 `new SanityEngine(Math.max(value, 50))`
+   * 给不存在的玩家现造一个引擎，上限由传入值自己推出来，于是任何值都合法——
+   * 这个「域」是循环的，校验不了任何东西。引擎的存在性就是玩家的存在性
+   * （构造函数建 p1，创建队友同时写 characters 与 sanityEngines），
+   * 所以取不到引擎即为未知玩家。
+   *
+   * 也不再 `Math.max(0, Math.min(value, maxSAN))` 静默钳制：KP 设 999 会被
+   * 悄悄改成 50 却返回成功，属于 §八 那类「看起来成功了、值却不是你设的那个」。
+   * 越界现在是结构化拒绝，缓存与真相源都不动。
+   */
+  setPlayerSan(pid: string, value: number): Result<StateDelta, RejectReason> {
+    const eng = this.sanityEngines.get(pid);
+    if (!eng) return { ok: false, error: { code: "unknown_target", targetId: pid } };
+
+    const variable = `san:${pid}`;
+    const result = applyAction(
+      boundedIntegerScenario(variable, eng.state.currentSAN, eng.state.maxSAN),
+      boundedIntegerGateState(variable, eng.state.currentSAN),
+      {
+        kind: "freeform",
+        actor: "kp",
+        description: `set SAN for ${pid}`,
+        effects: [{ variable, to: value }],
+      },
+    );
+    if (!result.ok) return result;
+
+    eng.state.currentSAN = value;
     if (pid === this.activePlayerId) this.sanity = eng;
+    this.persistSanity(pid);
+    return result;
   }
-  setPlayerHp(pid: string, value: number) {
+  setPlayerHp(pid: string, value: number): Result<StateDelta, RejectReason> {
     const ch = this.characters.get(pid);
-    if (!ch) return;
-    ch.hp = Math.max(0, Math.min(value, ch.maxHp ?? 99));
+    if (!ch) return { ok: false, error: { code: "unknown_target", targetId: pid } };
+
+    const maxHp = ch.maxHp ?? 99;
+    const variable = `hp:${pid}`;
+    const result = applyAction(
+      boundedIntegerScenario(variable, ch.hp, maxHp),
+      boundedIntegerGateState(variable, ch.hp),
+      {
+        kind: "freeform",
+        actor: "kp",
+        description: `set HP for ${pid}`,
+        effects: [{ variable, to: value }],
+      },
+    );
+    if (!result.ok) return result;
+
+    ch.hp = value;
     // 同步世界实体（若不存在则创建"
     let ent = this.world.getEntity(pid);
     if (!ent) {
@@ -668,17 +769,73 @@ export class GameSession {
       ent.hp = ch.hp;
     }
     this.world.upsertEntity(ent);
+    return result;
   }
   /** 覆盖指定玩家的背包内容（HTTP 角色卡编辑用）。 */
   setPlayerInventory(pid: string, items: string[]) {
-    this.inventoryMap.set(pid, items);
+    this.world.setPlayerInventory(pid, items);
   }
   /** 覆盖指定玩家已装备的武器（HTTP 角色卡编辑用）。 */
   setPlayerWeapons(pid: string, weapons: string[]) {
-    this.equippedWeaponsMap.set(pid, weapons);
+    this.world.setPlayerWeapons(pid, weapons);
   }
-  applyDamage(entityId: string, damage: number) {
-    this.world.applyDamage(entityId, Math.max(0, damage));
+  /** 覆盖指定玩家已装备的护甲。 */
+  setPlayerArmor(pid: string, armor: string[]) {
+    this.world.setPlayerArmor(pid, armor);
+  }
+  /**
+   * 把 SAN 引擎的当前 state 写回真相源。
+   *
+   * SanityEngine 在自己的方法里就地改 state（全仓 40 处），逐点拦截既脆弱又易漏，
+   * 因此统一在两类边界落库：显式 setter（setPlayerSan）与每回合出口
+   * （buildActionResponse）。回合内的中间态不落库，回合结束时必定一致。
+   */
+  private persistSanity(pid?: string) {
+    if (pid !== undefined) {
+      const eng = this.sanityEngines.get(pid);
+      if (eng) this.world.setPlayerSanity(pid, eng.state);
+      return;
+    }
+    for (const [id, eng] of this.sanityEngines) this.world.setPlayerSanity(id, eng.state);
+  }
+  /**
+   * 对任意实体（PC / NPC / 怪物）施加伤害。
+   *
+   * 伤害是算术增量，闸门校验的是绝对状态，所以这里先把「当前 HP 减伤害」
+   * 投影成目标 HP 再送闸门（见 docs/kp-tool-numeric-domain-design.md）。
+   *
+   * 两处旧行为被换掉：
+   * - `Math.max(0, damage)` 把负伤害静默变成 0 并返回成功。负伤害不是零伤害，
+   *   是调用错了方法（治疗不该走这里），现在直接拒绝。小数伤害同理——
+   *   它原本会把分数 HP 写进数据库。
+   * - `world.applyDamage()` 对不存在的实体抛异常，被 server 的 catch 兜成 500。
+   *   目标名打错属于输入错误，现在是结构化拒绝，由 HTTP 映射成 400。
+   *
+   * 过量伤害落到 0 保留原样：那是正确的战斗语义，不是把非法输入伪装成成功。
+   */
+  applyDamage(entityId: string, damage: number): Result<StateDelta, RejectReason> {
+    const variable = `hp:${entityId}`;
+    if (!Number.isInteger(damage) || damage < 0) {
+      return { ok: false, error: { code: "invalid_amount", variable, amount: damage } };
+    }
+
+    const ent = this.world.getEntity(entityId);
+    if (!ent) return { ok: false, error: { code: "unknown_target", targetId: entityId } };
+
+    const result = applyAction(
+      boundedIntegerScenario(variable, ent.hp, ent.maxHp),
+      boundedIntegerGateState(variable, ent.hp),
+      {
+        kind: "freeform",
+        actor: "kp",
+        description: `apply ${damage} damage to ${entityId}`,
+        effects: [{ variable, to: Math.max(0, ent.hp - damage) }],
+      },
+    );
+    if (!result.ok) return result;
+
+    this.world.applyDamage(entityId, damage);
+    return result;
   }
   /**
    * KP 手动切换活动场景。
@@ -694,12 +851,26 @@ export class GameSession {
     this.world.setActiveScene(sceneId);
     return true;
   }
-  setDifficulty(diff: "easy" | "medium" | "hard" | "nightmare") {
+  /** 当前会话映射到 applyAction 所需的只读状态快照。 */
+  getGateState(): GateState {
+    return buildDifficultyGateState(this.activeDifficulty?.label ?? "medium");
+  }
+
+  setDifficulty(diff: string): Result<StateDelta, RejectReason> {
+    const result = applyAction(COC_SESSION_SCENARIO, this.getGateState(), {
+      kind: "freeform",
+      actor: "kp",
+      description: `set difficulty to ${diff}`,
+      effects: [{ variable: "difficulty", to: diff }],
+    });
+    if (!result.ok) return result;
+
     // 直接用 module-difficulty 的权威难度表。
     // 此前这里内联了一份退化副本：label 填的是中文显示名，而权威表里 label 是判别式
     // （getPushNarration 对它做 switch），clueOnFail 还用了 "generous"/"hidden" 这两个
     // 并不存在的取值，同时丢掉了 pushAllowed / pushCostMultiplier / failureGuidance。
-    this.activeDifficulty = getDifficultyProfile(diff);
+    if (isDifficultyLabel(diff)) this.activeDifficulty = getDifficultyProfile(diff);
+    return result;
   }
 
   // ============================================================
@@ -736,6 +907,8 @@ export class GameSession {
       for (const [pid, ch] of this.characters) {
         if (ch.name === actingCharacterName && pid !== this.activePlayerId) {
           this.sanityEngines.set(this.activePlayerId, this.sanity);
+          // 换人前先把上一位的 SAN 落库，否则本回合的改动会随缓存切换丢失
+          this.persistSanity(this.activePlayerId);
           this.activePlayerId = pid;
           this.activeCharacter = ch;
           this.session.switchActive(pid);
@@ -763,9 +936,8 @@ export class GameSession {
       const san = new SanityEngine(50);
       this.characters.set(pid, ch);
       this.sanityEngines.set(pid, san);
-      this.inventoryMap.set(pid, []);
-      this.equippedWeaponsMap.set(pid, []);
-      this.equippedArmorMap.set(pid, []);
+      this.world.registerPlayer(pid);
+      this.persistSanity(pid);
       turnMessages.push({ speaker: "系统", content: `👤 ${name}(${cls}) 加入了队伍`, type: "system" });
       return this.buildActionResponse(turnMessages);
     }
@@ -1161,29 +1333,28 @@ export class GameSession {
     }
     // 2. scenes 表 name/id 精确 + 包含匹配
     try {
-      const db = (this.world as any).getDatabase() as any;
-      const rows = db.query("SELECT id, name FROM scenes").all() as any[];
+      const rows = this.world.listScenes();
       // 2a. 精确
       for (const r of rows) {
         if (r.id === t || r.name === t) return this.movePlayerToScene(r.id);
       }
       // 2b. 包含：目标包含场景名（"警察局了解案情" → 警察局）或场景名包含目标（"谷仓" → 谷仓内部）
-      let best: any = null;
+      let best: SceneRecord | null = null;
       for (const r of rows) {
-        const name = r.name ?? r.id ?? "";
+        const name = r.name;
         if (!name || name === "unknown") continue;
-        if (t.includes(name)) { if (!best || name.length > (best.name ?? best.id ?? "").length) best = r; }
-        else if (name.includes(t) && t.length >= 2) { if (!best || name.length < (best.name ?? best.id ?? "").length) best = r; }
+        if (t.includes(name)) { if (!best || name.length > best.name.length) best = r; }
+        else if (name.includes(t) && t.length >= 2) { if (!best || name.length < best.name.length) best = r; }
       }
       if (best) return this.movePlayerToScene(best.id);
       // 2c. bigram 公共子串：处理非子串但语义相同（"艾德里安的住宅调查" → "艾德里安在镇子内的住宅"，公共 gram=5）
       // 阈值 1：让"进入谷仓调查"也能匹配"谷仓形建筑"（公共 gram=谷仓）
       const grams = new Set<string>();
       for (let i = 0; i < t.length - 1; i++) grams.add(t.slice(i, i + 2));
-      let bestGram: any = null;
+      let bestGram: SceneRecord | null = null;
       let bestGramScore = 0;
       for (const r of rows) {
-        const name = r.name ?? r.id ?? "";
+        const name = r.name;
         if (!name || name === "unknown") continue;
         let score = 0;
         for (let i = 0; i < name.length - 1; i++) if (grams.has(name.slice(i, i + 2))) score++;
@@ -1194,9 +1365,16 @@ export class GameSession {
     return false;
   }
 
-  /** 将玩家移动到场景并设为活动场景（不创建垃圾场景） */
+  /**
+   * 将玩家移动到场景并设为活动场景（不创建垃圾场景）。
+   *
+   * 经 setScene() 而不是直接 setActiveScene()：后者是
+   * `UPDATE scenes SET is_active=1 WHERE id=?`，场景未注册时匹配不到行，
+   * 整条切换静默失效——与 §八 记录的两次事故同类。setScene() 会先校验注册。
+   * 未注册时返回 false 并保持原场景，由调用方决定如何提示。
+   */
   private movePlayerToScene(sceneId: string): boolean {
-    this.world.setActiveScene(sceneId);
+    if (!this.setScene(sceneId)) return false;
     const state = this.world.getCurrentState();
     const player = state.entities["player"];
     if (player) {
@@ -1218,10 +1396,18 @@ export class GameSession {
       "酒馆": "tavern", "旅店": "tavern",
     };
     const sceneId = sceneMap[target] ?? target;
-    // 确保场景在 DB 中存在并设为活动
-    const db = (this.world as any).getDatabase() as any;
-    db.run("INSERT OR IGNORE INTO scenes (id, name, description, is_active) VALUES (?, ?, ?, 0)", [sceneId, target, `${target}的场景`]);
-    this.world.setActiveScene(sceneId);
+    // 玩家自由移动可以落到尚未注册的场景，这里按需注册后再经 setScene() 激活。
+    //
+    // 原写法是 `(this.world as any).getDatabase()` 裸写 INSERT OR IGNORE。
+    // 问题不在于取不到 db（getDatabase() 本就是 WorldStateManager 的公开方法），
+    // 而在于那个 `as any` 把整条链的类型检查关掉了：列名拼错、少写一列、
+    // is_active 默认值给错，全都要等运行时才发现——registerScene() 先删后插
+    // 清空 exits 那个 bug 就是这么漏过去的。改走具名方法后表结构只有
+    // world-state-manager 知道，这里写错会在编译期断掉。
+    if (!this.world.getScene(sceneId)) {
+      this.world.registerScene(sceneId, target, `${target}的场景`);
+    }
+    this.setScene(sceneId);
     // 更新玩家位置
     const state = this.world.getCurrentState();
     const player = state.entities["player"];
@@ -1238,7 +1424,7 @@ export class GameSession {
 
   // ── 背包 ──
   private handleInventory(msg: (s: string) => number): boolean {
-    const inv = this.inventoryMap.get(this.activePlayerId) ?? [];
+    const inv = this.world.getPlayerInventory(this.activePlayerId);
     if (inv.length === 0) {
       msg("你的背包是空的");
       this.lastNarrative = "你的背包里空空如也";
@@ -1629,7 +1815,9 @@ export class GameSession {
 
     // 设置当前场景为第一个场"
     if (story.scenes.length > 0) {
-      this.world.setActiveScene(story.scenes[0].id);
+      // 上面的循环刚 registerScene 过全部场景，这里统一经 setScene() 收口，
+      // 保持「场景激活只有一条写入路径」这个不变量可被 grep 验证。
+      this.setScene(story.scenes[0].id);
     }
 
     const sceneNames = story.scenes.map(s => s.name).join(", ");
@@ -1724,15 +1912,13 @@ export class GameSession {
       const lines = loader.import(mod);
       loaded.set(mod.id, true);
       this.registeredModules.push(mod);
+      if (mod.sceneBgm) Object.assign(this.sceneBgm, mod.sceneBgm);
       // 填充模组场景显示名/别名（scenes 表已由 registerScene 写入，含模组原文描写）
       try {
-        const db = (this.world as any).getDatabase() as any;
-        const rows = db.query("SELECT id, name, description FROM scenes").all() as any[];
-        for (const r of rows) {
-          const name = r.name ?? r.id ?? "";
-          if (!name || name === "unknown") continue;
-          this.sceneDisplayNames[r.id] = name;
-          if (r.description && r.description.length > 0) this.sceneAliases[r.id] = [name];
+        for (const r of this.world.listScenes()) {
+          if (!r.name || r.name === "unknown") continue;
+          this.sceneDisplayNames[r.id] = r.name;
+          if (r.description.length > 0) this.sceneAliases[r.id] = [r.name];
         }
       } catch { /* 忽略 DB 错误 */ }
       // 玩家初始位置 → 模组入口场景（优先 sceneDescriptions 第一个 key，兜底 scenes 表第一行），确保场景描写可注入
@@ -1774,7 +1960,6 @@ export class GameSession {
     if (targets.length === 0 && this.activeCharacter) {
       targets.push({ pid: this.activePlayerId, char: this.activeCharacter });
     }
-      if (mod.sceneBgm) Object.assign(this.sceneBgm, mod.sceneBgm);
 
     for (const { pid, char } of targets) {
       const skillChanges: string[] = [...(restGrowth.get(pid) ?? [])];
