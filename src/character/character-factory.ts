@@ -936,7 +936,10 @@ const COC_ARCHETYPES: CharacterArchetype[] = [
     skills: ["潜行", "锁匠", "估价", "格斗(肉搏)", "射击(手枪)", "话术"],
     occupationSkills: ["stealth", "lockpick", "appraise", "fighting", "firearms_pistol", "fast_talk"],
     baseHp: 10, rulesets: ["cosmic-horror"], creditRatingRange: [10, 40],
-    skillCount: 6, skillSourceAttribute: "strength", skillPointMultiplier: 2, skillSecondSource: "dexterity", skillSecondMultiplier: 2,
+    // 主来源写成 strength 是笔误：全部其他职业都是 education，类型也只允许
+    // education/intelligence/dexterity，而 CoC 7e 的罪犯本就是 EDU×2 + DEX×2。
+    // 之前罪犯的技能点是按力量算的。
+    skillCount: 6, skillSourceAttribute: "education", skillPointMultiplier: 2, skillSecondSource: "dexterity", skillSecondMultiplier: 2,
   },
   // ── 大学生 College Student ──
   {

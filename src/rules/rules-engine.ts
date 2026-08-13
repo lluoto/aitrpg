@@ -4,7 +4,7 @@
 import { RuleEngine } from "../engine/rule-engine";
 import { CoCEngine, getCalledShotPenalty, type HitLocation } from "./coc-engine";
 import { GrailEngine, type GrailRank } from "./grail-engine";
-import type { WorldEntity, ActionIntent, CombatResult } from "../types";
+import type { WorldEntity, ActionIntent, CombatResult, BonusEntry } from "../types";
 
 export type RulesetId = "dnd5e" | "cosmic-horror" | "grail";
 
@@ -32,6 +32,36 @@ export interface UnifiedCombatResult {
   /** 反击/格挡命中时，反击方对攻击者造成的伤害 */
   counterDamage?: number;
   counterHit?: boolean;
+}
+
+/**
+ * 把规则引擎的战斗结果转成事件日志与叙事层要的 CombatResult。
+ *
+ * 两边字段名不一样：critical/crit、damageType/damage_type。之前调用方是把
+ * UnifiedCombatResult 直接传过去的，而 generateNarrativeLLM 读的正是 result.crit
+ * 和 result.damage_type —— 这两个键在 UnifiedCombatResult 上根本不存在，于是
+ * 提示词里的"暴击"永远是"否"、伤害类型永远写成 undefined，暴击的描写从来没出现过。
+ *
+ * 演出提示按 engine/rule-engine.ts resolveAttack() 里的同一套推导补齐，
+ * 两条战斗链路给出的口径保持一致。
+ */
+export function toCombatResult(u: UnifiedCombatResult): CombatResult {
+  const roll = u.d20Roll ?? u.cocRoll ?? 0;
+  const bonuses: BonusEntry[] = (u.d20Bonuses ?? []).map(b => ({ source: b.source, value: b.value }));
+  const total = bonuses.reduce((sum, b) => sum + (typeof b.value === "number" ? b.value : 0), roll);
+  return {
+    hit: u.hit,
+    crit: u.critical,
+    roll,
+    bonuses,
+    total,
+    damage: u.damage,
+    damage_type: u.damageType,
+    result: u.result,
+    intensity: u.result === "kill" ? 0.7 : u.result === "wound" ? 0.4 : 0.1,
+    camera_hint: u.result === "kill" ? "close_up_fatal" : (u.hit ? "impact" : "miss"),
+    sfx_hint: u.damageType === "piercing" ? "blade_pierce" : "weapon_clash",
+  };
 }
 
 export class RulesEngine {

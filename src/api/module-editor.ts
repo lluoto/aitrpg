@@ -130,11 +130,13 @@ export function createBlankModule(id: string, name: string): MythosModule {
     description: "",
     difficulty: "medium",
     activation: { type: "manual", condition: "" },
-    scenes: [],
-    characters: [],
+    // 这里原来铺的是 scenes / characters / creatures —— MythosModule 没有这三个字段，
+    // 它们是旧 schema 的名字。加载器只认 sceneDescriptions 和 npcs（NPC 与生物共用），
+    // 所以编辑器建出来的空白模组既带着三个会被忽略的键，又缺少真正能往里填的容器。
+    sceneDescriptions: {},
+    npcs: [],
     clues: [],
     items: [],
     spells: [],
-    creatures: [],
   };
 }

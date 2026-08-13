@@ -16,7 +16,7 @@ import { LLMClient } from "./llm/client";
 import { parseIntent, setIntentLLM } from "./llm/intent";
 import { generateNarrative, setNarratorLLM } from "./llm/narrator";
 import { RuleEngine } from "./engine/rule-engine";
-import { RulesEngine, type RulesetId } from "./rules/rules-engine";
+import { RulesEngine, toCombatResult, type RulesetId } from "./rules/rules-engine";
 import { CoCEngine, SanityEngine, SUCCESS_LEVEL_LABELS, sanOutcomeLabel } from "./rules/coc-engine";
 import { NPCAgent } from "./agent/npc-agent";
 import { KPAgent } from "./agent/kp-agent";
@@ -535,7 +535,7 @@ async function handleCombat(
     const { killed } = world.applyDamage(target.id, result.damage);
     world.logCombatEvent(round, playerCharacter.id, target.id,
       `${attacker.name} 用 ${weapon} 攻击 ${target.name}，${result.hit ? `造成 ${result.damage} 点伤害` : "未命中"}`,
-      result
+      toCombatResult(result)
     );
     if (killed) {
       world.logEvent({ round, timestamp: Date.now(), event_type: "system", description: `${target.name} 已死亡` });
@@ -555,7 +555,7 @@ async function handleCombat(
   }
 
   // 叙事生成
-  const narrative = await generateNarrative(playerCharacter.name, target.name, weapon, result);
+  const narrative = await generateNarrative(playerCharacter.name, target.name, weapon, toCombatResult(result));
   console.log(`  📖 ${narrative}`);
   addMessage("旁白", narrative, "narration");
   turnMessages.push({ speaker: "旁白", content: narrative, type: "narration" });
@@ -772,7 +772,7 @@ async function resolveNPCAction(
     const { killed } = world.applyDamage(target.id, result.damage);
     world.logCombatEvent(round, npc.id, target.id,
       `${npc.name} 攻击 ${target.name}，造成 ${result.damage} 点伤害`,
-      result
+      toCombatResult(result)
     );
     if (killed) {
       world.logEvent({ round, timestamp: Date.now(), event_type: "system", description: `${target.name} 被 ${npc.name} 击杀` });
@@ -784,7 +784,7 @@ async function resolveNPCAction(
   }
 
   // 叙事
-  const narrative = await generateNarrative(npc.name, target.name, weapon, result);
+  const narrative = await generateNarrative(npc.name, target.name, weapon, toCombatResult(result));
   console.log(`  ⚔ ${narrative}`);
   addMessage("旁白", narrative, "narration");
   turnMessages.push({ speaker: "旁白", content: narrative, type: "narration" });

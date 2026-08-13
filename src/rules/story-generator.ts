@@ -140,8 +140,17 @@ export interface SceneTemplate {
   lockedExitChance: number;
 }
 
-/** 每个主题对应的场景清单 */
-const SCENE_TEMPLATES: Record<SceneTheme, SceneTemplate[]> = {
+/**
+ * 每个主题对应的场景清单。
+ *
+ * 15 个 SceneTheme 只有 6 个写了模板，所以类型是 Partial —— 原先标成完整 Record
+ * 并不成立，缺的 9 个在类型上被当作存在，生成时取到的却是 undefined。
+ * 下面取模板处一直写着 `?? SCENE_TEMPLATES.abandoned_house` 兜底，说明这个缺口
+ * 本来就是已知的，只是类型没说实话，那句兜底在类型上反而像是多余的。
+ * abandoned_house 单独标成必有，因为它就是那个兜底，编译期即可确保它在。
+ */
+const SCENE_TEMPLATES: Partial<Record<SceneTheme, SceneTemplate[]>>
+  & { abandoned_house: SceneTemplate[] } = {
   abandoned_house: [
     {
       id: "entrance", name: "破败门厅",
