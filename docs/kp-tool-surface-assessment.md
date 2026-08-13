@@ -147,13 +147,15 @@ BFCL-V4 数据（Qwen3.5-4B 50.3 / 9B 66.1，用户提供）指向的判断成�
 
 **1. 调查子系统（`InvestigationEngine`）**
 
-14 个公开方法，生产代码只调用 2 个：`getSceneClues()` 与 `registerSceneClue()`（均在 `game-session.ts`）。核心的 `investigate()` 与 `investigateCoC()` 零调用方，随之未接线的还有 `markDiscovered` / `isDiscoveredBy` / `getDiscoveredBy` / `resetAttempts` / `getUndiscoveredSceneClues` / `setDifficultyProfile` / `addClueType` 等。
+14 个公开方法，生产代码只调用 2 个：`getSceneClues()` 与 `registerSceneClue()`（均在 `game-session.ts`）。核心的 `investigate()` 与 `investigateCoC()` 在生产代码里没有调用方，随之未接线的还有 `markDiscovered` / `isDiscoveredBy` / `getDiscoveredBy` / `resetAttempts` / `getUndiscoveredSceneClues` / `setDifficultyProfile` / `addClueType` 等。
+
+注意区分「没接线」与「没写完」：`investigateCoC()` 有专门的 `investigation-coc.test.ts` 覆盖（9 处调用，含成功层级、SAN 扣减、重复发现、失败重试），逻辑是完整且验证过的。缺的只是从游戏流程调用它这一步——不要当成死代码删掉。
 
 后果：技能检定、线索发现判定、难度缩放全部不参与实际游戏；线索目前只被注册和列出用于显示。
 
 一个连带事实：`investigateCoC()` 里 `sanLost` 算完后被直接拼进给玩家看的叙述（`【SAN -N】`）并随结果返回，但**没有任何消费方把它扣到 SanityEngine 上**。一旦接线，必须同时接上扣除，否则就是「叙述说掉了理智、数值没动」——与 §八 记录的「返回 success 却什么都没做」同一族。
 
-另注：`setDifficultyProfile()` 无人调用意味着 `difficultyProfile` 恒为 null，而 `investigateCoC()` 里存在对 `profile.sanMultiplier` 的解引用。接线前需要先补这个守卫，否则第一次调用即抛。
+另注：`setDifficultyProfile()` 无人调用，所以 `difficultyProfile` 恒为 null。但这不构成崩溃——`investigateCoC()` 读的是私有 getter `effectiveProfile`，它在 null 时回落到一份完整的 medium 画像。后果只是难度倍率与惩罚骰恒为默认值，接线时补上 `setDifficultyProfile()` 即可让模组难度真正生效。
 
 **2. 神话生物的 SAN 消耗（`NPCCombatEngine.getSanCost`）**
 
