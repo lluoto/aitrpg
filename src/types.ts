@@ -1,5 +1,7 @@
 // POC 核心类型定义
 
+import type { SanityState } from "./rules/coc-engine";
+
 export interface ActionIntent {
   action: string;         // "attack" | "move" | "cast" | "skill_check" | "san_check" | "saving_throw" | "flee" | "unknown"
   target?: string;        // 目标实体 ID
@@ -88,11 +90,28 @@ export interface WorldEntity {
   faction?: string;        // "野兽", "怪物", "友善" 等——仅 npc/monster
 }
 
+/**
+ * 真相源中持久化的玩家运行时状态。
+ *
+ * SanityState 用 `import type` 引入，编译期即被擦除，不构成运行时循环依赖
+ * （coc-engine 反向引用本文件的 WorldEntity 也是同样的形式）。
+ * 这里直接复用 SanityState 而不另立一份窄快照，是为了让会话重新读取时
+ * 能完整还原 SAN 引擎，而不是丢掉 mythosLog / therapyProgress 这类字段。
+ */
+export interface PlayerRuntimeState {
+  sanity: SanityState | null;
+  inventory: string[];
+  weapons: string[];
+  armor: string[];
+}
+
 export interface WorldState {
   entities: Record<string, WorldEntity>;
   active_effects: Effect[];
   scene: string;
   time: string;            // "combat_round_3" | "exploration" | "social"
+  /** 各玩家的 SAN / 背包 / 武器 / 护甲。缺了它，快照就只是部分快照。 */
+  players: Record<string, PlayerRuntimeState>;
 }
 
 export interface Effect {

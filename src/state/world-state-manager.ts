@@ -4,7 +4,22 @@
 import { Database } from "bun:sqlite";
 import { createSchema } from "./schema";
 import type { GameEvent } from "./event-types";
-import type { WorldEntity, WorldState, Effect, CombatResult } from "../types";
+import type { WorldEntity, WorldState, Effect, CombatResult, PlayerRuntimeState } from "../types";
+import type { SanityState } from "../rules/coc-engine";
+
+/** 场景出口。模组写入的是对象（目标场景 + 展示用描述），不是裸字符串。 */
+export interface SceneExit {
+  readonly target: string;
+  readonly desc: string;
+}
+
+/** 一条场景记录。scenes 表的对外形状，getScene() 与 listScenes() 共用。 */
+export interface SceneRecord {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly exits: SceneExit[];
+}
 
 // ============================================================
 // 世界状态管理器
@@ -145,6 +160,71 @@ export class WorldStateManager {
   }
 
   // ==========================================================
+  // 玩家运行时状态 — SAN / 背包 / 已装备武器 / 已装备护甲
+  //
+  // 这四类此前是 GameSession 的进程内 Map。放在这里之后，写入即落库，
+  // getCurrentState() 才拿得到完整快照。读取每次都从库里重新解析，
+  // 因此调用方拿到的数组是副本，改它不会穿透到真相源。
+  // ==========================================================
+
+  /** 确保玩家在真相源中有一行。已存在则保持原值。 */
+  registerPlayer(playerId: string) {
+    this.db.run("INSERT OR IGNORE INTO player_state (entity_id) VALUES (?)", [playerId]);
+  }
+
+  getPlayerIds(): string[] {
+    const rows: any[] = this.db
+      .query("SELECT entity_id FROM player_state ORDER BY entity_id")
+      .all();
+    return rows.map((r) => r.entity_id as string);
+  }
+
+  getPlayerState(playerId: string): PlayerRuntimeState | null {
+    const row: any = this.db
+      .query("SELECT sanity, inventory, weapons, armor FROM player_state WHERE entity_id = ?")
+      .get(playerId);
+    if (!row) return null;
+    return {
+      sanity: this.parseJsonColumn<SanityState | null>(row.sanity, null),
+      inventory: this.parseJsonColumn<string[]>(row.inventory, []),
+      weapons: this.parseJsonColumn<string[]>(row.weapons, []),
+      armor: this.parseJsonColumn<string[]>(row.armor, []),
+    };
+  }
+
+  getPlayerSanity(playerId: string): SanityState | null {
+    return this.getPlayerState(playerId)?.sanity ?? null;
+  }
+
+  setPlayerSanity(playerId: string, sanity: SanityState) {
+    this.writePlayerColumn(playerId, "sanity", JSON.stringify(sanity));
+  }
+
+  getPlayerInventory(playerId: string): string[] {
+    return this.getPlayerState(playerId)?.inventory ?? [];
+  }
+
+  setPlayerInventory(playerId: string, items: string[]) {
+    this.writePlayerColumn(playerId, "inventory", JSON.stringify(items));
+  }
+
+  getPlayerWeapons(playerId: string): string[] {
+    return this.getPlayerState(playerId)?.weapons ?? [];
+  }
+
+  setPlayerWeapons(playerId: string, weapons: string[]) {
+    this.writePlayerColumn(playerId, "weapons", JSON.stringify(weapons));
+  }
+
+  getPlayerArmor(playerId: string): string[] {
+    return this.getPlayerState(playerId)?.armor ?? [];
+  }
+
+  setPlayerArmor(playerId: string, armor: string[]) {
+    this.writePlayerColumn(playerId, "armor", JSON.stringify(armor));
+  }
+
+  // ==========================================================
   // 效果 / buff
   // ==========================================================
 
@@ -212,11 +292,18 @@ export class WorldStateManager {
       .query("SELECT id FROM scenes WHERE is_active = 1 LIMIT 1")
       .get();
 
+    const players: Record<string, PlayerRuntimeState> = {};
+    for (const pid of this.getPlayerIds()) {
+      const ps = this.getPlayerState(pid);
+      if (ps) players[pid] = ps;
+    }
+
     return {
       entities: entityMap,
       active_effects: effects,
       scene: sceneRow?.id ?? "unknown",
       time: `round_${this.currentRound}`,
+      players,
     };
   }
 
@@ -305,24 +392,93 @@ export class WorldStateManager {
   }
 
   /** 读取场景（含模组原文描写与出口）。不存在返回 null。 */
-  getScene(sceneId: string): { id: string; name: string; description: string; exits: string[] } | null {
+  getScene(sceneId: string): SceneRecord | null {
     const row: any = this.db
       .query("SELECT id, name, description, exits FROM scenes WHERE id = ?")
       .get(sceneId);
     if (!row) return null;
-    let exits: string[] = [];
-    try { exits = JSON.parse(row.exits || "[]"); } catch { /* 忽略损坏的 exits */ }
-    return { id: row.id, name: row.name, description: row.description ?? "", exits };
+    return this.toSceneRecord(row);
   }
 
-  /** 注册场景（模组原文导入用）。INSERT OR REPLACE，保留原文描写。 */
+  /**
+   * 列出全部已注册场景。
+   *
+   * 存在的意义是让调用方不必为了「列举场景」去 getDatabase() 手写 SQL：
+   * 那样查出来的行是 any，列名拼错、少读一列、description 为 null
+   * 都要等到运行时才发现。收到这里之后，表结构只有本文件知道。
+   */
+  listScenes(): SceneRecord[] {
+    const rows = this.db
+      .query("SELECT id, name, description, exits FROM scenes")
+      .all() as any[];
+    return rows.map((r) => this.toSceneRecord(r));
+  }
+
+  // name 在 schema 里是 NOT NULL，所以不做 `?? id` 回落——那是在防一个
+  // 数据库已经禁止的状态。空串是允许的，由调用方自己判 falsy。
+  private toSceneRecord(row: any): SceneRecord {
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description ?? "",
+      exits: this.parseExits(row.exits),
+    };
+  }
+
+  /**
+   * 注册场景（模组原文导入用）。
+   *
+   * 不能用 INSERT OR REPLACE：它是先删后插，未在 VALUES 里列出的列
+   * （exits / dangers / lighting）会静默回落到 schema 默认值。模组导入时
+   * exits 已经写好，再注册一次就会被整段清空；顺带 is_active 也会被抹成 0，
+   * 重新注册当前活动场景等于把它取消激活。改为「存在则 UPDATE 指定列」。
+   */
   registerScene(sceneId: string, displayName: string, description?: string) {
     const existing = this.getScene(sceneId);
+    if (existing) {
+      this.db.run("UPDATE scenes SET name = ?, description = ? WHERE id = ?", [
+        displayName ?? sceneId,
+        description ?? existing.description,
+        sceneId,
+      ]);
+      return;
+    }
     this.db.run(
-      `INSERT OR REPLACE INTO scenes (id, name, description, is_active)
-       VALUES (?, ?, ?, ?)`,
-      [sceneId, displayName ?? sceneId, description ?? existing?.description ?? "", existing ? 0 : 0]
+      "INSERT INTO scenes (id, name, description, is_active) VALUES (?, ?, ?, 0)",
+      [sceneId, displayName ?? sceneId, description ?? ""]
     );
+  }
+
+  /**
+   * exits 列的真实内容是 `{target, desc}[]` —— mythos-module 的三处写入点
+   * （L465 / L480 / L492）都 JSON.stringify 对象数组。此前 getScene() 把返回类型
+   * 声明成 `string[]`，而 JSON.parse 返回 any，类型检查因此全程沉默；
+   * 第一个真正消费 exits 的调用方会拿到对象却以为是字符串。
+   *
+   * 这里归一成单一形状，并容忍历史上可能存在的纯字符串写法与损坏数据。
+   */
+  private parseExits(raw: unknown): SceneExit[] {
+    if (typeof raw !== "string" || raw.length === 0) return [];
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+    if (!Array.isArray(parsed)) return [];
+    const exits: SceneExit[] = [];
+    for (const item of parsed) {
+      if (typeof item === "string") {
+        exits.push({ target: item, desc: item });
+        continue;
+      }
+      if (item && typeof item === "object" && typeof (item as { target?: unknown }).target === "string") {
+        const target = (item as { target: string }).target;
+        const desc = (item as { desc?: unknown }).desc;
+        exits.push({ target, desc: typeof desc === "string" ? desc : target });
+      }
+    }
+    return exits;
   }
 
   setRelation(a: string, b: string, relation: string, attitude: number = 0) {
@@ -348,6 +504,31 @@ export class WorldStateManager {
   // ==========================================================
   // 辅助
   // ==========================================================
+
+  /**
+   * 列名来自本类内部的封闭字面量联合，不接受外部输入，故可安全插值。
+   * 值一律以 JSON 文本参数化绑定。
+   */
+  private writePlayerColumn(
+    playerId: string,
+    column: "sanity" | "inventory" | "weapons" | "armor",
+    value: string,
+  ) {
+    this.registerPlayer(playerId);
+    this.db.run(
+      `UPDATE player_state SET ${column}=?1, updated_at=unixepoch() WHERE entity_id=?2`,
+      [value, playerId]
+    );
+  }
+
+  private parseJsonColumn<T>(raw: unknown, fallback: T): T {
+    if (typeof raw !== "string" || raw.length === 0) return fallback;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return fallback;
+    }
+  }
 
   private rowToEntity(row: any): WorldEntity {
     return {

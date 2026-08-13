@@ -44,6 +44,18 @@ export function createSchema(db: Database) {
       FOREIGN KEY (entity_id) REFERENCES entities(id)
     );
 
+    -- 玩家运行时状态 —— SAN / 背包 / 已装备武器 / 已装备护甲。
+    -- 这四类此前停留在 GameSession 的进程内 Map，重启即失，KP 与规则引擎都看不到。
+    -- 归入真相源后 getCurrentState() 才是完整快照，applyAction 闸门才有可校验的对象。
+    CREATE TABLE IF NOT EXISTS player_state (
+      entity_id   TEXT PRIMARY KEY,
+      sanity      TEXT DEFAULT NULL,
+      inventory   TEXT NOT NULL DEFAULT '[]',
+      weapons     TEXT NOT NULL DEFAULT '[]',
+      armor       TEXT NOT NULL DEFAULT '[]',
+      updated_at  INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
     CREATE TABLE IF NOT EXISTS relationships (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       entity_a    TEXT NOT NULL,
