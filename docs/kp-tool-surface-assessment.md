@@ -96,10 +96,42 @@ BFCL-V4 数据（Qwen3.5-4B 50.3 / 9B 66.1，用户提供）指向的判断成�
 - 验收：非法转移用例全部被拒绝并给出结构化原因。
 
 ### 阶段 3：把写入路径收束到闸门后
-- 逐个改写 9 个 mutation 方法与 6 个 HTTP KP 操作，使其经由 `applyAction()`。
+- 逐个改写 mutation 方法与 HTTP KP 操作，使其经由 `applyAction()`。
 - 每改一个跑一次全量测试，单独提交，便于二分回滚。
 - 顺带把 `game-session.ts` 中相关 handler 按职责迁出，缓解 2022 行问题。
-- 验收：`git grep` 确认无绕过闸门的直写；全量测试保持绿。
+
+**验收标准（已按实跑修订）**：初稿写的是「`git grep` 确认无绕过闸门的直写」。
+实跑后这条不成立——它会逼出伪造的取值域，反而制造新的静默失效。修订为：
+
+1. **有封闭取值域的状态必须经闸门**，且非法值必须是结构化拒绝而不是静默钳制。
+   已完成：`setDifficulty`（枚举 4 值）、`setPlayerHp`、`setPlayerSan`、`applyDamage`
+   （后三者为有界整数，`applyDamage` 先把增量投影成目标 HP 再送闸门）。
+2. **没有封闭取值域的写入不进闸门**，但要在 HTTP 边界校验，并在本节列明豁免理由。
+   已豁免：`setPlayerInventory` / `setPlayerWeapons` / `setPlayerArmor`。它们是开放
+   字符串集合，仓库内没有物品注册表，硬造一个「取值域」只有两种结果：要么无界
+   （校验不了任何东西），要么现编。本轮已实测过这种「循环取值域」的代价——
+   `setPlayerSan` 原本用 `new SanityEngine(Math.max(value, 50))` 给未知玩家现造引擎，
+   上限由传入值自己推出，于是任何值都合法。这类域比没有域更糟：它看起来在校验。
+   若将来引入模组级物品注册表，本条豁免应重新评估。
+3. **`sendMessage` 不进闸门**：它是消息推送，不是状态变更，闸门对它无话可说。
+4. `setScene` 的现状与待决项见下方「阶段 3 未决」。
+5. 全量测试保持绿；`bun run typecheck` 不超过当时基线。
+
+**阶段 3 未决**：
+
+- `setScene` 已有存在性校验与单一写入路径，过闸门只多出 delta 和形式统一，
+  不增加任何新校验。真正有价值的版本是用 `scenes.exits` 做邻接校验（只能走到
+  当前场景有出口连通的地方），但那会拦掉 KP 传送与自由移动，属于玩法决定而非接线。
+- `game-session.ts` 拆分未动。
+
+**顺带记录的两项发现**：
+
+- `GameSession.setPlayerArmor` 无任何调用方（server.ts 只接了 inventory 与 weapons），
+  armor 因此恒为 `[]`。
+- `writePlayerColumn` 内部先调 `registerPlayer()`（`INSERT OR IGNORE`），所以给未知
+  玩家 ID 写背包会凭空造出一行 `player_state`。当前 HTTP 调用点传的都是
+  `activePlayerId`，边界安全，故未加防护；若将来这三个方法接受外部传入的 playerId，
+  这里需要先补 `unknown_target` 拒绝。
 
 ### 阶段 4：视需要再决定是否引入 tool calling
 - 若阶段 1–3 后仍需模型主动取数，再暴露 `get_scene_context` / `get_character` / `search_memory` / `roll_check` 四个只读工具 + `propose_action`。
