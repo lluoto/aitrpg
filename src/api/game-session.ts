@@ -287,7 +287,11 @@ export class GameSession {
       };
     });
     return {
-      scene: state.scene, bgm: this.sceneBgm[pos], round: this.round,
+      // 床只认同一行里发出去的 scene。读玩家 position 会在 KP 手动切场景时分叉
+      // —— setScene() 只翻 is_active、不动玩家实体，界面显示教堂、耳朵里却还是
+      // 码头的浪声。这里也不许回落到 position：显示的场景没有床时，正确答案是
+      // 没有床（前端静默），拿别处的床顶上只是把同一个错误换个形式犯。
+      scene: state.scene, bgm: this.sceneBgm[state.scene], round: this.round,
       player: playerEnt ? { name: playerEnt.name, hp: playerEnt.hp, maxHp: playerEnt.maxHp, ac: this.activeRuleset === "cosmic-horror" ? 0 : playerEnt.ac, status: playerEnt.status } : { name: "调查员", hp: 12, maxHp: 12, ac: 0, status: [] },
       npcs: npcs.map(e => ({ name: e.name, hp: e.hp, maxHp: e.maxHp, status: e.status })),
       monsters: monsters.map(e => ({ name: e.name, hp: e.hp, maxHp: e.maxHp, status: e.status })),
