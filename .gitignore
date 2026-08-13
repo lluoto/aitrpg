@@ -21,6 +21,11 @@ src/module/*.md
 frontend/public/bgm/*.wav
 frontend/public/bgm/*.mp3
 
+# 预制语音同理：scripts/gen-speech.ts 从模组文本重新合成
+frontend/public/voice/*.wav
+frontend/public/voice/*.mp3
+frontend/public/voice/manifest.json
+
 # 遗留的根目录 SQLite 库（现行代码用 data/*.db 与 :memory:，不再打开它们）
 /coc7e
 /dnd5e
