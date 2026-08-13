@@ -1596,8 +1596,35 @@ export class GameSession {
   }
 
   // ── 技能检查──
+  /** 会去解析场景线索的技能。潜行、说服等不属于调查，不该触发线索判定。 */
+  private static readonly INVESTIGATIVE_SKILLS = new Set(["investigation", "perception"]);
+
   private handleSkillCheck(intent: ActionIntent, messages: AgentMessage[], msg: (s: string) => number): boolean {
     const skill = intent.skill ?? "investigation";
+
+    // 调查类检定优先交给 InvestigationEngine 解析场景线索。
+    //
+    // 此前这里只掷一个裸 d100 就结束：不看场景线索、不出揭示文本、不扣 SAN。
+    // 模组导入时注册进去的线索因此永远不会被「调查」这个动作解析，
+    // CoC 的核心循环（调查 → 线索 → 掉 SAN）实际不成立。
+    // 规则本身早就写好并被 investigation-coc.test.ts 覆盖，缺的只是这一次调用。
+    //
+    // 场景没有未发现线索时回落到原来的裸检定，保持既有行为。
+    if (GameSession.INVESTIGATIVE_SKILLS.has(skill)) {
+      // 按场景 ID 查，不是显示名：线索是模组用 `scene: "premiers_barn"` 这样的
+      // 场景 ID 注册进来的。（同文件另一处用 sceneDisplayNames[pos] 去查同一份
+      // 数据，对模组场景恒查不到，见下方 getSceneClues 的调用点。）
+      const pos = this.getPlayerPosition();
+      // 只解析有完整定义的线索。模组通过 registerSceneClue 注册的线索只带一句
+      // 描述，没有 ClueDef（技能、成功层级文本、san_cost 都没有），送进
+      // investigateCoC 只会拿到「你没有找到有用的线索」这个兜底失败——
+      // 比原来的裸检定更糟。这类线索继续走下面的通用检定。
+      const next = this.investigation
+        .getUndiscoveredSceneClues(pos, this.activePlayerId)
+        .find((c) => this.investigation.hasClueType(c));
+      if (next !== undefined) return this.resolveSceneClue(next, msg);
+    }
+
     const skillDisplay = SKILL_DISPLAY_NAMES[skill] ?? skill;
     const skillValue = this.activeCharacter?.skillValues?.[skill] ?? this.activeCharacter?.skills?.[skill] ?? 50;
     const roll = Math.floor(Math.random() * 100) + 1;
@@ -1614,6 +1641,30 @@ export class GameSession {
 
     msg(`🎲 ${skillDisplay}检查 d100=${roll} (目标=${skillValue}%) → ${resultText}`);
     this.lastNarrative = `${skillDisplay}检查 ${resultText}。`;
+    return true;
+  }
+
+  /**
+   * 解析一条场景线索：掷检定、给出揭示文本、扣掉它要求的 SAN。
+   *
+   * 判定规则全在 InvestigationEngine 里（含"已发现则不重复扣 SAN"与成功后
+   * markDiscovered），这里只负责把结果落到会话状态上。
+   *
+   * SAN 经 setPlayerSan 扣减，因此和 KP 手动改 SAN 走同一个 applyAction 闸门，
+   * 也同样会落到真相源。目标值恒在 [0, 当前值] 内，落在闸门的整数域中，
+   * 不存在被拒绝的取值。
+   */
+  private resolveSceneClue(clueType: string, msg: (s: string) => number): boolean {
+    const skills = this.activeCharacter?.skillValues ?? this.activeCharacter?.skills ?? {};
+    const result = this.investigation.investigateCoC(clueType, skills, this.activePlayerId);
+
+    msg(result.revelation);
+    this.lastNarrative = result.revelation;
+
+    if (result.sanLost > 0) {
+      const current = this.sanity.state.currentSAN;
+      this.setPlayerSan(this.activePlayerId, Math.max(0, current - result.sanLost));
+    }
     return true;
   }
 
