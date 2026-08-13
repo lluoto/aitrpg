@@ -63,6 +63,30 @@ export interface ScoredEntry {
 // 加载器
 // ============================================================
 
+export const DEFAULT_V18_PATH = "../世界模型/v18_output/v18_all_master.jsonl";
+
+/** 按路径共享的 loader 实例。世界模型是只读参考数据，没有按会话变化的内容。 */
+const SHARED = new Map<string, WorldModelLoader>();
+
+/**
+ * 取得进程内共享的世界模型 loader。
+ *
+ * 为什么必须共享：v18_all_master.jsonl 是 383688 条只读参考数据。此前每个
+ * GameSession 各 `new WorldModelLoader()`，实测建立 3 个会话就把它加载了 3 遍
+ * （每遍约 1.2-1.3s），服务进程驻留 1938 MB；而磁盘上已有 41 个存档会话，
+ * 按原样逐个恢复必然打爆内存。
+ *
+ * 为什么共享是安全的：全部可变状态都在 load() 里一次性建好，之后所有公开方法
+ * 只读。调用方一律用 `isLoaded()` 守卫后再 load()，因此第二个使用者不会重复加载。
+ */
+export function sharedWorldModel(path: string = DEFAULT_V18_PATH): WorldModelLoader {
+  const existing = SHARED.get(path);
+  if (existing) return existing;
+  const created = new WorldModelLoader();
+  SHARED.set(path, created);
+  return created;
+}
+
 export class WorldModelLoader {
   private entries: V18Entry[] = [];
   private byNovel: Map<string, V18Entry[]> = new Map();
@@ -79,7 +103,7 @@ export class WorldModelLoader {
    * 加载 v18_all_master.jsonl
    * @param path JSONL 文件路径
    */
-  load(path: string = "../世界模型/v18_output/v18_all_master.jsonl") {
+  load(path: string = DEFAULT_V18_PATH) {
     if (!existsSync(path)) {
       log.warn("world", `世界模型文件未找到: ${path}`);
       return;
