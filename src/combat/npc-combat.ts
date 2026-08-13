@@ -190,7 +190,7 @@ export class NPCCombatEngine {
           break;
         case "holy_users":
           match = candidates.find(
-            (c) => c.status.includes("holy") || (c as any).faction === "圣骑士"
+            (c) => c.status.includes("holy") || c.faction === "圣骑士"
           ) || candidates[0];
           break;
         case "attacking_allies":

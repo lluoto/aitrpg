@@ -216,10 +216,10 @@ export class CompanionAgent {
 
   private buildSituation(entity: WorldEntity, state: WorldState, behavior: string, inventory: string[] = [], morale: number = 10): Situation {
     const enemies = Object.values(state.entities).filter(
-      (e) => e.hp > 0 && !e.status.includes("dead") && e.id !== entity.id && e.id !== "player" && (e as any).faction !== "player_ally"
+      (e) => e.hp > 0 && !e.status.includes("dead") && e.id !== entity.id && e.id !== "player" && e.faction !== "player_ally"
     );
     const allies = Object.values(state.entities).filter(
-      (e) => e.hp > 0 && (e.id === "player" || (e as any).faction === "player_ally") && e.id !== entity.id
+      (e) => e.hp > 0 && (e.id === "player" || e.faction === "player_ally") && e.id !== entity.id
     );
 
     const hasRangedWeapon = !!(this.config.skills.firearms && this.config.weapon)

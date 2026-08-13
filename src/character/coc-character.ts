@@ -474,8 +474,8 @@ export function calcOccupationSkillPoints(
   let total = (attrs[primaryAttr] ?? 50) * primaryMult;
 
   // 第二来源（如 DEX×2）
-  const secondAttr = (archetype as any).skillSecondSource;
-  const secondMult = (archetype as any).skillSecondMultiplier ?? 0;
+  const secondAttr = archetype.skillSecondSource;
+  const secondMult = archetype.skillSecondMultiplier ?? 0;
   if (secondAttr && secondMult > 0) {
     total += (attrs[secondAttr] ?? 50) * secondMult;
   }
@@ -609,7 +609,7 @@ export async function createCoCCharacter(
     warnings.push(WARN_MSG.itemsLoadFailed);
   }
 
-  const occupationSkills = (archetype as any).occupationSkills ?? archetype.skills ?? [];
+  const occupationSkills = archetype.occupationSkills ?? archetype.skills ?? [];
 
   // 7.5 背景故事八项（车卡必填项——先生成八项，背景故事由 play-module 层 LLM 撰写）
   const backgroundProfile = buildBaseBackgroundProfile(archetype);
@@ -630,7 +630,7 @@ export async function createCoCCharacter(
     occupationSkillPoints,
     interestSkillPoints,
     occupationSkills,
-    occupationSkillKeys: (archetype as any).occupationSkills ?? undefined,
+    occupationSkillKeys: archetype.occupationSkills ?? undefined,
     availableSkills: COC_SKILLS,
     age,
     valid: constraintWarnings.length === 0,
@@ -811,7 +811,7 @@ export function createSkillAllocator(
   },
 ): SkillAllocState {
   const occSkills: string[] = archetype.skills ?? [];
-  const occKeys: string[] = (archetype as any).occupationSkills ?? [];
+  const occKeys: string[] = archetype.occupationSkills ?? [];
 
   // 支持双来源计算
   let occPts: number;
@@ -977,7 +977,7 @@ export function autoAllocateSkills(
     values[eng] = getBaseSkillValue(eng, dex, edu);
   }
 
-  const occEngKeys: string[] = (archetype as any).occupationSkills ?? [];
+  const occEngKeys: string[] = archetype.occupationSkills ?? [];
 
   // 2. 分配职业技能点（均分到职业技能）
   if (occEngKeys.length > 0 && occPts > 0) {

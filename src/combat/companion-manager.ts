@@ -592,7 +592,7 @@ export class CompanionManager {
 
       // 检测是否有敌对实体在场景中
       const hasEnemies = Object.values(state.entities).some(
-        (e) => e.hp > 0 && !e.status.includes("dead") && (e as any).faction !== "player_ally" && e.id !== entity.id && e.id !== "player"
+        (e) => e.hp > 0 && !e.status.includes("dead") && e.faction !== "player_ally" && e.id !== entity.id && e.id !== "player"
       );
 
       if (hasEnemies) {
