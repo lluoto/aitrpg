@@ -49,6 +49,8 @@ const BGM_VOLUME = 0.35
 const bgmMuted = ref(true) // 默认关：未经用户交互的自动播放会被浏览器拒绝
 let bgmEl = null
 let bgmTimer = null
+let bgmId = ''  // 当前已装载的床标识，换床判断以它为准而不是比对 src 字符串
+let bgmExt = ''
 
 function fadeTo(el, target, done) {
   clearInterval(bgmTimer)
@@ -65,29 +67,37 @@ function fadeTo(el, target, done) {
   }, 50)
 }
 
+// 先 mp3 后 wav：正式素材一般是 mp3，scripts/gen-bgm.ts 产出的占位母版是 wav。
+// 两种都取不到才当作该场景没有环境音。
+function loadBgm(id, ext) {
+  bgmId = id
+  bgmExt = ext
+  bgmEl.src = `/bgm/${id}.${ext}`
+  bgmEl.play().then(() => fadeTo(bgmEl, BGM_VOLUME)).catch(() => {})
+}
+
 function applyBgm(id) {
   if (!bgmEl) {
     bgmEl = new Audio()
     bgmEl.loop = true
     bgmEl.volume = 0
     // 没有对应音频文件时不报错、不提示，视作该场景无环境音
-    bgmEl.addEventListener('error', () => { clearInterval(bgmTimer) })
+    bgmEl.addEventListener('error', () => {
+      clearInterval(bgmTimer)
+      if (bgmId && bgmExt === 'mp3') loadBgm(bgmId, 'wav')
+    })
   }
   if (bgmMuted.value || !id) {
     fadeTo(bgmEl, 0, () => bgmEl.pause())
     return
   }
-  const src = `/bgm/${id}.mp3`
-  if (bgmEl.src && bgmEl.src.endsWith(src)) {
+  if (bgmId === id) {
     if (bgmEl.paused) bgmEl.play().catch(() => {})
     fadeTo(bgmEl, BGM_VOLUME)
     return
   }
   // 换床：先淡出旧的再切源，避免硬切造成的爆音
-  fadeTo(bgmEl, 0, () => {
-    bgmEl.src = src
-    bgmEl.play().then(() => fadeTo(bgmEl, BGM_VOLUME)).catch(() => {})
-  })
+  fadeTo(bgmEl, 0, () => loadBgm(id, 'mp3'))
 }
 
 watch(() => session.bgm, (id) => applyBgm(id))

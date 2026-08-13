@@ -17,6 +17,10 @@ play-records/
 src/module/raw/
 src/module/*.md
 
+# 环境音床是生成物，不是源码：scripts/gen-bgm.ts 可以随时重建
+frontend/public/bgm/*.wav
+frontend/public/bgm/*.mp3
+
 # 遗留的根目录 SQLite 库（现行代码用 data/*.db 与 :memory:，不再打开它们）
 /coc7e
 /dnd5e
