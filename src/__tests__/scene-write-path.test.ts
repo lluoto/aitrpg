@@ -107,4 +107,37 @@ describe("生成故事的场景连通关系", () => {
       expect(exit.desc.length).toBeGreaterThan(0);
     }
   });
+
+  // 生成器第 6 步自称「场景间连通性修复：确保没有孤立的场景」，但它只在
+  // 出口为空的场景上补出边，从不补回边。于是那个场景走得出去、却没人走得进来：
+  // 实测有一局 attic -> kitchen 单向，从起始的 entrance 出发永远到不了阁楼。
+  // 出度 ≥ 1 不等于不孤立，可达性才是。
+  //
+  // 模板选取带随机性，所以这里跑多局验证这条性质对所有选法都成立。
+  it("每个生成的场景都能从起始场景走到", async () => {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const fresh = new GameSession(`reach-${attempt}`, "cosmic-horror", LLM, "investigator", "调查员");
+      await fresh.act("生成故事");
+
+      const scenes = fresh.world.listScenes();
+      const byId = new Map(scenes.map((s) => [s.id, s]));
+      const start = fresh.world.getCurrentState().scene;
+
+      const seen = new Set<string>([start]);
+      const queue = [start];
+      while (queue.length > 0) {
+        const current = queue.shift();
+        if (current === undefined) break;
+        for (const exit of byId.get(current)?.exits ?? []) {
+          if (!seen.has(exit.target)) {
+            seen.add(exit.target);
+            queue.push(exit.target);
+          }
+        }
+      }
+
+      const unreachable = scenes.filter((s) => !seen.has(s.id)).map((s) => s.id);
+      expect(unreachable).toEqual([]);
+    }
+  });
 });

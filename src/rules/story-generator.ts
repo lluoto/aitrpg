@@ -946,22 +946,46 @@ export class StoryGenerator {
       }
     }
 
-    // 6. 场景间连通性修复：确保没有孤立的场景
-    for (const scene of scenes) {
-      if (scene.exits.length === 0) {
-        // 连接到前一个或后一个场景
-        const idx = scenes.indexOf(scene);
-        const neighbors = [];
-        if (idx > 0) neighbors.push(scenes[idx - 1]);
-        if (idx < scenes.length - 1) neighbors.push(scenes[idx + 1]);
-        for (const n of neighbors) {
-          scene.exits.push({
-            target: n.id,
-            desc: `前往${n.name}`,
-            locked: false,
-          });
+    // 6. 场景间连通性修复：确保每个场景都能从起始场景走到
+    //
+    // 原实现只在「出口为空」的场景上补一条出边，判据是出度而不是可达性，
+    // 漏掉两类情况：
+    //   - 补的边是单向的，那个场景走得出去却没人走得进来（实测 attic -> kitchen）；
+    //   - 模板子图分裂成多个连通分量时，分量里每个场景出度都不为 0，
+    //     判据根本不触发（实测 stairs <-> attic 自成一块，从起点永远走不到）。
+    // 20 局采样里后者出现 2 次。判据换成从起始场景做 BFS，把没走到的场景
+    // 双向接回已达集合，接完重算，直到全部可达。
+    const connect = (from: SceneOutput, to: SceneOutput) => {
+      if (from.exits.some((e) => e.target === to.id)) return;
+      from.exits.push({ target: to.id, desc: `前往${to.name}`, locked: false });
+    };
+    const reachableFromStart = (): Set<string> => {
+      const byId = new Map(scenes.map((s) => [s.id, s]));
+      const seen = new Set<string>();
+      const first = scenes[0];
+      if (!first) return seen;
+      seen.add(first.id);
+      const queue: string[] = [first.id];
+      while (queue.length > 0) {
+        const cur = queue.shift();
+        if (cur === undefined) break;
+        for (const e of byId.get(cur)?.exits ?? []) {
+          if (!seen.has(e.target)) {
+            seen.add(e.target);
+            queue.push(e.target);
+          }
         }
       }
+      return seen;
+    };
+    let reached = reachableFromStart();
+    for (const scene of scenes) {
+      if (reached.has(scene.id)) continue;
+      const anchor = scenes.find((s) => reached.has(s.id));
+      if (!anchor) break;
+      connect(scene, anchor);
+      connect(anchor, scene);
+      reached = reachableFromStart();
     }
 
     // 7. 构建完整故事
