@@ -163,7 +163,17 @@ BFCL-V4 数据（Qwen3.5-4B 50.3 / 9B 66.1，用户提供）指向的判断成�
 
 后果：遭遇神话生物从不触发它自己的 SAN 值。当前实际生效的 SAN 路径只有三条：玩家主动 `san_check`（固定默认 `1/1d6`，与看到什么无关）、阅读魔法书、以及调查线索（而调查本身未接线，见上条）。
 
-**3. NPC 技能（`upsertEntity` 的 `skills`）**
+**3. CoC 角色创建系统（`coc-character.ts`）**
+
+`coc-character.ts` 是一套完整的 CoC 7e 建卡实现：技能基础值表 `COC_SKILL_BASES`、职业/兴趣点数计算、年龄修正、`autoAllocateSkills()` 自动分配，中英技能名双向映射，并有 `coc-character.test.ts` 断言生成的调查员 `skillValues["spot_hidden"] >= 25`。
+
+但 `character-factory.ts` 从未引用它，而 `game-session.ts` 的三个建卡点（构造函数、创建队友、handleCreateCharacter）走的都是通用的 `CharacterFactory.generate()`——它只声明了 `skillValues?: Record<string, number>` 却从不填充。
+
+后果是**全仓每一次技能检定都读不到调查员的真实技能值**，只能落到各处硬编码的兜底常量：`handleSkillCheck` 用 50，`investigateCoC` 用 20，`threat-analyzer` 用 20。玩家的职业与技能分配对判定毫无影响。
+
+接线方式不是纯机械的：`CoCGeneratedCharacter` 与 `GeneratedCharacter` 形状不同，三个调用点和所有读 `activeCharacter` 的地方都要一并处理。
+
+**4. NPC 技能（`upsertEntity` 的 `skills`）**
 
 `MythosModuleLoader` 的宿主契约声明 `skills?: Record<string, number>`，模组也确实传了进来，但 `entities` 表**没有 skills 列**，`upsertEntity` 的 SQL 里也没有它——整份技能数据在落库时被丢弃。
 
