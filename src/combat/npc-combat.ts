@@ -19,6 +19,11 @@ interface CreatureConfig {
   flee_when_hp_below?: number;
   morale?: string;
   abilities?: string[];
+  /** 遭遇该生物的 SAN 消耗，格式同 SanityEngine.sanityCheck："1/1d6"。 */
+  san_cost?: string;
+  // coc-npc.yaml 的 creatures 下还有约 30 个行为开关（immune_to_*、vulnerable_to_*、
+  // spawns_minions、on_critical_fail 等），由 getNPCBehavior() 整体展开后交给调用方，
+  // 没有逐个声明。索引签名是为此保留的，代价是这个类型对拼错的键毫无抵抗力。
   [key: string]: any;
 }
 
@@ -374,14 +379,14 @@ export class NPCCombatEngine {
     // 先按 key 精确匹配
     for (const [key, cfg] of Object.entries(config.creatures)) {
       if (nameLower.includes(key.toLowerCase()) || key.toLowerCase().includes(nameLower)) {
-        return (cfg as any).san_cost ?? null;
+        return cfg.san_cost ?? null;
       }
     }
     // 再按中文名映射匹配
     for (const [key, aliases] of Object.entries(NPCCombatEngine.MYTHOS_NAMES)) {
       if (aliases.some(a => nameLower.includes(a.toLowerCase()))) {
         const cfg = config.creatures[key];
-        return (cfg as any)?.san_cost ?? null;
+        return cfg?.san_cost ?? null;
       }
     }
     return null;
