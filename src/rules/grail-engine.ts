@@ -12,6 +12,19 @@ import { parse as parseYaml } from "yaml";
 
 export type GrailRank = "bronze" | "iron" | "silver" | "gold" | "legendary";
 
+/**
+ * 位阶推断所需的最小信息。
+ *
+ * 写成独立接口而不是 WorldEntity，是因为攻击方未必是世界实体 —— 规则路由器
+ * 传过来的可能是玩家属性表。这里只声明 inferRank 真正读的三个字段，
+ * WorldEntity 天然满足它。
+ */
+export interface RankSource {
+  name: string;
+  status?: string[];
+  attributes?: Record<string, unknown>;
+}
+
 export interface RankConfig {
   label: string;
   tier: number;
@@ -78,12 +91,20 @@ export class GrailEngine {
     });
   }
 
-  /** 从实体名/status 推断位阶 */
-  inferRank(entity: WorldEntity): GrailRank {
-    const attrs = (entity as any).attributes;
-    if (attrs?.rank) return attrs.rank as GrailRank;
+  /**
+   * 从实体名/status 推断位阶。
+   *
+   * 参数类型只写它真正读的三个字段，而不是 WorldEntity：攻击方从规则路由器
+   * 传进来的是玩家属性表（name/id/proficiency/abilities），根本没有 status，
+   * 之前按 WorldEntity 声明再 as any 硬转，展开 status 时直接抛
+   * "Spread syntax requires ...iterable"，圣杯规则下每次攻击都会崩。
+   * attributes 同理：WorldEntity 上本来就没有这个字段，靠 as any 才读得到。
+   */
+  inferRank(entity: RankSource): GrailRank {
+    const rank = entity.attributes?.rank;
+    if (typeof rank === "string") return rank as GrailRank;
 
-    const text = [entity.name, ...entity.status].join(" ");
+    const text = [entity.name, ...(entity.status ?? [])].join(" ");
     if (/传奇/.test(text)) return "legendary";
     if (/黄金/.test(text)) return "gold";
     if (/白银/.test(text)) return "silver";
@@ -150,7 +171,7 @@ export class GrailEngine {
    * @returns { hit: boolean, damage: number, suppression: result }
    */
   adjudicateAttack(
-    attackerEntity: WorldEntity,
+    attackerEntity: RankSource,
     defenderEntity: WorldEntity,
     weaponDamage: string = "1d8"
   ): { hit: boolean; damage: number; suppression: TierSuppressionResult | null; critical: boolean } {

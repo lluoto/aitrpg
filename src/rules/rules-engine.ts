@@ -3,7 +3,7 @@
 
 import { RuleEngine } from "../engine/rule-engine";
 import { CoCEngine, getCalledShotPenalty, type HitLocation } from "./coc-engine";
-import { GrailEngine, type GrailRank } from "./grail-engine";
+import { GrailEngine, type GrailRank, type RankSource } from "./grail-engine";
 import type { WorldEntity, ActionIntent, CombatResult, BonusEntry } from "../types";
 
 export type RulesetId = "dnd5e" | "cosmic-horror" | "grail";
@@ -107,7 +107,7 @@ export class RulesEngine {
       case "cosmic-horror":
         return this.adjudicateCoC(intent, attacker, defender, attackerSkill ?? 40, defenderDodge ?? 30, intent.method, damageDice, penaltyDiceOverride, isFightBack, fightBackDamageDice, attackerDb);
       case "grail":
-        return this.adjudicateGrail(attacker as any, defender, "1d8");
+        return this.adjudicateGrail(attacker, defender, "1d8");
       default:
         return this.adjudicateDnD(intent, attacker, defender, false, false, "shortsword");
     }
@@ -193,7 +193,8 @@ export class RulesEngine {
 
   /** 圣杯裁决 */
   private adjudicateGrail(
-    attacker: WorldEntity,
+    // 攻击方在这条路径上是玩家属性表而不是世界实体，圣杯裁决也只用它来推断位阶。
+    attacker: RankSource,
     defender: WorldEntity,
     weaponDamage: string,
   ): UnifiedCombatResult {
