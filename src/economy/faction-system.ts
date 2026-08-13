@@ -133,18 +133,16 @@ export class FactionSystem {
     const to = this.factions.get(toId);
     if (!from || !to) return null;
 
-    const conflicting: TreatyType[] = type === "alliance"
-      ? ["war"]
-      : type === "war"
-        ? ["alliance", "trade", "non_aggression"]
-        : [];
-
-    if (conflicting.length > 0) {
-      for (const rel of [from.relations[toId], to.relations[fromId]]) {
-        if (rel?.treaties.some(t => t.active && conflicting.includes(t.type))) {
-          return null;
-        }
-      }
+    // 结盟与交战互斥。
+    //
+    // 原来是拿 ["war"] 去匹配 treaties 里的 t.type —— 但 war 是关系立场（Stance），
+    // 不是条约类型（TreatyType），任何条约的 type 都不可能等于它，这条检查从来没
+    // 拦下过任何东西。同理 `type === "war"` 那个分支：type 是 TreatyType，永远不等于
+    // "war"，整个分支不可达。改成查立场，规则才真正成立。
+    if (type === "alliance") {
+      const atWar = from.relations[toId]?.stance === "war"
+        || to.relations[fromId]?.stance === "war";
+      if (atWar) return null;
     }
 
     const offer: TrackedOffer = {

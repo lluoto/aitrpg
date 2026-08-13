@@ -125,16 +125,17 @@ describe("SAN 检定", () => {
   });
 
   it("多次 SAN 检定后 SAN 值下降", async () => {
-    const before = session.getState();
-    const sanBefore = before.sanity?.currentSAN ?? 55;
+    // SAN 不在 getState() 里，它由 getSanity() 单独返回。
+    // 原先读的是 state.sanity?.currentSAN ?? 55 —— 那个字段从来不存在，
+    // 两边都落到兜底的 55，断言退化成 55 <= 55，SAN 就算纹丝不动也照样通过。
+    const sanBefore = session.getSanity().currentSAN;
 
     // 多次检定
     for (let i = 0; i < 10; i++) {
       await session.act("SAN检定");
     }
 
-    const after = session.getState();
-    const sanAfter = after.sanity?.currentSAN ?? 55;
+    const sanAfter = session.getSanity().currentSAN;
     expect(sanAfter).toBeLessThanOrEqual(sanBefore);
   });
 });

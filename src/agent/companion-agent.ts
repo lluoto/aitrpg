@@ -394,9 +394,13 @@ export class CompanionAgent {
       (e) => e.id !== entity.id && e.id !== "player" && !e.status.includes("dead")
     );
 
-    // 好奇/谨慎高→更多发现
+    // 谨慎高→看得更细→更多发现。
+    //
+    // 原本读的是 curiosity，但特质表里没有这个键：t() 对未知键返回默认值 5，
+    // 于是 rollCount 恒为 2，这个旋钮从来没接上过。caution 是真实存在的特质，
+    // 语义也对得上注释里"看得更细"的那一半，默认值同样是 5，默认行为不变。
     const detailBonus = t(this.config, "caution") > 6 ? 1.3 : 1;
-    const rollCount = Math.ceil((t(this.config, "curiosity") ?? 5) / 3);
+    const rollCount = Math.ceil(t(this.config, "caution") / 3);
 
     for (let i = 0; i < rollCount && i < entities.length; i++) {
       const target = entities[i];

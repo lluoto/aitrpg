@@ -52,8 +52,13 @@ const MOOD_TRANSITIONS: Record<string, Partial<Record<NPCMood, number>>> = {
     angry: 5, suspicious: 3, fearful: 1, neutral: 1,
   },
   // 获得重要信息/线索
+  //
+  // 这里原本还有一档 curious。NPCMood 没有这个值，而 updateMood() 是把抽中的键
+  // 直接当 NPCMood 返回的 —— 于是每次获得情报都有 1/10 的概率把 NPC 置成一个
+  // 不存在的情绪，再顺着对话消息流到下游。curious 的语义并入 excited：
+  // 两者在这个触发下都是"被勾起兴趣"，没必要为它单开一个全系统都不认识的值。
   gained_knowledge: {
-    excited: 4, calm: 2, curious: 1, neutral: 3,
+    excited: 5, calm: 2, neutral: 3,
   },
 };
 
