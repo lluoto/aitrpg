@@ -6,6 +6,7 @@ import { readFileSync } from "fs";
 import { parse as parseYaml } from "yaml";
 import type { ActionIntent, WorldState, WorldEntity } from "../types";
 import type { WorldStateManager } from "../state/world-state-manager";
+import { inferGrailRank } from "../rules/grail-engine";
 
 // ============================================================
 // YAML 配置类型
@@ -278,7 +279,7 @@ export class NPCCombatEngine {
     target: WorldEntity,
     config: RulesetConfig
   ): { type: string; weapon?: string; method?: string; skill?: string } {
-    const rankKey = this.getGrailRank(npc);
+    const rankKey = inferGrailRank(npc);
     const rank = config.ranks?.[rankKey];
 
     if (!rank) return { type: "attack" };
@@ -294,7 +295,7 @@ export class NPCCombatEngine {
     }
 
     // 计算位阶压制
-    const targetRank = this.getGrailRank(target);
+    const targetRank = inferGrailRank(target);
     const targetRankCfg = config.ranks?.[targetRank];
     const tierDiff = targetRankCfg ? rank.tier - targetRankCfg.tier : 0;
 
@@ -304,22 +305,6 @@ export class NPCCombatEngine {
     }
 
     return { type: "attack", method: "melee" };
-  }
-
-  private getGrailRank(entity: WorldEntity): string {
-    // 从 entity 的额外属性或名称推断位阶
-    const attrs = (entity as any).attributes;
-    if (attrs?.rank) return attrs.rank;
-
-    // 从 status 或名称推断
-    const joined = [...entity.status, entity.name].join(" ");
-    if (joined.includes("传奇")) return "legendary";
-    if (joined.includes("黄金")) return "gold";
-    if (joined.includes("白银")) return "silver";
-    if (joined.includes("黑铁")) return "iron";
-    if (joined.includes("青铜")) return "bronze";
-
-    return "bronze"; // 默认最低
   }
 
   // ==========================================================

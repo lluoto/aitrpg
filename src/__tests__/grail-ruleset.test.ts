@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from "bun:test";
 import { RulesEngine } from "../rules/rules-engine";
-import { GrailEngine } from "../rules/grail-engine";
+import { GrailEngine, inferGrailRank } from "../rules/grail-engine";
 import type { WorldEntity } from "../types";
 
 /** index.ts getPlayerAttributes() 交给规则路由器的就是这个形状 —— 没有 status */
@@ -69,5 +69,33 @@ describe("inferRank — 只依赖它真正读的字段", () => {
   it("世界实体本身也满足这个入参", () => {
     const g = new GrailEngine();
     expect(g.inferRank(entity({ name: "黑铁卫兵" }))).toBe("iron");
+  });
+});
+
+// 位阶推断此前有两份实现：GrailEngine.inferRank，以及 npc-combat 私有的
+// getGrailRank。后者用 `(entity as any).attributes` 取值，且写的是
+// `if (attrs?.rank) return attrs.rank`——没有类型判断，attributes 里放一个
+// 数值 rank 就会被原样返回，而调用方拿它去索引位阶配置表。
+// WorldEntity.attributes 声明的恰恰是 Record<string, number>，所以这条路可达。
+describe("inferGrailRank — 位阶推断的唯一实现", () => {
+  it("字符串 rank 优先于名字", () => {
+    expect(inferGrailRank({ name: "传奇的骑士", attributes: { rank: "iron" } })).toBe("iron");
+  });
+
+  it("数值 rank 不算位阶，回落到名字与 status", () => {
+    expect(inferGrailRank({ name: "黄金位阶守卫", attributes: { rank: 3 } })).toBe("gold");
+    expect(inferGrailRank({ name: "无名小卒", attributes: { rank: 3 } })).toBe("bronze");
+  });
+
+  it("与类方法给出同一答案", () => {
+    const g = new GrailEngine();
+    const cases = [
+      { name: "传奇的骑士" },
+      { name: "守卫", status: ["白银"] },
+      { name: "无名小卒" },
+    ];
+    for (const c of cases) {
+      expect(inferGrailRank(c)).toBe(g.inferRank(c));
+    }
   });
 });

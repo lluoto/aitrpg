@@ -25,6 +25,32 @@ export interface RankSource {
   attributes?: Record<string, unknown>;
 }
 
+/**
+ * 从实体名 / status / attributes.rank 推断位阶。
+ *
+ * 独立成函数而不是只留类方法：npc-combat 也要推断位阶，此前它自己抄了一份，
+ * 用 `(entity as any).attributes` 取值且写成 `if (attrs?.rank) return attrs.rank`
+ * —— 没有类型判断，attributes 里放一个数值 rank 就会被原样返回，而调用方拿它
+ * 去索引位阶配置表。WorldEntity.attributes 声明的正是 Record<string, number>，
+ * 所以那条路可达。这里的 typeof 判断是唯一正确的写法，不该有第二份。
+ *
+ * 入参只写它真正读的三个字段，不写 WorldEntity：圣杯规则下攻击方从规则路由器
+ * 传进来的是玩家属性表（name/id/proficiency/abilities），根本没有 status，
+ * 按 WorldEntity 声明再 as any 硬转，展开 status 时会抛
+ * "Spread syntax requires ...iterable"，每次攻击都崩。
+ */
+export function inferGrailRank(entity: RankSource): GrailRank {
+  const rank = entity.attributes?.rank;
+  if (typeof rank === "string") return rank as GrailRank;
+
+  const text = [entity.name, ...(entity.status ?? [])].join(" ");
+  if (/传奇/.test(text)) return "legendary";
+  if (/黄金/.test(text)) return "gold";
+  if (/白银/.test(text)) return "silver";
+  if (/黑铁/.test(text)) return "iron";
+  return "bronze";
+}
+
 export interface RankConfig {
   label: string;
   tier: number;
@@ -91,25 +117,9 @@ export class GrailEngine {
     });
   }
 
-  /**
-   * 从实体名/status 推断位阶。
-   *
-   * 参数类型只写它真正读的三个字段，而不是 WorldEntity：攻击方从规则路由器
-   * 传进来的是玩家属性表（name/id/proficiency/abilities），根本没有 status，
-   * 之前按 WorldEntity 声明再 as any 硬转，展开 status 时直接抛
-   * "Spread syntax requires ...iterable"，圣杯规则下每次攻击都会崩。
-   * attributes 同理：WorldEntity 上本来就没有这个字段，靠 as any 才读得到。
-   */
+  /** 从实体名/status 推断位阶。实现见模块级的 inferGrailRank。 */
   inferRank(entity: RankSource): GrailRank {
-    const rank = entity.attributes?.rank;
-    if (typeof rank === "string") return rank as GrailRank;
-
-    const text = [entity.name, ...(entity.status ?? [])].join(" ");
-    if (/传奇/.test(text)) return "legendary";
-    if (/黄金/.test(text)) return "gold";
-    if (/白银/.test(text)) return "silver";
-    if (/黑铁/.test(text)) return "iron";
-    return "bronze";
+    return inferGrailRank(entity);
   }
 
   /** 获取位阶配置 */
