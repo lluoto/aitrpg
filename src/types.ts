@@ -86,8 +86,25 @@ export interface WorldEntity {
   maxHp: number;
   ac: number;
   status: string[];        // ["sneaking", "poisoned", "concentrating"]
-  position: string;        // "melee_range" | "ranged" | "far"
+  /**
+   * 注意：这个字段承载了两种语义，尚未统一。
+   * 模组导入与故事生成器往里写场景 ID（mythos-module 的 `position: sceneId`），
+   * 而同伴系统往里写战斗距离（companion-manager 的 `position: "melee_range"`，
+   * companion-agent 也按 "ranged" / "far" 读它）。因此它既不能当场景归属的
+   * 唯一依据，也不能当纯粹的距离。判断场景归属请用 scene_id。
+   */
+  position: string;
   faction?: string;        // "野兽", "怪物", "友善" 等——仅 npc/monster
+  /**
+   * 实体所属场景。getEntitiesInScene() 按它过滤。
+   *
+   * entities 表一直有这一列，mythos-module 的宿主契约也早就声明了它，
+   * 只是 WorldEntity 没声明，于是存储层只能 `(entity as any).scene_id` 去摸，
+   * rowToEntity 也不回读——结果任何一次更新都把它抹成 NULL。
+   */
+  scene_id?: string;
+  /** 数值属性（力量/意志等）。模组 NPC 会带，rowToEntity 需回读，否则更新即丢。 */
+  attributes?: Record<string, number>;
 }
 
 /**

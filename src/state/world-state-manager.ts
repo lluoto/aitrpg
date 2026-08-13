@@ -80,9 +80,11 @@ export class WorldStateManager {
           entity.ac ?? existing.ac,
           JSON.stringify(entity.status ?? existing.status),
           entity.position ?? existing.position,
-          (entity as any).faction ?? (existing as any).faction,
-          JSON.stringify((entity as any).attributes ?? {}),
-          (entity as any).scene_id ?? (existing as any).scene_id,
+          entity.faction ?? existing.faction ?? null,
+          // 回落 existing 而不是空对象：兄弟字段全都这么做，唯独这两列此前
+          // 分别回落 '{}' 和 undefined，于是只改血量的更新会顺手清空它们。
+          JSON.stringify(entity.attributes ?? existing.attributes ?? {}),
+          entity.scene_id ?? existing.scene_id ?? null,
           1,
         ]
       );
@@ -99,9 +101,9 @@ export class WorldStateManager {
           entity.ac ?? 10,
           JSON.stringify(entity.status ?? []),
           entity.position ?? "unknown",
-          (entity as any).faction ?? null,
-          JSON.stringify((entity as any).attributes ?? {}),
-          (entity as any).scene_id ?? null,
+          entity.faction ?? null,
+          JSON.stringify(entity.attributes ?? {}),
+          entity.scene_id ?? null,
         ]
       );
     }
@@ -152,8 +154,8 @@ export class WorldStateManager {
           e.hp ?? 1, e.maxHp ?? e.hp ?? 1, e.ac ?? 10,
           JSON.stringify(e.status ?? []),
           e.position ?? "unknown",
-          (e as any).faction ?? null,
-          (e as any).scene_id ?? null
+          e.faction ?? null,
+          e.scene_id ?? null
         );
       }
     })(entities);
@@ -551,6 +553,10 @@ export class WorldStateManager {
       status: JSON.parse(row.status || "[]"),
       position: row.position,
       faction: row.faction ?? undefined,
+      // 必须回读：upsertEntity 的更新分支拿 existing 做回落，这里不返回
+      // 就等于每次更新都把这两列抹掉（scene_id → NULL，attributes → '{}'）。
+      scene_id: row.scene_id ?? undefined,
+      attributes: this.parseJsonColumn<Record<string, number>>(row.attributes, {}),
     };
   }
 
