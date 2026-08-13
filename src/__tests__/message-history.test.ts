@@ -100,7 +100,7 @@ describe("回合消息进入会话历史", () => {
 // （docs/voice-readiness.md §四）。回合消息入历史后，不得把已有的 verbatim 标记冲掉。
 describe("回合消息入历史不影响 verbatim 标记", () => {
   it("带 verbatim 的消息与回合消息共存于历史", async () => {
-    session.addMessage("KP", "模组原文段落", "narration", "public", undefined, true);
+    session.addMessage("KP", "模组原文段落", "narration", { verbatim: true });
     await session.act("观察四周");
 
     const history = session.getHistory().messages;

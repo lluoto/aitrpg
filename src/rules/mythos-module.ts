@@ -23,7 +23,7 @@
  */
 
 import type { Database } from "bun:sqlite";
-import type { MessageType } from "../agent/types";
+import type { MessageType, NPCMood } from "../agent/types";
 import type { MythosCreature, MythosTome, MythosSpellDef } from "./mythos-expansion";
 import { MYTHOS_CREATURES } from "./mythos-expansion";
 
@@ -147,7 +147,14 @@ export interface ModuleNPC {
       curiosity: number;
       stability: number;
     };
-    initialMood?: string;
+    /**
+     * 声明成 NPCMood 而不是 string。
+     *
+     * 写成 string 时这里放过了一个 "paranoid" —— NPCMood 没有这个取值。
+     * 它经 NPCAgent.getMood() 原样流到消息上（实测 /history 里就是 paranoid），
+     * 而下游按八个取值分派：语音层选不到音色，任何 switch 都会掉到 default。
+     */
+    initialMood?: NPCMood;
     factions?: Array<{ name: string; loyalty: number }>;
   };
 }
@@ -295,8 +302,16 @@ export interface MythosModuleHost {
      */
     getDatabase?(): Database;
   };
-  /** @param verbatim 内容为模组原文逐字输出（非 LLM 生成）时置 true */
-  addMessage(speaker: string, content: string, type: MessageType, verbatim?: boolean): void;
+  /**
+   * 宿主只需要 verbatim 与 mood 这两项；可见性是会话概念，模组不关心，
+   * 由宿主适配器补默认值。
+   */
+  addMessage(
+    speaker: string,
+    content: string,
+    type: MessageType,
+    opts?: { verbatim?: boolean; mood?: NPCMood }
+  ): void;
   activeRuleset?: string;
   currentRound?: number;
 
@@ -624,7 +639,7 @@ export class MythosModuleLoader {
     if (module.introNarration) {
       // 模组开场白按跑团惯例逐字朗读，不经 LLM 改写 —— 标记出来，
       // 使前端与后续语音路由能区分「照读原文」与「KP 即兴叙述」。
-      this.host.addMessage("KP", module.introNarration, "narration", true);
+      this.host.addMessage("KP", module.introNarration, "narration", { verbatim: true });
     }
 
     // 8. 初始状态变更
@@ -771,7 +786,9 @@ export const INNSMOUTH_MODULE: MythosModule = {
         knowledge: ["印斯茅斯历史", "大衮教团", "1846年条约"],
         secrets: ["他自己也流淌着深潜者的血脉——他的曾祖母不是人类"],
         traits: { courage: 3, friendliness: 6, suspicion: 7, curiosity: 5, stability: 2 },
-        initialMood: "paranoid",
+        // 原写 "paranoid"：他的核心是恐惧而非怀疑，role 就叫「恐惧的知情者」。
+        // 多疑那一面由 suspicion: 7 承载，不需要再挤进情绪字段。
+        initialMood: "fearful",
       },
     },
     {
@@ -803,7 +820,10 @@ export const INNSMOUTH_MODULE: MythosModule = {
         secrets: ["教团正在准备一场大规模的血祭以迎接大衮的降临"],
         attitudes: { "外来者": "敌意", "扎多克·艾伦": "叛徒必须被清除" },
         traits: { courage: 8, friendliness: 2, suspicion: 9, curiosity: 4, stability: 7 },
-        initialMood: "hostile",
+        // 原写 "hostile"：人格描述明说「常年警惕但不主动攻击」，
+        // 敌意是立场不是情绪，用 suspicious 才对得上「警惕」；
+        // angry 会让他一上场就像已经动了手。
+        initialMood: "suspicious",
       },
     },
   ],
@@ -975,7 +995,9 @@ export const PREMIERS_BARN_MODULE: MythosModule = {
         knowledge: ["加比人际关系", "本地情况"],
         secrets: ["加比知道父亲生前的赌债"],
         traits: { courage: 7, friendliness: 7, suspicion: 5, curiosity: 6, stability: 6 },
-        initialMood: "anxious_hopeful",
+        // 原写 "anxious_hopeful"：女儿失踪的母亲，焦虑压过抱有希望的那一面。
+        // 「坚强」由 courage: 7 承载。
+        initialMood: "fearful",
       },
     },
     {
@@ -987,7 +1009,9 @@ export const PREMIERS_BARN_MODULE: MythosModule = {
         goals: ["和哥哥玩"],
         speech_style: "童言无忌",
         traits: { courage: 4, friendliness: 8, suspicion: 3, curiosity: 9, stability: 5 },
-        initialMood: "playful",
+        // 原写 "playful"：八个取值里最接近的是 friendly，而她的 friendliness 本就是 8。
+        // 「好奇活泼」由 curiosity: 9 承载。
+        initialMood: "friendly",
       },
     },
     {
@@ -1001,7 +1025,9 @@ export const PREMIERS_BARN_MODULE: MythosModule = {
         speech_style: "无法说话",
         secrets: ["意识到被米-戈欺骗"],
         traits: { courage: 3, friendliness: 2, suspicion: 8, curiosity: 5, stability: 1 },
-        initialMood: "paralyzed_terrified",
+        // 原写 "paralyzed_terrified"：恐惧的程度由 stability: 1 表达，
+        // 情绪字段只需要说清是哪一种情绪。
+        initialMood: "fearful",
       },
     },
     {
@@ -1015,7 +1041,9 @@ export const PREMIERS_BARN_MODULE: MythosModule = {
         speech_style: "通过脑罐文字交流",
         secrets: ["从未打算帮助艾德里安"],
         traits: { courage: 15, friendliness: 1, suspicion: 12, curiosity: 10, stability: 18 },
-        initialMood: "alien_calm",
+        // 原写 "alien_calm"：「异星」是它的身份而非情绪，情绪就是 calm，
+        // 非人感由 friendliness: 1 与 stability: 18 表达。
+        initialMood: "calm",
       },
     },
   ],

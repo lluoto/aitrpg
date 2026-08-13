@@ -356,20 +356,43 @@ export class GameSession {
   }
 
   /**
-   * @param verbatim 内容为模组原文逐字输出（非 LLM 生成）时置 true。
-   *   只在标记为真时写入该字段，避免每条消息都带 `verbatim: false` 污染存档。
+   * 尾部可选项收成一个对象，而不是继续往后加位置参数。
+   *
+   * 之前是六个位置参数，写到 `addMessage(s, c, t, "public", undefined, true)`
+   * 才能标一个 verbatim —— 中间那两个占位纯粹是为了够到最后一位。
+   * 每加一种消息属性就再加一位，调用点会越来越难读，也越来越容易传错位置。
    */
-  addMessage(speaker: string, content: string, type: MessageType = "dialogue", visibility: VisibilityRule = "public", discoverer?: string, verbatim?: boolean) {
-    this.session.push({ speaker, content, type, ...(verbatim ? { verbatim: true } : {}) }, visibility, discoverer);
-  }
-
-  /**
-   * NPC 台词入口。与 addMessage 分开而不是再加一个位置参数，是因为情绪
-   * 必须在生成时刻固定：mood 是状态机，事后回查 NPCAgent 拿到的是当时的
-   * 情绪，不是说这句话时的情绪。
-   */
-  addNPCDialogue(speaker: string, content: string, mood?: NPCMood) {
-    this.session.push({ speaker, content, type: "dialogue", ...(mood ? { mood } : {}) }, "public");
+  addMessage(
+    speaker: string,
+    content: string,
+    type: MessageType = "dialogue",
+    opts: {
+      visibility?: VisibilityRule;
+      discoverer?: string;
+      /**
+       * 内容为模组原文逐字输出（非 LLM 生成）时置 true。
+       * 只在为真时写入字段，避免每条消息都带 `verbatim: false` 污染存档。
+       */
+      verbatim?: boolean;
+      /**
+       * 说这句话时的情绪，必须由调用方在生成时刻取。
+       * mood 是状态机，事后回查 NPCAgent 拿到的是那时的情绪而非说这句话时的情绪，
+       * 历史回放更是必然错位 —— 所以它只能随消息一起固定下来。
+       */
+      mood?: NPCMood;
+    } = {}
+  ) {
+    this.session.push(
+      {
+        speaker,
+        content,
+        type,
+        ...(opts.verbatim ? { verbatim: true } : {}),
+        ...(opts.mood ? { mood: opts.mood } : {}),
+      },
+      opts.visibility ?? "public",
+      opts.discoverer
+    );
   }
 
   /**
@@ -1850,8 +1873,7 @@ export class GameSession {
         sceneItems: this.sceneItems,
         itemDescriptions: new Map<string, string>(),
         world: worldAdapter,
-        addMessage: (speaker: string, content: string, type: MessageType, verbatim?: boolean) =>
-          this.addMessage(speaker, content, type, "public", undefined, verbatim),
+        addMessage: (speaker, content, type, opts) => this.addMessage(speaker, content, type, opts),
         activeRuleset: this.activeRuleset,
         currentRound: this.round,
         // 读取模块：将模组原文场景描写写入 scenes 表（保留原文，供 KP 上下文注入）

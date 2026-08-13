@@ -473,7 +473,7 @@ async function handleRequest(req: Request): Promise<Response> {
         const history = session.getHistory(10);
         const reply = await npcAgent.respond(playerMsg, history.messages);
         // 记录到 session 历史；情绪在此刻固定，供未来语音层选择音色
-        session.addNPCDialogue(npcName, reply, npcAgent.getMood());
+        session.addMessage(npcName, reply, "dialogue", { mood: npcAgent.getMood() });
         return respondJson({ npc: npcName, reply });
       } catch (err: any) {
         return respondError(`NPC 对话失败: ${err.message}`, 500);
