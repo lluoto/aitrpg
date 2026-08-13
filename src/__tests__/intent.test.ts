@@ -1,4 +1,4 @@
-// intent 解析器单元测试 — regex fallback 模式匹配
+﻿// intent 解析器单元测试 — regex fallback 模式匹配
 // bun test src/__tests__/intent.test.ts
 
 import { describe, it, expect } from "bun:test";
@@ -457,5 +457,43 @@ describe("parseIntent — 显式命令前缀优先于模组名里的关键词", 
   it("非前缀开头的「检查」仍是技能检定", async () => {
     const r = await parseIntent("检查书架");
     expect(r.action).not.toBe("load_module");
+  });
+});
+
+// 施法动词 + 具名法术必须解析为 cast。
+//
+// 治疗类法术此前解析不到 cast：rest 的正则含「治疗」、first_aid 含「治疗.*伤」，
+// 两条都排在具名法术规则之前，于是「施放治疗术」落成 rest、「施展治疗伤势」
+// 落成 first_aid——玩家想施法，游戏让他休息。
+//
+// 同时锁住相邻语义不被顺手改坏：不带施法动词的治疗仍是急救/休息，
+// 「使用治疗药水」仍是用道具而不是施法。
+describe("parseIntent regex fallback — 施法与治疗的边界", () => {
+  it("施放治疗术 → cast", async () => {
+    expect((await parseIntent("施放治疗术")).action).toBe("cast");
+  });
+
+  it("施展治疗伤势 → cast", async () => {
+    expect((await parseIntent("施展治疗伤势")).action).toBe("cast");
+  });
+
+  it("使用治愈术 → cast", async () => {
+    expect((await parseIntent("使用治愈术")).action).toBe("cast");
+  });
+
+  it("施放火球术 → cast（对照组，不含治疗字样）", async () => {
+    expect((await parseIntent("施放火球术")).action).toBe("cast");
+  });
+
+  it("使用治疗药水 → use_item，不得变成施法", async () => {
+    expect((await parseIntent("使用治疗药水")).action).toBe("use_item");
+  });
+
+  it("包扎伤口 → first_aid，不得变成施法", async () => {
+    expect((await parseIntent("包扎伤口")).action).toBe("first_aid");
+  });
+
+  it("休息一下 → rest，不得变成施法", async () => {
+    expect((await parseIntent("休息一下")).action).toBe("rest");
   });
 });

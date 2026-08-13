@@ -52,6 +52,13 @@ const INTENT_PATTERNS: Array<{ verb: RegExp; intent: Partial<ActionIntent>; requ
   { verb: /(?:使用|释放|施放|施展).*(?:法术|魔法|咒语)/, intent: { action: "cast" } },
   { verb: /(?:使用|用|装备).*(?:道具|物品|药水|绷带|急救包|武器)/, intent: { action: "use_item" } },
   { verb: /(?:捡起|捡|拾取|拿起|拿走)/, intent: { action: "pickup" } },
+  // 施法动词 + 具名法术。必须夹在这两条之间，位置是被两侧同时约束死的：
+  //   - 要排在下方 first_aid / rest 之前，否则「施放治疗术」被 rest 的「治疗」
+  //     拦成休息、「施展治疗伤势」被 first_aid 拦成急救——玩家想施法，游戏让他休息；
+  //   - 又必须排在上方 use_item 之后，否则「使用治疗药水」会被这里的
+  //     「使用 + 治疗」吃掉，喝药变成施法。
+  { verb: /(?:施放|施展|释放|使用|吟唱|念咒|施法).*(?:魔法飞弹|燃烧之手|霜冻射线|火球术|闪电束|灼热射线|魔法弹)/, intent: { action: "cast" } },
+  { verb: /(?:施放|施展|释放|使用|吟唱|念咒|施法).*(?:治疗伤势|治愈|治疗|魔法飞弹|火球术)/, intent: { action: "cast" } },
   { verb: /(?:急救|包扎|止血|医疗|治疗).*(?:伤口|伤势|出血|伤)/, intent: { action: "first_aid" } },
   { verb: /(?:和|跟|与|对).*(?:说话|交谈|对话|聊聊|询问|问)/, intent: { action: "talk" } },
   { verb: /(?:休息|休息一下|休整|休养|睡觉|睡眠|治疗|包扎)/, intent: { action: "rest" } },
@@ -85,9 +92,7 @@ const INTENT_PATTERNS: Array<{ verb: RegExp; intent: Partial<ActionIntent>; requ
   { verb: /(?:疯狂指引|疯狂状态|疯狂描述|我的疯狂|疯癫|怎样演|怎么演|角色扮演指引)/, intent: { action: "insanity_guidance" } },
   { verb: /(?:理智|san|SAN|疯狂|恐惧|恐怖|害怕|惊吓)/, intent: { action: "san_check", sanCost: "1/1d6", reason: "恐惧侵袭" } },
   { verb: /(?:目睹|看见|见到).*(?:恐怖|恐怖景象|可怕|怪物|尸体)/, intent: { action: "san_check", sanCost: "1/1d6", reason: "目睹恐怖景象" } },
-  // D&D 施法
-  { verb: /(?:施放|施展|释放|使用|吟唱|念咒|施法).*(?:魔法飞弹|燃烧之手|霜冻射线|火球术|闪电束|灼热射线|魔法弹)/, intent: { action: "cast" } },
-  { verb: /(?:施放|施展|释放|使用|吟唱|念咒|施法).*(?:治疗伤势|治愈|治疗|魔法飞弹|火球术)/, intent: { action: "cast" } },
+  // D&D 施法（具名法术的两条已上移到 first_aid 之前，原因见那里）
   { verb: /(?:法术|魔法|咒语).*(?:攻击|打|杀|对付)/, intent: { action: "cast" } },
   { verb: /(?:法术|魔法).*(?:列表|展示|查看|有什么|有哪些|会用|可用)/, intent: { action: "spell_list" } },
   // D&D 豁免
