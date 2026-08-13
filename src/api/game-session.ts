@@ -38,11 +38,22 @@ import { saveSessionMeta, deleteSessionFile } from "./session-store";
 import type { CombatResult, WorldEntity, ActionIntent, CoCWeaponDef, CombatPersonalityTraits } from "../types";
 import type { NPCPersonality, AgentMessage, MessageType, NPCMood, TurnRecord } from "../agent/types";
 import { asNPCMood } from "../agent/types";
+import { voiceKeyFor } from "../voice/speech-plan";
 import { log } from "../log";
 
 export interface ActionResponse {
   narrative: string;
-  events: { speaker: string; content: string; type: MessageType; verbatim?: boolean }[];
+  events: {
+    speaker: string;
+    content: string;
+    type: MessageType;
+    verbatim?: boolean;
+    /**
+     * 预制音频的文件名（不含扩展名）。只有可离线预合成的消息才有 ——
+     * 前端凭它取 /voice/{voiceKey}.wav，取不到就静默跳过。
+     */
+    voiceKey?: string;
+  }[];
   state: {
     scene: string;
     /** 当前场景的配乐标识（模组静态数据）。无映射时缺省，前端静默不放。 */
@@ -353,7 +364,13 @@ export class GameSession {
 
   getHistory(limit?: number) {
     const msgs = this.session.getActiveHistory();
-    return { messages: msgs.slice(-(limit ?? msgs.length)), total: msgs.length };
+    // 恢复会话时前端也要能放预制音频，所以历史这一路同样带上键。
+    // 键是内容的纯函数，不进存档 —— 存了反而会在文案改动后指向旧音频。
+    const slice = msgs.slice(-(limit ?? msgs.length)).map(m => {
+      const key = voiceKeyFor(m);
+      return key ? { ...m, voiceKey: key } : m;
+    });
+    return { messages: slice, total: msgs.length };
   }
 
   /**
@@ -411,7 +428,19 @@ export class GameSession {
    *
    * 两者不共享数据，只共享这一个调用点：消息不承载状态，状态不进消息体。
    */
+  /**
+   * 正在进行的回合的消息数组，act() 期间有值，回合出口清空。
+   *
+   * 模组宿主适配器需要它：加载器经 host.addMessage 产出的开场白与提示，
+   * 原先直接写进会话历史，不进本回合的 turnMessages，于是 events 里没有它们——
+   * 前端只渲染 events，玩家在实盘里根本看不到模组开场白，要等下次恢复会话
+   * 读 /history 才出现。而开场白恰恰是加载那一刻最该被读到的一段。
+   */
+  private _turnMessages: AgentMessage[] | null = null;
+
   private buildActionResponse(turnMessages: AgentMessage[]): ActionResponse {
+    // 回合结束，宿主适配器不应再往这一轮投消息
+    this._turnMessages = null;
     // 回合出口统一落库：本回合内 SanityEngine 就地改动的 state 在此刻进入真相源。
     this.persistSanity();
 
@@ -428,20 +457,15 @@ export class GameSession {
 
     const state = this.getState();
     return {
-  /**
-   * 正在进行的回合的消息数组，act() 期间有值，回合出口清空。
-   *
-   * 模组宿主适配器需要它：加载器经 host.addMessage 产出的开场白与提示，
-   * 原先直接写进会话历史，不进本回合的 turnMessages，于是 events 里没有它们——
-   * 前端只渲染 events，玩家在实盘里根本看不到模组开场白，要等下次恢复会话
-   * 读 /history 才出现。而开场白恰恰是加载那一刻最该被读到的一段。
-   */
-  private _turnMessages: AgentMessage[] | null = null;
-
       narrative: this.lastNarrative,
-    // 回合结束，宿主适配器不应再往这一轮投消息
-    this._turnMessages = null;
-      events: turnMessages.map(m => ({ speaker: m.speaker, content: m.content, type: m.type, ...(m.verbatim ? { verbatim: true as const } : {}) })),
+      events: turnMessages.map(m => {
+        const key = voiceKeyFor(m);
+        return {
+          speaker: m.speaker, content: m.content, type: m.type,
+          ...(m.verbatim ? { verbatim: true as const } : {}),
+          ...(key ? { voiceKey: key } : {}),
+        };
+      }),
       state,
       dead: this.dead,
       sanity: this.getSanity(),
@@ -941,6 +965,8 @@ export class GameSession {
     this.gameTime = advanceTime(this.gameTime);
     this.companionManager.newRound();
     const turnMessages: AgentMessage[] = [];
+    // 供模组宿主适配器把加载期产生的消息投进本回合，见 _turnMessages 的说明
+    this._turnMessages = turnMessages;
 
     if (actingCharacterName && actingCharacterName !== this.session.getActive()?.characterName) {
       for (const [pid, ch] of this.characters) {
@@ -965,8 +991,6 @@ export class GameSession {
       const handled = await this.handleSlashCommand(input, turnMessages);
       if (handled) return this.buildActionResponse(turnMessages);
     }
-    // 供模组宿主适配器把加载期产生的消息投进本回合，见 _turnMessages 的说明
-    this._turnMessages = turnMessages;
 
     // 队友命令
     const recruitMatch = input.match(/^创建队友\s+(\S+)\s+(\S+)/);

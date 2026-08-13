@@ -50,6 +50,18 @@ export function speechRouteFor(msg: Pick<AgentMessage, "type" | "verbatim">): Sp
   return msg.verbatim ? "prebaked" : "realtime";
 }
 
+/**
+ * 可预制的消息给出音频键，其余给 undefined。
+ *
+ * 键在服务端算而不是让前端自己哈希：口径只有一处，前端也不必为此引入
+ * 异步的 SubtleCrypto。返回 undefined 表示这条消息没有预制音频可放。
+ */
+export function voiceKeyFor(
+  msg: Pick<AgentMessage, "type" | "content" | "verbatim">
+): string | undefined {
+  return speechRouteFor(msg) === "prebaked" ? voiceKey(msg.content) : undefined;
+}
+
 export function planSpeech(msg: AgentMessage): SpeechPlan {
   return {
     route: speechRouteFor(msg),

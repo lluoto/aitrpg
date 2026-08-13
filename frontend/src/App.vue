@@ -102,6 +102,54 @@ function applyBgm(id) {
 
 watch(() => session.bgm, (id) => applyBgm(id))
 watch(bgmMuted, () => applyBgm(session.bgm))
+
+// ── 预制语音 ──────────────────────────────────────────────────
+// 只放已离线合成好的模组原文，也就是后端给了 voiceKey 的那些消息。
+// KP 的即兴叙述属于实时层，还没做，这里不碰。
+//
+// 与环境音同样的三条约束：文件缺失静默、被浏览器拦下静默、不打断叙事。
+// 额外一条：语音播放期间把环境音压低，按"垫在人声之下"的标准混音。
+const VOICE_VOLUME = 0.9
+const BGM_DUCKED = 0.12
+const voiceMuted = ref(true) // 默认关，同样是因为自动播放会被拒绝
+let voiceEl = null
+let voicePlaying = false
+const voiceQueue = []
+
+function restoreBgm() {
+  voicePlaying = false
+  if (!bgmMuted.value && bgmEl && !bgmEl.paused) fadeTo(bgmEl, BGM_VOLUME)
+}
+
+function playNextVoice() {
+  const key = voiceQueue.shift()
+  if (!key) { restoreBgm(); return }
+  voicePlaying = true
+  if (!bgmMuted.value && bgmEl && !bgmEl.paused) fadeTo(bgmEl, BGM_DUCKED)
+  voiceEl.src = `/voice/${key}.wav`
+  // 被拦下时停在这里，不继续消费队列：说明用户还没交互过，后面几条同样会失败
+  voiceEl.play().catch(() => restoreBgm())
+}
+
+function enqueueVoice(key) {
+  if (!key || voiceMuted.value) return
+  if (!voiceEl) {
+    voiceEl = new Audio()
+    voiceEl.volume = VOICE_VOLUME
+    voiceEl.addEventListener('ended', playNextVoice)
+    // 没有对应预制文件就跳过这一条，不能卡住后面的
+    voiceEl.addEventListener('error', playNextVoice)
+  }
+  voiceQueue.push(key)
+  if (!voicePlaying) playNextVoice()
+}
+
+watch(voiceMuted, (muted) => {
+  if (!muted) return
+  voiceQueue.length = 0
+  if (voiceEl) voiceEl.pause()
+  restoreBgm()
+})
 const activeThemeRuleset = computed(() => {
   const ruleset = screen.value === 'game' ? session.ruleset : selectedRuleset.value
   return String(ruleset).toLowerCase().includes('dnd') ? 'dnd5e' : 'cosmic-horror'
@@ -216,6 +264,8 @@ async function submitAction(inputText, actingPc) {
         // 直接全量追加会让每个行动在日志中出现两次。
         if ((ev.speaker || '') === speaker && (ev.content || '') === trimmed) continue
         messages.value.push({ id: Date.now() + Math.random(), type: ev.type || 'system', speaker: ev.speaker || '系统', content: ev.content || '', verbatim: ev.verbatim === true })
+        // 有预制音频的消息按出现顺序入队；没有 voiceKey 的直接跳过
+        enqueueVoice(ev.voiceKey)
       }
     }
     if (data.dice && data.dice.length > 0) { for (const d of data.dice) messages.value.push({ id: Date.now() + Math.random(), type: 'roll', speaker: '🎲', content: d.expr + ' = **' + d.total + '**' + (d.detail ? ' (' + d.detail + ')' : '') }) }
@@ -325,7 +375,7 @@ function onInputKeydown(e) {
         <div class="status-bar__row">
           <div class="status-bar__info"><span class="status-bar__label">会话</span><span class="status-bar__value status-bar__value--mono">{{ session.id.slice(-6) || '—' }}</span></div>
           <div class="status-bar__info"><span class="status-bar__label">{{ session.ruleset === 'dnd5e' ? '回合' : '轮' }}</span><span class="status-bar__value">{{ session.round || '—' }}</span></div>
-          <div class="status-bar__info"><span class="status-bar__label">场景</span><span class="status-bar__value">{{ sceneLabel }}</span><button v-if="session.bgm" class="bgm-toggle" :class="{ 'bgm-toggle--on': !bgmMuted }" @click="bgmMuted = !bgmMuted">{{ bgmMuted ? '环境音 关' : '环境音 开' }}</button></div>
+          <div class="status-bar__info"><span class="status-bar__label">场景</span><span class="status-bar__value">{{ sceneLabel }}</span><button v-if="session.bgm" class="bgm-toggle" :class="{ 'bgm-toggle--on': !bgmMuted }" @click="bgmMuted = !bgmMuted">{{ bgmMuted ? '环境音 关' : '环境音 开' }}</button><button class="bgm-toggle" :class="{ 'bgm-toggle--on': !voiceMuted }" @click="voiceMuted = !voiceMuted">{{ voiceMuted ? '语音 关' : '语音 开' }}</button></div>
           <div class="status-bar__info" v-if="session.archetype"><span class="status-bar__label">职业</span><span class="status-bar__value">{{ archetypeLabel }}</span></div>
         </div>
         <div class="status-bar__stats">
