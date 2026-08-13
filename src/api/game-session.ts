@@ -428,7 +428,19 @@ export class GameSession {
 
     const state = this.getState();
     return {
+  /**
+   * 正在进行的回合的消息数组，act() 期间有值，回合出口清空。
+   *
+   * 模组宿主适配器需要它：加载器经 host.addMessage 产出的开场白与提示，
+   * 原先直接写进会话历史，不进本回合的 turnMessages，于是 events 里没有它们——
+   * 前端只渲染 events，玩家在实盘里根本看不到模组开场白，要等下次恢复会话
+   * 读 /history 才出现。而开场白恰恰是加载那一刻最该被读到的一段。
+   */
+  private _turnMessages: AgentMessage[] | null = null;
+
       narrative: this.lastNarrative,
+    // 回合结束，宿主适配器不应再往这一轮投消息
+    this._turnMessages = null;
       events: turnMessages.map(m => ({ speaker: m.speaker, content: m.content, type: m.type, ...(m.verbatim ? { verbatim: true as const } : {}) })),
       state,
       dead: this.dead,
@@ -953,6 +965,8 @@ export class GameSession {
       const handled = await this.handleSlashCommand(input, turnMessages);
       if (handled) return this.buildActionResponse(turnMessages);
     }
+    // 供模组宿主适配器把加载期产生的消息投进本回合，见 _turnMessages 的说明
+    this._turnMessages = turnMessages;
 
     // 队友命令
     const recruitMatch = input.match(/^创建队友\s+(\S+)\s+(\S+)/);
@@ -1877,7 +1891,18 @@ export class GameSession {
         sceneItems: this.sceneItems,
         itemDescriptions: new Map<string, string>(),
         world: worldAdapter,
-        addMessage: (speaker, content, type, opts) => this.addMessage(speaker, content, type, opts),
+        // 优先投进本回合：回合出口会统一把 turnMessages 写入历史，
+        // 这里再直接写一次历史就会重复。不在回合内时（理论上不会发生）
+        // 退回直接写历史，至少不丢消息。
+        addMessage: (speaker, content, type, opts) => {
+          const turn = this._turnMessages;
+          if (!turn) { this.addMessage(speaker, content, type, opts); return; }
+          turn.push({
+            speaker, content, type,
+            ...(opts?.verbatim ? { verbatim: true as const } : {}),
+            ...(opts?.mood ? { mood: opts.mood } : {}),
+          });
+        },
         activeRuleset: this.activeRuleset,
         currentRound: this.round,
         // 读取模块：将模组原文场景描写写入 scenes 表（保留原文，供 KP 上下文注入）
