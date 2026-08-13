@@ -110,9 +110,11 @@ describe("调查: Secondary 辅助检定", () => {
         spot_hidden: 60,
         psychology: 60,
       }, [], "p1", ruleEngine);
-      const bonusResult = r.secondary_results.find(sr => sr.bonus_type);
-      if (bonusResult) {
-        expect(["advantage", "dc_reduction", "skill_bonus"]).toContain(bonusResult.bonus_type);
+      // 直接取出 bonus_type 再判断：find 的谓词不会把属性窄化到元素类型上，
+      // 拿 bonusResult.bonus_type 传给 toContain 时它仍是可选的。
+      const bonusType = r.secondary_results.find(sr => sr.bonus_type)?.bonus_type;
+      if (bonusType) {
+        expect(["advantage", "dc_reduction", "skill_bonus"]).toContain(bonusType);
         break;
       }
     }

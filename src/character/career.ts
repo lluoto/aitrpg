@@ -417,8 +417,8 @@ export class CareerStore {
 
   /** 删除角色基线快照（级联删除 entries） */
   deleteSnapshot(characterName: string): void {
-    this.db.run("DELETE FROM career_entries WHERE character_name = ?", characterName);
-    this.db.run("DELETE FROM snapshots WHERE character_name = ?", characterName);
+    this.db.run("DELETE FROM career_entries WHERE character_name = ?", [characterName]);
+    this.db.run("DELETE FROM snapshots WHERE character_name = ?", [characterName]);
   }
 
   /** 列出所有已记录的角色名 */
@@ -491,7 +491,7 @@ export class CareerStore {
 
   /** 删除指定模组完成记录 */
   deleteEntry(entryId: string): void {
-    this.db.run("DELETE FROM career_entries WHERE id = ?", entryId);
+    this.db.run("DELETE FROM career_entries WHERE id = ?", [entryId]);
   }
 
   // ============================================================

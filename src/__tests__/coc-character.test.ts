@@ -451,9 +451,11 @@ describe("getCoCArchetypes", () => {
 
   test("每个 CoC 职业有 skills 和 priorityAttributes", () => {
     const archetypes = getCoCArchetypes();
+    // 两个字段在类型上可选，缺失时取 0 直接判负 —— 用例名说的就是"每个职业都有"，
+    // 缺失本身就该算失败，而不是让可选性把断言绕过去。
     for (const a of archetypes) {
-      expect(a.skills.length).toBeGreaterThan(0);
-      expect(a.priorityAttributes.length).toBeGreaterThan(0);
+      expect(a.skills?.length ?? 0).toBeGreaterThan(0);
+      expect(a.priorityAttributes?.length ?? 0).toBeGreaterThan(0);
     }
   });
 });

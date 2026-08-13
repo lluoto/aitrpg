@@ -9,7 +9,7 @@
 
 import { readFileSync } from "fs";
 import { parse as parseYaml } from "yaml";
-import { CoCEngine } from "../rules/coc-engine";
+import { CoCEngine, type CoCSuccessLevel } from "../rules/coc-engine";
 import type { RuleEngine } from "../engine/rule-engine";
 import type { WorldState, WorldEntity } from "../types";
 import type { DifficultyProfile } from "../rules/module-difficulty";
@@ -442,7 +442,9 @@ export class InvestigationEngine {
     playerName: string,
   ): {
     success: boolean;
-    successLevel: string;
+    // 这里原本写的是 string。值本来就来自 CoCEngine 的成功层级，放宽成 string
+    // 只是让调用方拿它去索引 Record<CoCSuccessLevel, string> 时失去检查。
+    successLevel: CoCSuccessLevel;
     revelation: string;
     sanLost: number;
     sanCost: string;

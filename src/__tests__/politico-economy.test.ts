@@ -98,7 +98,7 @@ describe("TradeSystem", () => {
   });
 
   it("should create and retrieve markets", () => {
-    trade.createMarket({ id: "test_market", name: "测试市场", location: "test" });
+    trade.createMarket({ id: "test_market", name: "测试市场", location: "test", controlledBy: "test_faction" });
     const market = trade.getMarket("test_market");
     expect(market).toBeDefined();
     expect(market!.name).toBe("测试市场");
@@ -109,7 +109,7 @@ describe("TradeSystem", () => {
   });
 
   it("should set and retrieve prices", () => {
-    trade.createMarket({ id: "price_test_market", name: "价格测试市场", location: "test" });
+    trade.createMarket({ id: "price_test_market", name: "价格测试市场", location: "test", controlledBy: "test_faction" });
     trade.setPrice("price_test_market", "food", 10);
     const entry = trade.getMarket("price_test_market")!.entries["food"];
     expect(entry).toBeDefined();

@@ -22,6 +22,7 @@ import { NPCAgent } from "./agent/npc-agent";
 import { KPAgent } from "./agent/kp-agent";
 import { AgentRegistry } from "./agent/agent-registry";
 import { WorldStateManager } from "./state/world-state-manager";
+import type { WorldEntity } from "./types";
 import { NPCCombatEngine } from "./combat/npc-combat";
 import { PlayerSession, type VisibilityRule } from "./session/player-session";
 import { InvestigationEngine } from "./investigation/investigation-engine";
@@ -277,17 +278,21 @@ function getActiveScene(): string {
 
 function getPlayerAttributes(): { name: string; id: string; proficiency: number; abilities: Record<string, number>; hasSneakAttack: boolean; cocAttrs?: Record<string, number>; getSkill?: (key: string) => number } {
   if (activeRuleset === "cosmic-horror" && cocCharacter) {
+    // 捕获成局部常量再交给闭包：cocCharacter 是模块级可变量，上面的判空只在
+    // 这一刻成立。getSkill 是留给调用方以后调的，那时它可能已经被换角色或置空，
+    // 闭包直接读外层变量就会在运行时炸。捕获之后，返回的这份属性表自洽。
+    const coc = cocCharacter;
     return {
-      name: cocCharacter.name, id: "player",
+      name: coc.name, id: "player",
       proficiency: 2,
-      abilities: { strength: cocCharacter.attributes.strength, dexterity: cocCharacter.attributes.dexterity, constitution: cocCharacter.attributes.constitution, intelligence: cocCharacter.attributes.intelligence, wisdom: cocCharacter.attributes.power, charisma: cocCharacter.attributes.appearance },
+      abilities: { strength: coc.attributes.strength, dexterity: coc.attributes.dexterity, constitution: coc.attributes.constitution, intelligence: coc.attributes.intelligence, wisdom: coc.attributes.power, charisma: coc.attributes.appearance },
       hasSneakAttack: false,
-      cocAttrs: cocCharacter.attributes,
+      cocAttrs: coc.attributes,
       getSkill: (key: string) => {
-        if (key === "dodge") return Math.floor((cocCharacter.attributes.dexterity ?? 50) / 2);
-        if (key === "fighting") return getSkillValue(cocCharacter.occupationSkills, cocCharacter.skillValues, "fighting") || 25;
-        if (key.startsWith("firearms")) return getSkillValue(cocCharacter.occupationSkills, cocCharacter.skillValues, key) || 20;
-        return getSkillValue(cocCharacter.occupationSkills, cocCharacter.skillValues, key) || 0;
+        if (key === "dodge") return Math.floor((coc.attributes.dexterity ?? 50) / 2);
+        if (key === "fighting") return getSkillValue(coc.occupationSkills, coc.skillValues, "fighting") || 25;
+        if (key.startsWith("firearms")) return getSkillValue(coc.occupationSkills, coc.skillValues, key) || 20;
+        return getSkillValue(coc.occupationSkills, coc.skillValues, key) || 0;
       },
     };
   }
@@ -1154,8 +1159,9 @@ async function main() {
           console.log(`  新特性: ${activeCharacter.activeFeatures.slice(-3).map(f=>`${f.name}(${f.description.slice(0,30)}...)`).join(", ")}`);
         }
         // 检查是否到达专长选择等级
-        if (activeArchetype()?.featChoices) {
-          for (const fc of activeArchetype()?.featChoices) {
+        const prestigeFeatChoices = activeArchetype()?.featChoices;
+        if (prestigeFeatChoices) {
+          for (const fc of prestigeFeatChoices) {
             const alreadyChosen = activeCharacter.selectedFeats.some(sf => fc.options.some(o => o.name === sf));
             if (fc.level <= activeCharacter.totalLevel && !alreadyChosen) {
               const options = fc.options.map(o => o.name).join("、");
@@ -1181,9 +1187,12 @@ async function main() {
       }
       activeCharacter.hp = activeCharacter.maxHp;
       // 激活新等级的 levelFeatures
-      if (activeArchetype()?.levelFeatures) {
+      // 取一次存下来再用：判空和遍历各调一次 activeArchetype()，中间没有任何东西
+      // 保证两次返回同一个对象，判空的结论对遍历那次不成立。
+      const levelFeatures = activeArchetype()?.levelFeatures;
+      if (levelFeatures) {
         const oldCount = activeCharacter.activeFeatures.length;
-        for (const lf of activeArchetype()?.levelFeatures) {
+        for (const lf of levelFeatures) {
           if (lf.level <= activeCharacter.totalLevel && !activeCharacter.activeFeatures.some(f => f.name === lf.name)) {
             activeCharacter.activeFeatures.push(lf);
           }
@@ -1194,8 +1203,9 @@ async function main() {
       }
       console.log(`  ⬆ ${activeCharacter.name} 升至 Lv${activeCharacter.totalLevel}！HP:${activeCharacter.maxHp}`);
       // 提示专长选择
-      if (activeArchetype()?.featChoices) {
-        for (const fc of activeArchetype()?.featChoices) {
+      const levelFeatChoices = activeArchetype()?.featChoices;
+      if (levelFeatChoices) {
+        for (const fc of levelFeatChoices) {
           const alreadyChosen = activeCharacter.selectedFeats.some(sf => fc.options.some(o => o.name === sf));
           if (fc.level <= activeCharacter.totalLevel && !alreadyChosen) {
             const options = fc.options.map(o => o.name).join("、");
@@ -1214,7 +1224,7 @@ async function main() {
         const prereq = p.prerequisites
           ? `需要 Lv${p.prerequisites.minLevel ?? "?"} BAB${p.prerequisites.minBAB ?? "?"}`
           : "无条件";
-        console.log(`    ${p.id}(${p.label}) — ${prereq} — ${p.description.slice(0,40)}...`);
+        console.log(`    ${p.id}(${p.label}) — ${prereq} — ${(p.description ?? "").slice(0,40)}...`);
       }
       rl.prompt(); continue;
     }
