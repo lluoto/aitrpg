@@ -23,6 +23,91 @@ import * as path from "path";
 
 const DEFAULT_DB_PATH = path.join(import.meta.dir, "../../data/npc.db");
 
+// ============================================================
+// 表行形状
+// ============================================================
+//
+// 字段名与本文件里的建表语句逐一对应。SQLite 返回的键就是列名原样，
+// 此前查询结果一律 as any，列名写错只会在运行时静默取到 undefined ——
+// npc_memories 的 scene_id 就是这么空了很久没人发现的。
+// 部分查询只取了几列，那些地方用 Pick 而不是整行，避免类型声称有而实际没取。
+
+interface PersonalityRow {
+  id: string;
+  name: string;
+  role: string;
+  personality: string;
+  background: string;
+  speech_style: string;
+  goals: string;
+  knowledge: string;
+  secrets: string;
+  attitudes: string;
+  ruleset: string;
+  traits: string;
+  factions: string;
+  initial_mood: string;
+  created_at: number;
+  updated_at: number;
+}
+
+interface MemoryRow {
+  id: number;
+  npc_id: string;
+  type: string;
+  content: string;
+  importance: number;
+  timestamp: number;
+  scene_id: string;
+  related_entities: string;
+  is_summary: number;
+}
+
+interface RelationshipRow {
+  npc_id: string;
+  target_name: string;
+  relationship: number;
+  interaction_count: number;
+  last_interaction: number;
+}
+
+interface StateRow {
+  npc_id: string;
+  mood: string;
+  relationship: number;
+  player_interaction_count: number;
+  last_active: number;
+}
+
+// 库里存的是裸字符串，取出来要先确认它还在合法取值里再当联合类型用。
+// 老库、手改过的库、以及将来改了枚举而没迁移的库都会在这里被挡住 ——
+// 直接 as 会把一个不存在的情绪值放进整个系统。
+const MOODS: readonly NPCMood[] = [
+  "neutral", "friendly", "angry", "fearful", "suspicious", "excited", "sad", "calm",
+];
+const RULESETS: readonly NonNullable<NPCPersonality["ruleset"]>[] = [
+  "cosmic-horror", "dnd5e", "grail",
+];
+const MEMORY_TYPES: readonly MemoryEntry["type"][] = [
+  "observation", "dialogue", "event", "decision",
+];
+
+function asMood(v: string | null | undefined): NPCMood | undefined {
+  return v && MOODS.includes(v as NPCMood) ? (v as NPCMood) : undefined;
+}
+
+function asRuleset(v: string | null | undefined): NPCPersonality["ruleset"] {
+  const r = v as NonNullable<NPCPersonality["ruleset"]>;
+  return v && RULESETS.includes(r) ? r : undefined;
+}
+
+function asMemoryType(v: string): MemoryEntry["type"] {
+  // 建表处有 CHECK 约束兜底，这里只是把它翻译成类型；真出现越界值时
+  // 归到 observation 而不是让它继续往下流。
+  const t = v as MemoryEntry["type"];
+  return MEMORY_TYPES.includes(t) ? t : "observation";
+}
+
 function ensureDir(filePath: string) {
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -168,13 +253,13 @@ export class NPCStore {
 
   /** 获取所有 NPC 人格卡 */
   getAllPersonalities(): NPCPersonality[] {
-    const rows = this.db.query("SELECT * FROM npc_personalities").all() as any[];
+    const rows = this.db.query("SELECT * FROM npc_personalities").all() as PersonalityRow[];
     return rows.map(rowToPersonality);
   }
 
   /** 按 ID 获取 NPC 人格卡 */
   getPersonality(id: string): NPCPersonality | null {
-    const row = this.db.query("SELECT * FROM npc_personalities WHERE id = ?").get(id) as any;
+    const row = this.db.query("SELECT * FROM npc_personalities WHERE id = ?").get(id) as PersonalityRow | null;
     return row ? rowToPersonality(row) : null;
   }
 
@@ -222,7 +307,7 @@ export class NPCStore {
   getRecentMemories(npcId: string, limit = 50): MemoryEntry[] {
     const rows = this.db.query(
       `SELECT * FROM npc_memories WHERE npc_id = ? ORDER BY timestamp DESC LIMIT ?`
-    ).all(npcId, limit) as any[];
+    ).all(npcId, limit) as MemoryRow[];
     return rows.map(rowToMemory);
   }
 
@@ -230,7 +315,7 @@ export class NPCStore {
   getImportantMemories(npcId: string, minImportance = 7, limit = 30): MemoryEntry[] {
     const rows = this.db.query(
       `SELECT * FROM npc_memories WHERE npc_id = ? AND importance >= ? ORDER BY importance DESC LIMIT ?`
-    ).all(npcId, minImportance, limit) as any[];
+    ).all(npcId, minImportance, limit) as MemoryRow[];
     return rows.map(rowToMemory);
   }
 
@@ -238,7 +323,7 @@ export class NPCStore {
   getSceneMemories(npcId: string, sceneId: string, limit = 20): MemoryEntry[] {
     const rows = this.db.query(
       `SELECT * FROM npc_memories WHERE npc_id = ? AND scene_id = ? ORDER BY timestamp DESC LIMIT ?`
-    ).all(npcId, sceneId, limit) as any[];
+    ).all(npcId, sceneId, limit) as MemoryRow[];
     return rows.map(rowToMemory);
   }
 
@@ -246,7 +331,7 @@ export class NPCStore {
   searchMemories(npcId: string, keyword: string, limit = 20): MemoryEntry[] {
     const rows = this.db.query(
       `SELECT * FROM npc_memories WHERE npc_id = ? AND content LIKE ? ORDER BY timestamp DESC LIMIT ?`
-    ).all(npcId, `%${keyword}%`, limit) as any[];
+    ).all(npcId, `%${keyword}%`, limit) as MemoryRow[];
     return rows.map(rowToMemory);
   }
 
@@ -255,7 +340,7 @@ export class NPCStore {
     // 获取第 keepTop 条的重要性阈值
     const threshold = this.db.query(
       `SELECT importance FROM npc_memories WHERE npc_id = ? ORDER BY importance DESC LIMIT 1 OFFSET ?`
-    ).get(npcId, keepTop - 1) as any;
+    ).get(npcId, keepTop - 1) as Pick<MemoryRow, "importance"> | null;
     if (!threshold) return 0;
     // 删除低于该重要性且非 summary 的记忆
     const result = this.db.run(
@@ -267,7 +352,7 @@ export class NPCStore {
 
   /** 获取 NPC 记忆总数 */
   countMemories(npcId: string): number {
-    const row = this.db.query("SELECT COUNT(*) as cnt FROM npc_memories WHERE npc_id = ?").get(npcId) as any;
+    const row = this.db.query("SELECT COUNT(*) as cnt FROM npc_memories WHERE npc_id = ?").get(npcId) as { cnt: number } | null;
     return row?.cnt ?? 0;
   }
 
@@ -279,7 +364,7 @@ export class NPCStore {
   getRelationship(npcId: string, targetName: string): number {
     const row = this.db.query(
       "SELECT relationship FROM npc_relationships WHERE npc_id = ? AND target_name = ?"
-    ).get(npcId, targetName) as any;
+    ).get(npcId, targetName) as Pick<RelationshipRow, "relationship"> | null;
     return row?.relationship ?? 0;
   }
 
@@ -303,7 +388,7 @@ export class NPCStore {
   getAllRelationships(npcId: string): Array<{ targetName: string; relationship: number; interactionCount: number }> {
     const rows = this.db.query(
       "SELECT target_name, relationship, interaction_count FROM npc_relationships WHERE npc_id = ? ORDER BY relationship DESC"
-    ).all(npcId) as any[];
+    ).all(npcId) as Array<Pick<RelationshipRow, "target_name" | "relationship" | "interaction_count">>;
     return rows.map(r => ({
       targetName: r.target_name,
       relationship: r.relationship,
@@ -317,10 +402,11 @@ export class NPCStore {
 
   /** 获取 NPC 当前状态 */
   getState(npcId: string): { mood: NPCMood; relationship: number; interactionCount: number } | null {
-    const row = this.db.query("SELECT * FROM npc_states WHERE npc_id = ?").get(npcId) as any;
+    const row = this.db.query("SELECT * FROM npc_states WHERE npc_id = ?").get(npcId) as StateRow | null;
     if (!row) return null;
     return {
-      mood: row.mood as NPCMood,
+      // 库里存的是裸字符串；越界值退回 neutral，不让它冒充成合法情绪往下走
+      mood: asMood(row.mood) ?? "neutral",
       relationship: row.relationship,
       interactionCount: row.player_interaction_count,
     };
@@ -344,7 +430,7 @@ export class NPCStore {
 // 行 → 对象 转换函数
 // ============================================================
 
-function rowToPersonality(row: any): NPCPersonality {
+function rowToPersonality(row: PersonalityRow): NPCPersonality {
   return {
     name: row.name,
     role: row.role,
@@ -355,17 +441,17 @@ function rowToPersonality(row: any): NPCPersonality {
     knowledge: safeJSONParse(row.knowledge, []),
     secrets: safeJSONParse(row.secrets, []),
     attitudes: safeJSONParse(row.attitudes, {}),
-    ruleset: row.ruleset || undefined,
+    ruleset: asRuleset(row.ruleset),
     traits: safeJSONParse(row.traits, undefined),
     factions: safeJSONParse(row.factions, undefined),
-    initialMood: row.initial_mood as NPCMood | undefined,
+    initialMood: asMood(row.initial_mood),
   };
 }
 
-function rowToMemory(row: any): MemoryEntry {
+function rowToMemory(row: MemoryRow): MemoryEntry {
   return {
     timestamp: row.timestamp,
-    type: row.type,
+    type: asMemoryType(row.type),
     content: row.content,
     importance: row.importance,
     scene_id: row.scene_id || undefined,
