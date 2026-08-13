@@ -416,8 +416,18 @@ export class InvestigationEngine {
   /** 线索描述映射（clueType → 描述文本） */
   clueDescriptions: Map<string, string> = new Map();
 
-  /** 注册场景线索（供 MythosModule 使用） */
-  registerSceneClue(sceneName: string, clueType: string, description?: string) {
+  /**
+   * 注册场景线索（供 MythosModule 使用）。
+   *
+   * 带上描述时会顺便合成一份最小 ClueDef，否则这条线索对 investigateCoC 不可解析
+   * ——它只认 clueTypes 里的定义，查不到就返回兜底失败「你没有找到有用的线索」。
+   * 模组每条线索本来就写了 description 和 sanCost，缺的只是把它们变成定义这一步。
+   *
+   * 合成版只有一条 spot_hidden 路径、各成功层级共用模组给的那句描述——模组没有
+   * 分层文本可用。因此已有同名定义时不覆盖：yaml 版带多技能路径与分层文本，
+   * 换成一句话是数据丢失。
+   */
+  registerSceneClue(sceneName: string, clueType: string, description?: string, sanCost?: string) {
     const list = this.sceneClues.get(sceneName) ?? [];
     if (!list.includes(clueType)) {
       list.push(clueType);
@@ -425,6 +435,21 @@ export class InvestigationEngine {
     }
     if (description) {
       this.clueDescriptions.set(clueType, description);
+      if (!this.clueTypes.has(clueType)) {
+        this.addClueType(clueType, {
+          description,
+          san_cost: sanCost,
+          scene: sceneName,
+          coc_primary: {
+            skill: "spot_hidden",
+            regular: description,
+            hard: description,
+            extreme: description,
+            critical: description,
+            fail: "你没有找到有用的信息。",
+          },
+        });
+      }
     }
   }
 

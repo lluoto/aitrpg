@@ -1985,9 +1985,9 @@ export class GameSession {
           this.world.registerScene(sceneId, displayName, description);
         },
         // 读取模块：将模组线索注册进调查引擎（供场景线索注入）
-        registerSceneClue: (sceneName: string, clueType: string, description?: string) => {
-          this.investigation.registerSceneClue(sceneName, clueType, description);
-        },
+      registerSceneClue: (sceneName: string, clueType: string, description?: string, sanCost?: string) => {
+        this.investigation.registerSceneClue(sceneName, clueType, description, sanCost);
+      },
         // 读取模块：将模组 NPC 内联人格注册进 NPC Agent 系统（供 /npc-chat 对话）
         registerNPCPersonality: (npcName: string, personality: any, npcPersonalityId?: string) => {
           this.registerModuleNPCPersonality(npcName, personality, npcPersonalityId);

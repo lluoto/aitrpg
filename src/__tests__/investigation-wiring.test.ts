@@ -79,16 +79,44 @@ describe("调查动作接入 InvestigationEngine", () => {
     expect(currentSan()).toBe(before);
   });
 
-  // 模组注册的线索只带一句描述，没有 ClueDef。送进 investigateCoC 只会拿到
-  // 兜底失败「你没有找到有用的线索」，比原来的裸检定更糟，所以必须放行给通用检定。
-  it("只有描述、没有定义的模组线索不得劫持技能检定", async () => {
-    session.investigation.registerSceneClue(currentScene(), "barn_hideout", "谷仓里的临时住所");
-    const before = currentSan();
+  // 这一组推翻了本文件上一版的一条断言。当时写的是「只有描述的模组线索不得劫持
+  // 技能检定」——那是在没有定义可合成的前提下唯一安全的做法：送进 investigateCoC
+  // 只会拿到兜底失败「你没有找到有用的线索」，比裸检定更糟。
+  //
+  // 前提现在变了：模组每条线索本来就带 description 和 sanCost，registerSceneClue
+  // 只是没有 sanCost 这个参数、把它丢在了边界上。补上之后就能合成一份最小定义
+  // （检定技能取 addClueType 既有的默认值 spot_hidden，揭示文本用模组自己的描述），
+  // 于是模组线索应当可被调查解析——这才是这套数据本来的用途。
+  describe("模组注册的线索", () => {
+    it("带 sanCost 的模组线索，调查会按它扣 SAN", async () => {
+      session.investigation.registerSceneClue(currentScene(), "barn_hideout", "谷仓里的临时住所", "1/1d6");
+      const before = currentSan();
 
-    await session.act("调查");
+      await session.act("调查");
 
-    expect(currentSan()).toBe(before);
-    expect(session.investigation.isDiscoveredBy("barn_hideout", session.activePlayerId)).toBe(false);
+      expect(currentSan()).toBeLessThan(before);
+    });
+
+    it("不带 sanCost 的模组线索仍可被解析，只是不扣 SAN", async () => {
+      session.investigation.registerSceneClue(currentScene(), "barn_hideout", "谷仓里的临时住所");
+      const before = currentSan();
+
+      await session.act("调查");
+
+      expect(currentSan()).toBe(before);
+      expect(session.investigation.hasClueType("barn_hideout")).toBe(true);
+    });
+
+    it("不得覆盖 investigation.yaml 里已有的同名定义", () => {
+      expect(session.investigation.hasClueType("ritual_site")).toBe(true);
+
+      session.investigation.registerSceneClue(currentScene(), "ritual_site", "模组自己的描述", "0/1");
+
+      // 合成定义只有一句描述和一条 spot_hidden 路径；yaml 版有多技能路径与分层文本。
+      // 覆盖即数据丢失，所以已有定义必须原样保留 —— 用 san_cost 作可判定的观测点。
+      const resolved = session.investigation.investigateCoC("ritual_site", { occult: 50 }, "probe");
+      expect(resolved.sanCost).toBe("1/1d6");
+    });
   });
 
   it("SAN 不会被扣成负数", async () => {

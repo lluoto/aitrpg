@@ -326,7 +326,7 @@ export interface MythosModuleHost {
 
   // ── 调查系统 ──
   /** 注册调查线索到指定场景 */
-  registerSceneClue?(sceneName: string, clueType: string, description?: string): void;
+  registerSceneClue?(sceneName: string, clueType: string, description?: string, sanCost?: string): void;
 
   // ── 场景事件钩子 ──
   /**
@@ -619,7 +619,9 @@ export class MythosModuleLoader {
     let clueCount = 0;
     if (module.clues && this.host.registerSceneClue) {
       for (const c of module.clues) {
-        this.host.registerSceneClue(c.scene, c.clueType, c.description);
+        // sanCost 必须一起传：模组每条线索都写了它，而调查判定要靠它决定
+        // 发现这条线索损失多少理智。此前签名里没有这个参数，值在边界被丢弃。
+        this.host.registerSceneClue(c.scene, c.clueType, c.description, c.sanCost);
         clueCount++;
       }
     }
