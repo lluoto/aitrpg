@@ -11,6 +11,7 @@ import type { MessageType } from "../agent/types";
 import { createWsClient, removeWsClient, broadcastToSession, wsStats, isWsRole, type WsRole, type WsConnectionData } from "./ws-handler";
 import { listSavedModules, loadModuleFile, saveModuleFile, deleteModuleFile, createBlankModule, parseMythosModule } from "./module-editor";
 import { CharacterFactory } from "../character/character-factory";
+import { createScriptedSession, getScriptedSession } from "./scripted-session";
 import { log } from "../log";
 
 // ============================================================
@@ -536,6 +537,38 @@ async function handleRequest(req: Request): Promise<Response> {
       return respondError("不支持的导出格式，支持 json, markdown", 400);
     }
 
+  }
+
+  // ── 剧本杀会话 ──
+  // 与自由跑团（/api/sessions）并列的一套路由，不共享任何状态：
+  // 那边是 KP 即兴生成，这边是线索门禁 + 多结局，两套规则混在一起只会互相污染。
+  if (segments[0] === "api" && segments[1] === "scripted") {
+    // POST /api/scripted — 开一局
+    if (method === "POST" && segments.length === 2) {
+      const s = createScriptedSession();
+      return respondJson({ id: s.id });
+    }
+
+    const scripted = segments[2] ? getScriptedSession(segments[2]) : undefined;
+    if (!scripted) return respondError("剧本会话不存在", 404);
+
+    // GET /api/scripted/:id — 拉增量播报与当前岔口
+    if (method === "GET" && segments.length === 3) {
+      const snap = scripted.poll();
+      return respondJson(scripted.error ? { ...snap, error: scripted.error } : snap);
+    }
+
+    // POST /api/scripted/:id/decide — 提交选择
+    if (method === "POST" && segments[3] === "decide") {
+      const body = await readJsonBody(req);
+      const option = (bodyString(body, "option") ?? "").trim();
+      if (!option) return respondError("option 不能为空", 400);
+      const r = scripted.submit(option);
+      if (!r.ok) return respondError(r.error, 400);
+      return respondJson({ ok: true });
+    }
+
+    return respondError("未找到路由", 404);
   }
 
   // API 都没匹配上，再看是不是前端资源。
