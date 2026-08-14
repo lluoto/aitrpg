@@ -26,6 +26,10 @@ frontend/public/voice/*.wav
 frontend/public/voice/*.mp3
 frontend/public/voice/manifest.json
 
+# 构建镜像前从仓库外拷进来的世界模型（229MB）。Docker 上下文取不到项目
+# 目录之外的文件，只能先搬进来；它是数据不是源码，不入库。见 docs/deploy.md
+assets/
+
 # 遗留的根目录 SQLite 库（现行代码用 data/*.db 与 :memory:，不再打开它们）
 /coc7e
 /dnd5e

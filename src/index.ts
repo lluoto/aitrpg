@@ -26,7 +26,7 @@ import type { WorldEntity } from "./types";
 import { NPCCombatEngine } from "./combat/npc-combat";
 import { PlayerSession, type VisibilityRule } from "./session/player-session";
 import { InvestigationEngine } from "./investigation/investigation-engine";
-import { WorldModelLoader } from "./world/world-model-loader";
+import { WorldModelLoader, DEFAULT_V18_PATH, DEFAULT_CTHULHU_PATH } from "./world/world-model-loader";
 import { WorldModelIntegrator } from "./world/world-model-integrator";
 import { CharacterFactory, getArchetype, type GeneratedCharacter, type CharacterArchetype } from "./character/character-factory";
 import { PRESTIGE_CLASSES } from "./character/prestige-classes";
@@ -66,7 +66,7 @@ let cocCharacter: CoCGeneratedCharacter | null = null;
 // CoC 弹药追踪: weaponKey → { current, max, ammoType }
 const cocAmmo: Map<string, { current: number; max: number; ammoType: string }> = new Map();
 const worldModel = new WorldModelLoader();
-worldModel.load("../世界模型/v18_output/v18_all_master.jsonl");
+worldModel.load(DEFAULT_V18_PATH);
 const wmIntegrator = new WorldModelIntegrator(worldModel);
 // 克苏鲁神话世界模型（独立第二 loader，懒加载，失败静默降级为不可用）
 const cthulhuLoader = new WorldModelLoader();
@@ -78,7 +78,7 @@ const cthulhuLoader = new WorldModelLoader();
 function buildCthulhuContext(): string {
   try {
     if (!cthulhuLoader.isLoaded()) {
-      cthulhuLoader.load("../世界模型/cthulhu_extracted/cthulhu_world_model.jsonl");
+      cthulhuLoader.load(DEFAULT_CTHULHU_PATH);
     }
     if (!cthulhuLoader.isLoaded()) return "";
 

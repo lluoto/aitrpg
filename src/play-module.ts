@@ -18,7 +18,7 @@ import { LLMClient, extractMessageContent } from "./llm/client";
 import { applyAllLlmExpandedWithLLM } from "./llm/generate-llm-expanded";
 import { analyzeThreats, getWeaponPolicy } from "./module/threat-analyzer";
 import { checkDialogueText } from "./world/world-constraint";
-import { WorldModelLoader } from "./world/world-model-loader";
+import { WorldModelLoader, DEFAULT_CTHULHU_PATH } from "./world/world-model-loader";
 import { WorldModelIntegrator, type SceneContext as WmSceneContext } from "./world/world-model-integrator";
 
 import { writeFileSync, mkdirSync } from "fs";
@@ -427,7 +427,7 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
   function buildCthulhuContext(): string {
     try {
       if (!cthulhuLoader.isLoaded()) {
-        cthulhuLoader.load("../世界模型/cthulhu_extracted/cthulhu_world_model.jsonl");
+        cthulhuLoader.load(DEFAULT_CTHULHU_PATH);
       }
       if (!cthulhuLoader.isLoaded()) return "";
       const lines: string[] = [];

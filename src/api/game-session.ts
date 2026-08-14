@@ -17,7 +17,7 @@ import { CompanionManager } from "../combat/companion-manager";
 import { PlayerSession, type VisibilityRule } from "../session/player-session";
 import { InvestigationEngine } from "../investigation/investigation-engine";
 import { SpellEngine } from "../spell/spell-engine";
-import { WorldModelLoader, sharedWorldModel } from "../world/world-model-loader";
+import { WorldModelLoader, sharedWorldModel, DEFAULT_CTHULHU_PATH } from "../world/world-model-loader";
 import { WorldModelIntegrator, type SceneContext, type NPCPresentProfile } from "../world/world-model-integrator";
 import { NPCStore } from "../db/index";
 import { assessModuleDifficulty, getDifficultyProfile } from "../rules/module-difficulty";
@@ -25,6 +25,7 @@ import type { DifficultyProfile } from "../rules/module-difficulty";
 import { applyAction, type GateState, type RejectReason, type Result, type StateDelta } from "../rules/apply-action";
 import { boundedIntegerGateState, boundedIntegerScenario, buildDifficultyGateState, COC_SESSION_SCENARIO, isDifficultyLabel } from "../rules/coc-session-scenario";
 import { CharacterFactory, getArchetype, type GeneratedCharacter, type LegendaryAction } from "../character/character-factory";
+import { buildCoCCharacter } from "../character/coc-character";
 import { StoryGenerator } from "../rules/story-generator";
 import { CareerFileStore } from "../character/career-file";
 import { createGameTime, advanceTime, formatGameTime, periodAtmosphere, type GameTime } from "../rules/game-time";
@@ -97,7 +98,31 @@ const SKILL_DISPLAY_NAMES: Record<string, string> = {
 };
 
 /** 克苏鲁神话世界模型路径。共享 loader 按路径分桶，因此这里必须是同一个常量。 */
-const CTHULHU_MODEL_PATH = "../世界模型/cthulhu_extracted/cthulhu_world_model.jsonl";
+const CTHULHU_MODEL_PATH = DEFAULT_CTHULHU_PATH;
+
+/**
+ * 按规则集建卡。
+ *
+ * cosmic-horror 走 CoC 7e 建卡器，其余仍走通用工厂。此前所有规则集都走通用工厂，
+ * 而它只会写 D&D 六属性固定 10（缺 size/power/appearance/education）、按 D&D 公式
+ * 算 HP、且从不填 skillValues——于是每个调查员都一模一样，职业和技能分配对判定
+ * 毫无影响，技能检定只能落到各调用点自己的兜底常量。
+ *
+ * 点数与 play-module 的建卡保持一致（point_buy 480），避免两条路径给出不同强度的角色。
+ */
+function buildCharacterForRuleset(name: string, archetypeId: string, ruleset: string): any {
+  if (ruleset === "cosmic-horror") {
+    const archetype = getArchetype(archetypeId);
+    // 找不到职业时回落通用工厂，让原有的"未知职业"报错路径保持不变
+    if (archetype) {
+      return buildCoCCharacter(
+        { name, archetypeId, method: "point_buy", pointBudget: 480 },
+        archetype,
+      );
+    }
+  }
+  return CharacterFactory.generate(name, archetypeId, ruleset);
+}
 
 export class GameSession {
   readonly id: string;
@@ -226,7 +251,7 @@ export class GameSession {
     // 创建初始角色
     if (archetypeId) {
       try {
-        const char = CharacterFactory.generate(
+        const char = buildCharacterForRuleset(
           characterName ?? "调查员",
           archetypeId ?? "investigator",
           ruleset
@@ -257,7 +282,8 @@ export class GameSession {
           characterName: char.name,
           // archetype 存的是 id 字符串，取显示名要过 getArchetype；
           // 此前写 char.archetype?.label 恒为 undefined，职业栏一直落成英文 id。
-          occupation: getArchetype(char.archetype)?.label ?? char.archetype ?? archetypeId ?? "investigator",
+          // CoC 角色把职业存在 archetypeId，通用角色存在 archetype，两边都要认
+          occupation: getArchetype(char.archetypeId ?? char.archetype)?.label ?? char.archetypeId ?? char.archetype ?? archetypeId ?? "investigator",
           attributes: { ...(char.attributes ?? {}) },
           skills: char.skillValues ? { ...char.skillValues } : {},
           san: this.sanity.state.currentSAN,
@@ -355,9 +381,12 @@ export class GameSession {
     if (!this.activeCharacter) return null;
     const c = this.activeCharacter;
     return {
-      name: c.name, archetype: c.archetype?.label ?? c.archetype,
+      name: c.name, archetype: c.archetype?.label ?? c.archetypeId ?? c.archetype,
       attributes: c.attributes, hp: c.hp, maxHp: c.maxHp,
-      ac: CharacterFactory.computeAC(c), skills: c.skills ?? c.skillValues,
+      // computeAC 是 D&D 的 10+DEX修正；CoC 的 DEX 是百分制，套进去会得出 30 以上的
+      // 荒唐护甲值。CoC 不用 AC，与 getState() 一样对外给 0。
+      ac: this.activeRuleset === "cosmic-horror" ? 0 : CharacterFactory.computeAC(c),
+      skills: c.skills ?? c.skillValues,
       totalLevel: c.totalLevel,
     };
   }
@@ -996,7 +1025,7 @@ export class GameSession {
     const recruitMatch = input.match(/^创建队友\s+(\S+)\s+(\S+)/);
     if (recruitMatch) {
       const [, name, cls] = recruitMatch;
-      const ch = CharacterFactory.generate(name, cls, this.activeRuleset);
+      const ch = buildCharacterForRuleset(name, cls, this.activeRuleset);
       const pid = `p${this.characters.size + 1}`;
       const san = new SanityEngine(50);
       this.characters.set(pid, ch);
@@ -1738,7 +1767,7 @@ export class GameSession {
     const archetypeId = parts[0];
     const charName = parts.slice(1).join(" ") || "调查员";
     try {
-      const ch = CharacterFactory.generate(charName, archetypeId, this.activeRuleset);
+      const ch = buildCharacterForRuleset(charName, archetypeId, this.activeRuleset);
       this.activeCharacter = ch;
       this.characters.set("p1", ch);
       // 注册玩家到会话（无玩家时 join 会设为活动玩家；已存在则仅切换）
@@ -1760,7 +1789,7 @@ export class GameSession {
         this.careerStore = new CareerFileStore(careerDir);
       }
       this.careerStore.saveSnapshot({
-        characterName: ch.name, occupation: getArchetype(ch.archetype)?.label ?? ch.archetype ?? archetypeId,
+        characterName: ch.name, occupation: getArchetype(ch.archetypeId ?? ch.archetype)?.label ?? ch.archetypeId ?? ch.archetype ?? archetypeId,
         attributes: { ...(ch.attributes ?? {}) },
         skills: ch.skillValues ? { ...ch.skillValues } : {},
         san: this.sanity.state.currentSAN, maxSan: this.sanity.state.maxSAN,

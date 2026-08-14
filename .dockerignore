@@ -1,7 +1,24 @@
 .env
 node_modules/
-data/
+frontend/node_modules/
 dist/
+frontend/dist/
 tmp/
 *.log
 .opencode/
+.git/
+play-logs/
+play-records/
+analysis/
+
+# 生成物，镜像里用不到（音频见 docs/deploy.md 的说明）
+frontend/public/bgm/*.wav
+frontend/public/bgm/*.mp3
+frontend/public/voice/*.wav
+frontend/public/voice/*.mp3
+frontend/public/voice/manifest.json
+
+# data/ 是运行期产生的会话与模组，由卷提供，不入镜像。
+# 注意：Dockerfile 里没有 COPY data/ —— 之前有，但被这里忽略后
+# 那条 COPY 找不到源文件，构建直接失败。
+data/

@@ -90,9 +90,10 @@ async function handleRequest(req: Request): Promise<Response> {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
-  // GET / → 内置测试页
+  // GET / → 前端构建产物；没有构建产物时回落到内置测试页
   if (method === "GET" && segments.length === 0) {
-    return serveTestPage();
+    const index = await serveStatic("/index.html");
+    return index ?? serveTestPage();
   }
 
   // GET /api → 健康检查
@@ -536,7 +537,73 @@ async function handleRequest(req: Request): Promise<Response> {
     }
 
   }
+
+  // API 都没匹配上，再看是不是前端资源。
+  // 放在最后：API 路由优先，静态文件不会遮住接口。
+  if (method === "GET" && segments[0] !== "api") {
+    const asset = await serveStatic(url.pathname);
+    if (asset) return asset;
+    // 带扩展名的路径没命中就是真的没有，不要回 index.html —— 否则前端拿到的是
+    // 一份 HTML 却按 js/mp3 去解析，报出来的错和真实原因毫无关系。
+    // 这一点在预制语音那边已经踩过：vite dev 对缺失的 .mp3 回 200 + HTML。
+    if (!/\.[a-zA-Z0-9]+$/.test(url.pathname)) {
+      const index = await serveStatic("/index.html");
+      if (index) return index;
+    }
+  }
+
   return respondError("未找到路由", 404);
+}
+
+// ============================================================
+// 前端静态资源
+// ============================================================
+
+const FRONTEND_DIR = process.env.FRONTEND_DIR
+  ?? new URL("../../frontend/dist", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+
+const MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
+  ".wav": "audio/wav",
+  ".mp3": "audio/mpeg",
+  ".ogg": "audio/ogg",
+};
+
+/**
+ * 从构建产物目录取文件。没有就返回 null，由调用方决定怎么办。
+ *
+ * 缓存分两档：带内容哈希的文件名（vite 产出的 index-XXXX.js）可以长期 immutable，
+ * 因为改了内容文件名就变；index.html 必须 no-cache，否则用户会一直拿到旧的
+ * 那份、里面引用着已经不存在的旧资源名。
+ */
+async function serveStatic(pathname: string): Promise<Response | null> {
+  // 目录穿越防护：解码后不允许出现 ..，否则可以读到构建目录之外
+  let decoded: string;
+  try { decoded = decodeURIComponent(pathname); } catch { return null; }
+  if (decoded.includes("..") || decoded.includes("\0")) return null;
+
+  const file = Bun.file(`${FRONTEND_DIR}${decoded}`);
+  if (!(await file.exists())) return null;
+
+  const ext = decoded.slice(decoded.lastIndexOf("."));
+  const hashed = /-[A-Za-z0-9_]{8,}\.[a-z0-9]+$/.test(decoded);
+  return new Response(file, {
+    headers: {
+      "Content-Type": MIME[ext] ?? "application/octet-stream",
+      "Cache-Control": hashed
+        ? "public, max-age=31536000, immutable"
+        : "no-cache",
+    },
+  });
 }
 
 // ============================================================

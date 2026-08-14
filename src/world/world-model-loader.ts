@@ -63,7 +63,18 @@ export interface ScoredEntry {
 // 加载器
 // ============================================================
 
-export const DEFAULT_V18_PATH = "../世界模型/v18_output/v18_all_master.jsonl";
+/**
+ * 世界模型路径。默认指向仓库外的兄弟目录，容器里用 WORLD_MODEL_PATH 覆盖。
+ *
+ * 写成可覆盖是部署需要：这份文件 229MB、在仓库之外，镜像里的位置和开发机
+ * 不可能一样，而这个路径此前散在 6 处硬编码里，改一次要改六个地方。
+ */
+export const DEFAULT_V18_PATH =
+  process.env.WORLD_MODEL_PATH ?? "../世界模型/v18_output/v18_all_master.jsonl";
+
+/** 克苏鲁子模型，同样可覆盖 */
+export const DEFAULT_CTHULHU_PATH =
+  process.env.CTHULHU_MODEL_PATH ?? "../世界模型/cthulhu_extracted/cthulhu_world_model.jsonl";
 
 /** 按路径共享的 loader 实例。世界模型是只读参考数据，没有按会话变化的内容。 */
 const SHARED = new Map<string, WorldModelLoader>();
