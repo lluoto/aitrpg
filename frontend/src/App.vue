@@ -154,6 +154,100 @@ const activeThemeRuleset = computed(() => {
   const ruleset = screen.value === 'game' ? session.ruleset : selectedRuleset.value
   return String(ruleset).toLowerCase().includes('dnd') ? 'dnd5e' : 'cosmic-horror'
 })
+// ── 剧本杀 ──────────────────────────────────────────────────
+// 与自由跑团各走各的：那边是 KP 即兴生成，这边是写定的线索门禁与结局。
+// 引擎在岔口挂起等提交，所以这里是「轮询取增量播报 + 有岔口就渲染选项」。
+const scriptedLoading = ref(false)
+const scriptedId = ref('')
+const scriptedLines = ref([])
+const scriptedPending = ref(null)
+const scriptedFinished = ref(false)
+const scriptedError = ref('')
+let scriptedTimer = null
+
+async function startScripted() {
+  scriptedLoading.value = true
+  scriptedError.value = ''
+  try {
+    const r = await fetch('/api/scripted', { method: 'POST' })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    const data = await r.json()
+    scriptedId.value = data.id
+    scriptedLines.value = []
+    scriptedPending.value = null
+    scriptedFinished.value = false
+    screen.value = 'scripted'
+    pollScripted()
+  } catch (e) {
+    scriptedError.value = '开局失败：' + (e?.message || e)
+  } finally {
+    scriptedLoading.value = false
+  }
+}
+
+async function pollScripted() {
+  clearTimeout(scriptedTimer)
+  if (!scriptedId.value || scriptedFinished.value) return
+  try {
+    const r = await fetch(`/api/scripted/${scriptedId.value}`)
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    const snap = await r.json()
+    // 服务端只回增量，直接追加即可，不必去重
+    if (snap.lines?.length) scriptedLines.value.push(...snap.lines)
+    scriptedPending.value = snap.pending || null
+    scriptedFinished.value = !!snap.finished
+    if (snap.error) scriptedError.value = snap.error
+    scrollScriptedLog()
+  } catch (e) {
+    scriptedError.value = '拉取失败：' + (e?.message || e)
+  }
+  // 停在岔口时不必频繁轮询——推进只会由玩家提交触发
+  if (!scriptedFinished.value) {
+    scriptedTimer = setTimeout(pollScripted, scriptedPending.value ? 2000 : 500)
+  }
+}
+
+async function chooseScripted(option) {
+  if (!scriptedPending.value) return
+  const pending = scriptedPending.value
+  scriptedPending.value = null // 先收起选项，避免重复点击提交两次
+  try {
+    const r = await fetch(`/api/scripted/${scriptedId.value}/decide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ option }),
+    })
+    if (!r.ok) {
+      scriptedPending.value = pending // 提交失败要把选项放回去，否则这局就卡住了
+      const body = await r.json().catch(() => ({}))
+      scriptedError.value = body.error || `提交失败 HTTP ${r.status}`
+      return
+    }
+    pollScripted()
+  } catch (e) {
+    scriptedPending.value = pending
+    scriptedError.value = '提交失败：' + (e?.message || e)
+  }
+}
+
+function exitScripted() {
+  clearTimeout(scriptedTimer)
+  scriptedId.value = ''
+  scriptedLines.value = []
+  scriptedPending.value = null
+  scriptedFinished.value = false
+  scriptedError.value = ''
+  screen.value = 'start'
+}
+
+const scriptedLogEl = ref(null)
+function scrollScriptedLog() {
+  nextTick(() => {
+    const el = scriptedLogEl.value
+    if (el) el.scrollTop = el.scrollHeight
+  })
+}
+
 const messages = ref([])
 const companions = ref([])
 const npcs = ref([])
@@ -371,8 +465,34 @@ function onInputKeydown(e) {
           </div>
         </div>
         <button class="btn btn--primary" :disabled="loading || archetypeLoading" @click="startGame"><span v-if="loading" class="btn__spinner"></span><span v-else>开始新游戏</span></button>
+        <!-- 剧本杀是另一条完整路径：线索门禁 + 多结局，不与自由跑团共享会话 -->
+        <button class="btn btn--ghost" :disabled="scriptedLoading" @click="startScripted"><span v-if="scriptedLoading" class="btn__spinner"></span><span v-else>剧本杀《普瑞米尔的谷仓》</span></button>
+        <p class="start-screen__mode-hint">自由跑团由守秘人即兴推进；剧本杀按写定的线索与结局走。</p>
         <p v-if="error" class="start-screen__error">{{ error }}</p>
       </div>
+    </div>
+
+    <div v-if="screen === 'scripted'" class="scripted-screen">
+      <header class="scripted-bar">
+        <span class="scripted-bar__title">《普瑞米尔的谷仓》</span>
+        <span class="scripted-bar__meta">{{ scriptedLines.length }} 行 · {{ scriptedFinished ? '已结束' : (scriptedPending ? '等待抉择' : '推进中…') }}</span>
+        <button class="scripted-bar__exit" @click="exitScripted">退出</button>
+      </header>
+
+      <main class="scripted-log" ref="scriptedLogEl">
+        <p v-for="(line, i) in scriptedLines" :key="i" class="scripted-line" :class="{ 'scripted-line--mech': line.includes('[检定]') }">{{ line }}</p>
+        <p v-if="!scriptedLines.length" class="scripted-line scripted-line--dim">正在生成调查员…</p>
+      </main>
+
+      <footer class="scripted-choices">
+        <p v-if="scriptedError" class="scripted-error">{{ scriptedError }}</p>
+        <template v-if="scriptedPending">
+          <p class="scripted-choices__hint">接下来去哪？</p>
+          <button v-for="opt in scriptedPending.options" :key="opt" class="btn btn--ghost scripted-choice" @click="chooseScripted(opt)">{{ opt }}</button>
+        </template>
+        <p v-else-if="scriptedFinished" class="scripted-choices__hint">这一局结束了。</p>
+        <p v-else class="scripted-choices__hint scripted-choices__hint--dim">守秘人正在推进…</p>
+      </footer>
     </div>
 
     <div v-if="screen === 'game'" class="game-screen">
@@ -542,6 +662,24 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0b1210; colo
 /* 模组原文逐字朗读 —— 与 KP 即兴叙述区分开，沿用跑团「框文」的视觉惯例 */
 .message--verbatim { border-left: 2px solid var(--accent-strong); padding-left: 10px; }
 .message--verbatim .message__content { font-style: italic; color: var(--text-secondary); }
+
+/* ── 剧本杀 ── */
+.start-screen__mode-hint { margin: 6px 0 0; font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; }
+.scripted-screen { display: flex; flex-direction: column; height: 100vh; }
+.scripted-bar { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--border); }
+.scripted-bar__title { font-weight: 600; }
+.scripted-bar__meta { color: var(--text-muted); font-size: 0.75rem; }
+.scripted-bar__exit { margin-left: auto; padding: 2px 8px; background: none; border: 1px solid var(--text-muted); border-radius: 2px; color: var(--text-muted); font-size: 0.7rem; cursor: pointer; }
+.scripted-log { flex: 1; overflow-y: auto; padding: 16px 20px; }
+/* 播报本身带缩进和分隔线，等宽字体才不会把排版拆散 */
+.scripted-line { margin: 0; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.82rem; line-height: 1.7; white-space: pre-wrap; }
+.scripted-line--mech { color: var(--text-muted); }
+.scripted-line--dim { color: var(--text-muted); font-style: italic; }
+.scripted-choices { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.scripted-choices__hint { width: 100%; margin: 0 0 4px; font-size: 0.78rem; color: var(--text-secondary); }
+.scripted-choices__hint--dim { color: var(--text-muted); }
+.scripted-choice { font-size: 0.8rem; }
+.scripted-error { width: 100%; margin: 0 0 6px; color: var(--danger, #c0392b); font-size: 0.78rem; }
 .message__tag { margin-left: 6px; padding: 0 4px; border: 1px solid var(--text-muted); border-radius: 2px; font-size: 0.65rem; letter-spacing: 0.02em; }
 .message__content { line-height: 1.5; font-size: 0.95rem; }
 .message--loading { text-align: center; color: var(--text-muted); }
