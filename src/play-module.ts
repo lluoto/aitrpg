@@ -22,9 +22,37 @@ import { WorldModelLoader, DEFAULT_CTHULHU_PATH } from "./world/world-model-load
 import { WorldModelIntegrator, type SceneContext as WmSceneContext } from "./world/world-model-integrator";
 
 import { writeFileSync, mkdirSync } from "fs";
+import { AsyncLocalStorage } from "node:async_hooks";
 
-const log: string[] = [];
-function say(m: string) { console.log(m); log.push(m); }
+/**
+ * 一局的运行上下文。
+ *
+ * 用 AsyncLocalStorage 而不是模块级变量：原先输出写在模块级的 log 数组里，
+ * 一个进程只能跑一局。接进 API 之后会有多局并发，而它们在每个 await 处交错，
+ * 共享一个数组会让两局的播报串台。异步上下文能让 runModule 里所有嵌套调用
+ * （包括那些定义在 runModule 之外的辅助函数）自动拿到本局的那一份。
+ */
+interface RunContext {
+  lines: string[];
+  onLine?: (line: string) => void;
+  decide?: Decider;
+}
+const runCtx = new AsyncLocalStorage<RunContext>();
+
+/**
+ * 决策器：给出当前处境与可选项，返回玩家的决定。
+ *
+ * 抽出来是为了让同一套剧本既能由内置 AI 玩家自动跑（原有行为），
+ * 也能由真人通过 API 驱动 —— 剧本逻辑不需要知道对面是谁。
+ */
+export type Decider = (context: string, options: string[]) => Promise<PlayerDecision>;
+
+function say(m: string) {
+  const ctx = runCtx.getStore();
+  if (!ctx) { console.log(m); return; }
+  ctx.lines.push(m);
+  ctx.onLine?.(m);
+}
 /** Output game-mechanics text (rolls, damage, rules) — visually distinct from story narration */
 function sayMech(m: string) { say(`  [检定] ${m}`); }
 function divider(t?: string) { say(""); say("\u2501".repeat(60)); if (t) say("  " + t); say("\u2501".repeat(60)); }
@@ -336,7 +364,30 @@ function applyDamage(pc: CoCGeneratedCharacter, pcName: string, dmg: number): vo
 // 引擎通用化：module 承载纯数据（场景/线索/NPC），support 承载模块专属钩子/常量
 // （SAN 映射、结局评估、战斗遭遇、枢纽/终局定位、调查员配置）。
 // 新模组接入 = 提供 ModuleData + ModuleSupport，无需改动引擎。
-async function runModule(module: ModuleData, support: ModuleSupport) {
+export interface RunOptions {
+  /** 每产生一行播报就回调一次；CLI 传 console.log，API 会话推进消息流 */
+  onLine?: (line: string) => void;
+  /** 由谁做决策。缺省用内置 AI 玩家，即原有的自动跑法 */
+  decide?: Decider;
+}
+
+/**
+ * 跑一局剧本。返回本局的全部播报行。
+ *
+ * 真正的流程在 runModuleInner，这里只负责建立本局的异步上下文 ——
+ * say() 与决策点都从上下文里取，因此多局并发互不干扰。
+ */
+export async function runModule(
+  module: ModuleData,
+  support: ModuleSupport,
+  opts: RunOptions = {},
+): Promise<{ lines: string[] }> {
+  const ctx: RunContext = { lines: [], onLine: opts.onLine, decide: opts.decide };
+  await runCtx.run(ctx, () => runModuleInner(module, support));
+  return { lines: ctx.lines };
+}
+
+async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   divider(`\u300a${module.title}\u300bCoC 7e \u4ea4\u4e92\u5f0f\u6a21\u62df`);
 
   // 1. Create characters — 车卡随机化：随机职业+人名，八项背景+背景故事
@@ -2331,7 +2382,11 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
       `\n接下来去哪？`,
     ].filter(Boolean).join("\n");
 
-    const decision = await pl1.decideViaLLM(plContext, [], moveLabels);
+    // 走上下文里的决策器；没给就是内置 AI 玩家，与原有跑法完全一致
+    const decider = runCtx.getStore()?.decide;
+    const decision = decider
+      ? await decider(plContext, moveLabels)
+      : await pl1.decideViaLLM(plContext, [], moveLabels);
 
     // Match LLM output to a connection
     let chosenConn: SceneConnection | null = null;
@@ -2505,13 +2560,25 @@ async function runModule(module: ModuleData, support: ModuleSupport) {
   say(characterSummary(c1));
   say(characterSummary(c2));
 
-  // ── Save log ──
-  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const dir = "play-logs";
-  try { mkdirSync(dir, { recursive: true }); } catch {}
-  const logPath = `${dir}/run-${ts}.txt`;
-  writeFileSync(logPath, log.join("\n"), "utf-8");
-  console.log(`\n📜 日志已保存: ${logPath}`);
 }
 
-runModule(BARN_OF_PREMIER, BARN_SUPPORT).catch(console.error);
+/** 把一局的播报落盘。只有命令行跑法需要，API 会话的记录走会话历史。 */
+function saveRunLog(lines: string[]): string {
+  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const dir = "play-logs";
+  try { mkdirSync(dir, { recursive: true }); } catch { /* 目录已存在 */ }
+  const logPath = `${dir}/run-${ts}.txt`;
+  writeFileSync(logPath, lines.join("\n"), "utf-8");
+  return logPath;
+}
+
+// 只有直接执行本文件才自动开一局。
+// 原先是顶层裸调用，被 import 的瞬间就会开跑 —— API 想复用这套剧本引擎，
+// 光是引入模块就会凭空跑掉一局并写一份日志。
+if (import.meta.main) {
+  runModule(BARN_OF_PREMIER, BARN_SUPPORT, { onLine: (l) => console.log(l) })
+    .then(({ lines }) => {
+      console.log(`\n📜 日志已保存: ${saveRunLog(lines)}`);
+    })
+    .catch(console.error);
+}
