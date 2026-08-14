@@ -257,12 +257,17 @@ async function submitAction(inputText, actingPc) {
   messages.value.push({ id: Date.now(), type: 'action', speaker, content: trimmed })
   try {
     const data = await sendAction(session.id, trimmed)
-    if (data.narrative) messages.value.push({ id: Date.now() + 1, type: 'narration', speaker: '守秘人', content: data.narrative })
+    const narrative = (data.narrative || '').trim()
+    if (narrative) messages.value.push({ id: Date.now() + 1, type: 'narration', speaker: '守秘人', content: data.narrative })
     if (data.events) {
       for (const ev of data.events) {
         // 服务端会把玩家这次输入也回显在 events 里，而上面已经乐观插入过一条，
         // 直接全量追加会让每个行动在日志中出现两次。
         if ((ev.speaker || '') === speaker && (ev.content || '') === trimmed) continue
+        // 经 LLM 的回合里，narrative 与 events 中那条叙事是同一段文字，
+        // 上面已经插过一次。本地回合（掷骰、加载模组）的 narrative 是简短摘要、
+        // 不在 events 里，所以只能按内容比对，不能一概不插 narrative。
+        if (narrative && (ev.content || '').trim() === narrative) continue
         messages.value.push({ id: Date.now() + Math.random(), type: ev.type || 'system', speaker: ev.speaker || '系统', content: ev.content || '', verbatim: ev.verbatim === true })
         // 有预制音频的消息按出现顺序入队；没有 voiceKey 的直接跳过
         enqueueVoice(ev.voiceKey)
