@@ -25,7 +25,7 @@ import type { DifficultyProfile } from "../rules/module-difficulty";
 import { applyAction, type GateState, type RejectReason, type Result, type StateDelta } from "../rules/apply-action";
 import { boundedIntegerGateState, boundedIntegerScenario, buildDifficultyGateState, COC_SESSION_SCENARIO, isDifficultyLabel } from "../rules/coc-session-scenario";
 import { CharacterFactory, getArchetype, type GeneratedCharacter, type LegendaryAction } from "../character/character-factory";
-import { buildCoCCharacter } from "../character/coc-character";
+import { buildCoCCharacter, SKILL_NAME_MAP } from "../character/coc-character";
 import { StoryGenerator } from "../rules/story-generator";
 import { CareerFileStore } from "../character/career-file";
 import { createGameTime, advanceTime, formatGameTime, periodAtmosphere, type GameTime } from "../rules/game-time";
@@ -95,6 +95,20 @@ const SKILL_DISPLAY_NAMES: Record<string, string> = {
   stealth: "潜行", perception: "侦查", investigation: "调查", persuasion: "说服",
   medicine: "医学", history: "历史", occult: "神秘", library_use: "图书馆使用",
   listen: "聆听", psychology: "心理学", library: "图书馆", fight: "格斗",
+};
+
+/**
+ * intent 词汇 → CoC 技能键，仅用于中文显示名翻不过去的几个。
+ *
+ * 多数技能能靠"中文显示名"这座桥转换（SKILL_DISPLAY_NAMES 给中文，SKILL_NAME_MAP
+ * 把中文翻成 CoC 键），下面两个不行：
+ * - investigation：CoC 没有"调查"这个技能，搜索现场按规则书就是侦查。它还是
+ *   handleSkillCheck 的默认技能，不映射的话最常走的那条路照旧落兜底值。
+ * - fight：显示名"格斗"在 SKILL_NAME_MAP 里只有带武器类别的形式（"格斗(肉搏)"）。
+ */
+const COC_SKILL_ALIASES: Record<string, string> = {
+  investigation: "spot_hidden",
+  fight: "fighting",
 };
 
 /** 克苏鲁神话世界模型路径。共享 loader 按路径分桶，因此这里必须是同一个常量。 */
@@ -1628,6 +1642,25 @@ export class GameSession {
   /** 会去解析场景线索的技能。潜行、说服等不属于调查，不该触发线索判定。 */
   private static readonly INVESTIGATIVE_SKILLS = new Set(["investigation", "perception"]);
 
+  /**
+   * 取技能值。
+   *
+   * intent 用的是通用词汇（perception / investigation / persuasion），CoC 角色卡的键却是
+   * CoC 技能名（spot_hidden / persuade）。两套词汇对不上时，即便角色卡上白纸黑字写着
+   * spot_hidden: 75，查 perception 也是空，检定照旧落到兜底值——技能分配等于没有。
+   */
+  private resolveSkillValue(skill: string, skillDisplay: string): number {
+    const values = this.activeCharacter?.skillValues;
+    if (values) {
+      const cocKey = COC_SKILL_ALIASES[skill] ?? SKILL_NAME_MAP[skillDisplay];
+      const value = values[skill] ?? (cocKey ? values[cocKey] : undefined);
+      if (typeof value === "number") return value;
+    }
+    // 角色卡上没有这项技能：未受训。CoC 的未受训基础值远低于 50，但这里是
+    // 跨规则集的通用兜底，改动会波及 D&D 侧，留待技能表补全后再收。
+    return this.activeCharacter?.skills?.[skill] ?? 50;
+  }
+
   private handleSkillCheck(intent: ActionIntent, messages: AgentMessage[], msg: (s: string) => number): boolean {
     const skill = intent.skill ?? "investigation";
 
@@ -1655,7 +1688,7 @@ export class GameSession {
     }
 
     const skillDisplay = SKILL_DISPLAY_NAMES[skill] ?? skill;
-    const skillValue = this.activeCharacter?.skillValues?.[skill] ?? this.activeCharacter?.skills?.[skill] ?? 50;
+    const skillValue = this.resolveSkillValue(skill, skillDisplay);
     const roll = Math.floor(Math.random() * 100) + 1;
     const success = roll <= skillValue;
     const isCrit = roll <= skillValue * 0.05;
