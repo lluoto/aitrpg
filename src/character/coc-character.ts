@@ -541,15 +541,22 @@ export function applyAgeMods(
 // ============================================================
 
 /**
- * 创建 CoC 7e 调查员角色
+ * 创建 CoC 7e 调查员角色（同步核心）
+ *
+ * 除初始物品外的全部建卡逻辑。独立成同步函数是因为 GameSession 的构造函数是同步的，
+ * 而它此前只能退而使用通用的 CharacterFactory.generate()——那条路径给 CoC 角色写的是
+ * D&D 六属性固定 10，且从不分配技能点。
+ *
+ * 需要初始物品请用 createCoCCharacter()。
+ *
  * @param config 创建配置
  * @param archetype 职业模板
- * @returns 完整角色
+ * @returns 完整角色（startingItems 为空）
  */
-export async function createCoCCharacter(
+export function buildCoCCharacter(
   config: CoCCharacterConfig,
   archetype: CharacterArchetype,
-): Promise<CoCGeneratedCharacter> {
+): CoCGeneratedCharacter {
   const warnings: string[] = [];
   const age = config.age ?? 30;
 
@@ -600,14 +607,8 @@ export async function createCoCCharacter(
   // 6.5 自动分配技能点
   const skillValues = autoAllocateSkills(archetype, attrs, occupationSkillPoints, interestSkillPoints);
 
-  // 7. 初始物品
-  let startingItems: string[] = [];
-  try {
-    const { getStartingItems } = await import("../rules/coc-cr");
-    startingItems = getStartingItems(creditRating);
-  } catch {
-    warnings.push(WARN_MSG.itemsLoadFailed);
-  }
+  // 7. 初始物品由 createCoCCharacter() 在异步层补齐（coc-cr 是动态导入）
+  const startingItems: string[] = [];
 
   const occupationSkills = archetype.occupationSkills ?? archetype.skills ?? [];
 
@@ -640,6 +641,26 @@ export async function createCoCCharacter(
     backgroundProfile,
     backstory: "",
   };
+}
+
+/**
+ * 创建 CoC 7e 调查员角色（含按信用评级发放的初始物品）
+ * @param config 创建配置
+ * @param archetype 职业模板
+ * @returns 完整角色
+ */
+export async function createCoCCharacter(
+  config: CoCCharacterConfig,
+  archetype: CharacterArchetype,
+): Promise<CoCGeneratedCharacter> {
+  const character = buildCoCCharacter(config, archetype);
+  try {
+    const { getStartingItems } = await import("../rules/coc-cr");
+    character.startingItems = getStartingItems(character.creditRating);
+  } catch {
+    character.warnings.push(WARN_MSG.itemsLoadFailed);
+  }
+  return character;
 }
 
 /**
