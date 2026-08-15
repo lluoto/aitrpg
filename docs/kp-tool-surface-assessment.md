@@ -163,15 +163,17 @@ BFCL-V4 数据（Qwen3.5-4B 50.3 / 9B 66.1，用户提供）指向的判断成�
 
 后果：遭遇神话生物从不触发它自己的 SAN 值。当前实际生效的 SAN 路径只有三条：玩家主动 `san_check`（固定默认 `1/1d6`，与看到什么无关）、阅读魔法书、以及调查线索（而调查本身未接线，见上条）。
 
-**3. CoC 角色创建系统（`coc-character.ts`）**
+**3. CoC 角色创建系统（`coc-character.ts`）— 已接线**
 
-`coc-character.ts` 是一套完整的 CoC 7e 建卡实现：技能基础值表 `COC_SKILL_BASES`、职业/兴趣点数计算、年龄修正、`autoAllocateSkills()` 自动分配，中英技能名双向映射，并有 `coc-character.test.ts` 断言生成的调查员 `skillValues["spot_hidden"] >= 25`。
+> 此条最初写作「从未被调用」，是错的。`index.ts:957` 与 `play-module.ts:148` 一直在调 `createCoCCharacter`。没接上的只是**前端连的 HTTP 路径**：CLI 与 play-module 用的是正确的 CoC 建卡器，`game-session.ts` 的三个建卡点却都走通用的 `CharacterFactory.generate()`。同一个系统有两套建卡，比整个系统没人用更难发现。
 
-但 `character-factory.ts` 从未引用它，而 `game-session.ts` 的三个建卡点（构造函数、创建队友、handleCreateCharacter）走的都是通用的 `CharacterFactory.generate()`——它只声明了 `skillValues?: Record<string, number>` 却从不填充。
+通用工厂给 CoC 角色写的是 D&D 六属性、固定 10（缺 size/power/appearance/education），HP 按 `(CON-10)/2` 算，且从不填 `skillValues`。于是 HTTP 建出来的每个调查员完全相同、一颗骰子都不掷，任何检定都读不到角色卡。
 
-后果是**全仓每一次技能检定都读不到调查员的真实技能值**，只能落到各处硬编码的兜底常量：`handleSkillCheck` 用 50，`investigateCoC` 用 20，`threat-analyzer` 用 20。玩家的职业与技能分配对判定毫无影响。
+已修：`buildCoCCharacter()`（`createCoCCharacter` 的同步核心，供同步的 GameSession 构造函数使用）接进三个建卡点；初始 SAN 改为取角色卡的 POW。
 
-接线方式不是纯机械的：`CoCGeneratedCharacter` 与 `GeneratedCharacter` 形状不同，三个调用点和所有读 `activeCharacter` 的地方都要一并处理。
+**填对技能值本身还不够**——`intent` 说的是通用词汇（`perception` / `investigation`），CoC 角色卡的键是 CoC 技能名（`spot_hidden`），查表照样落空。中文显示名是两套词汇共有的桥（`SKILL_DISPLAY_NAMES` 给中文，`SKILL_NAME_MAP` 翻成 CoC 键），`investigation` 在 CoC 里没有对应技能、又恰是默认技能，另加别名指向 `spot_hidden`。
+
+遗留：`resolveSkillValue` 的兜底值 50 是跨规则集共用的，CoC 未受训基础值远低于此；因会波及 D&D 侧，留待技能表补全后再收。
 
 **4. NPC 技能（`upsertEntity` 的 `skills`）**
 
