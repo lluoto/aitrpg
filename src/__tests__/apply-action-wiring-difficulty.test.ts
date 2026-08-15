@@ -25,12 +25,15 @@ function activePlayer() {
 beforeEach(() => {
   session = new GameSession("difficulty-gate", "cosmic-horror", LLM, "investigator", "调查员");
   const playerId = session.activePlayerId;
+  // HP 必须取自角色卡：闸门读的是角色卡（setPlayerHp 走 characters.get），而断言读的是
+  // 世界实体。这里写死常量的话，CoC 建卡按 (CON+SIZ)/10 逐局给出不同 HP，两边就会分叉，
+  // 表现为「改动列表为空」——闸门认为你设的值就是当前值。
   session.world.upsertEntity({
     id: playerId,
     name: "调查员",
     type: "pc",
-    hp: 10,
-    maxHp: 10,
+    hp: session.activeCharacter.hp,
+    maxHp: session.activeCharacter.maxHp,
     ac: 10,
     status: [],
     position: "tavern",
@@ -123,33 +126,37 @@ describe("setPlayerSan through applyAction", () => {
 
   it("accepts an in-range value and advances both the cache and the truth source", () => {
     const playerId = session.activePlayerId;
+    // 起始 SAN 等于角色卡的 POW，逐局不同，不能写死
+    const startSan = session.sanity.state.currentSAN;
     const result = session.setPlayerSan(playerId, 37);
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected legal SAN transition");
-    expect(result.value.changes).toEqual([{ variable: `san:${playerId}`, from: 50, to: 37 }]);
+    expect(result.value.changes).toEqual([{ variable: `san:${playerId}`, from: startSan, to: 37 }]);
     expect(session.sanity.state.currentSAN).toBe(37);
     expect(persistedSan()).toBe(37);
   });
 
   it("rejects a value above maxSAN instead of silently clamping it", () => {
     const before = persistedSan();
+    const startSan = session.sanity.state.currentSAN;
     const result = session.setPlayerSan(session.activePlayerId, 999);
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected out-of-range SAN rejection");
     expect(result.error.code).toBe("value_out_of_domain");
-    expect(session.sanity.state.currentSAN).toBe(50);
+    expect(session.sanity.state.currentSAN).toBe(startSan);
     expect(persistedSan()).toBe(before);
   });
 
   it("rejects a negative value instead of silently flooring it to zero", () => {
+    const startSan = session.sanity.state.currentSAN;
     const result = session.setPlayerSan(session.activePlayerId, -5);
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected negative SAN rejection");
     expect(result.error.code).toBe("value_out_of_domain");
-    expect(session.sanity.state.currentSAN).toBe(50);
+    expect(session.sanity.state.currentSAN).toBe(startSan);
   });
 
   it("rejects an unknown player rather than fabricating a sanity engine", () => {
