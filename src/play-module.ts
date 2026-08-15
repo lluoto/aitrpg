@@ -18,7 +18,7 @@ import { LLMClient, extractMessageContent } from "./llm/client";
 import { applyAllLlmExpandedWithLLM } from "./llm/generate-llm-expanded";
 import { analyzeThreats, getWeaponPolicy } from "./module/threat-analyzer";
 import { checkDialogueText } from "./world/world-constraint";
-import { WorldModelLoader, DEFAULT_CTHULHU_PATH } from "./world/world-model-loader";
+import { sharedWorldModel, DEFAULT_CTHULHU_PATH } from "./world/world-model-loader";
 import { WorldModelIntegrator, type SceneContext as WmSceneContext } from "./world/world-model-integrator";
 
 import { writeFileSync, mkdirSync } from "fs";
@@ -467,14 +467,17 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   let wmCacheSceneId = "";
   let wmCacheText = "";
   try {
-    const wmLoader = new WorldModelLoader();
-    wmLoader.load(); // 默认路径 ../世界模型/v18_output/v18_all_master.jsonl（相对 poc 运行目录）
+    // 必须走共享实例：v18 是 383688 条只读参考数据，独占一份约 229MB。
+    // 命令行下一进程一局，自己 new 一个无所谓；接进服务端之后每开一局
+    // 就会再吃一份，实测日志里已经出现过同一份模型被载入两次。
+    const wmLoader = sharedWorldModel();
+    if (!wmLoader.isLoaded()) wmLoader.load();
     wmIntegrator = new WorldModelIntegrator(wmLoader);
   } catch {
     wmIntegrator = null; // 世界模型不可用 → 跳过注入，其余流程不受影响
   }
-  // 克苏鲁神话世界模型（独立第二 loader，懒加载；失败静默返回空串）
-  const cthulhuLoader = new WorldModelLoader();
+  // 克苏鲁神话世界模型：同样共享，按路径各一份
+  const cthulhuLoader = sharedWorldModel(DEFAULT_CTHULHU_PATH);
   function buildCthulhuContext(): string {
     try {
       if (!cthulhuLoader.isLoaded()) {
