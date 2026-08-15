@@ -247,7 +247,24 @@ export class GameSession {
     // 世界模型懒加载：不在此处 load()（v18_all_master.jsonl ~240MB，会拖慢所有 GameSession 实例化，
     // 测试与无模型场景均受影响）。首次需要注入时才在 injectWorldModelForScene() 里加载。
 
-    this.sanity = new SanityEngine(50);
+    // CoC 7e 的初始 SAN 等于 POW。SanityEngine 的构造参数本来就叫 pow，会话却一直
+    // 传死值 50——接上 CoC 建卡后角色卡上终于有了真的 POW，理智值却仍与它无关。
+    // 建卡得排在建 SAN 之前，所以先建出来，下面的初始化块直接用这一份。
+    let initialCharacter: any = null;
+    if (archetypeId) {
+      try {
+        initialCharacter = buildCharacterForRuleset(
+          characterName ?? "调查员",
+          archetypeId,
+          ruleset
+        );
+      } catch (e) {
+        log.warn("session", "角色创建失败", e);
+      }
+    }
+
+    // D&D 侧的属性表没有 power，回落到原来的 50，行为不变
+    this.sanity = new SanityEngine(initialCharacter?.attributes?.power ?? 50);
     this.sanityEngines.set("p1", this.sanity);
     this.world.registerPlayer("p1");
     this.persistSanity("p1");
@@ -262,14 +279,10 @@ export class GameSession {
       this.session.switchActive("p1");
     }
 
-    // 创建初始角色
-    if (archetypeId) {
+    // 创建初始角色（上面已建好，这里只做落地：世界实体、角色卡档案）
+    if (initialCharacter) {
       try {
-        const char = buildCharacterForRuleset(
-          characterName ?? "调查员",
-          archetypeId ?? "investigator",
-          ruleset
-        );
+        const char = initialCharacter;
         this.activeCharacter = char;
         this.characters.set("p1", char);
         // 角色卡与世界实体必须同时诞生。此前实体要等 setPlayerHp 或移动流程

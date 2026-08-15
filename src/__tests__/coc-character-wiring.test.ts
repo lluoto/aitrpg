@@ -69,6 +69,14 @@ describe("CoC 会话建卡接线", () => {
     expect(JSON.stringify(session.getHistory())).toContain(`目标=${expected}%`);
   });
 
+  // CoC 7e：初始 SAN 等于 POW。SanityEngine 的构造参数本来就叫 pow，
+  // 会话却一直传死值 50——角色卡上的 POW 对理智毫无影响。
+  test("初始 SAN 等于角色卡的 POW", () => {
+    const session = newInvestigator("coc-wiring-san");
+
+    expect(session.sanity.state.currentSAN).toBe(session.activeCharacter.attributes.power);
+  });
+
   test("面板读到的 HP 与角色卡一致（世界实体已按 CoC 值建立）", () => {
     const session = newInvestigator("coc-wiring-entity");
     const char = session.activeCharacter;
