@@ -187,11 +187,13 @@ describe("applyDamage through applyAction", () => {
 
   it("floors overkill damage at zero instead of going negative", () => {
     const playerId = session.activePlayerId;
+    // 闸门读的是角色卡的 HP，而 CoC 建卡按 (CON+SIZ)/10 逐局给出不同值
+    const before = session.activeCharacter.hp;
     const result = session.applyDamage(playerId, 999);
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected overkill to be legal");
-    expect(result.value.changes).toEqual([{ variable: `hp:${playerId}`, from: 10, to: 0 }]);
+    expect(result.value.changes).toEqual([{ variable: `hp:${playerId}`, from: before, to: 0 }]);
     expect(activePlayer().hp).toBe(0);
   });
 
