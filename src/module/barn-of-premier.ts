@@ -516,7 +516,8 @@ function buildScenes(): Scene[] {
   scenes.push({
     id: "adrian_town_house",
     name: "艾德里安在镇子内的住宅",
-    description: S.ADRIAN_TOWN_HOUSE + "\n\n房子里本来的物品已经被流浪汉糟蹋了。进入时会被至少3名流浪汉发现（保证数量大于调查员）。",
+    // "至少3名（保证数量大于调查员）"是布场指示，不是玩家进门看得见的东西 —— 挪进 atmosphere
+    description: S.ADRIAN_TOWN_HOUSE + "\n\n房子里本来的物品已经被流浪汉糟蹋了。",
     clues: townHouseClues,
     npcIds: ["tramp"],
     connections: [
@@ -524,7 +525,7 @@ function buildScenes(): Scene[] {
       { targetSceneId: "town_premier", condition: "返回镇上" },
       { targetSceneId: "adrian_farm", condition: "前往艾德里安的农场" },
     ],
-    atmosphere: "流浪汉会驱赶调查员，只认钱不接受除恐吓外的社交技能。击晕/击杀一名后其余会一哄而散。使用枪械击杀流浪汉会被警察责问。",
+    atmosphere: "进入时会被至少3名流浪汉发现（保证数量大于调查员）。流浪汉会驱赶调查员，只认钱不接受除恐吓外的社交技能。击晕/击杀一名后其余会一哄而散。使用枪械击杀流浪汉会被警察责问。",
   });
 
   // 10. 艾德里安的农场（入口）
@@ -561,7 +562,11 @@ function buildScenes(): Scene[] {
   scenes.push({
     id: "farm_villa",
     name: "农场主别墅",
-    description: S.FARM_VILLA + "\n\n艾德里安从来没有使用过这个别墅，里面都是空的。他在门口放置了一个致命的硫酸陷阱。",
+    // description 是念给玩家听的，atmosphere 才是给 KP 的。
+    // 这里原先把"他在门口放置了一个致命的硫酸陷阱"拼进了 description，
+    // 玩家一进场就被告知门口有致命陷阱 —— 陷阱当场作废。
+    // 该信息 atmosphere 里本来就完整写着（含伤害与急救方式），删掉即可，不丢任何东西。
+    description: S.FARM_VILLA,
     clues: [],
     npcIds: [],
     connections: [
@@ -574,13 +579,15 @@ function buildScenes(): Scene[] {
   scenes.push({
     id: "barn_building",
     name: "谷仓形建筑",
-    description: S.BARN + "\n\n侧面防盗门：用找到的钥匙打开，或困难成功锁匠/极难成功力量/对门造成25点伤害。一旁的杂物堆：通过成功攀爬或协力举高可上屋顶，从顶部玻璃窗进入。",
+    // 玩家看得见的是门和杂物堆本身；开锁难度、门的耐久属于 KP 侧，挪进 atmosphere。
+    description: S.BARN + "\n\n侧面有一扇防盗门，锁着。门旁堆着一摞杂物，顺着大概能够到屋顶，顶上有扇玻璃窗。",
     clues: [],
     npcIds: [],
     connections: [
       { targetSceneId: "farm_periphery", condition: "返回农场外围" },
       { targetSceneId: "barn_interior", condition: "进入谷仓内部" },
     ],
+    atmosphere: "侧面防盗门：用找到的钥匙打开，或困难成功锁匠／极难成功力量／对门造成25点伤害。一旁的杂物堆：通过成功攀爬或协力举高可上屋顶，从顶部玻璃窗进入。",
   });
 
   // 14. 建筑内（谷仓内部）
@@ -709,7 +716,8 @@ function buildScenes(): Scene[] {
   scenes.push({
     id: "adrian_bedroom",
     name: "艾德里安的卧室",
-    description: S.ADRIAN_BEDROOM + "\n\n拉门（被床头柜压住）：通往下一个场景的门，拉开后有向下的绳梯。",
+    // "通往下一个场景"是写给 KP 的话，"场景"这个词玩家不该听见
+    description: S.ADRIAN_BEDROOM + "\n\n床头柜压着一扇拉门，挪开后拉开它，下面是一道向下的绳梯。",
     clues: bedroomClues,
     npcIds: [],
     connections: [
@@ -790,7 +798,9 @@ function buildScenes(): Scene[] {
   scenes.push({
     id: "maintenance_room",
     name: "维修间（终局场景）",
-    description: S.MAINTENANCE_ROOM + "\n\n这里是一处比较大的场景，一开始比较暗。大脑化的艾米丽会很快反应过来，她会以为艾德里安回来了。随着调查员打开光源，可以看到那婴儿与那位女性正是一大一小两个缸中脑。",
+    // 原先混进了两样玩家不该听到的东西："这里是一处比较大的场景"（"场景"是游戏术语），
+    // 以及"艾米丽会以为艾德里安回来了"——那是她的心理活动，要由她开口时自己泄露。
+    description: S.MAINTENANCE_ROOM + "\n\n这地方相当大，一开始很暗。等光照进去，才看清那婴儿与那位女性其实是一大一小两个缸中脑。",
     clues: maintenanceClues,
     npcIds: ["emily_estrum", "ailey_estrum", "mi_go"],
     connections: [

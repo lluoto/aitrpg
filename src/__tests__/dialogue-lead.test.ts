@@ -8,7 +8,7 @@
 // bun test src/__tests__/dialogue-lead.test.ts
 
 import { describe, it, expect } from "bun:test";
-import { speechLead, askerScore, partnerRemark } from "../play-module";
+import { speechLead, askerScore, partnerRemark, isMajorWound, isRedundantMoveLine } from "../play-module";
 import { selfIntroduction } from "../llm/generate-llm-expanded";
 
 describe("引导桥不重复动词", () => {
@@ -138,5 +138,50 @@ describe("同伴之间的非叙事性交流", () => {
         expect(partnerRemark(p, k).length).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+// 模组 trap_bear 条目："伤害大于耐久半值有截肢风险"
+describe("重伤判定", () => {
+  it("恰好等于半值不算重伤 —— 写成 >= 会把普通擦伤判成截肢", () => {
+    expect(isMajorWound(6, 12)).toBe(false);
+    expect(isMajorWound(7, 12)).toBe(true);
+  });
+
+  it("奇数耐久按下取整", () => {
+    expect(isMajorWound(5, 11)).toBe(false); // floor(11/2)=5
+    expect(isMajorWound(6, 11)).toBe(true);
+  });
+});
+
+// 「返回农场外围。」紧接着「━ 再次来到 农场外围（陷阱区）」——同一件事说了两遍
+describe("移动示意不与场景标题重复", () => {
+  it("只报地名的示意判为冗余", () => {
+    expect(isRedundantMoveLine("返回农场外围", "农场外围（陷阱区）")).toBe(true);
+    expect(isRedundantMoveLine("前往警察局", "警察局")).toBe(true);
+    expect(isRedundantMoveLine("进入谷仓内部", "谷仓内部")).toBe(true);
+  });
+
+  // 实跑里剩下的三种漏网写法：场景名自带括号时，复述可能连括号一起，也可能只取括号里那部分
+  it("连括号一起复述场景名也算冗余", () => {
+    expect(isRedundantMoveLine("进入农场外围（陷阱区）", "农场外围（陷阱区）")).toBe(true);
+  });
+
+  it("只复述括号里那部分也算冗余", () => {
+    expect(isRedundantMoveLine("返回谷仓大厅", "建筑内（谷仓大厅）")).toBe(true);
+  });
+
+  // 括号里是新信息而不是场景名的一部分 —— 这句要留，否则"右侧有亮光"就没人说了
+  it("括号里是额外信息时仍要保留", () => {
+    expect(isRedundantMoveLine("前往中控室（右侧有亮光）", "中控室")).toBe(false);
+  });
+
+  it("带额外条件的示意要保留", () => {
+    expect(isRedundantMoveLine("前往艾德里安的病房（需通过门口警员的检查）", "艾德里安的病房")).toBe(false);
+    expect(isRedundantMoveLine("通过奇怪管道（下水道深处）", "下水道")).toBe(false);
+  });
+
+  it("地名不同就不算复述", () => {
+    expect(isRedundantMoveLine("返回镇上", "农场外围")).toBe(false);
   });
 });

@@ -90,6 +90,40 @@ export function noticesEntity(occupation: string, ent: Pick<NarrativeEntity, "no
   return habits.length === 0 || habits.some((h) => occupation.includes(h));
 }
 
+/**
+ * 这句移动示意是不是纯粹在复述目的地。
+ *
+ * 紧接着就会打出场景标题（"━ 再次来到 农场外围（陷阱区）"），
+ * 所以"返回农场外围。"这种只报地名的句子等于把同一件事说了两遍。
+ * 但"前往艾德里安的病房（需通过门口警员的检查）"带着额外条件，那句得留下 ——
+ * 判据是去掉动词与括号补充之后，剩下的是不是就等于场景名本身。
+ */
+export function isRedundantMoveLine(condition: string, targetSceneName: string): boolean {
+  // 括号只从场景名剥：标题里的"（陷阱区）"是标注，而 condition 里的括号
+  // 往往是真信息（"（需通过门口警员的检查）"），跟着一起剥掉就会把它误判成复述、
+  // 连那句提示一并吞掉。
+  const tidy = (s: string) => s.replace(/[。，、\s]+$/, "").trim();
+  const full = tidy(targetSceneName);
+  // 场景名自己就可能带括号，而且两种写法都算复述：
+  //   "农场外围（陷阱区）" ← "进入农场外围（陷阱区）" 连括号一起复述
+  //   "建筑内（谷仓大厅）" ← "返回谷仓大厅" 只复述括号里那部分
+  const bare = tidy(full.replace(/[（(][^）)]*[）)]/g, ""));
+  const inner = tidy((full.match(/[（(]([^）)]*)[）)]/) ?? [])[1] ?? "");
+  const stripped = tidy(condition).replace(/^(返回|回到|前往|进入|离开|去)/, "").trim();
+  if (!stripped) return true;
+  return stripped === full || stripped === bare || (inner !== "" && stripped === inner);
+}
+
+/**
+ * 重伤判定：单次伤害大于耐久半值。
+ *
+ * 模组 trap_bear 条目写的是"伤害大于耐久半值有截肢风险"，与 CoC 7e 的重伤规则同口径。
+ * 抽出来是为了能测 —— 边界（恰好等于半值）容易写成 >=，那会把普通擦伤也判成截肢。
+ */
+export function isMajorWound(damage: number, maxHp: number): boolean {
+  return damage > Math.floor(maxHp / 2);
+}
+
 /** 外向/寡言的用词 —— 车卡的八项里"特质"一项就是自由文本，只能按词判 */
 const OUTGOING = /健谈|外向|好奇|直率|急躁|热情|多话|爱管闲事|喜欢打听|口无遮拦/;
 const RESERVED = /寡言|沉默|内向|谨慎|冷淡|木讷|不善言辞|惜字如金|怕生/;
@@ -652,6 +686,11 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     federal_agent: "联邦探员", hacker: "黑客", criminal: "罪犯",
     police: "警察", nurse: "护士", lawyer: "律师",
   }[id] ?? id);
+  // 先报威胁评分，再报配枪结论 —— 配枪本来就是拿威胁分算出来的（见下面的 getWeaponPolicy），
+  // 原先反过来印，读日志的人会以为是先定了配枪再回头评估威胁。
+  const THREAT_LABELS: Record<string, string> = { easy:"简单", medium:"中等", hard:"困难", deadly:"致命" };
+  sayMech(`模组威胁评分: ${threat.score}（${THREAT_LABELS[threat.tier]}）— 详情: ${threat.details.hostileNpcCount}敌对NPC, ${threat.details.trapCount}陷阱, ${threat.details.hardCheckCount}困难${threat.details.extremeCheckCount > 0 ? `+${threat.details.extremeCheckCount}极难` : ""}检定`);
+
   const weaponRule = (pc: CoCGeneratedCharacter) => {
     // 只有手枪超过 base (20%) 才算受过射击训练——步枪/机枪 base 低但自动分配后所有人都会超过
     const hasFirearms = ((pc.skillValues as any)["firearms_pistol"] ?? 20) > 20;
@@ -675,8 +714,6 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       say(`  ➜ 武器携带评估 · ${pc.name}：获准配枪——${weaponLabel}${ammoLabel}。`);
     }
   }
-  const THREAT_LABELS: Record<string, string> = { easy:"简单", medium:"中等", hard:"困难", deadly:"致命" };
-  sayMech(`模组威胁评分: ${threat.score}（${THREAT_LABELS[threat.tier]}）— 详情: ${threat.details.hostileNpcCount}敌对NPC, ${threat.details.trapCount}陷阱, ${threat.details.hardCheckCount}困难${threat.details.extremeCheckCount > 0 ? `+${threat.details.extremeCheckCount}极难` : ""}检定`);
 
   // 2. Show full sheets
   divider("调查员创建完成");
@@ -2291,13 +2328,44 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
 
     // ── Scene-specific auto events (fire once on entry) ──
     // Farm periphery: when entering without trap detection → take damage
+    //
+    // 按模组条目 trap_bear 结算。原先是写死的 `1 + rand(3)`（1~3 点），
+    // 连模组的最小值都够不到 —— 条目写的是 1D4+1，最少 2 点；挣脱要困难力量检定，
+    // 大失败再加 1d3，伤害超过耐久半值有截肢风险。这些原先一条都没有，
+    // 于是日志里出现了"铁齿咬进小腿 → 掉 1 点 → 成功通过陷阱区"这种读起来很荒谬的序列。
     if (scene.id === support.trapSceneId && !world.isClueFound(support.trapClueId)) {
       if (stepCounter > 0) {
         const vName = stepCounter % 2 === 0 ? p0.shortName : p1.shortName;
         const pc = stepCounter % 2 === 0 ? c1 : c2;
-        const dmg = 1 + Math.floor(Math.random() * 3);
-        say(`\n${vName}没注意到脚下的捕兽夹！咔嚓一声——锋利的铁齿咬进了${vName}的小腿！`);
-        applyDamage(pc, vName, dmg);
+        const d = (faces: number) => 1 + Math.floor(Math.random() * faces);
+
+        // 模组只写了"体形小于 35 的角色会免疫"，没给理由。
+        // 捕兽夹是踏板触发的，唯一说得通的机制是重量不够压不动弹簧 ——
+        // 初版这里写的是"腿太细夹不住"，那是我编的，而且和触发原理不符。
+        if ((pc.attributes.size ?? 50) < 35) {
+          say(`\n${vName}整只脚踩在踏板上，捕兽夹只闷闷地响了一声——分量不够，弹簧没被压到底。`);
+        } else {
+          say(`\n${vName}没注意到脚下的捕兽夹！咔嚓一声——锋利的铁齿咬进了${vName}的小腿！`);
+          let total = d(4) + 1;
+          applyDamage(pc, vName, total);
+
+          // 挣脱：困难成功力量。失败就得靠同伴，大失败越挣越深
+          const r = check(pc.attributes.strength ?? 50, vName, "力量（挣脱捕兽夹）", "hard");
+          if (r.isSuccess) {
+            say(`${vName}攥住夹子两侧，一点一点把铁齿掰开了。`);
+          } else if (r.successLevel === "fumble") {
+            const extra = d(3);
+            say(`${vName}越挣扎，铁齿咬得越深。`);
+            applyDamage(pc, vName, extra);
+            total += extra;
+          } else {
+            say(`${vName}一时挣不开，只能咬着牙等同伴过来一起掰。`);
+          }
+
+          if (isMajorWound(total, pc.maxHp)) {
+            sayMech(`${vName} 单次伤害 ${total} 点，超过耐久半值 —— 有截肢风险。`);
+          }
+        }
       }
     }
 
@@ -2660,8 +2728,13 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
 
     // Single move option — just take it without LLM call
     if (unlocked.length === 1) {
-      say(`\n${(unlocked[0] as SceneConnection).condition}。`, "verbatim");
-      return unlocked[0] as SceneConnection;
+      const only = unlocked[0] as SceneConnection;
+      // 同下面那条分支：只报地名的示意会被紧跟的场景标题重复一遍
+      const dest = module.scenes.find(s => s.id === only.targetSceneId);
+      if (!isRedundantMoveLine(only.condition, dest?.name ?? "")) {
+        say(`\n${only.condition}。`, "verbatim");
+      }
+      return only;
     }
 
     // Multiple move options — let LLM decide
@@ -2769,7 +2842,11 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       chosenConn = scored[0].conn;
     }
 
-    say(`\n${chosenConn.condition}。`, "verbatim");
+    // 只报地名的那种就别说了 —— 下一行的场景标题会把同一件事再讲一遍
+    const dest = module.scenes.find(s => s.id === chosenConn.targetSceneId);
+    if (!isRedundantMoveLine(chosenConn.condition, dest?.name ?? "")) {
+      say(`\n${chosenConn.condition}。`, "verbatim");
+    }
     return chosenConn;
   }
 
