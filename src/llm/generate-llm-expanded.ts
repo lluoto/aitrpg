@@ -104,6 +104,22 @@ function nlpExtractAge(npc: ModuleNPC): string {
 }
 
 /** 生成首次见面对话 */
+/**
+ * 自报家门时怎么称呼自己。
+ *
+ * 有些 NPC 只有身份没有姓名 —— 模组里那名警察的 name 和 role 都是"警员"。
+ * 无条件拼成 `${role}${name}` 就得到「你们好。我是警员警员。请说明来意。」，
+ * 实跑原文见 play-logs/run-2026-08-18T06-50-07.txt。
+ *
+ * 判据用 includes 而不是全等：还有"艾伦警长"这种名字本身已经含着身份的情况，
+ * 再前置一个身份同样是重复。
+ */
+export function selfIntroduction(role: string | undefined, name: string): string {
+  const r = (role ?? "").trim();
+  if (!r || name.includes(r)) return name;
+  return `${r}${name}`;
+}
+
 function templateFirstEncounter(npc: ModuleNPC): string {
   const a = analyseNpc(npc);
   if (a.isSilent) return "";
@@ -122,7 +138,7 @@ function templateFirstEncounter(npc: ModuleNPC): string {
       ? `你们总算来了……我一直盼着有人能来帮帮我。`
       : `你们总算来了……我等你们好久了。`;
   } else if (a.isFormal) {
-    line = `你们好。我是${npc.role}${name}。请说明来意。`;
+    line = `你们好。我是${selfIntroduction(npc.role, name)}。请说明来意。`;
   } else if (a.isHostile) {
     line = `你们是什么人？来这里有什么事？`;
   } else if (a.isWarm) {
@@ -135,11 +151,38 @@ function templateFirstEncounter(npc: ModuleNPC): string {
 }
 
 /** 生成线索揭示文本（把 NPC.knowledge 转为自然的引用形式） */
+/**
+ * 降级为什么发生要说出来。
+ *
+ * 三条降级路径原先都是静默 return null，结果是模组的速记笔记被原样念出来
+ * （"镇上最近有多起失踪案。"），而看日志的人完全不知道这里曾经尝试过 LLM 并失败。
+ * 实跑里整局只有警员这一个 NPC 这样，别人都正常 —— 没有这条日志就无从查起。
+ */
+function warnFallback(npc: ModuleNPC, reason: string): void {
+  console.warn(`[llm-expanded] ${npc.id}（${npc.name}）降级为模板：${reason}`);
+}
+
+/**
+ * 无 LLM 时的知识台词。
+ *
+ * 模组里的 knowledge 是速记笔记，不是台词："镇上最近有多起失踪案"。
+ * 原先只补一个句号就当台词用，念出来是新闻标题不是人说话。模板没法真的改写中文，
+ * 但至少可以按人物把它包成"某人在转述"的口气，而不是一条字幕。
+ */
 function templateKnowledgeReveals(npc: ModuleNPC): string[] {
+  const a = analyseNpc(npc);
+  const frame = (body: string): string => {
+    if (a.isChild) return `${body}。我听大人说的。`;
+    if (a.isAnxious) return `${body}……我知道的就这些了。`;
+    if (a.isFormal) return `${body}。案卷上就是这么记的。`;
+    if (a.isHostile) return `${body}。就这些，别再问了。`;
+    if (a.isWarm) return `${body}。我能想起来的就这么多。`;
+    return `${body}。`;
+  };
   return npc.knowledge.map(k => {
     // 句子已自带标点时不再追加"。"，避免"。。"双句号；去掉尾部残句标点后补全
     const trimmed = k.replace(/[。！？…]+$/, "");
-    return `${trimmed}。`;
+    return frame(trimmed);
   });
 }
 
@@ -246,8 +289,12 @@ async function generateViaAPI(
       ],
       { jsonMode: true, timeout: 120000 },
     );
-  } catch {
-    return null; // LLM 不可用/超时 → 降级模板
+  } catch (e) {
+    // 这里原先是裸 catch。实跑遇到 401（令牌失效）时，异常在这一层就被吃掉，
+    // 后面那三条 warnFallback 一条都跑不到 —— 结果是整局 NPC 都在念模组速记笔记，
+    // 而日志里没有任何迹象说明 LLM 曾被调用且失败。降级本身可以接受，无声不行。
+    warnFallback(npc, `LLM 调用失败: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
   }
 
   try {
@@ -256,12 +303,19 @@ async function generateViaAPI(
     const knowledgeReveals = Array.isArray(data.knowledgeReveals)
       ? data.knowledgeReveals.filter((k: unknown): k is string => typeof k === "string")
       : [];
-    if (!firstEncounter || knowledgeReveals.length === 0) return null; // 结构不完整 → 降级
+    if (!firstEncounter || knowledgeReveals.length === 0) {
+      warnFallback(npc, "LLM 返回的 JSON 结构不完整");
+      return null;
+    }
 
     // 世界模型约束：LLM 生成的对话文本不得含时代科技/ meta 词汇，命中 → 降级模板（模板无违规词）
     const textsToCheck = [firstEncounter, ...knowledgeReveals];
     if (typeof data.revisitEncounter === "string") textsToCheck.push(data.revisitEncounter);
-    if (textsToCheck.some(t => checkDialogueText(t))) return null;
+    const offending = textsToCheck.find(t => checkDialogueText(t));
+    if (offending) {
+      warnFallback(npc, `世界观约束命中: ${offending.slice(0, 40)}`);
+      return null;
+    }
 
     const expanded: NonNullable<ModuleNPC["llmExpanded"]> = {
       firstEncounter,
@@ -271,8 +325,9 @@ async function generateViaAPI(
       expanded.revisitEncounter = data.revisitEncounter;
     }
     return expanded;
-  } catch {
-    return null; // JSON 解析失败 → 降级模板
+  } catch (e) {
+    warnFallback(npc, `JSON 解析失败: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
   }
 }
 
@@ -315,8 +370,11 @@ export async function applyAllLlmExpandedWithLLM(
       const npc = queue.shift()!;
       try {
         await applyLlmExpandedWithLLM(npc, client, scenes);
-      } catch {
-        // 单 NPC 生成失败（熔断/网络）→ 该 NPC 降级模板，不影响其他
+      } catch (e) {
+        // 单 NPC 生成失败（熔断/网络）→ 该 NPC 降级模板，不影响其他。
+        // 不影响其他不等于不用说：熔断之后每个 NPC 都从这里过，全静默的话
+        // 整局台词退化成模组笔记，而日志上一个字都不会提。
+        warnFallback(npc, `生成中断: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
   });

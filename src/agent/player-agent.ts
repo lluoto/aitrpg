@@ -85,6 +85,22 @@ const ACTION_LIBRARY: FallbackAction[] = [
   { text: "{name}警惕地环顾四周，手不自觉地摸向可以防身的东西。", intent: "combat", baseWeight: 0.6, tags: ["combat", "cautious", "survival"] },
 ];
 
+/**
+ * 这个职业对某类行为标签的偏好倍率：偏好 1.5 / 回避 0.5 / 中性 1。
+ *
+ * 与 decideFallback 里的加权口径一致（见 OccupationProfile 的字段注释），
+ * 导出是为了让"这一轮谁开口"能复用同一套职业认知，
+ * 而不是在别处再写一遍职业正则 —— 两份正则迟早会漂移。
+ */
+export function occupationTagWeight(occupation: string, tag: string): number {
+  const p = OCCUPATION_PROFILES.find(pr => pr.match(occupation))
+    ?? OCCUPATION_PROFILES.find(pr => pr.name === "default");
+  if (!p) return 1;
+  if (p.preferredTags.includes(tag)) return 1.5;
+  if (p.avoidedTags.includes(tag)) return 0.5;
+  return 1;
+}
+
 // ====== 职业档案 ======
 const OCCUPATION_PROFILES: OccupationProfile[] = [
   {

@@ -8,7 +8,7 @@ import { randomCoCName, buildBaseBackgroundProfile, composeBackstory, pickDistin
 import { CoCEngine, SanityEngine, SUCCESS_LEVEL_LABELS, sanOutcomeLabel, type CoCCheckResult } from "./rules/coc-engine";
 import { BARN_OF_PREMIER, BARN_SUPPORT, renderPrologue, renderPartySetup, evaluateEpilogues } from "./module/barn-of-premier";
 import { WorldState } from "./world/state";
-import { PlayerAgent, createPlayerCharacter } from "./agent/player-agent";
+import { PlayerAgent, createPlayerCharacter, occupationTagWeight } from "./agent/player-agent";
 import { displayCharacterSheet, characterSummary, getHighlightedSkills } from "./pl/character-display";
 import type { Clue, Scene, SceneConnection, ModuleNPC, ModuleData, ModuleSupport, NPCInstanceState, NarrativeEntity } from "./module/types";
 import type { PlayerDecision } from "./agent/player-agent";
@@ -88,6 +88,82 @@ function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length
 export function noticesEntity(occupation: string, ent: Pick<NarrativeEntity, "noticedBy">): boolean {
   const habits = ent.noticedBy ?? [];
   return habits.length === 0 || habits.some((h) => occupation.includes(h));
+}
+
+/** 外向/寡言的用词 —— 车卡的八项里"特质"一项就是自由文本，只能按词判 */
+const OUTGOING = /健谈|外向|好奇|直率|急躁|热情|多话|爱管闲事|喜欢打听|口无遮拦/;
+const RESERVED = /寡言|沉默|内向|谨慎|冷淡|木讷|不善言辞|惜字如金|怕生/;
+
+/**
+ * 同伴的一句话 —— 两名调查员之间的非叙事性交流。
+ *
+ * 之前整局日志里，两个人从头到尾没对彼此说过一个字：所有输出要么是对 NPC 提问，
+ * 要么是引擎旁白。两个人一起走完全程，却像各自在演独角戏。
+ *
+ * 这类话故意不推动情节（模板也推动不了）：它的作用是让现场有两个人。
+ * 寡言的人给短句，外向的人给长句 —— 同一个发现，不同的人反应本来就不一样。
+ * 返回空串表示这次不说话，由调用方决定频率。
+ */
+export function partnerRemark(
+  personality: string,
+  kind: "clue" | "san",
+  avoid?: string,
+): string {
+  const reserved = RESERVED.test(personality) && !OUTGOING.test(personality);
+  const pools: Record<"clue" | "san", { terse: string[]; talkative: string[] }> = {
+    clue: {
+      terse: ["给我看看。", "嗯。收着。", "……先别动它。", "记下来。"],
+      talkative: [
+        "给我看看——这东西不该在这儿。",
+        "等等，你从哪儿翻出来的？",
+        "这跟刚才那位说的对得上。",
+        "我不喜欢这个。真的。",
+        "先记下来，回头我们对一遍。",
+      ],
+    },
+    san: {
+      terse: ["……你还好吧。", "站稳了。", "看着我。"],
+      talkative: [
+        "你脸色不对——先坐下，别硬撑。",
+        "深呼吸。我在这儿。",
+        "别看那边了，看我。",
+      ],
+    },
+  };
+  const pool = reserved ? pools[kind].terse : pools[kind].talkative;
+  const usable = pool.length > 1 ? pool.filter((x) => x !== avoid) : pool;
+  return usable[Math.floor(Math.random() * usable.length)];
+}
+
+/**
+ * 这一轮谁开口的倾向分。
+ *
+ * 原先是 askTurn % 2 硬轮流 —— 两个人像在排队发言，不像两个人在办案。
+ * 现在看三件事：
+ *   1. 职业对"交谈"这件事的偏好（复用 player-agent 的标签体系，不另写职业正则）
+ *   2. 性格是外向还是寡言（八项里的"特质"是自由文本，只能按词判）
+ *   3. 话题跟这个人的经历沾不沾边 —— 谁的背景里出现过这些词，谁更可能接话。
+ *      医生遇到伤情、记者遇到镇上的传闻，本来就该是他先开口。
+ * 最后减去"刚说过"的惩罚：话多的那个不该把整局包圆，寡言的也得有开口的时候。
+ */
+export function askerScore(
+  pc: { occupation: string; personality: string; background?: string },
+  topic: string,
+  recentAsks: number,
+): number {
+  let s = occupationTagWeight(pc.occupation, "talk") + occupationTagWeight(pc.occupation, "social");
+
+  const traits = pc.personality || "";
+  if (OUTGOING.test(traits)) s += 0.8;
+  if (RESERVED.test(traits)) s -= 0.8;
+
+  if (topic) {
+    const bg = `${pc.background ?? ""}${traits}`;
+    const words = [...new Set(topic.match(/[\u4e00-\u9fa5]{2,4}/g) ?? [])];
+    s += Math.min(words.filter((w) => bg.includes(w)).length, 3) * 0.5;
+  }
+
+  return s - recentAsks * 0.6;
 }
 
 /**
@@ -245,11 +321,28 @@ function analyseNpcData(npc: ModuleNPC): {
   };
 }
 
-/** 知识揭示/追问的引导桥 — 数据驱动（按 NPC 特质分派"接着说"类引导），避免"裸引号/名字：内容"机械直出 */
-function buildRevealBridge(npc: ModuleNPC, s: ReturnType<typeof analyseNpcData> | null, isFirst: boolean): string {
+/**
+ * 知识揭示/追问的引导桥 — 数据驱动（按 NPC 特质分派"接着说"类引导），
+ * 避免"裸引号/名字：内容"机械直出。
+ *
+ * avoid 传上一次用过的那条，用来躲开紧挨着的重复。每个桶只有三四条、又是纯随机，
+ * 一局里同一句必然撞好几次 —— 实跑中菲碧连着两次"垂下眼帘，声音低沉下来："。
+ * 默认桶另外扩了容：不匹配任何人格的角色（缸中脑、Mi-Go）全都落在这里，
+ * 原先三条让一个濒死的人和一个外星生物共用了同一句"想了想，开口道："。
+ */
+function buildRevealBridge(
+  npc: ModuleNPC,
+  s: ReturnType<typeof analyseNpcData> | null,
+  isFirst: boolean,
+  avoid?: string,
+): string {
   const speechText = npc.personality.speech || "";
   const isMumbling = /喃喃|昏迷|含糊|意识不清/.test(speechText);
   if (isMumbling) return isFirst ? "昏迷中喃喃道：" : "含混不清地继续说：";
+  const pick = <T,>(arr: T[]): T => {
+    const pool = arr.length > 1 ? arr.filter((x) => x !== avoid) : arr;
+    return pool[Math.floor(Math.random() * pool.length)];
+  };
   if (isFirst) {
     // isFirst=true：紧跟开场白后的首次信息吐露。用叙述化承接引导（情绪/神态类，无"说"字、
     // 无重复"急切"、无依赖屋内道具的肢体动作——对话可能在门口/任意阶段发生，避免叙述穿越）
@@ -260,7 +353,11 @@ function buildRevealBridge(npc: ModuleNPC, s: ReturnType<typeof analyseNpcData> 
       s?.isGentle ? pick(["温和地说：", "语气柔和地继续说：", "不紧不慢地开口："]) :
       s?.isOfficial ? pick(["用公事公办的口吻说：", "面无表情地说：", "语气平淡地告知：", "目光扫过你们："]) :
       s?.isRough ? pick(["粗声粗气地说：", "叼着烟含糊地说：", "不耐烦地咂了咂嘴，说："]) :
-      pick(["接着说：", "想了想，开口道：", "告诉你们："]);
+      pick([
+        "接着说：", "想了想，开口道：", "告诉你们：",
+        "停顿了一下，开口：", "换了口气说：", "像是斟酌了一下用词：",
+        "声音里听不出情绪：", "缓缓道：",
+      ]);
   }
   return s?.isChild ? pick(["又小声补充道：", "压低声音，神秘兮兮地说：", "朝你们招招手，悄声说："]) :
     s?.isAnxious ? pick(["声音颤抖着补充说：", "吸了吸鼻子，又说：", "用袖口擦了擦眼角，接着说：", "声音越来越小："]) :
@@ -269,7 +366,10 @@ function buildRevealBridge(npc: ModuleNPC, s: ReturnType<typeof analyseNpcData> 
     s?.isGentle ? pick(["想了想，又说：", "语气依然温和地补充：", "耐心地继续说道："]) :
     s?.isOfficial ? pick(["又翻了一页，说：", "补充道：", "面无表情地继续说："]) :
     s?.isRough ? pick(["又补了一句：", "哼了一声，继续说：", "叼着烟含混地说："]) :
-    pick(["又说：", "想了想，补充道：", "继续说道："]);
+    pick([
+      "又说：", "想了想，补充道：", "继续说道：",
+      "顿了顿：", "补了一句：", "话没停：", "隔了一会儿才说：",
+    ]);
 }
 
 // ── 场景氛围要点：给 LLM 做风格约束的精简描述（防止 prologue 与进入场景时的完整描述重复）──
@@ -942,6 +1042,63 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     return true;
   }
 
+  /** 每人已经开口过几次 —— 供 askerScore 做"别包场"的惩罚项 */
+  const askCounts = new Map<string, number>();
+
+  /**
+   * 这一轮谁开口。
+   *
+   * 提问者原先写死 pl1，第二名调查员整局一句话都没说过；改成硬轮流之后
+   * 又变成了两人排队发言。真实的队伍里谁接话取决于这个人是谁、这话题跟他有没有关系，
+   * 所以交给 askerScore 打分，同分时才随机。
+   */
+  function pickAsker(topic: string): PlayerAgent {
+    const scored = [pl1, pl2].map((p) => ({
+      p,
+      // 微小抖动：分数持平时不至于每次都选同一个
+      score: askerScore(p.pc, topic, askCounts.get(p.name) ?? 0) + Math.random() * 0.2,
+    }));
+    scored.sort((a, b) => b.score - a.score);
+    const chosen = scored[0].p;
+    askCounts.set(chosen.name, (askCounts.get(chosen.name) ?? 0) + 1);
+    return chosen;
+  }
+
+  /** 上一次用过的提问引导，避免连着两次一模一样 */
+  let lastAskBridge = "";
+
+  /** 同上，NPC 侧的引导桥 */
+  let lastRevealBridge = "";
+
+  /** 上一次同伴说过的话，避免复读 */
+  let lastPartnerRemark = "";
+
+  /**
+   * 同伴接一句话。
+   *
+   * 不是每个发现都配一句 —— 每次都接会变成噪音，反而更假。寡言的人开口更少。
+   */
+  function sayPartnerRemark(partner: PlayerAgent, kind: "clue" | "san"): void {
+    const traits = partner.pc.personality || "";
+    const chance = RESERVED.test(traits) && !OUTGOING.test(traits) ? 0.25 : 0.5;
+    if (Math.random() > chance) return;
+    const remark = partnerRemark(traits, kind, lastPartnerRemark);
+    lastPartnerRemark = remark;
+    const gesture = kind === "san" ? "转过头" : "凑过来看了一眼";
+    say(`\n${partner.name}${speechLead(gesture)}"${remark}"`);
+  }
+
+  /** 取一条 NPC 引导桥并记住它，供下一次躲开 */
+  function nextRevealBridge(
+    npc: ModuleNPC,
+    s: ReturnType<typeof analyseNpcData> | null,
+    isFirst: boolean,
+  ): string {
+    const b = buildRevealBridge(npc, s, isFirst, lastRevealBridge);
+    lastRevealBridge = b;
+    return b;
+  }
+
   async function conductNpcConversation(npc: ModuleNPC, w: WorldState): Promise<void> {
     const displayName = npc.name.replace(/[（(].*[）)]$/, "").trim();
 
@@ -1008,12 +1165,15 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       ? extractTopic(npc.knowledge?.[target.ki] ?? target.text)
       : "";
 
+    // 谁开口要等 targetTopic 定下来才能判：话题跟谁的经历沾边，谁才更可能接这一句
+    const asker = pickAsker(targetTopic);
+
     // ── PC question: 交给 LLM 结合场景/历史/重点生成自然提问（无 LLM 时降级为锚点引导话术） ──
     let question: string;
     if (llmClient) {
       try {
         question = await generatePcQuestion(
-          { name: pl1.name, occupation: pl1.pc.occupation, personality: pl1.pc.personality },
+          { name: asker.name, occupation: asker.pc.occupation, personality: asker.pc.personality },
           npc,
           sceneCtx,
           {
@@ -1023,15 +1183,32 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
           llmClient,
           worldCtx,
         );
-      } catch {
+      } catch (e) {
+        // 静默降级会伪装成"模型写得很平庸"：fallbackQuestion 的池子只有四条万能追问，
+        // 一局问下来全是"能跟我们细说说当时的情形吗？"，看日志的人只会以为提示词不行，
+        // 根本想不到 LLM 这一路每次都抛了异常。原因必须打出来。
+        console.warn(`[pc-question] ${asker.name} 提问降级为模板：${e instanceof Error ? e.message : String(e)}`);
+        question = fallbackQuestion(targetTopic);
+      }
+      if (!question.trim()) {
+        console.warn(`[pc-question] ${asker.name} 提问降级为模板：LLM 返回空串`);
         question = fallbackQuestion(targetTopic);
       }
     } else {
       question = fallbackQuestion(targetTopic);
     }
-    // PC 提问用自然引导（"开口问道：'……'"），避免机械"名字：内容"直出
-    const askBridges = ["开口问道：", "追问道：", "沉吟片刻，问道：", "向前一步，问道："];
-    say(`\n${pl1.name}${askBridges[Math.floor(Math.random() * askBridges.length)]}"${stripOuterQuotes(question)}"`);
+    // PC 提问用自然引导（"开口问道：'……'"），避免机械"名字：内容"直出。
+    // 池子原先只有 4 条且纯随机，一局里"沉吟片刻，问道："出现了三次、
+    // "向前一步，问道："两次。扩池 + 躲开上一条，比继续加大随机池有效。
+    const askBridges = [
+      "开口问道：", "追问道：", "沉吟片刻，问道：", "向前一步，问道：",
+      "皱了皱眉，问：", "点点头，接着问：", "换了个语气问：", "顿了顿，问：",
+      "看了对方一眼，问：", "压低声音问：", "不太确定地问：", "直截了当地问：",
+    ];
+    const pool = askBridges.filter((b) => b !== lastAskBridge);
+    const askBridge = pick(pool);
+    lastAskBridge = askBridge;
+    say(`\n${asker.name}${askBridge}"${stripOuterQuotes(question)}"`);
 
     // NPC 回复：LLM 可用时走 LLM；无 LLM 时 generateNpcReply 内 templateReply 按 preferredIndex
     // 精确返回目标 reveal（问答对齐：问话锚定 knowledge[target.ki]，回复即 reveals[target.ki]）
@@ -1054,7 +1231,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       // 动作会被说两遍。转成叙述句而不是保留括号，是因为"（面带忧虑）我儿子失踪了"
       // 读起来是剧本提示，"面带忧虑，说：「我儿子失踪了」"才像人话。
       const { action, speech } = splitLeadingStageDirection(stripOuterQuotes(reply), displayName);
-      const lead = action ? speechLead(action) : buildRevealBridge(npc, s, false);
+      const lead = action ? speechLead(action) : nextRevealBridge(npc, s, false);
       say(`\n${displayName}${lead}"${speech}"`);
       noteEntityMentions(speech, w);
       // 标记本轮实际说出的 reveal（避免下次重复）。
@@ -2026,7 +2203,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
         ).speech;
         // 知识揭示用数据驱动引导桥，避免"裸引号知识条目"直出（不像人话）
         const s = analyseNpcData(npc);
-        say(`\n${buildRevealBridge(npc, s, true)}"${clean}"`);
+        say(`\n${nextRevealBridge(npc, s, true)}"${clean}"`);
         noteEntityMentions(clean, w);
         w.discoverClue(`clue_kn_${npc.id}_${ki}`);
         return;
@@ -2043,7 +2220,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
         const hint = revealed[i];
         const hintIndex = npc.knowledge.indexOf(hint);
         // Data-driven bridges — use mumbling frame for unconscious NPCs
-        say(`\n${buildRevealBridge(npc, s, i === 0)}"${hint}"`);
+        say(`\n${nextRevealBridge(npc, s, i === 0)}"${hint}"`);
         noteEntityMentions(hint, w);
         w.discoverClue(`clue_kn_${npc.id}_${hintIndex}`);
       }
@@ -2326,6 +2503,8 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       if (cost) {
         sanCheck(p0.shortName, san1, cost);
         sanCheck(p1.shortName, san2, cost);
+        // 刚一起看过让人失去理智的东西，两个人之间总该有句话
+        sayPartnerRemark(pick([pl1, pl2]), "san");
       }
     }
 
@@ -2378,6 +2557,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
 
             if (r.isSuccess) {
               say(await narrateClueDiscovery(clue, r.successLevel, name));
+              sayPartnerRemark(pc === c1 ? pl2 : pl1, "clue");
               world.discoverClue(clue.id);
               checkClueSanLoss(clue);
               return true;
