@@ -14,6 +14,8 @@ import { WorldState } from "../world/state";
 import { WorldStateManager } from "../state/world-state-manager";
 import { populateWorldFromModule } from "../world/module-loader";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
+import { noticesEntity } from "../play-module";
+import { getCoCArchetypes } from "../character/coc-character";
 
 const TRAILER = "ent_gabi_trailer";
 const HOUSE = "tricam_house";
@@ -47,6 +49,51 @@ describe("模组数据：叙事实体声明", () => {
     const phoebe = BARN_OF_PREMIER.npcs.find((n) => n.id === "phoebe_tricam")!;
     const allKnowledge = phoebe.knowledge.join("");
     expect(ent.mentionKeywords.some((k) => allKnowledge.includes(k))).toBe(true);
+  });
+});
+
+// 这道门原先长在 runModuleInner 的闭包里，测不到 —— 于是四局实跑一次都没演，
+// 而我无法从测试上区分"运气不好"和"门焊死了"。抽成纯函数就是为了消掉这个盲区。
+describe("职业门：谁会把话里的东西和眼前景物对上", () => {
+  const ent = BARN_OF_PREMIER.narrative!.entities.find((e) => e.id === TRAILER)!;
+  const OPENS = [
+    "detective", "federal_agent", "hunter_trapper", "investigator",
+    "journalist_coc", "photographer", "police_officer",
+  ];
+
+  it("名单上的职业开门，名单外的不开", () => {
+    expect(noticesEntity("私家侦探", ent)).toBe(true);
+    expect(noticesEntity("工程师", ent)).toBe(false);
+  });
+
+  // 真正的回归锁：门比的是 archetype.label（中文「私家侦探」），
+  // 不是角色卡上印的 archetype.id（英文 sailor）。谁把 label 换成英文或改了字，
+  // 这道门就永远开不了 —— 不报错、不失败，只是这段桥从此不再出现。这里让它红。
+  it("真实职业表里恰好这 7 个开门 —— 锁住 label 与 noticedBy 的耦合", () => {
+    const opens = getCoCArchetypes()
+      .filter((a) => noticesEntity(a.label, ent))
+      .map((a) => a.id)
+      .sort();
+    expect(opens).toEqual(OPENS);
+  });
+
+  it("名单之外的职业一个都不开", () => {
+    for (const a of getCoCArchetypes().filter((x) => !OPENS.includes(x.id))) {
+      expect(noticesEntity(a.label, ent)).toBe(false);
+    }
+  });
+
+  it("noticedBy 留空 → 人人都会注意到", () => {
+    expect(noticesEntity("海员", { noticedBy: [] })).toBe(true);
+    expect(noticesEntity("海员", {})).toBe(true);
+  });
+
+  // 开门面太宽，这段就不再是"某个人的习惯"，而是引擎在提示玩家该去哪。
+  it("开门的职业只占少数", () => {
+    const archs = getCoCArchetypes();
+    const opens = archs.filter((a) => noticesEntity(a.label, ent)).length;
+    expect(opens).toBeGreaterThan(0);
+    expect(opens / archs.length).toBeLessThan(0.25);
   });
 });
 

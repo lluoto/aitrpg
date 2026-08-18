@@ -10,7 +10,7 @@ import { BARN_OF_PREMIER, BARN_SUPPORT, renderPrologue, renderPartySetup, evalua
 import { WorldState } from "./world/state";
 import { PlayerAgent, createPlayerCharacter } from "./agent/player-agent";
 import { displayCharacterSheet, characterSummary, getHighlightedSkills } from "./pl/character-display";
-import type { Clue, Scene, SceneConnection, ModuleNPC, ModuleData, ModuleSupport, NPCInstanceState } from "./module/types";
+import type { Clue, Scene, SceneConnection, ModuleNPC, ModuleData, ModuleSupport, NPCInstanceState, NarrativeEntity } from "./module/types";
 import type { PlayerDecision } from "./agent/player-agent";
 import { buildNpcContext, generateNpcReply, generatePcQuestion, generateNpcTransition, generateOpeningTransition, generateFailRescue, generateClueRevelation } from "./llm/npc-dialogue-prompts";
 import type { SceneContext, WorldContext } from "./llm/npc-dialogue-prompts";
@@ -74,6 +74,23 @@ function divider(t?: string) { say("", "mech"); say("\u2501".repeat(60), "mech")
 function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
 
 /**
+ * 这个职业会不会下意识把话里的东西和眼前景物对上。
+ *
+ * 抽成模块级纯函数只为一件事：能测。识别桥段的其余部分（提起过／看得见／没演过）
+ * 都在 WorldState 上，测得到；唯独这道职业门原先长在 runModuleInner 的闭包里，
+ * 拿不到手，而它恰恰是最容易悄悄失效的一处 ——
+ * 比的是 pc.occupation，那是 archetype.label（中文「私家侦探」），
+ * 不是角色卡上印的 archetype.id（英文 sailor）。谁把 label 改成英文或改了字，
+ * 门就再也开不了，不报错、不失败，只是这段桥从此不再出现。
+ *
+ * noticedBy 留空表示人人都会注意到。
+ */
+export function noticesEntity(occupation: string, ent: Pick<NarrativeEntity, "noticedBy">): boolean {
+  const habits = ent.noticedBy ?? [];
+  return habits.length === 0 || habits.some((h) => occupation.includes(h));
+}
+
+/**
  * 拆出台词开头的括号神态。
  *
  * 引擎会在台词前加一句叙述引导桥（"歪着头想了想，说："），而 LLM 常常在台词
@@ -115,6 +132,21 @@ function splitLeadingStageDirection(text: string, speakerName?: string): { actio
   }
 
   return { action: "", speech: text };
+}
+
+/**
+ * 用切出来的神态动作拼引导桥。
+ *
+ * 动作本身经常已经以"说/问/道/答"收尾（"焦虑不安地搓着手说"），再拼一个"，说："
+ * 就成了「菲碧·特里坎焦虑不安地搓着手说，说：」—— 同一个"说"字连着出现两次。
+ * 实跑里抓到的原文见 play-logs/run-2026-08-18T06-06-34.txt。
+ *
+ * 这是把括号神态转成叙述句时带出来的：括号里写的是"（焦虑不安地搓着手说）"，
+ * 切出来就自带了动词，而拼接方按"动作 + 说："的模板无条件补了一个。
+ */
+export function speechLead(action: string): string {
+  const a = action.trim();
+  return /[说问道答]$/.test(a) ? `${a}：` : `${a}，说：`;
 }
 
 /** 剥离台词首尾引号 + 内部 LLM 残留的成对引号包裹（如 '整句'），避免"…'…。'"不对称 */
@@ -285,17 +317,23 @@ async function llmOnce(system: string, user: string, maxTokens = 500): Promise<s
   }
 }
 
-/** LLM 增强八项背景元素：按 职业+时代+案件+人设锚点 从零塑造八项（草稿仅作失败兜底，不喂给 LLM） */
+/**
+ * LLM 增强八项背景元素：按 职业+时代+人设锚点 从零塑造八项（草稿仅作失败兜底，不喂给 LLM）。
+ *
+ * 刻意不喂案件背景：八项是这个人在被卷进案子之前就有的东西。把案情喂进来，
+ * 模型会把每一项都写成伏笔 —— 实跑里出现过"他怀表中那早已停摆的指针仿佛与墓园里
+ * 那些无碑孤魂的低语产生共鸣，让他隐约察觉到加比的失踪背后……"，一个还没接案子的人
+ * 已经预感到了案情。人物档案要独立于模组。
+ */
 async function enhanceBackgroundProfile(
   base: BackgroundProfile,
-  ctx: { name: string; occupation: string; era: string; caseSummary: string; anchors: PersonAnchors },
+  ctx: { name: string; occupation: string; era: string; anchors: PersonAnchors },
 ): Promise<BackgroundProfile> {
   const prompt = [
     `为以下 CoC 7e 调查员塑造"背景故事八项"。`,
     `名字: ${ctx.name}  职业: ${ctx.occupation}  时代: ${ctx.era}年  年龄: ${ctx.anchors.age}岁`,
     `家庭状况: ${ctx.anchors.household}`,
     `出身来历: ${ctx.anchors.provenance}`,
-    `案件背景: ${ctx.caseSummary}`,
     ``,
     `围绕上面这个具体的人，从零写出八项。硬性要求：`,
     `1. 八项必须属于同一个人：年龄、家庭、出身要能在八项里相互印证，读起来像一份真人档案，而不是职业的抽象化身`,
@@ -327,18 +365,25 @@ async function enhanceBackgroundProfile(
   }
 }
 
-/** LLM 依据八项撰写背景故事（3-5 句连贯叙事）；失败回退模板拼接 */
+/**
+ * LLM 依据八项撰写背景故事（3-5 句连贯叙事）；失败回退模板拼接。
+ *
+ * 同 enhanceBackgroundProfile：不喂案件背景，也不要求结尾留悬念。
+ * 原先那句"结尾留一点与调查有关的悬念"是purple prose 的直接来源 ——
+ * 模型为了收束到悬念，会把怀表、墓园、祷告一路堆到"比罪恶更古老的黑暗"。
+ * 小传写完这个人就够了，与案件的关系由卷入方式（hooks）交代。
+ */
 async function writeBackstory(
   profile: BackgroundProfile,
-  ctx: { name: string; occupation: string; era: string; caseSummary: string },
+  ctx: { name: string; occupation: string; era: string },
 ): Promise<string> {
   const fallback = composeBackstory(profile, { name: ctx.name, occupation: ctx.occupation, era: ctx.era });
   const prompt = [
     `依据以下 CoC 7e 调查员的八项背景元素，撰写一段 3-5 句的连贯背景故事。`,
-    `要求：用第三人称自然叙事，把这些元素织进一段真实可感的人生里；不要逐条罗列八项；不要出现"形象描述：""思想与信念："这类标签；结尾留一点与调查有关的悬念。`,
+    `要求：用第三人称自然叙事，把这些元素织进一段真实可感的人生里；不要逐条罗列八项；不要出现"形象描述：""思想与信念："这类标签。`,
+    `只写这个人自己：不要提到任何案件、失踪者或调查，也不要在结尾留悬念或作命运暗示。`,
     ``,
     `名字: ${ctx.name}  职业: ${ctx.occupation}  时代: ${ctx.era}年`,
-    `案件背景: ${ctx.caseSummary}`,
     ``,
     `【八项背景元素】`,
     `形象描述: ${profile.appearance}`,
@@ -367,13 +412,12 @@ async function createRandomPlayerSetup(
   const archetype = pick(available.length > 0 ? available : archs);
   const { full, short } = randomCoCName(archetype.id);
   const pc = await createPC(full, archetype.id, archetype);
-  const caseSummary = module.partySetup?.context?.join(" ") ?? module.title;
   const anchors = randomPersonAnchors();
   const profile = await enhanceBackgroundProfile(pc.backgroundProfile ?? buildBaseBackgroundProfile(archetype), {
-    name: full, occupation: archetype.label, era: module.era, caseSummary, anchors,
+    name: full, occupation: archetype.label, era: module.era, anchors,
   });
   pc.backgroundProfile = profile;
-  pc.backstory = await writeBackstory(profile, { name: full, occupation: archetype.label, era: module.era, caseSummary });
+  pc.backstory = await writeBackstory(profile, { name: full, occupation: archetype.label, era: module.era });
   return {
     p0: {
       name: full,
@@ -889,10 +933,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   function maybeRecognitionBeat(w: WorldState): boolean {
     const ent = w.getPendingRecognition();
     if (!ent) return false;
-    const habits = ent.noticedBy ?? [];
-    const candidates = [pl1, pl2].filter(
-      (p) => habits.length === 0 || habits.some((h) => p.pc.occupation.includes(h)),
-    );
+    const candidates = [pl1, pl2].filter((p) => noticesEntity(p.pc.occupation, ent));
     if (candidates.length === 0) return false;
     const who = pick(candidates);
     // 先落状态再输出：即便下游抛错也不会在下一轮重演同一段
@@ -1013,7 +1054,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       // 动作会被说两遍。转成叙述句而不是保留括号，是因为"（面带忧虑）我儿子失踪了"
       // 读起来是剧本提示，"面带忧虑，说：「我儿子失踪了」"才像人话。
       const { action, speech } = splitLeadingStageDirection(stripOuterQuotes(reply), displayName);
-      const lead = action ? `${action}，说：` : buildRevealBridge(npc, s, false);
+      const lead = action ? speechLead(action) : buildRevealBridge(npc, s, false);
       say(`\n${displayName}${lead}"${speech}"`);
       noteEntityMentions(speech, w);
       // 标记本轮实际说出的 reveal（避免下次重复）。
@@ -1173,7 +1214,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
             } else {
               // 台词自带开头神态时拿它当引导桥（转成叙述句）。原先是"有括号就不加桥"，
               // 可括号仍留在台词里，读起来还是剧本提示而不是人话。
-              say(`\n${displayName}${leadAction ? `${leadAction}，说：` : toneBridge}`);
+              say(`\n${displayName}${leadAction ? speechLead(leadAction) : toneBridge}`);
               say(quoteDialogue(dialogueText));
             }
           }
@@ -1210,7 +1251,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
               say(`\n${leadWithName.trim()}`);
               say(quoteDialogue(rest));
             } else {
-              say(`\n${displayName}${leadAction ? `${leadAction}，说：` : toneBridge}`);
+              say(`\n${displayName}${leadAction ? speechLead(leadAction) : toneBridge}`);
               say(quoteDialogue(dialogueText));
             }
           }

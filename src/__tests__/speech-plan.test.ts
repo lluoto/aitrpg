@@ -2,7 +2,7 @@
 // bun test src/__tests__/speech-plan.test.ts
 
 import { describe, it, expect } from "bun:test";
-import { planSpeech, speechRouteFor, voiceKey, collectPrebakeEntries } from "../voice/speech-plan";
+import { planSpeech, speechRouteFor, voiceKey, collectPrebakeEntries, splitStageDirections, voiceKeyFor } from "../voice/speech-plan";
 import type { AgentMessage } from "../agent/types";
 import type { MythosModule } from "../rules/mythos-module";
 
@@ -49,6 +49,72 @@ describe("planSpeech", () => {
 
   it("没带情绪时按中性处理", () => {
     expect(planSpeech(msg()).mood).toBe("neutral");
+  });
+});
+
+// 提示词第 7 条主动要求台词带括号神态，允许穿插句中。送进 TTS 会被照着念出来，
+// 但它们是现有最好的韵律提示（voice-readiness.md 第五节），所以切分而不是删除。
+describe("舞台指示切分", () => {
+  // 样本取自实跑日志 play-logs/run-2026-08-18T03-41-30.txt
+  it("摘掉句中的括号神态，台词本身不动", () => {
+    const { spoken, directions } = splitStageDirections(
+      "睡得安稳？（她神经质地笑了笑，眼神游离）我哪知道，他连门都不让我进。",
+    );
+    expect(spoken).toBe("睡得安稳？我哪知道，他连门都不让我进。");
+    expect(directions).toEqual(["她神经质地笑了笑，眼神游离"]);
+  });
+
+  it("一句里有多处就按出现顺序全摘出来", () => {
+    const { spoken, directions } = splitStageDirections(
+      "我哪知道。（声音压低）有几次半夜，我好像听见拖车里传出奇怪的嘶嘶声。（打了个寒战）",
+    );
+    expect(spoken).toBe("我哪知道。有几次半夜，我好像听见拖车里传出奇怪的嘶嘶声。");
+    expect(directions).toEqual(["声音压低", "打了个寒战"]);
+  });
+
+  it("没有括号就原样返回", () => {
+    const { spoken, directions } = splitStageDirections("加比比较叛逆，喜欢出去玩。");
+    expect(spoken).toBe("加比比较叛逆，喜欢出去玩。");
+    expect(directions).toEqual([]);
+  });
+
+  it("整句都是舞台指示时没有可念的内容", () => {
+    expect(splitStageDirections("（长久的沉默）").spoken).toBe("");
+  });
+
+  it("只认全角括号 —— 半角括号里多是英文缩写，不是神态", () => {
+    const { spoken, directions } = splitStageDirections("那东西叫米-戈 (Mi-Go)。");
+    expect(spoken).toBe("那东西叫米-戈 (Mi-Go)。");
+    expect(directions).toEqual([]);
+  });
+});
+
+// 旁白里的括号是正文的一部分。实测已烘的 80 条里有 9 条带全角括号，
+// 装的是 （Mi-Go）（陷阱区）（右侧有亮光）（被床头柜压住）—— 全是内容，
+// 一刀切会把它们从旁白里删掉。所以判据取消息类型，不靠正则猜括号里装的是什么。
+describe("只切对白，不切旁白", () => {
+  const 夹注 = "在一旁可以看到一个拖车车房（可搭载拖车移动的房屋，在美国还算常见）。";
+
+  it("旁白的解释性夹注保留在合成文本里", () => {
+    const p = planSpeech(msg({ type: "narration", content: 夹注 }));
+    expect(p.text).toBe(夹注);
+    expect(p.directions).toEqual([]);
+  });
+
+  it("同一段文字若是对白就会被切", () => {
+    const p = planSpeech(msg({ type: "dialogue", content: 夹注 }));
+    expect(p.text).not.toContain("（");
+    expect(p.directions).toHaveLength(1);
+  });
+
+  it("旁白的预制键不因本次改动变化 —— 已烘的音频不能失效", () => {
+    expect(voiceKeyFor({ type: "narration", content: 夹注, verbatim: true })).toBe(voiceKey(夹注));
+  });
+
+  it("整句都是舞台指示的对白不给预制键，也不去合成空音频", () => {
+    const m = msg({ type: "dialogue", content: "（长久的沉默）", verbatim: true });
+    expect(voiceKeyFor(m)).toBeUndefined();
+    expect(planSpeech(m).route).toBe("silent");
   });
 });
 
