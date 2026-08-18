@@ -9,8 +9,9 @@
  * 这边是线索门禁 + 多结局，两套规则混在一起只会互相污染。
  */
 
-import { runModule } from "../play-module";
+import { runModule, type LineOrigin } from "../play-module";
 import { BARN_OF_PREMIER, BARN_SUPPORT } from "../module/barn-of-premier";
+import { voiceKey } from "../voice/speech-plan";
 import type { PlayerDecision } from "../agent/player-agent";
 
 /** 引擎停在岔口时对外暴露的东西 */
@@ -25,6 +26,14 @@ export interface ScriptedSnapshot {
   id: string;
   /** 自上次拉取之后新增的播报行 */
   lines: string[];
+  /**
+   * 与 lines 逐项对应的预制音频键。有值表示该行有离线合成好的音频可直接放，
+   * 文件名就是这个键；null 表示该行经过 LLM（须实时合成）或属机制文本（不念）。
+   *
+   * 判据来自引擎在出文那一刻记下的来源，不是在这里按文本长相猜的 ——
+   * 见 docs/voice-readiness.md 第七节。
+   */
+  voiceKeys: (string | null)[];
   /** 停在岔口时有值；为空表示引擎仍在推进或已结束 */
   pending: PendingChoice | null;
   finished: boolean;
@@ -35,6 +44,8 @@ export interface ScriptedSnapshot {
 export class ScriptedSession {
   readonly id: string;
   private lines: string[] = [];
+  /** 与 lines 逐项对应，同进同出 */
+  private origins: LineOrigin[] = [];
   /** 已被拉走的行数；只发增量，避免每次把整局重传一遍 */
   private cursor = 0;
   private pending: (PendingChoice & { resolve: (d: PlayerDecision) => void }) | null = null;
@@ -51,7 +62,7 @@ export class ScriptedSession {
    */
   start(): void {
     runModule(BARN_OF_PREMIER, BARN_SUPPORT, {
-      onLine: (line) => this.lines.push(line),
+      onLine: (line, origin) => { this.lines.push(line); this.origins.push(origin); },
       decide: (context, options) => this.park(context, options),
     })
       .then(() => { this.finished = true; })
@@ -72,10 +83,13 @@ export class ScriptedSession {
   /** 拉取增量播报与当前岔口 */
   poll(): ScriptedSnapshot {
     const lines = this.lines.slice(this.cursor);
+    const origins = this.origins.slice(this.cursor);
     this.cursor = this.lines.length;
     return {
       id: this.id,
       lines,
+      // 键只由文本内容决定，与 gen-speech 烘出来的文件名同一口径
+      voiceKeys: origins.map((o, i) => (o === "verbatim" ? voiceKey(lines[i]) : null)),
       pending: this.pending ? { context: this.pending.context, options: this.pending.options } : null,
       finished: this.finished,
       total: this.lines.length,

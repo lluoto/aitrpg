@@ -28,18 +28,51 @@ export function populateWorldFromModule(
     INSERT OR REPLACE INTO scenes (id, name, description, lighting, dangers, exits, is_active)
     VALUES (?, ?, ?, 'normal', '[]', ?, ?)
   `);
+  // 叙事实体（ModuleData.narrative.entities）按 id 建索引，供下面的出口标注取用
+  const entitiesById = new Map(
+    (moduleData.narrative?.entities ?? []).map((e) => [e.id, e]),
+  );
+
   for (let i = 0; i < moduleData.scenes.length; i++) {
     const scene = moduleData.scenes[i];
+    // 站在这个场景能望见的叙事实体，按它指向的场景归拢
+    const sightedByTarget = new Map(
+      (scene.visibleEntities ?? [])
+        .map((id) => entitiesById.get(id))
+        .filter((e): e is NonNullable<typeof e> => !!e && !!e.sceneId)
+        .map((e) => [e.sceneId as string, e]),
+    );
+
     // 将 SceneConnection[] 转换为 scenes 表 exits 列的 JSON 数组
     // locked = 存在 requiredClueId（线索门禁）；requiredClueId/checkRequired 原样保留
     const exitsJson = JSON.stringify(
-      scene.connections.map((conn) => ({
-        target: conn.targetSceneId,
-        desc: conn.condition,
-        locked: !!conn.requiredClueId,
-        requiredClueId: conn.requiredClueId,
-        checkRequired: conn.checkRequired,
-      })),
+      scene.connections.map((conn) => {
+        // 望得见的出口额外带上识别信息。
+        //
+        // 没有单独建实体行：entities 表的 type 上有 CHECK(type IN ('pc','npc','monster','item'))，
+        // 而本仓库的建表是 CREATE TABLE IF NOT EXISTS 且没有迁移机制 —— 往约束里加新类型
+        // 对已经存在的库文件不会生效，只会在运行时插入失败。挂在既有的 exits JSON 上
+        // 语义也更准：从这儿望得见它，也正好能走过去。
+        const sighted = sightedByTarget.get(conn.targetSceneId);
+        return {
+          target: conn.targetSceneId,
+          desc: conn.condition,
+          locked: !!conn.requiredClueId,
+          requiredClueId: conn.requiredClueId,
+          checkRequired: conn.checkRequired,
+          ...(sighted
+            ? {
+                sighted: {
+                  entityId: sighted.id,
+                  name: sighted.name,
+                  mentionKeywords: sighted.mentionKeywords,
+                  noticedBy: sighted.noticedBy ?? [],
+                  recognition: sighted.recognition,
+                },
+              }
+            : {}),
+        };
+      }),
     );
     insertScene.run(scene.id, scene.name, scene.description, exitsJson, i === 0 ? 1 : 0);
   }

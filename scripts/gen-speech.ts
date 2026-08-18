@@ -15,13 +15,15 @@
 
 import { mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { collectPrebakeEntries } from "../src/voice/speech-plan";
+import { collectPrebakeEntries, voiceKey, type PrebakeEntry } from "../src/voice/speech-plan";
 import {
   INNSMOUTH_MODULE,
   ARKHAM_LIBRARY_MODULE,
   PREMIERS_BARN_MODULE,
 } from "../src/rules/mythos-module";
 import { MODULE_PREMIERS_BARN } from "../src/rules/custom-modules/premiers_barn";
+import { runModule } from "../src/play-module";
+import { BARN_OF_PREMIER, BARN_SUPPORT } from "../src/module/barn-of-premier";
 
 const VOICE = "Microsoft Huihui Desktop"; // zh-CN
 /** 略慢于默认语速：叙述文本比日常对话密，放慢一点更好跟 */
@@ -30,12 +32,72 @@ const RATE = -1;
 const outDir = resolve(process.argv[2] ?? join("frontend", "public", "voice"));
 mkdirSync(outDir, { recursive: true });
 
-const entries = collectPrebakeEntries([
-  INNSMOUTH_MODULE,
-  ARKHAM_LIBRARY_MODULE,
-  PREMIERS_BARN_MODULE,
-  MODULE_PREMIERS_BARN,
-]);
+/**
+ * 收割剧本里不经 LLM 的播报行。
+ *
+ * 跑真引擎，不从 ModuleData 静态提取：那些文本是 say() 出文那一刻才成形的
+ * （补换行、补句号、替换 {enemy}、剥 NPC 名后缀），静态复刻等于把同一套格式
+ * 规则写两遍 —— 改一处就会悄悄对不上键，而对不上是静默的：运行时算出的键
+ * 找不到音频，只会没声音，不会报错。
+ *
+ * 一局只走一条决策路径，覆盖不到全部场景，所以随机决策反复跑，连续
+ * SATURATION 局不再出新键就算收敛。
+ */
+async function harvestScripted(): Promise<PrebakeEntry[]> {
+  // 阈值定在 12 而不是 5：战斗结局是掷骰决出的，victory/fled/defeat 一局只走一支，
+  // 稀有分支的出现概率低于 5 局，实测过 5 局会漏掉 fledLines —— 漏掉是静默的，
+  // 运行时只是那句没声音。宁可多跑几局。
+  const SATURATION = 12;
+  const MAX_RUNS = 60; // 兜底：别让随机路径把收割拖成无限循环
+
+  // verbatim 行按定义就不经 LLM，关掉它只是让收割快且不花 API 钱
+  process.env.LLM_DISABLED = "true";
+
+  const byKey = new Map<string, PrebakeEntry>();
+  let idle = 0;
+  let runs = 0;
+
+  while (idle < SATURATION && runs < MAX_RUNS) {
+    runs++;
+    const before = byKey.size;
+    const { lines, origins } = await runModule(BARN_OF_PREMIER, BARN_SUPPORT, {
+      decide: async (_ctx, options) => ({
+        action: options[Math.floor(Math.random() * options.length)],
+        intent: "move",
+      }),
+    });
+
+    origins.forEach((origin, i) => {
+      if (origin !== "verbatim") return;
+      const text = lines[i].trim();
+      if (!text) return;
+      // 键对原始行算 —— ScriptedSession 运行时也是这么算的（voiceKey 内部 trim）
+      const key = voiceKey(lines[i]);
+      if (!byKey.has(key)) {
+        byKey.set(key, { key, moduleId: BARN_OF_PREMIER.id, kind: "scripted", speaker: "守秘人", text });
+      }
+    });
+
+    const added = byKey.size - before;
+    idle = added > 0 ? 0 : idle + 1;
+    console.log(`  收割第 ${runs} 局：累计 ${byKey.size} 条${added > 0 ? `（+${added}）` : ""}`);
+  }
+
+  console.log(`剧本收割结束：跑了 ${runs} 局，得 ${byKey.size} 条唯一文本\n`);
+  return [...byKey.values()];
+}
+
+const collected = [
+  ...collectPrebakeEntries([
+    INNSMOUTH_MODULE,
+    ARKHAM_LIBRARY_MODULE,
+    PREMIERS_BARN_MODULE,
+    MODULE_PREMIERS_BARN,
+  ]),
+  ...(await harvestScripted()),
+];
+// 两路来源可能撞上同一段文本 —— 键由内容决定，撞了本就是同一份音频，留一份
+const entries = [...new Map(collected.map((e) => [e.key, e])).values()];
 
 if (entries.length === 0) {
   console.log("没有可预制的文本。");

@@ -30,6 +30,40 @@ export interface ModuleData {
   partySetup?: PartySetup;
   /** 后日谈条目 */
   epilogues?: EpilogueEntry[];
+  /** 叙事层：场景/线索之外的"能被提起、也能被望见"的东西 */
+  narrative?: {
+    entities: NarrativeEntity[];
+  };
+}
+
+/**
+ * 叙事实体 —— 一件在场景描述里已经写到、但要等对话点破才有意义的东西。
+ *
+ * 典型：特里坎家院子一旁那座拖车房。调查员进院子时就看见了（模组原文有写），
+ * 但它只是"一座拖车房"；等菲碧说出"加比十五岁就搬到外面拖车住了"，
+ * 那座拖车才变成"失踪男孩的房间"——调查员会自己扭头看过去。
+ *
+ * 所以它有两个互不相同的单调状态位，谁也不能替代谁：
+ *   已引入(introduced) —— 被 NPC 台词提起过；
+ *   已识别(recognized) —— 识别桥段已经演过，不再重演。
+ * 可见性(visible)不存状态，由当前场景的 visibleEntities 现算 —— 走开就看不见了，
+ * 这是会来回变的量，存下来必然和实际所在地失同步。
+ */
+export interface NarrativeEntity {
+  id: string;
+  /** 叙事里怎么称呼它（"那座拖车房"） */
+  name: string;
+  /** NPC 台词里出现任一词即视为"被提起" */
+  mentionKeywords: string[];
+  /** 它对应的场景 ID（识别之后调查员就知道该往哪走） */
+  sceneId?: string;
+  /**
+   * 什么习惯的调查员会自发看过去：匹配调查员职业名（含即命中，如 "侦探"）。
+   * 沿用 llmExpanded.mentionReactions 既有的职业触发约定。留空 = 任何调查员都会注意到。
+   */
+  noticedBy?: string[];
+  /** 识别桥段正文，{name} 替换为那位调查员的名字 */
+  recognition: string;
 }
 
 /** 模组中的可拾取/可交互物品 */
@@ -61,6 +95,11 @@ export interface Scene {
   clues: Clue[];
   /** 此场景中出现的 NPC */
   npcIds: string[];
+  /**
+   * 站在此场景里能望见的叙事实体 ID（ModuleData.narrative.entities）。
+   * 与 npcIds 同一形状：场景自己声明"这里有什么"。
+   */
+  visibleEntities?: string[];
   /** 此场景需要的技能检定 */
   skillChecks?: SkillCheckHint[];
   /** 连接到其他场景 */
@@ -371,6 +410,10 @@ export interface ModuleState {
   currentRound: number;
   /** 各场景剧情状态变量（运行时值，覆盖 Scene.stateVars 初始声明；未声明的变量也可由线索写入） */
   sceneStateVars: Map<string, Record<string, boolean | string>>;
+  /** 已被 NPC 台词提起过的叙事实体（单调，只增不减） */
+  introducedEntities: Set<string>;
+  /** 识别桥段已经演过的叙事实体（单调，用于保证只演一次） */
+  recognizedEntities: Set<string>;
 }
 
 /** NPC 运行时状态 */

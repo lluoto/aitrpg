@@ -194,6 +194,9 @@ async function pollScripted() {
     const snap = await r.json()
     // 服务端只回增量，直接追加即可，不必去重
     if (snap.lines?.length) scriptedLines.value.push(...snap.lines)
+    // voiceKeys 与 lines 逐项对应：有键的那几行有离线合成好的音频，其余是 null
+    // （经过 LLM 或属机制文本）。enqueueVoice 自己会挡掉 null 与静音状态。
+    snap.voiceKeys?.forEach((k) => enqueueVoice(k))
     scriptedPending.value = snap.pending || null
     scriptedFinished.value = !!snap.finished
     if (snap.error) scriptedError.value = snap.error
@@ -476,6 +479,7 @@ function onInputKeydown(e) {
       <header class="scripted-bar">
         <span class="scripted-bar__title">《普瑞米尔的谷仓》</span>
         <span class="scripted-bar__meta">{{ scriptedLines.length }} 行 · {{ scriptedFinished ? '已结束' : (scriptedPending ? '等待抉择' : '推进中…') }}</span>
+        <button class="bgm-toggle" :class="{ 'bgm-toggle--on': !voiceMuted }" @click="voiceMuted = !voiceMuted">{{ voiceMuted ? '语音 关' : '语音 开' }}</button>
         <button class="scripted-bar__exit" @click="exitScripted">退出</button>
       </header>
 

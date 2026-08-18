@@ -81,18 +81,18 @@ export interface PrebakeEntry {
   key: string;
   /** 来源模组 ID，仅用于人读与排错 */
   moduleId: string;
-  /** 这段文本在模组里的角色 */
-  kind: "intro";
+  /** 这段文本在模组里的角色：模组开场白 / 剧本里不经 LLM 的播报行 */
+  kind: "intro" | "scripted";
   speaker: string;
   text: string;
 }
 
 /**
- * 收集可离线预合成的文本。
+ * 收集 MythosModule 的开场白 —— 它走不经 LLM 的直出路径，加载时内容就已确定。
  *
- * 目前只有模组开场白：它走的是不经 LLM 的直出路径，内容在加载时就已确定，
- * 因此可以提前合成，把这部分的首包延迟降为零。KP 的即兴叙述和 NPC 台词
- * 每次都不一样，不属于这里。
+ * 剧本（ModuleData）那条线的可预制文本不在这里收：它的文本是引擎在 say() 出文
+ * 那一刻才成形的（补换行、补句号、替换 {enemy}），静态复刻这些格式等于把同一套
+ * 规则写两遍，改一处就会悄悄对不上键。那条线由 scripts/gen-speech.ts 实跑收割。
  *
  * 模组从参数传入而不是在这里 import，既便于单测，也让调用方决定要烘哪些。
  */

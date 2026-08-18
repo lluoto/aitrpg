@@ -32,9 +32,21 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * 共享一个数组会让两局的播报串台。异步上下文能让 runModule 里所有嵌套调用
  * （包括那些定义在 runModule 之外的辅助函数）自动拿到本局的那一份。
  */
+/**
+ * 播报行的来源。语音层据此分预制/实时/不念 —— 判据是「经没经过 LLM」，
+ * 不是「内容像不像固定文本」，见 docs/voice-readiness.md 第七节。
+ *
+ * 默认取 "llm" 而不是 "verbatim"：漏标只会让一条本可预制的行退化成实时合成，
+ * 功能不受影响；反过来把 LLM 文本误标成 verbatim，会把当次生成的内容烘进音频
+ * 缓存，之后每局都放那一句。两个方向的代价不对称，默认值指向便宜的那侧。
+ */
+export type LineOrigin = "verbatim" | "llm" | "mech";
+
 interface RunContext {
   lines: string[];
-  onLine?: (line: string) => void;
+  /** 与 lines 逐项对应，同进同出 */
+  origins: LineOrigin[];
+  onLine?: (line: string, origin: LineOrigin) => void;
   decide?: Decider;
 }
 const runCtx = new AsyncLocalStorage<RunContext>();
@@ -47,20 +59,83 @@ const runCtx = new AsyncLocalStorage<RunContext>();
  */
 export type Decider = (context: string, options: string[]) => Promise<PlayerDecision>;
 
-function say(m: string) {
+function say(m: string, origin: LineOrigin = "llm") {
   const ctx = runCtx.getStore();
   if (!ctx) { console.log(m); return; }
   ctx.lines.push(m);
-  ctx.onLine?.(m);
+  ctx.origins.push(origin);
+  ctx.onLine?.(m, origin);
 }
 /** Output game-mechanics text (rolls, damage, rules) — visually distinct from story narration */
-function sayMech(m: string) { say(`  [检定] ${m}`); }
-function divider(t?: string) { say(""); say("\u2501".repeat(60)); if (t) say("  " + t); say("\u2501".repeat(60)); }
+function sayMech(m: string) { say(`  [检定] ${m}`, "mech"); }
+function divider(t?: string) { say("", "mech"); say("\u2501".repeat(60), "mech"); if (t) say("  " + t, "mech"); say("\u2501".repeat(60), "mech"); }
 
 // ====== 模块级工具：供 runModule 内外所有层可见 ======
 function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
 
+/**
+ * 拆出台词开头的括号神态。
+ *
+ * 引擎会在台词前加一句叙述引导桥（"歪着头想了想，说："），而 LLM 常常在台词
+ * 开头又写一遍括号神态，两者叠起来就成了：
+ *   歪着头想了想，说："（歪着头想了想）加比哥哥半个月前就不回来了……"
+ * 同一个动作说两遍。
+ *
+ * 提示词里已经明令不要用括号起头，实测仍有约四成台词照写 —— 模型守不住的
+ * 约束就得由代码兜底。firstEncounter 那条路早就用 hasInlineAction 这么做了，
+ * 这里是把同一个约定补齐。
+ *
+ * 只切开头那一处；句中穿插的括号是有效的韵律信息（见 docs/voice-readiness.md
+ * 第五节），保留不动。
+ */
+function splitLeadingStageDirection(text: string, speakerName?: string): { action: string; speech: string } {
+  const m = /^\s*（([^）]*)）\s*/.exec(text);
+  if (m) {
+    // 括号里常自带主语（"她低下头"），拼到 NPC 名后面会变成"菲碧她低下头"
+    const action = m[1].trim().replace(/^[她他它]/, "");
+    return { action, speech: text.slice(m[0].length) };
+  }
+
+  // 禁掉括号之后，模型会改用白话写同一段叙述，没有括号就漏过上面那条，
+  // 整段被当台词包进引号，于是出现「米尔·特里坎悄声说："米尔歪着小脑袋，
+  // 眼神有些迷茫。哥哥……"」—— 小孩在说一段对自己的第三人称描写。
+  //
+  // 判据取得很窄：只有当台词以说话人自己的名字起头时才切。真人开口不会先用
+  // 第三人称报自己的名字，误伤的可能极低。
+  // 名字要连短名一起试："米尔·特里坎"的台词实际以"米尔"起头，只比全名会漏。
+  // 分隔符也要带上冒号 —— 模型爱写"米尔歪着小脑袋，眼神迷茫：谷仓在那边很远呢"。
+  for (const n of speakerName ? [speakerName, speakerName.split(/[·・]/)[0]] : []) {
+    if (!n || n.length < 2 || !text.startsWith(n)) continue;
+    const end = text.search(/[。！？：:]/);
+    if (end <= 0 || end >= text.length - 1) continue;
+    return {
+      action: text.slice(n.length, end).replace(/^[，、\s]+/, "").trim(),
+      speech: text.slice(end + 1).trim(),
+    };
+  }
+
+  return { action: "", speech: text };
+}
+
 /** 剥离台词首尾引号 + 内部 LLM 残留的成对引号包裹（如 '整句'），避免"…'…。'"不对称 */
+/**
+ * NPC 说话时提到了什么 —— 把台词里出现过的叙事实体标成"已被提起"。
+ *
+ * 只扫 NPC 台词，故意不扫场景描述。特里坎家的原文描述里本来就写着院子一旁
+ * 停着一座拖车房，调查员进门就看见了；但那时它只是一座拖车。要等菲碧说出
+ * "他十五岁就搬到外面拖车住了"，它才变成"失踪男孩的房间"。
+ * 看见与认出是两件事，混在一起这段桥就没得演了。
+ */
+function noteEntityMentions(text: string, w: WorldState): void {
+  if (!text) return;
+  for (const ent of w.narrativeEntities) {
+    if (w.isEntityIntroduced(ent.id)) continue;
+    if (ent.mentionKeywords.some((k) => k && text.includes(k))) {
+      w.introduceEntity(ent.id);
+    }
+  }
+}
+
 function stripOuterQuotes(s: string): string {
   let t = s.trim();
   // 首尾引号（可能多重，如 "…" 包 '…'）
@@ -365,8 +440,13 @@ function applyDamage(pc: CoCGeneratedCharacter, pcName: string, dmg: number): vo
 // （SAN 映射、结局评估、战斗遭遇、枢纽/终局定位、调查员配置）。
 // 新模组接入 = 提供 ModuleData + ModuleSupport，无需改动引擎。
 export interface RunOptions {
-  /** 每产生一行播报就回调一次；CLI 传 console.log，API 会话推进消息流 */
-  onLine?: (line: string) => void;
+  /**
+   * 每产生一行播报就回调一次；CLI 传 console.log，API 会话推进消息流。
+   *
+   * origin 供语音层分流（见 LineOrigin）。只关心文本的调用方照旧写
+   * `(line) => ...` 即可 —— 少接一个参数在类型上是合法的。
+   */
+  onLine?: (line: string, origin: LineOrigin) => void;
   /** 由谁做决策。缺省用内置 AI 玩家，即原有的自动跑法 */
   decide?: Decider;
 }
@@ -381,10 +461,10 @@ export async function runModule(
   module: ModuleData,
   support: ModuleSupport,
   opts: RunOptions = {},
-): Promise<{ lines: string[] }> {
-  const ctx: RunContext = { lines: [], onLine: opts.onLine, decide: opts.decide };
+): Promise<{ lines: string[]; origins: LineOrigin[] }> {
+  const ctx: RunContext = { lines: [], origins: [], onLine: opts.onLine, decide: opts.decide };
   await runCtx.run(ctx, () => runModuleInner(module, support));
-  return { lines: ctx.lines };
+  return { lines: ctx.lines, origins: ctx.origins };
 }
 
 async function runModuleInner(module: ModuleData, support: ModuleSupport) {
@@ -781,8 +861,14 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       recentEvents: history,
       metNpcs: met,
       triggeredEvents: [],
+      // 只给"还有地方没去"这个事实，不给名字。
+      //
+      // 原先这里把未访问场景名拼进去，而这段会一路注入到 PC 提问的 prompt 里 ——
+      // 于是调查员会张口就问"拖车房在镇子哪里"，可那时根本没人提过拖车房。
+      // 上面第一行注释本来就写着"不点名场景内部细节"，是实现没做到。
+      // 地点该由 NPC 说出口或被玩家撞见来引入，不该从进度提示里漏出去。
       unexploredHints: unexplored.length > 0
-        ? [`镇上还有与案件相关的场所尚未查探（${unexplored.join("、")}）`]
+        ? ["镇上仍有与案件相关的场所未曾到访（是哪些，调查员目前并不知道）"]
         : [],
       stateVars: stateVars.length > 0 ? stateVars : undefined,
       worldModelContext: buildWmContext(w),
@@ -790,8 +876,36 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   }
 
   /** 在 NPC 首次对话后，给 PL 1-2 轮追问机会 */
+  /**
+   * 识别桥段 —— NPC 刚提起的东西，正好就在眼前，于是有这习惯的调查员自己看了过去。
+   *
+   * 三个条件缺一不可（见 WorldState.getPendingRecognition）：被提起过、此刻看得见、还没演过。
+   * 再加一道职业门：不是谁都会下意识把话里的东西和眼前景物对上，
+   * 门开给所有人这段就不再是"某个人的习惯"，而是引擎在提示玩家该去哪。
+   *
+   * 命中即占用本轮，调用方直接 return —— 人在认出什么东西的当口，
+   * 不会同时开口问下一个问题。
+   */
+  function maybeRecognitionBeat(w: WorldState): boolean {
+    const ent = w.getPendingRecognition();
+    if (!ent) return false;
+    const habits = ent.noticedBy ?? [];
+    const candidates = [pl1, pl2].filter(
+      (p) => habits.length === 0 || habits.some((h) => p.pc.occupation.includes(h)),
+    );
+    if (candidates.length === 0) return false;
+    const who = pick(candidates);
+    // 先落状态再输出：即便下游抛错也不会在下一轮重演同一段
+    w.markEntityRecognized(ent.id);
+    say(`\n${ent.recognition.replaceAll("{name}", who.name)}`);
+    return true;
+  }
+
   async function conductNpcConversation(npc: ModuleNPC, w: WorldState): Promise<void> {
     const displayName = npc.name.replace(/[（(].*[）)]$/, "").trim();
+
+    // 识别先于提问：这一轮归它，不再叠一个提问上去（顶替本轮 Q&A）
+    if (maybeRecognitionBeat(w)) return;
 
     // Build scene context for NPC
     const curScene = w.currentScene;
@@ -895,7 +1009,13 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     if (reply) {
       // 回复用数据驱动引导桥（"顿了顿，又说："类），避免机械"名字：内容"直出
       const s = analyseNpcData(npc);
-      say(`\n${displayName}${buildRevealBridge(npc, s, false)}"${stripOuterQuotes(reply)}"`);
+      // 台词自带开头神态时，把它转成叙述句当引导桥，不要再叠一层 —— 否则同一个
+      // 动作会被说两遍。转成叙述句而不是保留括号，是因为"（面带忧虑）我儿子失踪了"
+      // 读起来是剧本提示，"面带忧虑，说：「我儿子失踪了」"才像人话。
+      const { action, speech } = splitLeadingStageDirection(stripOuterQuotes(reply), displayName);
+      const lead = action ? `${action}，说：` : buildRevealBridge(npc, s, false);
+      say(`\n${displayName}${lead}"${speech}"`);
+      noteEntityMentions(speech, w);
       // 标记本轮实际说出的 reveal（避免下次重复）。
       // LLM 路径：按回答内容与 reveal 的重叠匹配标记——回答"按需叙述"后可能偏离 target，
       //   未说出的信息不标记、留待玩家再问（符合"信息在提及时才叙述"）；
@@ -952,10 +1072,10 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       const revisitPhrases = ["这里和刚才来时一样。", "一切如旧。", "和之前离开时没什么变化。", "场景依旧。"];
       say(`\n${revisitPhrases[Math.floor(Math.random() * revisitPhrases.length)]}`);
     } else {
-      say(`\n${scene.description}`);
+      say(`\n${scene.description}`, "verbatim");
       // 首次到访：开场氛围描写（场景级，先于 NPC 出场——如"孩子玩球跑回屋内"这类场景开场动作）
       if (scene.openingAtmosphere) {
-        say(`\n${scene.openingAtmosphere}`);
+        say(`\n${scene.openingAtmosphere}`, "verbatim");
       }
     }
 
@@ -1016,25 +1136,29 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
         const toneBridge = buildToneBridge(npc, speechProfile);
 
         if (firstMeeting) {
-          const dialogueText = stripDoorOpenPrefix(npc.llmExpanded.firstEncounter, lastTransitionText);
-          const hasInlineAction = dialogueText.startsWith("（");
+          // 开头的括号神态在这里就切掉，下面三个分支拿到的都是干净台词。
+          // 切出来的动作留给普通分支当引导桥用（见下），mental_voice / coma_rapid
+          // 自带固定引导句，多一段神态只会打架，直接丢。
+          const rawFirst = stripDoorOpenPrefix(npc.llmExpanded.firstEncounter, lastTransitionText);
+          const { action: leadAction, speech: dialogueText } = splitLeadingStageDirection(rawFirst, displayName);
+          noteEntityMentions(dialogueText, world);
           if (speechProfile.type === "mental_voice") {
             if (!introShown) say(`\n${pcImpression}`);
             say(`\n${mentalVoiceBridge(speechProfile, displayName, "——")}`);
             say(quoteDialogue(dialogueText));
           } else if (speechProfile.type === "coma_rapid") {
             if (!introShown) say(`\n${pcImpression}`);
-            say(`\n${displayName}昏迷中似乎在说着什么。`);
+            say(`\n${displayName}昏迷中似乎在说着什么。`, "verbatim");
             say(quoteDialogue(dialogueText));
           } else {
             if (!introShown) {
               say(`\n${pcImpression}。`);
               // 首次见面自报家门：调查员先表明身份与来意（承接敲门/进屋），NPC 才承接回应进入正题
-              say(`\n你们上前，向对方表明了自己的身份与来意。`);
+              say(`\n你们上前，向对方表明了自己的身份与来意。`, "verbatim");
               // 私宅场景：插入"进屋坐下"过渡，建立叙事节奏（先落座 → 再求助 → 再谈案情），
               // 避免 NPC 站在门口就把所有话倒完
               if (world.currentScene?.isHome) {
-                say(`\n${displayName}侧身把你们让进屋里，示意你们在桌边坐下。`);
+                say(`\n${displayName}侧身把你们让进屋里，示意你们在桌边坐下。`, "verbatim");
               }
             }
             if (behaviorText) say(behaviorText);
@@ -1047,7 +1171,9 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
               say(`\n${leadWithName.trim()}`);
               say(quoteDialogue(rest));
             } else {
-              if (!hasInlineAction) { say(`\n${displayName}${toneBridge}`); }
+              // 台词自带开头神态时拿它当引导桥（转成叙述句）。原先是"有括号就不加桥"，
+              // 可括号仍留在台词里，读起来还是剧本提示而不是人话。
+              say(`\n${displayName}${leadAction ? `${leadAction}，说：` : toneBridge}`);
               say(quoteDialogue(dialogueText));
             }
           }
@@ -1066,8 +1192,10 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
             }
           }
         } else {
-          const dialogueText = stripDoorOpenPrefix(npc.llmExpanded.revisitEncounter ?? npc.llmExpanded.firstEncounter, lastTransitionText);
-          const hasInlineAction = dialogueText.startsWith("（");
+          // 同 firstMeeting：开头括号在源头切掉，三个分支拿到的都是干净台词
+          const rawRevisit = stripDoorOpenPrefix(npc.llmExpanded.revisitEncounter ?? npc.llmExpanded.firstEncounter, lastTransitionText);
+          const { action: leadAction, speech: dialogueText } = splitLeadingStageDirection(rawRevisit, displayName);
+          noteEntityMentions(dialogueText, world);
           if (speechProfile.type === "mental_voice") {
             say(`\n${mentalVoiceBridge(speechProfile, displayName, "——", true)}`);
             say(quoteDialogue(dialogueText));
@@ -1082,7 +1210,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
               say(`\n${leadWithName.trim()}`);
               say(quoteDialogue(rest));
             } else {
-              if (!hasInlineAction) { say(`\n${displayName}${toneBridge}`); }
+              say(`\n${displayName}${leadAction ? `${leadAction}，说：` : toneBridge}`);
               say(quoteDialogue(dialogueText));
             }
           }
@@ -1849,10 +1977,16 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
         const text = reveals[0];
         const ki = npc.llmExpanded.knowledgeReveals.indexOf(text);
         // LLM 台词可能自带首尾引号（“…”/‘…’/""），若已带引号则不再整体包裹，避免双重引号
-        const clean = stripOuterQuotes(text);
+        // 引导桥已经用叙述句交代了神态（"眨巴着眼睛说："），台词开头若再来一个
+        // 括号神态就是同一件事说两遍 —— 切掉括号那份，留引导桥。
+        const clean = splitLeadingStageDirection(
+          stripOuterQuotes(text),
+          npc.name.replace(/[（(].*[）)]$/, "").trim(),
+        ).speech;
         // 知识揭示用数据驱动引导桥，避免"裸引号知识条目"直出（不像人话）
         const s = analyseNpcData(npc);
         say(`\n${buildRevealBridge(npc, s, true)}"${clean}"`);
+        noteEntityMentions(clean, w);
         w.discoverClue(`clue_kn_${npc.id}_${ki}`);
         return;
       }
@@ -1869,6 +2003,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
         const hintIndex = npc.knowledge.indexOf(hint);
         // Data-driven bridges — use mumbling frame for unconscious NPCs
         say(`\n${buildRevealBridge(npc, s, i === 0)}"${hint}"`);
+        noteEntityMentions(hint, w);
         w.discoverClue(`clue_kn_${npc.id}_${hintIndex}`);
       }
     }
@@ -1962,7 +2097,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       say(`\n${"═".repeat(48)}`);
       say(`  ⚔ ${enemyName}战斗轮 ⚔`);
       say(`${"═".repeat(48)}`);
-      for (const line of migoEncounter.encounterLines) say(fmt(line));
+      for (const line of migoEncounter.encounterLines) say(fmt(line), "verbatim");
       say("");
 
       // Read Mi-Go HP from module NPC data: "HP11 MP15 DB无" → 11
@@ -2105,18 +2240,18 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       if (migoHp <= 0) {
         // 击败：Mi-Go 重伤逃走，没带走大脑
         if (migoEncounter.victoryClueId) world.discoverClue(migoEncounter.victoryClueId);
-        for (const line of migoEncounter.victoryLines) say(line);
+        for (const line of migoEncounter.victoryLines) say(line, "verbatim");
       } else if (miGoFled && migoHp < migoMaxHp * 0.4) {
         // 打跑但没杀死：Mi-Go 自己逃走，没来得及带走大脑
         if (migoEncounter.victoryClueId) world.discoverClue(migoEncounter.victoryClueId);
         if (migoEncounter.fledLines) {
-          for (const line of migoEncounter.fledLines) say(line);
+          for (const line of migoEncounter.fledLines) say(line, "verbatim");
         } else {
-          say("敌人发出一声不甘的嘶叫，撞破通风管道独自逃走了。");
+          say("敌人发出一声不甘的嘶叫，撞破通风管道独自逃走了。", "verbatim");
         }
       } else {
         // 完全失败：Mi-Go 带着大脑逃走
-        for (const line of migoEncounter.defeatLines) say(line);
+        for (const line of migoEncounter.defeatLines) say(line, "verbatim");
       }
       say(`${"═".repeat(48)}`);
     }
@@ -2304,7 +2439,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
 
     // Single move option — just take it without LLM call
     if (unlocked.length === 1) {
-      say(`\n${(unlocked[0] as SceneConnection).condition}。`);
+      say(`\n${(unlocked[0] as SceneConnection).condition}。`, "verbatim");
       return unlocked[0] as SceneConnection;
     }
 
@@ -2413,7 +2548,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       chosenConn = scored[0].conn;
     }
 
-    say(`\n${chosenConn.condition}。`);
+    say(`\n${chosenConn.condition}。`, "verbatim");
     return chosenConn;
   }
 
@@ -2531,7 +2666,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     say(``);
     divider(support.endLabels[ending.id] ?? ending.id);
     for (const line of ending.lines) {
-      say(line);
+      say(line, "verbatim");
     }
   }
 
@@ -2544,7 +2679,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     );
     for (const ep of epilogues) {
       say(``);
-      for (const line of ep.lines) say(line);
+      for (const line of ep.lines) say(line, "verbatim");
     }
   }
   // ── SAN / HP 最终状态 ──

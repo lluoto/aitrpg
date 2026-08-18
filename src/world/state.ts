@@ -2,7 +2,7 @@
 // 管理：当前场景、发现的线索、NPC 状态、场景历史
 // 为 KP 提示生成提供上下文
 
-import type { ModuleData, Scene, ModuleState, NPCInstanceState, Clue } from "../module/types";
+import type { ModuleData, Scene, ModuleState, NPCInstanceState, Clue, NarrativeEntity } from "../module/types";
 
 export class WorldState {
   private module: ModuleData;
@@ -25,6 +25,8 @@ export class WorldState {
           .filter(s => s.stateVars && Object.keys(s.stateVars).length > 0)
           .map(s => [s.id, { ...(s.stateVars as Record<string, boolean | string>) }]),
       ),
+      introducedEntities: new Set<string>(),
+      recognizedEntities: new Set<string>(),
     };
 
     // 初始化所有 NPC 状态
@@ -128,6 +130,52 @@ export class WorldState {
     const vars = this.state.sceneStateVars.get(sceneId) ?? {};
     vars[key] = value;
     this.state.sceneStateVars.set(sceneId, vars);
+  }
+
+  // ── 叙事实体：被提起(introduced) / 被认出(recognized) ──
+  //
+  // 只存这两个单调位。第三种状态"看得见"不存 —— 它随调查员走动来回变，
+  // 存下来就一定会和实际所在地失同步，所以每次由当前场景现算。
+
+  /** 全部叙事实体定义 */
+  get narrativeEntities(): NarrativeEntity[] {
+    return this.module.narrative?.entities ?? [];
+  }
+
+  /** 标记某实体已被台词提起 */
+  introduceEntity(entityId: string): void {
+    this.state.introducedEntities.add(entityId);
+  }
+
+  isEntityIntroduced(entityId: string): boolean {
+    return this.state.introducedEntities.has(entityId);
+  }
+
+  /** 标记识别桥段已演过（保证只演一次） */
+  markEntityRecognized(entityId: string): void {
+    this.state.recognizedEntities.add(entityId);
+  }
+
+  isEntityRecognized(entityId: string): boolean {
+    return this.state.recognizedEntities.has(entityId);
+  }
+
+  /** 站在当前场景能望见的叙事实体（现算，不落状态） */
+  getVisibleEntities(): NarrativeEntity[] {
+    const ids = this.currentScene?.visibleEntities ?? [];
+    if (ids.length === 0) return [];
+    return this.narrativeEntities.filter((e) => ids.includes(e.id));
+  }
+
+  /**
+   * 当前该演识别桥段的实体：已被提起、此刻看得见、还没演过。
+   * 三个条件缺一不可 —— 没提起就没有"认出"可言；看不见就只能凭空想象；
+   * 演过一次再演就成了复读。
+   */
+  getPendingRecognition(): NarrativeEntity | undefined {
+    return this.getVisibleEntities().find(
+      (e) => this.isEntityIntroduced(e.id) && !this.isEntityRecognized(e.id),
+    );
   }
 
   /** 在所有场景的线索中查找指定 ID 的线索 */

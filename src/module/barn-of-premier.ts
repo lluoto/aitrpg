@@ -94,6 +94,28 @@ const moduleData: ModuleData = {
     ],
   },
   epilogues: buildEpilogues(),
+  narrative: {
+    entities: [
+      {
+        id: "ent_gabi_trailer",
+        name: "院子一旁的拖车房",
+        // 菲碧的 knowledge 原文是"加比比较叛逆，喜欢出去玩，十五岁就搬到外面拖车住了"，
+        // LLM 复述时用词会变，所以按词根匹配而不是整句。
+        mentionKeywords: ["拖车"],
+        sceneId: "gabi_trailer",
+        // 会下意识把话里的东西和眼前景物对上的职业。留空则人人都会注意到，
+        // 那样这段就不再是"某个人的习惯"，而是引擎在提示玩家。
+        noticedBy: ["侦探", "警", "探员", "记者", "猎人", "摄影"],
+        // 踩模组原文那句"在一旁可以看到一个拖车车房……通过窗子可以看到也有在使用的痕迹"。
+        // 不写第三人称代词：调查员是随机生成的，性别不定，
+        // 写死"他"会撞上女性调查员（实跑里已经撞过一次：玛格丽特·哈里斯）。
+        recognition:
+            "{name}没有接话，视线越过菲碧的肩膀，落在院子一旁那座拖车房上——" +
+            "进门时就瞥见过它，只当是搁杂物的地方，窗玻璃后面隐约有生活过的痕迹。" +
+            "此刻那点痕迹忽然有了归属：那不是杂物间，那是那个失踪男孩住的地方。",
+      },
+    ],
+  },
 };
 
 // 自动为所有带 knowledge[] 的 NPC 生成 llmExpanded（已有手动编写的不会被覆盖）
@@ -113,6 +135,8 @@ function buildScenes(): Scene[] {
     description: S.TRICAM_HOUSE,
     clues: [],
     npcIds: ["phoebe_tricam", "mir_tricam"],
+    // 场景描述原文就写了"在一旁可以看到一个拖车车房"——视线是原作给的，不是这里新编的
+    visibleEntities: ["ent_gabi_trailer"],
     openingAtmosphere: `还没走到门口，你们便听见院里传来一下一下拍打皮球的声音，节奏很慢，像是有人在随意消磨时间。循声望去，只见米尔·特里坎正抱着篮球站在院里，一下一下地拍着。她察觉到你们走近，抬起头怯生生地望了一眼，随即丢下球，转身跑回屋内，门在身后轻轻带上。院落重新安静下来，只有风吹过太阳伞的轻响——接下来，该由你们叩响那扇门了。`,
     isHome: true,
     connections: [

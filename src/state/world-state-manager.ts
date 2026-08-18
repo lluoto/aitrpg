@@ -7,10 +7,24 @@ import type { GameEvent } from "./event-types";
 import type { WorldEntity, WorldState, Effect, CombatResult, PlayerRuntimeState } from "../types";
 import type { SanityState } from "../rules/coc-engine";
 
+/**
+ * 站在出发场景就望得见的叙事实体（ModuleData.narrative.entities）。
+ * 由 module-loader 在导入时挂到对应出口上：从这儿望得见它，也正好能走过去。
+ */
+export interface SightedEntity {
+  readonly entityId: string;
+  readonly name: string;
+  readonly mentionKeywords: readonly string[];
+  readonly noticedBy: readonly string[];
+  readonly recognition: string;
+}
+
 /** 场景出口。模组写入的是对象（目标场景 + 展示用描述），不是裸字符串。 */
 export interface SceneExit {
   readonly target: string;
   readonly desc: string;
+  /** 该出口同时是一件望得见的叙事实体时携带；模组未声明则为 undefined。 */
+  readonly sighted?: SightedEntity;
 }
 
 /** 一条场景记录。scenes 表的对外形状，getScene() 与 listScenes() 共用。 */
@@ -427,7 +441,15 @@ export class WorldStateManager {
    */
   setSceneExits(sceneId: string, exits: readonly SceneExit[]) {
     this.db.run("UPDATE scenes SET exits = ? WHERE id = ?", [
-      JSON.stringify(exits.map((e) => ({ target: e.target, desc: e.desc }))),
+      // 显式列字段而不是整个 e 直接塞，避免把调用方多带的东西写进库；
+      // sighted 要留住 —— 丢了它读回来就再也拼不出识别桥段。
+      JSON.stringify(
+        exits.map((e) => ({
+          target: e.target,
+          desc: e.desc,
+          ...(e.sighted ? { sighted: e.sighted } : {}),
+        })),
+      ),
       sceneId,
     ]);
   }
@@ -491,10 +513,35 @@ export class WorldStateManager {
       if (item && typeof item === "object" && typeof (item as { target?: unknown }).target === "string") {
         const target = (item as { target: string }).target;
         const desc = (item as { desc?: unknown }).desc;
-        exits.push({ target, desc: typeof desc === "string" ? desc : target });
+        const sighted = this.parseSighted((item as { sighted?: unknown }).sighted);
+        exits.push({
+          target,
+          desc: typeof desc === "string" ? desc : target,
+          ...(sighted ? { sighted } : {}),
+        });
       }
     }
     return exits;
+  }
+
+  /**
+   * 出口上的叙事实体。字段不全就整个丢掉而不是补默认值 ——
+   * 这段数据是拿来播识别桥段的，半截的识别文本比没有更糟。
+   */
+  private parseSighted(raw: unknown): SightedEntity | undefined {
+    if (!raw || typeof raw !== "object") return undefined;
+    const o = raw as Record<string, unknown>;
+    if (typeof o.entityId !== "string" || typeof o.name !== "string") return undefined;
+    if (typeof o.recognition !== "string" || o.recognition.length === 0) return undefined;
+    const strList = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+    return {
+      entityId: o.entityId,
+      name: o.name,
+      mentionKeywords: strList(o.mentionKeywords),
+      noticedBy: strList(o.noticedBy),
+      recognition: o.recognition,
+    };
   }
 
   setRelation(a: string, b: string, relation: string, attitude: number = 0) {
