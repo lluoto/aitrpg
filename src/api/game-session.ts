@@ -360,7 +360,7 @@ export class GameSession {
     // 在场名单必须限定在玩家当前场景，与 injectWorldModelForScene() 的事实口径一致；
     // 否则前端会把模组里所有 NPC 都显示为「在场」，与 KP 叙事互相矛盾。
     // 位置同时写在 scene_id 与 position 两个字段（setPlayerHp 只写 position），故取并集。
-    const pos = this.getPlayerPosition();
+    const pos = state.scene;
     const present = new Map<string, WorldEntity>();
     for (const e of this.world.getEntitiesInScene(pos)) present.set(e.id, e);
     for (const e of Object.values(state.entities)) {
@@ -535,6 +535,21 @@ export class GameSession {
   }
 
   /**
+   * 界面正在显示的场景 —— 「现在演到哪里」的真相源。
+   *
+   * 与 getPlayerPosition() 分工明确：KP 切场景只翻 scenes.is_active、不移动玩家实体，
+   * 两者因此会分叉，这是既定设计（scene-bgm.test.ts 专门锁住了这一点）。
+   *
+   * 凡是回答「此刻这里有谁、有什么可查」的地方都必须跟显示的场景。此前它们读的是
+   * 玩家位置，而玩家一旦移动过，移动流程就会留下一个 "player" 实体把位置钉在原地，
+   * 从此 KP 切场景再也带不动它们——面板显示教堂，站在里面的却还是码头的 NPC，
+   * 调查也仍在旧房间里找线索。
+   */
+  getDisplayedScene(): string {
+    return this.world.getCurrentState().scene;
+  }
+
+  /**
    * 为当前场景构建世界模型上下文并注入 KP（权威事实层）。
    * 世界模型未加载 / 加载失败时静默跳过，不影响叙事流程。
    */
@@ -549,7 +564,7 @@ export class GameSession {
           return;
         }
       }
-      const pos = this.getPlayerPosition();
+      const pos = this.getDisplayedScene();
       const sceneName = this.sceneDisplayNames[pos] ?? pos;
       // 读取模组原文场景描写（scenes 表 description，若已注册）
       const sceneInfo = this.world.getScene(pos);
@@ -774,7 +789,7 @@ export class GameSession {
     const worldState = this.world.getCurrentState();
     const companions = this.companionManager.getActiveCompanions();
     const curModule = this.registeredModules[0] ?? null;
-    const pos = this.getPlayerPosition();
+    const pos = this.getDisplayedScene();
     const sceneItems = this.sceneItems.get(pos) ?? [];
 
     const characters: any[] = [];
@@ -1689,7 +1704,7 @@ export class GameSession {
       // 按场景 ID 查，不是显示名：线索是模组用 `scene: "premiers_barn"` 这样的
       // 场景 ID 注册进来的。（同文件另一处用 sceneDisplayNames[pos] 去查同一份
       // 数据，对模组场景恒查不到，见下方 getSceneClues 的调用点。）
-      const pos = this.getPlayerPosition();
+      const pos = this.getDisplayedScene();
       // 只解析有完整定义的线索。模组通过 registerSceneClue 注册的线索只带一句
       // 描述，没有 ClueDef（技能、成功层级文本、san_cost 都没有），送进
       // investigateCoC 只会拿到「你没有找到有用的线索」这个兜底失败——
