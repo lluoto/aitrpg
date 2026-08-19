@@ -46,7 +46,12 @@ export interface ModuleData {
 
 /** 一条改写记录：原文、结果、理由，三者缺一不可 */
 export interface Provenance {
-  /** 被改写的字段路径，如 "items[3].trap.damage" */
+  /**
+   * 被改写的字段路径。数组段用元素的 id，如 `items[item_07].trap.damage`。
+   *
+   * 不用下标：产出物的顺序不必与手写那份一致，下标路径在按身份配对之后
+   * 既指不出是哪一条，也会随任一侧重排而漂。
+   */
   path: string;
   /** 原文片段 */
   source: string;
