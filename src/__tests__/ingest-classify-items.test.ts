@@ -58,8 +58,20 @@ describe("toItemInputs", () => {
     expect(out).toEqual([]);
   });
 
+  test("空标题的前置块不取 —— 哪怕它名下挂着条目", () => {
+    // sectionize 把首个标题之前的内容（第 1 页的书名等）归进 title 为空串的前置块。
+    // 这里特意把空串也塞进 kinds 并判成 scene，好让「查不到分类」那条拦不住它 ——
+    // 拦住它的必须是空标题这一条本身，否则这测试测的是另一个分支。
+    const out = toItemInputs([sec("", [item("普瑞米尔的谷仓", "书名页", 1, 2)])], kinds([["", "scene"]]), ["scene_01"]);
+    expect(out).toEqual([]);
+  });
+
   test("ids 与 sections 长度不符直接抛", () => {
-    expect(() => toItemInputs([sec("甲", []), sec("乙", [])], kinds([]), ["scene_01"])).toThrow();
+    // 认报错文本，不只认「抛了」：不带参数的 toThrow 连不相干的 TypeError 都算通过，
+    // 而长度不符这条的价值全在它说清了差多少。
+    expect(() => toItemInputs([sec("甲", []), sec("乙", [])], kinds([]), ["scene_01"])).toThrow(
+      "[ingest] ids 与 sections 长度不符：1 vs 2",
+    );
   });
 });
 
@@ -76,8 +88,11 @@ describe("buildItemPrompt", () => {
 
   test("六个类别名都在 prompt 里 —— 少一个模型就永远不会返回它", () => {
     const p = buildItemPrompt([{ key: "p1:L1", sceneTitle: "甲", sceneId: "scene_01", name: "x", text: "y" }]);
+    // 认「- 类别名：」这个条目形态，不认裸词：item 和 clue 在下面那条「注意」里也各出现一次
+    // （拿得走的是 item，知道了的是 clue），拿裸词断言的话，把这两条从类别表里删掉测试照样绿 ——
+    // 而它俩正是那条注意存在的理由，六个里最不能漏的一对。
     for (const k of ["clue", "item", "trap", "connection", "npc_knowledge", "event"]) {
-      expect(p).toContain(k);
+      expect(p).toContain(`- ${k}：`);
     }
   });
 
@@ -87,6 +102,9 @@ describe("buildItemPrompt", () => {
     ]);
     expect(p).toContain("p4:L12");
     expect(p).toContain("使用卡片询问免费饮品");
+    // 占位符才是这条测试的正题。少了它，那行就塌成「p4:L12 【维森酒吧】：正文」，
+    // 键和正文都还在 —— 只断言这两样的话，删掉占位符测试照样绿，等于没测。
+    expect(p).toContain("(无标题)");
   });
 });
 
@@ -117,6 +135,28 @@ describe("parseItemResponse", () => {
 
   test("枚举外的类别丢掉，不做兜底猜测", () => {
     expect(parseItemResponse('{"p9:L13":"物品"}', known).size).toBe(0);
+  });
+
+  // 下面四条针对的是值这一侧。键那侧早就归一化了（整行抄回来也认），
+  // 值这侧却是精确比对，模型换个写法就整条丢掉 —— 与键那侧同一类失效，
+  // 且同样表现成「模型没答」而不是报错。
+
+  test("值大小写不一致也认 —— Trap 就是 trap", () => {
+    expect(parseItemResponse('{"p9:L13":"Trap"}', known).get("p9:L13")).toBe("trap");
+  });
+
+  test("值带首尾空白也认", () => {
+    expect(parseItemResponse('{"p9:L13":"trap "}', known).get("p9:L13")).toBe("trap");
+  });
+
+  test("npc-knowledge 写成连字符也认 —— 六类里唯一的多词类别，最可能被写错", () => {
+    expect(parseItemResponse('{"p9:L13":"npc-knowledge"}', known).get("p9:L13")).toBe("npc_knowledge");
+  });
+
+  test("归一化之后仍不在枚举里的值照样丢 —— 归一不是模糊匹配", () => {
+    // 放宽的只是写法（大小写、空白、连字符），不是判定。traps 归一化后还是 traps，
+    // 六类里没有它，就得丢。宁可少认，也不要悄悄多认。
+    expect(parseItemResponse('{"p9:L13":" TRAPS "}', known).size).toBe(0);
   });
 
   test("值不是字符串就丢掉", () => {

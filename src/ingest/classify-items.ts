@@ -11,6 +11,7 @@ import type { LLMClient } from "../llm/client";
 import type { Section } from "./sectionize";
 import { sourceKey } from "./sectionize";
 import type { SectionKind } from "./classify-sections";
+import { extractJson } from "./llm-json";
 
 export type ItemKind = "clue" | "item" | "trap" | "connection" | "npc_knowledge" | "event";
 
@@ -50,6 +51,9 @@ export function toItemInputs(
   const out: ItemInput[] = [];
   for (let i = 0; i < sections.length; i++) {
     const s = sections[i] as Section;
+    // sectionize 会把首个标题之前的内容（第 1 页的书名等）归进一个 title 为空串的前置块。
+    // toClassifyInputs 早把它滤在分类之外了，kinds 里根本不该有空串这个键 ——
+    // 真出现了就是上游串了，宁可在这儿挡住，也不拿一个没被分类过的块去收条目。
     if (s.title === "") continue;
     if (kinds.get(s.title) !== "scene") continue;
     for (const it of s.items) {
@@ -93,20 +97,6 @@ ${list}
 只输出 JSON，不要任何解释文字。格式为 {"条目键": "类别"}，键必须是每行开头那个 pN:LN。`;
 }
 
-/** 从可能夹着解释文字或代码围栏的回答里抠出 JSON 对象 */
-function extractJson(text: string): unknown {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const body = fenced ? (fenced[1] as string) : text;
-  const start = body.indexOf("{");
-  const end = body.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
-  try {
-    return JSON.parse(body.slice(start, end + 1));
-  } catch {
-    return null;
-  }
-}
-
 /**
  * 归一化模型给回来的键。
  *
@@ -122,20 +112,37 @@ function normalizeKey(k: string): string {
 }
 
 /**
+ * 归一化模型给回来的类别值。
+ *
+ * 键那侧兜住了「模型照抄展示格式」，值这侧原先却是精确比对，于是同一类失效换一侧重演：
+ * 模型回 `Trap`、`trap `、或者 `npc-knowledge`（六类里唯一的多词类别，最容易写成连字符），
+ * 整条被丢掉，看上去还是「模型没答」。上一轮 43 条全丢就是这个形状。
+ *
+ * 放宽的只是写法，不是判定：归一化后仍要过 VALID 那一关，
+ * 「认不出的一律丢弃，不做兜底猜测」没松动。而且这一侧没有键那侧的多认风险 ——
+ * 键的空间是开放的（模型能编出任何标题），类别只有六个且两两不相似，
+ * 改大小写、去空白、连字符当下划线，都不可能把其中一个变成另一个。
+ */
+function normalizeKind(v: string): string {
+  return v.trim().toLowerCase().replace(/-/g, "_");
+}
+
+/**
  * 解析分类结果。认不出的一律丢弃，不做兜底猜测：
  * 把不认识的东西默认成某一类，会让分类结果虚高而没人察觉。
  */
 export function parseItemResponse(text: string, knownKeys: string[]): Map<string, ItemKind> {
   const out = new Map<string, ItemKind>();
-  const obj = extractJson(text ?? "");
+  const obj = extractJson(text);
   if (!obj || typeof obj !== "object") return out;
   const known = new Set(knownKeys);
   for (const [rawKey, v] of Object.entries(obj as Record<string, unknown>)) {
     const k = normalizeKey(rawKey);
     if (!known.has(k)) continue;
     if (typeof v !== "string") continue;
-    if (!VALID.includes(v)) continue;
-    out.set(k, v as ItemKind);
+    const kind = normalizeKind(v);
+    if (!VALID.includes(kind)) continue;
+    out.set(k, kind as ItemKind);
   }
   return out;
 }

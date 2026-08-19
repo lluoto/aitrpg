@@ -8,6 +8,7 @@
 
 import type { LLMClient } from "../llm/client";
 import type { Section } from "./sectionize";
+import { extractJson } from "./llm-json";
 
 export type SectionKind = "scene" | "npc" | "structure" | "rule";
 
@@ -60,20 +61,6 @@ export function buildClassifyPrompt(sections: ClassifyInput[]): string {
 ${list}
 
 只输出 JSON，不要任何解释文字。格式为 {"块标题": "类别"}，标题必须与上面完全一致。`;
-}
-
-/** 从可能夹着解释文字或代码围栏的回答里抠出 JSON 对象 */
-function extractJson(text: string): unknown {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const body = fenced ? (fenced[1] as string) : text;
-  const start = body.indexOf("{");
-  const end = body.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
-  try {
-    return JSON.parse(body.slice(start, end + 1));
-  } catch {
-    return null;
-  }
 }
 
 /**
