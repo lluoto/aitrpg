@@ -102,34 +102,22 @@ PDF ──[读取模块 + LLM + 世界模型约束]──> ModuleData（权威�
 
 **注意方向**：`tools/split-modules.mjs` 的输入是 `premiers_barn_raw.txt` **和已经写好的 .ts**，输出到 `tools/modules/`。也就是说 `structured/*.txt` 是**从 TS 反向拆出来的**，不是生成 TS 的来源。`premiers_barn_raw.txt` 目前**已不存在**，摄取需从 PDF 重跑。
 
-### PDF 抽取已验证（2026-08-19）
+### 原文与 raw/ 的血缘已确认（2026-08-19）
 
-不必再重新试错，结论如下：
+`tools/modules/raw/` 的切片**确实出自这份 PDF**，逐字一致（空白归一化后）：
 
-- **依赖可用，但 API 与文档常见写法不同**。`pdf-parse` 是 **v2.4.5**，导出的是 `PDFParse` 类，
-  **不是**默认函数。`require("pdf-parse")(buffer)` 会报 `pdfParse is not a function`
-  ——这大概就是它长期是死依赖的原因。正确用法：
+| PDF | raw 文件 | 结果 |
+|---|---|---|
+| page 1 | `00_header.txt` | 完全一致 |
+| page 2–18 | `section_01..17.txt` | **17/17 完全一致** |
+| — | `section_18.txt` | 0 字节，是旧切分器 off-by-one 留下的空壳 |
 
-  ```ts
-  const { PDFParse } = require("pdf-parse");
-  const res = await new PDFParse({ data: buffer }).getText();
-  // res.total=18, res.text 全文, res.pages[] 逐页
-  ```
+即 `section_NN` 对应 **PDF 第 NN+1 页**。全文 18 页 / 21032 字符。
 
-- **抽取结果与现存 raw/ 逐字一致**（空白归一化后）：
+意义：这批 raw 切片可以当作**已知正确的基准**——重建摄取时，第一段的输出应当与它逐字相同。
 
-  | PDF | raw 文件 | 结果 |
-  |---|---|---|
-  | page 1 | `00_header.txt` | 完全一致 |
-  | page 2–18 | `section_01..17.txt` | **17/17 完全一致** |
-  | — | `section_18.txt` | 0 字节，是旧切分器 off-by-one 留下的空壳 |
-
-  即：`section_NN` 对应的是 **PDF 第 NN+1 页**。全文 18 页 / 21032 字符。
-
-- **文本形态需要清洗**：正文含制表符包裹的数字（`	2077 	`、`	1D4+1 	`），
-  且模组是分栏排版，长句被硬换行切成多行。直接喂给下游会读不通。
-
-- 验证脚本：`tools/_cmp-raw.ts`（一次性，`tools/` 已被 gitignore）。
+> 抽取怎么做（依赖版本、API 调用、清洗）属于工程实现，见 `docs/index-program.md` 的
+> 「模组摄取」一节。这份文档只管内容与素材。
 
 ### 摄取相关脚本（均在 `poc/tools/`，整个目录被 .gitignore 排除）
 

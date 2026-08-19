@@ -185,8 +185,42 @@
 | tools/test-career-file.mjs | 自建 assert 的遗留验证，已被 bun test 覆盖 |
 | tools/_verify-read-build.ts / _verify-runpath.ts | 一次性调试脚本（下划线前缀） |
 | tools/check_warehouse.mjs | 一次性排查脚本，无通用价值 |
+| tools/_cmp-raw.ts | 一次性：PDF 逐页文本 vs `tools/modules/raw/` 切片的重合度比对 |
 
-> 模组摄取相关的脚本见 `docs/index-world-model.md`。
+## 模组摄取（在建）
+
+目标：`PDF → ModuleData（权威源）→ 投影出运行模组`，改写处带 `Provenance` 留痕。
+产出物先并排放，用现有已校准的 `barn-of-premier.ts` 逐字段 diff 反过来校准读取模块。
+内容侧的素材清单与血缘见 `docs/index-world-model.md`；这里只记工程实现。
+
+### pdf-parse 的坑（会浪费掉半小时，先看这条）
+
+依赖是 **v2.4.5**，导出的是 `PDFParse` **类**，不是网上示例里那个默认函数。
+`require("pdf-parse")(buffer)` 会抛 `pdfParse is not a function`——
+它在 `package.json` 里长期没人用，多半就是卡在这里。正确用法：
+
+```ts
+const { PDFParse } = require("pdf-parse");
+const res = await new PDFParse({ data: buffer }).getText();
+// res.total → 页数；res.text → 全文；res.pages[] → 逐页
+```
+
+`getText()` 之外还有 `getPageTables` / `getImage` / `getHyperlinks` 等，
+模组附件是 6 张图，将来要用得上。
+
+### 状态
+
+| 阶段 | 状态 |
+|---|---|
+| PDF → 逐页文本 | **已验证**：与既有 raw 切片逐字一致（17/17，见 index-world-model.md） |
+| 文本清洗 | 未做。正文含制表符包裹的数字（`	2077 	`、`	1D4+1 	`），且模组分栏排版、长句被硬换行切碎，不清洗喂下游读不通 |
+| ModuleData 字段级 diff 校准器 | 未做 |
+| 确定性抽取 + Provenance | 未做 |
+| LLM 插槽（语义字段） | 未做，且当前 `.env` 的 key 是 401 |
+
+> 一个约束：读取阶段要调 LLM 修掉模组中不合理处、并把能预生成的先生成，
+> 以减轻运行期压力（装载等待可接受）。`generate-llm-expanded.ts` 已有
+> 「已存在 llmExpanded 就跳过」的语义，是现成的接入点——把它从运行期挪到构建期即可。
 
 ## 关键文档
 
