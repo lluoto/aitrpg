@@ -4,9 +4,14 @@
 // 提取原则：只保留来自原始模块的数据，不添加衍生/游戏引擎专用字段
 // 比对基线: 此文件为"纯提取版"，与之前含跑团信息的版本进行精度比对
 //
-// 提取源数据: src/module/raw/              — 原始文本按章节拆分
-//             src/module/structured/        — 结构化字段提取
-//             src/module/extract-tools/     — 提取脚本
+// 提取源数据（去重后的唯一一份，见 docs/index-world-model.md）：
+//   ../MikuFan-普瑞米尔的谷仓/普瑞米尔的谷仓 ver1.03.pdf  — 真正的源头
+//   tools/modules/raw/                                    — 原文按章节拆分
+//   tools/modules/structured/                             — 从本文件反向拆出的字段（是派生物，不是来源）
+//   tools/*.mjs                                           — 拆分/校正/校验脚本
+//
+// 注意方向：structured/ 是从这份 .ts 拆出来的，不是它的来源。
+// 从 PDF 到本文件这一步没有程序做过——现有内容是人/LLM 手写的。
 // ============================================================
 
 import { type ModuleData, type ModuleSupport, type Scene, type ModuleNPC, type ModuleItem, type Clue, type SceneConnection, type EpilogueEntry, type PartySetup, type EndNarration, type EncounterNarration } from "./types";

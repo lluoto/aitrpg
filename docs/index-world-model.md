@@ -97,7 +97,7 @@ PDF ──[读取模块 + LLM + 世界模型约束]──> ModuleData（权威�
 | `MikuFan-普瑞米尔的谷仓/普瑞米尔的谷仓 ver1.03.pdf` | **4.36MB，真正的源头** | 未被任何程序读取 |
 | `MikuFan-普瑞米尔的谷仓/附件/B照片 (1)~(6).png` | 6 张模组配图，共 2.2MB | **完全未使用** |
 | `MikuFan-普瑞米尔的谷仓.zip`（根目录） | 与上面解压目录重复 | 冗余，可删 |
-| `poc/src/module/raw/` 与 `poc/tools/modules/raw/` | 原文按章节切分，各 19 个 txt | **19 个文件逐一 md5 相同，完全重复。保留一份** |
+| `poc/tools/modules/raw/` | 原文按章节切分，19 个 txt | **唯一一份**（`src/module/raw/` 的重复副本已于 2026-08-19 删除） |
 | `poc/tools/modules/structured/` | 从旧 .ts 反向拆出的 15 个字段 txt | 是派生物，不是来源 |
 
 **注意方向**：`tools/split-modules.mjs` 的输入是 `premiers_barn_raw.txt` **和已经写好的 .ts**，输出到 `tools/modules/`。也就是说 `structured/*.txt` 是**从 TS 反向拆出来的**，不是生成 TS 的来源。`premiers_barn_raw.txt` 目前**已不存在**，摄取需从 PDF 重跑。
@@ -111,7 +111,7 @@ PDF ──[读取模块 + LLM + 世界模型约束]──> ModuleData（权威�
 | verify-module.mjs | 文本扫描式 CI 校验，返回 0/1 | 指向旧 .ts |
 | extract-hooks.mjs | **唯一会生成 TS 代码的脚本**，但只生成 `hooks:` 一个字段，输出到 generated-hooks.txt 等人工回贴，约 1/5 条目是"(原始文本中无对应段落)"占位 | 半成品 |
 
-`poc/src/module/extract-tools/` 下有这批脚本的**第二份副本**，且因 `BASE = resolve(__dirname, "..")` 在搬家后失效（解析成不存在的 `src/module/src/rules/...`），整体不可用。
+> `poc/src/module/extract-tools/` 曾有这批脚本的第二份副本，且因 `BASE = resolve(__dirname, "..")` 在搬家后失效（解析成不存在的 `src/module/src/rules/...`）整体不可运行，已于 2026-08-19 删除。`src/module/` 现在只剩三个 .ts。
 
 **结论：不存在从原文端到端产出完整模组 .ts 的自动化路径。** 15 个字段里 14 个靠手工维护。
 
@@ -150,8 +150,18 @@ PDF ──[读取模块 + LLM + 世界模型约束]──> ModuleData（权威�
 
 | 文件 | 大小 | 说明 |
 |---|---|---|
-| `世界模型/v18_output/v18_all_master.jsonl` | 229.3MB | `world-model-loader.ts` 的 `DEFAULT_V18_PATH` |
-| `poc/assets/v18_all_master.jsonl` | 229.3MB | **同一份的副本**（Docker 上下文取不到项目外文件，Dockerfile 注释说明过）。保留一份 |
+| `世界模型/v18_output/v18_all_master.jsonl` | 229.3MB | **唯一一份**。`DEFAULT_V18_PATH` 默认就指向它（`../世界模型/v18_output/...`） |
+| `世界模型/cthulhu_extracted/cthulhu_world_model.jsonl` | 67.7KB | 同上，`DEFAULT_CTHULHU_PATH` |
+
+`poc/assets/` 的两份副本已于 2026-08-19 删除（md5 校验与原件完全一致）。它只服务于 Docker
+（`COPY assets/` + `ENV WORLD_MODEL_PATH=/app/assets/...`）。**要构建镜像时按 Dockerfile 第 5–8 行重建**：
+
+```
+cp ../世界模型/v18_output/v18_all_master.jsonl assets/
+cp ../世界模型/cthulhu_extracted/cthulhu_world_model.jsonl assets/
+```
+
+开发期不需要——运行时默认读仓库外的原件。
 
 构成：
 - **语料原材料**：顶层 79 个 .txt 小说（435.9MB）+ 5 个 .epub + 73 个 `chapters_*` 章节切分目录
@@ -185,9 +195,27 @@ PDF ──[读取模块 + LLM + 世界模型约束]──> ModuleData（权威�
 ## 待办
 
 1. **摄取管线重跑**：从 PDF 出发（可重跑），产出 `ModuleData`，带 `Provenance` 留痕
-2. **副本各留一份**：`raw/` 两份留一；`v18_all_master.jsonl` 两份留一
+2. ~~副本各留一份~~ —— 已完成 2026-08-19，见下「去重记录」
 3. **三份模组表述收敛**：确定权威源，其余改为生成物
 4. **接入未用的原材料**：优先 `narrative_style.yaml`、`mythos_rules.yaml`、`forensic_rules.yaml`
 5. **约束层补物理域**：身体状态/行动力，作为 CoC 通用规则而非模组规则
 6. `mythos-expansion.ts` 接进剧本引擎（现在剧本引擎零引用）
 7. 6 张模组附件图未使用
+
+## 去重记录（2026-08-19）
+
+删除前均以 md5 逐文件校验内容一致，保留侧已核对存在。
+
+| 删除 | 保留 | 依据 |
+|---|---|---|
+| `poc/src/module/raw/`（19 txt） | `poc/tools/modules/raw/` | 19 个文件 md5 全同；保留侧与 structured/ 及脚本同处，是管线的自然位置 |
+| `poc/src/module/extract-tools/`（5 mjs） | `poc/tools/*.mjs` | 5 个文件 md5 全同，且被删的那份因 `__dirname` 变化整体不可运行 |
+| `poc/src/module/calibration-report.md` | `poc/tools/modules/CALIBRATION_REPORT.md` | md5 相同（3243B） |
+| `poc/src/module/extraction-summary.md` | `poc/tools/modules/SUMMARY.md` | md5 相同（1330B） |
+| `poc/assets/`（229.4MB） | `世界模型/v18_output/` 与 `cthulhu_extracted/` | md5 相同；运行时默认读原件，副本仅供 Docker，重建方式已在 Dockerfile 注释 |
+
+连带修正：`barn-of-premier.ts` 头部的来源注释、`tsconfig.json` 对 `src/module/raw` 的 exclude、
+`.gitignore` 里 `src/module/raw/` 与 `src/module/*.md` 两条失效条目。
+
+结果：`src/module/` 只剩 `barn-of-premier.ts` / `threat-analyzer.ts` / `types.ts` 三个源码文件；
+poc 目录（不含 node_modules 与 .git）从 409MB 降到 **179.6MB**。
