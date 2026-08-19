@@ -385,7 +385,10 @@ describe("字段口径", () => {
   test("丢弃的条目要报数 —— 不静默丢东西", () => {
     const s = sec("农场外围", "x", [item("捕兽夹", "a"), item("霰弹枪", "b")]);
     const r = buildScenes([s], kinds([["农场外围", "scene"]]), ["scene_01"]);
-    expect(r.warnings.join()).toContain("2");
+    // 整条 warning 列表比对，不用 join().toContain("2")：
+    // 那种写法在报数算成 12 / 20 / 22 时照样绿，数字也可能是从别的 warning 蹭来的。
+    // 这条测试买的就是「那个数是 2」，就得把条数和文案一起钉死。
+    expect(r.warnings).toEqual(["2 个 ▶ 条目本轮未消费（属线索/物品，留给下一轮）"]);
   });
 });
 
@@ -397,7 +400,12 @@ describe("重名标题", () => {
 
   test("报一条 warning —— 分类器以标题为键，两块只能拿到同一类", () => {
     const r = buildScenes([sec("卧室", "a"), sec("卧室", "b")], kinds([["卧室", "scene"]]), ["scene_01", "scene_02"]);
-    expect(r.warnings.join()).toContain("卧室");
+    // 「一条」是这条测试的全部内容：每块各报一条（这里就是两条）的实现，
+    // 在 join().toContain("卧室") 下同样绿。所以先数条数，再看那一条说了什么 ——
+    // 报数说「出现 2 次」才算认出这是重名，只是提到标题不算。
+    const dup = r.warnings.filter((w) => w.includes("卧室"));
+    expect(dup).toHaveLength(1);
+    expect(dup[0]).toContain("出现 2 次");
   });
 });
 
@@ -873,13 +881,15 @@ import { describe, test, expect } from "bun:test";
 import { extractPages } from "../ingest/pdf-source";
 
 describe("extractPages", () => {
-  test("空数据直接抛 —— 返回空数组会让整条管线安静地产出零个场景", () => {
+  // await 不能省：expect(...).rejects 返回的是 Promise，
+  // 不 await 就没人观察这个断言，函数不抛时测试照样绿 —— 等于什么都没测
+  test("空数据直接抛 —— 返回空数组会让整条管线安静地产出零个场景", async () => {
     // 那种失败会表现成「模型没干活」，而真正的原因在最上游
-    expect(extractPages(new Uint8Array(0))).rejects.toThrow();
+    await expect(extractPages(new Uint8Array(0))).rejects.toThrow();
   });
 
-  test("不是 PDF 的字节也要抛，不能假装成功", () => {
-    expect(extractPages(new TextEncoder().encode("这不是 PDF"))).rejects.toThrow();
+  test("不是 PDF 的字节也要抛，不能假装成功", async () => {
+    await expect(extractPages(new TextEncoder().encode("这不是 PDF"))).rejects.toThrow();
   });
 });
 ```
