@@ -1,4 +1,8 @@
-// 摄取管线 · 场景 id 分配
+// 摄取管线 · id 分配
+//
+// 模块原名 scene-id.ts。改名是因为它给的从来就不只是场景的 id ——
+// assignSceneIds 给**每个块**编号（含前言、附录、空标题前置块），
+// 而本轮又要给 ▶ 条目编号，两者共用同一套编号实现。
 //
 // id 的功能需求只有四条：唯一、同一 PDF 重跑稳定、纯 ASCII、能被 targetSceneId 解析。
 // 可读性不在其中 —— 中文原名在 Scene.name 里，校准报告按 name 配对之后
@@ -14,6 +18,7 @@
 // 分类器换一次结果，所有场景 id 会集体挪位；按块编号则各归各位。
 
 import type { Section } from "./sectionize";
+import { sourceKey } from "./sectionize";
 
 /** 两位起步，够 44 块用；超过 99 自然变三位，不截断 */
 function pad(n: number): string {
@@ -28,4 +33,26 @@ function pad(n: number): string {
  */
 export function assignSceneIds(sections: Section[]): string[] {
   return sections.map((_, i) => `scene_${pad(i + 1)}`);
+}
+
+/**
+ * 给全文的 ▶ 条目分配 id，键是 sourceKey（`p9:L13`）。
+ *
+ * 必须覆盖**全部**条目，不能只覆盖「长在场景块上」的那批：那个筛选依赖块分类结果，
+ * 一个块从 scene 翻成 npc，它名下的条目就消失，后面所有 id 集体挪位。
+ * assignSceneIds 按全部块编号，正是为了避开这件事。
+ *
+ * 返回 Map 而不是像 assignSceneIds 那样返回等长数组，是因为键的性质不同：
+ * 标题会重复，p{page}:L{line} 不会。以它为键既安全，下游也不必再维护一层下标对应。
+ */
+export function assignItemIds(sections: Section[]): Map<string, string> {
+  const out = new Map<string, string>();
+  let n = 0;
+  for (const s of sections) {
+    for (const it of s.items) {
+      n++;
+      out.set(sourceKey(it.source), `item_${pad(n)}`);
+    }
+  }
+  return out;
 }

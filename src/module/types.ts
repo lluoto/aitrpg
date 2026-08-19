@@ -50,7 +50,13 @@ export interface Provenance {
   path: string;
   /** 原文片段 */
   source: string;
-  /** 原文位置，如 "raw/section_09.txt:L42" */
+  /**
+   * 原文位置。摄取管线给的形态是 `p9:L13`（PDF 页号 + 页内行号），
+   * 由 sectionize 的 sourceKey() 产出。
+   *
+   * 别和 `raw/section_09.txt:L42` 那种写法混着用 —— 后者指的是 raw 切片文件，
+   * 而切片是派生物且不进版本库，PDF 才是权威源。
+   */
   sourceRef?: string;
   /** 改写结果 */
   result: string;

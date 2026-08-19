@@ -35,6 +35,20 @@ export interface SourceRef {
 }
 
 /**
+ * 位置的字符串形式，如 `p9:L13`。
+ *
+ * 条目分类以它为键。不能像块分类那样以名字为键 —— 标题会重复
+ * （`驾驶证` 在证物室和交火现场各出现一次），而页内行号天然唯一，
+ * 同一行不会有两个条目。
+ *
+ * 它同时充当 Provenance.sourceRef。注意这确立的是「PDF 页号 + 页内行号」
+ * 这个坐标系：raw 切片文件加行号是另一套，两者指的不是同一个东西，别混着长。
+ */
+export function sourceKey(ref: SourceRef): string {
+  return `p${ref.page}:L${ref.line}`;
+}
+
+/**
  * 标题行：短，且以冒号收尾。
  *
  * 与 clean-text 的 LABEL_MAX_LEN 同源同值 —— 那一层靠它决定「不要把这行
