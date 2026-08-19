@@ -186,6 +186,7 @@
 | tools/_verify-read-build.ts / _verify-runpath.ts | 一次性调试脚本（下划线前缀） |
 | tools/check_warehouse.mjs | 一次性排查脚本，无通用价值 |
 | tools/_cmp-raw.ts | 一次性：PDF 逐页文本 vs `tools/modules/raw/` 切片的重合度比对 |
+| tools/_run-ingest.ts | **摄取管线的端到端实跑器**（约 120 行）：读 PDF → 清洗 → 切分 → 分类（含 `RecordingClient`，把 LLM 原始响应一并落盘）→ 建骨架 → 对基准 diff。下面 §模组摄取 里 **17/20**、`命中 20 / 误报 7 / 漏报 0`、`差异 131 处` 这些数**全部出自它**；重跑它是唯一能复现这些数的途径 |
 
 ## 模组摄取（在建）
 
@@ -219,7 +220,7 @@ const res = await new PDFParse({ data: buffer }).getText();
 | 确定性抽取 + Provenance | `src/ingest/extract-trap.ts` | **陷阱机制已完成**，22 测试；其余字段未做 |
 | LLM 插槽 · 块分类 | `src/ingest/classify-sections.ts` | **已完成**，20 测试。实跑 **命中 20 / 误报 7 / 漏报 0**（口径：按块内容认地点） |
 | id 命名 | `src/ingest/scene-id.ts` | **已完成**，8 测试。形态 `scene_NN`，按块编号 |
-| 场景骨架 | `src/ingest/build-scenes.ts` | **已完成**，13 测试。实跑 **基准 20 个场景按 name 命中 17**（**与上面那行不同口径**：name 严格配；按场景身份仍是 20/20。且是单次采样、`temperature: 0.1`，非确定性——别当回归基线，详见下） |
+| 场景骨架 | `src/ingest/build-scenes.ts` | **已完成**，14 测试。实跑 **基准 20 个场景按 name 命中 17**（**与上面那行不同口径**：name 严格配；按场景身份仍是 20/20。且是单次采样、`temperature: 0.1`，非确定性——别当回归基线，详见下） |
 | LLM 插槽 · 其余语义字段 | — | 未做（`findMethods`、NPC 字段、`connections`） |
 
 > **关于 LLM 可用性**：`bun test` 输出里的 `[config] No LLM_API_KEY set` 是**测试在验证无 key 的降级路径**，
@@ -310,6 +311,14 @@ NPC 小节（菲碧·特里坎/米尔·特里坎，基准里确实是 NPC）与�
 18 页 / 44 块 / 送分类 43 / 分类返回 43 / 判成场景 27，
 **基准 20 个场景按 name 命中 17**，差异 131 处（changed 17 / missing 87 / extra 10 / id 不一致 17）。
 
+**跑出这些数的仪器是 `tools/_run-ingest.ts`**（108 行，见上面工具脚本表）。它被 `.gitignore` 排除，
+`tsconfig.json` 的 `include` 又只写了 `src/**/*.ts`，所以它既不进版本库、也不过 `bun run typecheck`。
+`docs/superpowers/plans/2026-08-19-ingest-scene-skeleton.md` §Step 2「写实跑脚本」里那段代码
+**是当时的快照，不是现在的源码**：实际跑出 17/20 的那份多一个 `RecordingClient extends LLMClient`
+（`_run-ingest.ts:32`，把 LLM 原始响应一并落盘——`【】` 键格式那个坑就是靠它查出来的）。
+要重跑，以本机 `tools/` 下那一份为准；计划里那段只能当结构说明读。
+**这个数下一轮还想比，前提是那份文件还找得到、还跑得动。**
+
 **17 不是确定性的数**：`classifySections` 跑在 `temperature: 0.1`（不是 0），上面是**单次采样**。
 下面三个未命中纯属名字格式、与模型判断无关，重跑大概率还是 17；但边界块（`旅店`、
 `在小镇内询问路人`）翻一下就会让误报数变动。**要拿它当回归基线，得先把温度降到 0、
@@ -375,6 +384,15 @@ id 不同的单列成 `id-mismatch`，不去污染 changed 那个计数。实跑
 - `src/character/career.ts` 的 `CareerStore` 类 —— 无处 new
 - `frontend/src/FlightPanel.vue` —— 未被任何组件引用的孤儿
 - `character/prestige-classes.ts` 与 `qiankun-subclasses.ts` 只被 CLI 入口引用，服务端完全不碰
+
+**测试套件里有一条会假红（约 1/100）**
+- `src/__tests__/coc-engine.test.ts:131`「失败时损失 = sanCost 后半部分」：用 `new SanityEngine(1)`
+  凑「几乎必失败」，但 `coc-engine.ts:669` 的 `regularD100()` 没有种子，判定是 `roll <= currentSAN`。
+  `currentSAN` 是 1，掷出 1 就算通过，`expect(r.passed).toBe(false)` 于是红。概率正好 1%。
+- **先例存在、本轮不修**：它早于摄取管线，属规则引擎，修它要改 d100 的注入方式，是另一轮的活。
+- 但它现在比以前更碍事：摄取这条线的产物是**一个数**（17/20），下一轮要重新测量，
+  而「`bun test` 全绿」是那个数唯一的背书。一个 1% 说谎的套件会把每一次这样的背书都打个折。
+  **看到单条红先核对是不是这一条，重跑一次确认，别去 bisect 摄取那边。**
 
 **环境陷阱（踩过）**
 - 本仓源文件**不能过 PowerShell 写**（`Set-Content` 会把中文 mojibake）。读也一样，用 Read 工具。

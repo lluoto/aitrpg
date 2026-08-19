@@ -143,7 +143,11 @@ describe("报告格式", () => {
 });
 
 describe("配对键可配置", () => {
-  test("不传 opts 与显式传 ['id'] 完全等价 —— 现有 21 个测试是这条的基线", () => {
+  test("不传 opts 与显式传 ['id'] 走同一条路 —— 只钉「默认值是 ['id']」这一件事", () => {
+    // 这条**不**证明「['id'] 与本轮之前的行为一致」，那句话本身不成立：
+    // 空数组的平凡成立与同键值分桶都改在默认路径上（见 DiffOptions.pairBy 注释）。
+    // 上面那些测试也补不上这个证明 —— 没有一条拿空数组去比一个非空数组，
+    // 而那正是第一处改动的落点；真正钉它的是下面「空数组仍按 id 配对」那组。
     const a = { scenes: [{ id: "s1", name: "甲" }] };
     const b = { scenes: [{ id: "s2", name: "甲" }] };
     expect(diffValues(a, b)).toEqual(diffValues(a, b, { pairBy: ["id"] }));

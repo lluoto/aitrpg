@@ -41,6 +41,22 @@ export function buildScenes(
 
   for (let i = 0; i < sections.length; i++) {
     const s = sections[i] as Section;
+
+    // 在所有 continue 之前记数。这个数说的是**本轮**丢了多少 ▶ 条目，
+    // 不是「本轮的场景上丢了多少」—— buildScenes 一条 ▶ 都不消费，
+    // 所以它就等于输入里 ▶ 条目的总数，与分类结果无关。
+    //
+    // 原来它在 kind === "scene" 之后加，于是挂在 structure/npc/rule 块上的条目
+    // （实跑里 16 条）连同 title 为空的前置块上的（`sectionize.ts:102-103`
+    // 明确给「任何标题之前的条目」留了位置）一起，无声无息地没了。
+    // warnings 那个字段的注释写着「不静默丢东西」，那就得是这个口径。
+    //
+    // 选记全轮而不是把文案改成「场景上的 N 条」，是为了下一轮：
+    // 下一轮要把 ▶ 抽成 Clue/ModuleItem，NPC 块上的 ▶ 同样是它的活。
+    // 而且场景口径的数会跟着分类器一起动 —— 下轮看到数变了，分不清是抽取有进展
+    // 还是分类把块挪了个类；全轮口径是个不动的分母，减少多少就是干掉了多少。
+    droppedItems += s.items.length;
+
     if (s.title === "") continue; // 前置块，没有标题就不是内容
 
     const kind = kinds.get(s.title);
@@ -51,7 +67,6 @@ export function buildScenes(
     if (kind !== "scene") continue;
 
     titleCount.set(s.title, (titleCount.get(s.title) ?? 0) + 1);
-    droppedItems += s.items.length;
 
     scenes.push({
       id: ids[i] as string,
