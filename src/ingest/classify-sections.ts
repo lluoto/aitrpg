@@ -7,6 +7,7 @@
 // 分工没变：规则管死板形态（骰子、难度词、体型阈值），LLM 管需要理解的判断。
 
 import type { LLMClient } from "../llm/client";
+import type { Section } from "./sectionize";
 
 export type SectionKind = "scene" | "npc" | "structure" | "rule";
 
@@ -18,6 +19,24 @@ const EXCERPT_MAX = 120;
 export interface ClassifyInput {
   title: string;
   excerpt: string;
+}
+
+/**
+ * Section → ClassifyInput。
+ *
+ * 放在这一侧而不是切分那一侧：ClassifyInput 是本模块定义的，
+ * 怎么从上游结构造出来该由本模块负责。
+ *
+ * 滤掉标题为空的块 —— sectionize 会把首个标题之前的内容（第 1 页的书名等）
+ * 归入一个 title 为空串的前置块。它进不了以标题为键的分类结果，也不可能是场景。
+ *
+ * 正文原样带过去，不在这里截断：截断口径由 buildClassifyPrompt 的 EXCERPT_MAX 独占，
+ * 两处各截一次会让「模型到底看到了多少字」说不清。
+ */
+export function toClassifyInputs(sections: Section[]): ClassifyInput[] {
+  return sections
+    .filter((s) => s.title !== "")
+    .map((s) => ({ title: s.title, excerpt: s.body }));
 }
 
 export function buildClassifyPrompt(sections: ClassifyInput[]): string {

@@ -8,7 +8,8 @@
 // 模型行为靠实跑对基准验证，不靠单测假装验证。
 
 import { describe, test, expect } from "bun:test";
-import { buildClassifyPrompt, parseClassifyResponse } from "../ingest/classify-sections";
+import { buildClassifyPrompt, parseClassifyResponse, toClassifyInputs } from "../ingest/classify-sections";
+import type { Section } from "../ingest/sectionize";
 
 const SECS = [
   { title: "农场外围", excerpt: "这里是非常危险的一个场景。艾德里安在这里放置了很多陷阱。" },
@@ -94,5 +95,40 @@ describe("响应解析", () => {
 
   test("空响应 → 空表", () => {
     expect(parseClassifyResponse("", titles).size).toBe(0);
+  });
+});
+
+const sec = (title: string, body: string): Section => ({
+  title,
+  body,
+  items: [],
+  source: { page: 1, line: 1 },
+});
+
+describe("toClassifyInputs", () => {
+  test("标题与正文原样传下去", () => {
+    const out = toClassifyInputs([sec("农场外围", "泥泞的车辙一直通向谷仓。")]);
+    expect(out).toEqual([{ title: "农场外围", excerpt: "泥泞的车辙一直通向谷仓。" }]);
+  });
+
+  test("滤掉标题为空的前置块 —— 它进不了以标题为键的分类结果", () => {
+    // sectionize 会把首个标题之前的内容（第 1 页的书名等）归入 title 为空串的块
+    const out = toClassifyInputs([sec("", "普瑞米尔的谷仓"), sec("报亭", "镇口的报亭。")]);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.title).toBe("报亭");
+  });
+
+  test("保序 —— 下游按下标取回原块", () => {
+    const out = toClassifyInputs([sec("甲", "a"), sec("乙", "b"), sec("丙", "c")]);
+    expect(out.map((s) => s.title)).toEqual(["甲", "乙", "丙"]);
+  });
+
+  test("空输入给空数组", () => {
+    expect(toClassifyInputs([])).toEqual([]);
+  });
+
+  test("正文不在这里截断 —— 截断是 buildClassifyPrompt 的事，只该有一处", () => {
+    const long = "描".repeat(500);
+    expect(toClassifyInputs([sec("甲", long)])[0]?.excerpt).toHaveLength(500);
   });
 });
