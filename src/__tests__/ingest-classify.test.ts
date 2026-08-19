@@ -118,9 +118,11 @@ describe("toClassifyInputs", () => {
     expect(out[0]?.title).toBe("报亭");
   });
 
-  test("保序 —— 下游按下标取回原块", () => {
-    const out = toClassifyInputs([sec("甲", "a"), sec("乙", "b"), sec("丙", "c")]);
-    expect(out.map((s) => s.title)).toEqual(["甲", "乙", "丙"]);
+  test("保序，但不与输入等长 —— 下游只能按标题查回，不能按下标", () => {
+    // 空标题块被滤掉，两边下标就对不上了。而 assignSceneIds 是对着
+    // 完整的 sections 编号的，把两者按位置一拉，每个场景都会挂错 id。
+    const out = toClassifyInputs([sec("", "书名"), sec("甲", "a"), sec("乙", "b")]);
+    expect(out.map((s) => s.title)).toEqual(["甲", "乙"]);
   });
 
   test("空输入给空数组", () => {
