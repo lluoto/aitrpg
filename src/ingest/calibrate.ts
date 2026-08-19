@@ -11,7 +11,7 @@
 export interface FieldDiff {
   /** 字段路径，如 `scenes[farm_periphery].clues[trap_bear].description` */
   path: string;
-  kind: "missing" | "extra" | "changed" | "id-mismatch";
+  kind: "missing" | "extra" | "changed" | "id-mismatch" | "ref-mismatch";
   /** 基准侧的值（kind=extra 时无） */
   baseline?: unknown;
   /** 候选侧的值（kind=missing 时无） */
@@ -45,6 +45,25 @@ export interface DiffOptions {
    * 与当初按下标比较是同一个坑。
    */
   pairBy?: string[];
+
+  /**
+   * 引用字段：值是指向别处 id 的句柄，不是内容。
+   *
+   * 基准 `key_anti_theft.sceneId` 是 `police_evidence_room`，生成侧只会是 `scene_NN`。
+   * 按名字配上之后这些字段会全部报成 changed —— 但那不是生成器不准，
+   * 它是「id 是内部句柄」往下再走一层：sceneId 是指向 id 的引用。
+   * 不摘出去，changed 就混进了不该算的东西，而 connections[].targetSceneId、
+   * npcIds[] 只会让这个污染更重。
+   *
+   * `id` 不要放进来 —— 它已由 id-mismatch 处理，重叠会同一件事报两遍。
+   */
+  refFields?: string[];
+}
+
+/** 逐层传递的比对配置 */
+interface WalkCtx {
+  pairBy: string[];
+  refFields: string[];
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -117,7 +136,7 @@ function walk(
   candidate: unknown,
   path: string,
   out: FieldDiff[],
-  pairBy: string[],
+  ctx: WalkCtx,
   skipKey?: string,
 ): void {
   // 两侧都当"没有"处理：ModuleData 里可选字段极多，
@@ -129,14 +148,28 @@ function walk(
   if (cMissing) { out.push({ path, kind: "missing", baseline }); return; }
 
   if (Array.isArray(baseline) && Array.isArray(candidate)) {
-    walkArray(baseline, candidate, path, out, pairBy);
+    walkArray(baseline, candidate, path, out, ctx);
     return;
   }
 
   if (isObj(baseline) && isObj(candidate)) {
     for (const k of new Set([...Object.keys(baseline), ...Object.keys(candidate)])) {
       if (k === skipKey) continue;
-      walk(baseline[k], candidate[k], join(path, k), out, pairBy);
+      const b = baseline[k];
+      const c = candidate[k];
+      // 引用字段只在「两侧都有值、且值不同」时拦截。
+      // 一侧缺失是真缺字段，非字符串是形状问题 —— 两者都该照常报，
+      // 交给下面的 walk 处理。
+      if (
+        ctx.refFields.includes(k) &&
+        typeof b === "string" && b !== "" &&
+        typeof c === "string" && c !== "" &&
+        b !== c
+      ) {
+        out.push({ path: join(path, k), kind: "ref-mismatch", baseline: b, candidate: c });
+        continue;
+      }
+      walk(b, c, join(path, k), out, ctx);
     }
     return;
   }
@@ -144,13 +177,13 @@ function walk(
   if (baseline !== candidate) out.push({ path, kind: "changed", baseline, candidate });
 }
 
-function walkArray(baseline: unknown[], candidate: unknown[], path: string, out: FieldDiff[], pairBy: string[]): void {
-  const keys = pickPairKeys(baseline, candidate, pairBy);
+function walkArray(baseline: unknown[], candidate: unknown[], path: string, out: FieldDiff[], ctx: WalkCtx): void {
+  const keys = pickPairKeys(baseline, candidate, ctx.pairBy);
 
   // 没有可用配对键时顺序就是身份，只能按下标
   if (keys.length === 0) {
     const n = Math.max(baseline.length, candidate.length);
-    for (let i = 0; i < n; i++) walk(baseline[i], candidate[i], `${path}[${i}]`, out, pairBy);
+    for (let i = 0; i < n; i++) walk(baseline[i], candidate[i], `${path}[${i}]`, out, ctx);
     return;
   }
 
@@ -197,11 +230,11 @@ function walkArray(baseline: unknown[], candidate: unknown[], path: string, out:
       const cid = keyOf(pair.candidate, "id");
       if (bid !== null && cid !== null) {
         if (bid !== cid) out.push({ path: `${p}.id`, kind: "id-mismatch", baseline: bid, candidate: cid });
-        walk(pair.baseline, pair.candidate, p, out, pairBy, "id");
+        walk(pair.baseline, pair.candidate, p, out, ctx, "id");
         continue;
       }
     }
-    walk(pair.baseline, pair.candidate, p, out, pairBy);
+    walk(pair.baseline, pair.candidate, p, out, ctx);
   }
 
   // 每一轮都没人认领的：路径段用首选键（默认就是 id）。
@@ -218,7 +251,10 @@ function walkArray(baseline: unknown[], candidate: unknown[], path: string, out:
  */
 export function diffValues(baseline: unknown, candidate: unknown, opts: DiffOptions = {}): FieldDiff[] {
   const out: FieldDiff[] = [];
-  walk(baseline, candidate, "", out, opts.pairBy ?? ["id"]);
+  walk(baseline, candidate, "", out, {
+    pairBy: opts.pairBy ?? ["id"],
+    refFields: opts.refFields ?? [],
+  });
   return out;
 }
 
@@ -237,18 +273,21 @@ export function formatDiff(diffs: FieldDiff[]): string {
   if (diffs.length === 0) return "✓ 无差异";
 
   const lines: string[] = [];
-  const byKind: Record<FieldDiff["kind"], number> = { missing: 0, extra: 0, changed: 0, "id-mismatch": 0 };
+  const byKind: Record<FieldDiff["kind"], number> = {
+    missing: 0, extra: 0, changed: 0, "id-mismatch": 0, "ref-mismatch": 0,
+  };
   for (const d of diffs) byKind[d.kind]++;
 
   lines.push(
-    `差异 ${diffs.length} 处 — changed ${byKind.changed} / missing ${byKind.missing} / extra ${byKind.extra} / id 不一致 ${byKind["id-mismatch"]}`,
+    `差异 ${diffs.length} 处 — changed ${byKind.changed} / missing ${byKind.missing} / extra ${byKind.extra} / id 不一致 ${byKind["id-mismatch"]} / 引用不一致 ${byKind["ref-mismatch"]}`,
   );
   lines.push("");
   for (const d of diffs) {
     if (d.kind === "changed") lines.push(`  [changed] ${d.path}\n      基准: ${show(d.baseline)}\n      生成: ${show(d.candidate)}`);
     else if (d.kind === "missing") lines.push(`  [missing] ${d.path}   基准有而生成缺: ${show(d.baseline)}`);
     else if (d.kind === "extra") lines.push(`  [extra]   ${d.path}   生成多出: ${show(d.candidate)}`);
-    else lines.push(`  [id 不一致] ${d.path}   基准 ${show(d.baseline)} ↔ 生成 ${show(d.candidate)}`);
+    else if (d.kind === "id-mismatch") lines.push(`  [id 不一致] ${d.path}   基准 ${show(d.baseline)} ↔ 生成 ${show(d.candidate)}`);
+    else lines.push(`  [引用不一致] ${d.path}   基准 ${show(d.baseline)} ↔ 生成 ${show(d.candidate)}`);
   }
   return lines.join("\n");
 }
