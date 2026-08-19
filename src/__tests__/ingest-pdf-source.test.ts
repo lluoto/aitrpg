@@ -15,12 +15,22 @@ import { extractPages } from "../ingest/pdf-source";
 describe("extractPages", () => {
   // await 不能省：expect(...).rejects 返回的是 Promise，
   // 不 await 就没人观察这个断言，函数不抛时测试照样绿 —— 等于什么都没测
-  test("空数据直接抛 —— 返回空数组会让整条管线安静地产出零个场景", async () => {
-    // 那种失败会表现成「模型没干活」，而真正的原因在最上游
-    await expect(extractPages(new Uint8Array(0))).rejects.toThrow();
+  test("空数据抛的必须是本模块那条 —— 返回空数组会让整条管线安静地产出零个场景", async () => {
+    // 那种失败会表现成「模型没干活」，而真正的原因在最上游。
+    //
+    // 消息写全，不是光判「抛了没有」：pdf-parse 自己对空字节也抛
+    // （InvalidPDFException: The PDF file is empty），所以裸的 toThrow() 在
+    // 把实现里 data.length === 0 那句删掉之后照样绿。而那句的全部意义就是
+    // 抢在库前面给失败盖上 [ingest] 戳、指明是哪一层报的 —— 裸断言等于没测它。
+    await expect(extractPages(new Uint8Array(0))).rejects.toThrow("[ingest] PDF 数据为空");
   });
 
   test("不是 PDF 的字节也要抛，不能假装成功", async () => {
+    // 这条故意不按上面那条的规格收紧：本模块对非 PDF 字节没有自己的检查，
+    // 真正抛的是 pdf-parse（InvalidPDFException: Invalid PDF structure）。
+    // 硬套 [ingest] 前缀是断言一件不存在的事；改成钉库自己的措辞，又等于把
+    // 别人家的文案设成我们的回归门槛 —— pdf-parse 换个说法就无端变红，
+    // 而本模块一行没动。这里能诚实保证的只有「不许静默成功」，到此为止。
     await expect(extractPages(new TextEncoder().encode("这不是 PDF"))).rejects.toThrow();
   });
 });
