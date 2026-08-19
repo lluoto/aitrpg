@@ -217,7 +217,12 @@ const res = await new PDFParse({ data: buffer }).getText();
 | 字段级 diff 校准器 | `src/ingest/calibrate.ts` | **已完成**，21 测试 |
 | 章节切分 | `src/ingest/sectionize.ts` | **已完成**，22 测试 |
 | 确定性抽取 + Provenance | `src/ingest/extract-trap.ts` | **陷阱机制已完成**，22 测试；其余字段未做 |
-| LLM 插槽（语义字段） | — | 未做，且当前 `.env` 的 key 是 401 |
+| LLM 插槽（语义字段） | — | 未做 |
+
+> **关于 LLM 可用性**：`bun test` 输出里的 `[config] No LLM_API_KEY set` 是**测试在验证无 key 的降级路径**，
+> 不是配置故障——本仓库有整套无 LLM 可运行的兜底链路，那条警告是被测行为的一部分。
+> 2026-08-19 实测：`.env` 的 key 有效，`POST {LLM_BASE_URL}/chat/completions` 返回 **HTTP 200**。
+> 判断 LLM 通不通，**必须实际发一次请求**，不要拿测试输出或历史记录当证据。
 
 **清洗**（`cleanPageText`）判断"换行是排版造成的还是句子结束"，靠四个信号：句子终止标点、
 终止标点后的右引号（场景描述整段是引文，只认句号会把描述和 KP 说明粘住）、`▶` 条目标记、冒号。
