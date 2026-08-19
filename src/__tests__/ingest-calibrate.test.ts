@@ -141,3 +141,98 @@ describe("报告格式", () => {
     expect(txt.length).toBeLessThan(600);
   });
 });
+
+describe("配对键可配置", () => {
+  test("不传 opts 与显式传 ['id'] 完全等价 —— 现有 21 个测试是这条的基线", () => {
+    const a = { scenes: [{ id: "s1", name: "甲" }] };
+    const b = { scenes: [{ id: "s2", name: "甲" }] };
+    expect(diffValues(a, b)).toEqual(diffValues(a, b, { pairBy: ["id"] }));
+  });
+
+  test("按 name 配对：id 不同但 name 相同的两个元素被认成同一个", () => {
+    // 生成的 id 是内部句柄（scene_07），基准是手写意译（adrian_bedroom），
+    // 按 id 配会把每个场景都报成「缺失 + 多余」，真实差异被噪音埋掉
+    const a = { scenes: [{ id: "adrian_bedroom", name: "卧室", description: "床头柜" }] };
+    const b = { scenes: [{ id: "scene_18", name: "卧室", description: "床头柜" }] };
+    const d = diffValues(a, b, { pairBy: ["id", "name"] });
+    expect(d.filter((x) => x.kind === "missing" || x.kind === "extra")).toEqual([]);
+  });
+
+  test("路径段用实际配对键的值 —— 序号 id 不可读，中文名可读", () => {
+    const a = { scenes: [{ id: "adrian_bedroom", name: "卧室", description: "床头柜" }] };
+    const b = { scenes: [{ id: "scene_18", name: "卧室", description: "床边" }] };
+    expect(at(diffValues(a, b, { pairBy: ["id", "name"] }), "scenes[卧室].description")).toBeDefined();
+  });
+
+  test("先按 id 配，配不上的才按 name 配", () => {
+    const a = { scenes: [{ id: "s1", name: "甲", v: 1 }, { id: "s2", name: "乙", v: 2 }] };
+    const b = { scenes: [{ id: "s1", name: "甲", v: 1 }, { id: "scene_02", name: "乙", v: 2 }] };
+    const d = diffValues(a, b, { pairBy: ["id", "name"] });
+    expect(d.filter((x) => x.kind !== "id-mismatch")).toEqual([]);
+  });
+
+  test("配对键在两侧都不可用时退回按下标 —— 与现在的行为一致", () => {
+    const d = diffValues({ tags: ["a", "b"] }, { tags: ["a", "c"] }, { pairBy: ["id", "name"] });
+    expect(at(d, "tags[1]")).toMatchObject({ kind: "changed" });
+  });
+});
+
+describe("id-mismatch 单列", () => {
+  test("按 name 配上但 id 不同 → id-mismatch，不计入 changed", () => {
+    const a = { scenes: [{ id: "adrian_bedroom", name: "卧室" }] };
+    const b = { scenes: [{ id: "scene_18", name: "卧室" }] };
+    const d = diffValues(a, b, { pairBy: ["id", "name"] });
+    expect(d.filter((x) => x.kind === "changed")).toEqual([]);
+    expect(at(d, "scenes[卧室].id")).toMatchObject({
+      kind: "id-mismatch",
+      baseline: "adrian_bedroom",
+      candidate: "scene_18",
+    });
+  });
+
+  test("同一件事只报一次 —— 不再另出一条 .id 的 changed", () => {
+    const a = { scenes: [{ id: "adrian_bedroom", name: "卧室" }] };
+    const b = { scenes: [{ id: "scene_18", name: "卧室" }] };
+    const d = diffValues(a, b, { pairBy: ["id", "name"] }).filter((x) => x.path === "scenes[卧室].id");
+    expect(d).toHaveLength(1);
+  });
+
+  test("按 id 配对时不会产出 id-mismatch", () => {
+    const a = { scenes: [{ id: "s1", name: "甲" }] };
+    const b = { scenes: [{ id: "s1", name: "乙" }] };
+    expect(diffValues(a, b).filter((x) => x.kind === "id-mismatch")).toEqual([]);
+  });
+
+  test("一侧压根没有 id 时如实报 missing，不被跳过吞掉", () => {
+    const a = { scenes: [{ id: "adrian_bedroom", name: "卧室" }] };
+    const b = { scenes: [{ name: "卧室" }] };
+    const d = diffValues(a, b, { pairBy: ["id", "name"] });
+    expect(at(d, "scenes[卧室].id")).toMatchObject({ kind: "missing" });
+  });
+});
+
+describe("空数组仍按 id 配对", () => {
+  test("候选侧 clues 为空 → 路径带线索 id，而不是下标", () => {
+    // 这份缺失清单就是下一轮的路线图。印成 clues[0]…clues[31] 则一文不值
+    const a = { scenes: [{ id: "s1", clues: [{ id: "clue_bar_ask_around", name: "打听" }] }] };
+    const b = { scenes: [{ id: "s1", clues: [] }] };
+    expect(at(diffValues(a, b), "scenes[s1].clues[clue_bar_ask_around]")).toMatchObject({ kind: "missing" });
+  });
+
+  test("两侧皆空 → 无差异", () => {
+    expect(diffValues({ clues: [] }, { clues: [] })).toEqual([]);
+  });
+
+  test("空数组对上无 id 的数组仍退回下标", () => {
+    const d = diffValues({ tags: ["a"] }, { tags: [] });
+    expect(at(d, "tags[0]")).toMatchObject({ kind: "missing" });
+  });
+});
+
+describe("报告含 id-mismatch 计数", () => {
+  test("统计行列出 id 不一致的条数", () => {
+    const a = { scenes: [{ id: "adrian_bedroom", name: "卧室" }] };
+    const b = { scenes: [{ id: "scene_18", name: "卧室" }] };
+    expect(formatDiff(diffValues(a, b, { pairBy: ["id", "name"] }))).toContain("id");
+  });
+});
