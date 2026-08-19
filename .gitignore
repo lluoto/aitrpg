@@ -17,6 +17,9 @@ play-logs/
 analysis/
 play-records/
 
+# subagent 执行时的任务简报与进度台账，是过程草稿不是产物
+.superpowers/
+
 # 环境音床是生成物，不是源码：scripts/gen-bgm.ts 可以随时重建
 frontend/public/bgm/*.wav
 frontend/public/bgm/*.mp3

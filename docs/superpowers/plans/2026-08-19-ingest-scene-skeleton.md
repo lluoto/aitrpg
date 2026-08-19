@@ -385,7 +385,10 @@ describe("字段口径", () => {
   test("丢弃的条目要报数 —— 不静默丢东西", () => {
     const s = sec("农场外围", "x", [item("捕兽夹", "a"), item("霰弹枪", "b")]);
     const r = buildScenes([s], kinds([["农场外围", "scene"]]), ["scene_01"]);
-    expect(r.warnings.join()).toContain("2");
+    // 整条 warning 列表比对，不用 join().toContain("2")：
+    // 那种写法在报数算成 12 / 20 / 22 时照样绿，数字也可能是从别的 warning 蹭来的。
+    // 这条测试买的就是「那个数是 2」，就得把条数和文案一起钉死。
+    expect(r.warnings).toEqual(["2 个 ▶ 条目本轮未消费（属线索/物品，留给下一轮）"]);
   });
 });
 
@@ -397,7 +400,12 @@ describe("重名标题", () => {
 
   test("报一条 warning —— 分类器以标题为键，两块只能拿到同一类", () => {
     const r = buildScenes([sec("卧室", "a"), sec("卧室", "b")], kinds([["卧室", "scene"]]), ["scene_01", "scene_02"]);
-    expect(r.warnings.join()).toContain("卧室");
+    // 「一条」是这条测试的全部内容：每块各报一条（这里就是两条）的实现，
+    // 在 join().toContain("卧室") 下同样绿。所以先数条数，再看那一条说了什么 ——
+    // 报数说「出现 2 次」才算认出这是重名，只是提到标题不算。
+    const dup = r.warnings.filter((w) => w.includes("卧室"));
+    expect(dup).toHaveLength(1);
+    expect(dup[0]).toContain("出现 2 次");
   });
 });
 
@@ -634,6 +642,24 @@ Run: `cd C:\aitrpg\poc; bun test src/__tests__/ingest-calibrate.test.ts`
 Expected: FAIL，`diffValues` 只接受两个参数、没有 `id-mismatch` 这一类
 
 - [ ] **Step 3: 改实现**
+
+> **执行时发现下面这段代码是错的，已在实现中纠正（`db2075a` + `48667bd`）。照抄会白做。**
+>
+> 两处：
+>
+> 1. `pickPairKey` 是**给整个数组选一个键**。而基准和候选的元素两侧都带 `id`，
+>    所以它永远返回 `"id"`，`name` 那一轮根本轮不到——`pairBy` 对它存在的唯一场景是个空操作。
+>    本节的散文写的是「先按 id 配，剩下的按 name 配」（逐元素回退），与这段代码自相矛盾，
+>    而下面 Step 1 的测试写的是散文那个语义，照抄会有 5 个测试红。
+>    正解是分轮认领：`pickPairKeys` 返回全部可用键，按序每键一轮，
+>    上一轮没认领到的落到下一轮。
+> 2. 「选定键后一次配完，不混用多个键（混用会让路径含义不一致）」这条理由不成立。
+>    混两个**身份值**没问题——每个路径段仍然指得出它指的是谁；
+>    不能混的是身份值与**位置下标**，因为读的人无法判断那个数字指的是基准的顺序还是候选的顺序。
+> 3. 两轮都用 `new Map(arr.map(...))` 建配对表，同键只留最后一个：
+>    重名元素既不配对也不进 leftover，从报告里彻底消失。校准器往低了报数还不吭声，
+>    是这类工具最不能有的失败方向。正解是分桶——同键的收成列表，桶内按位置配对，
+>    长的一侧多出来的进 leftover。
 
 替换 `src/ingest/calibrate.ts` 第 10–92 行（从 `/** 一条差异 */` 到 `diffValues` 结束）为：
 
@@ -873,13 +899,15 @@ import { describe, test, expect } from "bun:test";
 import { extractPages } from "../ingest/pdf-source";
 
 describe("extractPages", () => {
-  test("空数据直接抛 —— 返回空数组会让整条管线安静地产出零个场景", () => {
+  // await 不能省：expect(...).rejects 返回的是 Promise，
+  // 不 await 就没人观察这个断言，函数不抛时测试照样绿 —— 等于什么都没测
+  test("空数据直接抛 —— 返回空数组会让整条管线安静地产出零个场景", async () => {
     // 那种失败会表现成「模型没干活」，而真正的原因在最上游
-    expect(extractPages(new Uint8Array(0))).rejects.toThrow();
+    await expect(extractPages(new Uint8Array(0))).rejects.toThrow();
   });
 
-  test("不是 PDF 的字节也要抛，不能假装成功", () => {
-    expect(extractPages(new TextEncoder().encode("这不是 PDF"))).rejects.toThrow();
+  test("不是 PDF 的字节也要抛，不能假装成功", async () => {
+    await expect(extractPages(new TextEncoder().encode("这不是 PDF"))).rejects.toThrow();
   });
 });
 ```
@@ -931,6 +959,20 @@ export async function extractPages(data: Uint8Array): Promise<string[]> {
 ```
 
 若 Step 1 探针显示逐页元素的文本字段不叫 `text`，改那一行，并把真实字段名写进上面的注释。`pages.length === 0` 一并抛，是为了让「不是 PDF 的字节」这类输入不至于安静地返回空数组。
+
+> **执行期勘误（`78052d0` + `a32c89c`）**：探针实测 `pages[i]` 是 `{ num: number; text: string }`，
+> 且 `pdf-parse` 自带 `PageTextResult` 类型声明——所以上面那个 `as { pages?: unknown }` 强制转换
+> 是在把包已经给了的类型信息扔掉，实际实现没有采用它。
+>
+> 更要紧的是 `String(p?.text ?? "")` 这个兜底**必须去掉**：它把「形状变了」悄悄变成空字符串。
+> 但光去掉不够——`res.pages.map((p) => p.text)` 在运行期漂移时会返回伪装成 `string[]` 的
+> `undefined[]`，而下游 `clean-text.ts:63` 的 `if (!raw) return ""` 会把它们全变成空串，
+> 落点与那个兜底一模一样，只是晚一个函数。实际实现是：类型走声明（声明变了 `typecheck` 就红），
+> 运行期再补一道 `typeof p.text !== "string"` 的守卫（声明没变也拦得住）。
+>
+> 另外 Step 2 那两个测试的 `toThrow()` 不带参数，分不清是本模块抛的还是库抛的——
+> 删掉 `data.length === 0` 那道守卫两个测试照样绿。实际实现给第一个测试钉了
+> `"[ingest] PDF 数据为空"`；第二个（非 PDF 字节）是库抛的，保持裸 `toThrow()` 并在注释里说明理由。
 
 - [ ] **Step 5: 跑测试确认通过**
 
