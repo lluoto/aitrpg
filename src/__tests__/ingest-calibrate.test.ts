@@ -230,9 +230,56 @@ describe("空数组仍按 id 配对", () => {
 });
 
 describe("报告含 id-mismatch 计数", () => {
-  test("统计行列出 id 不一致的条数", () => {
+  test("统计行报出条数，且该类有自己的渲染行", () => {
+    // 钉住渲染出来的原文。只查 "id" 子串是查不出东西的：
+    // 随便哪条差异的 JSON 值里都带着 "id"，这条断言在功能存在之前就是绿的
     const a = { scenes: [{ id: "adrian_bedroom", name: "卧室" }] };
     const b = { scenes: [{ id: "scene_18", name: "卧室" }] };
-    expect(formatDiff(diffValues(a, b, { pairBy: ["id", "name"] }))).toContain("id");
+    const txt = formatDiff(diffValues(a, b, { pairBy: ["id", "name"] }));
+    expect(txt).toContain("差异 1 处 — changed 0 / missing 0 / extra 0 / id 不一致 1");
+    expect(txt).toContain("  [id 不一致] scenes[卧室].id   基准 adrian_bedroom ↔ 生成 scene_18");
+  });
+});
+
+describe("配对值重复", () => {
+  test("两侧各有两个同名元素 → 按出现次序两两配上，一个都不吞", () => {
+    // 曾经这里用 new Map(...) 建索引，同名者只留最后一个：
+    // b1 与 s_01 既没配上对、也没落进 missing/extra，从报告里凭空消失。
+    // 度量工具最不能有的就是这个失败方向 —— 报出的差异数偏小，且不留痕迹
+    const a = { scenes: [{ id: "b1", name: "卧室", v: 1 }, { id: "b2", name: "卧室", v: 2 }] };
+    const b = { scenes: [{ id: "s_01", name: "卧室", v: 1 }, { id: "s_02", name: "卧室", v: 9 }] };
+    const d = diffValues(a, b, { pairBy: ["id", "name"] });
+    expect(d.filter((x) => x.kind === "missing" || x.kind === "extra")).toEqual([]);
+    expect(d.filter((x) => x.kind === "id-mismatch")).toHaveLength(2);
+    // 第二个桶位上的 v 差异必须现形 —— 以前它连同元素一起没了
+    expect(at(d, "scenes[卧室].v")).toMatchObject({ kind: "changed", baseline: 2, candidate: 9 });
+    expect(d).toHaveLength(3);
+  });
+
+  test("基准侧多一个同名元素 → 多出来的报 missing", () => {
+    const a = { scenes: [{ id: "b1", name: "卧室" }, { id: "b2", name: "卧室" }] };
+    const b = { scenes: [{ id: "s_01", name: "卧室" }] };
+    const d = diffValues(a, b, { pairBy: ["id", "name"] });
+    expect(at(d, "scenes[b2]")).toMatchObject({ kind: "missing", baseline: { id: "b2", name: "卧室" } });
+  });
+
+  test("生成侧多一个同名元素 → 多出来的报 extra", () => {
+    const a = { scenes: [{ id: "b1", name: "卧室" }] };
+    const b = { scenes: [{ id: "s_01", name: "卧室" }, { id: "s_02", name: "卧室" }] };
+    const d = diffValues(a, b, { pairBy: ["id", "name"] });
+    expect(at(d, "scenes[s_02]")).toMatchObject({ kind: "extra", candidate: { id: "s_02", name: "卧室" } });
+  });
+});
+
+describe("多键配对下没人认领的元素", () => {
+  test("路径段取首选键的值 —— 是 id 不是 name", () => {
+    // 每一轮都没配上的元素，路径段该印哪个键的值没有测试钉过：
+    // 印 scenes[s2] 能对回基准源码里那个 id，印 scenes[乙] 对不回去
+    const a = { scenes: [{ id: "s1", name: "甲" }, { id: "s2", name: "乙" }] };
+    const b = { scenes: [{ id: "s1", name: "甲" }, { id: "s9", name: "丙" }] };
+    const d = diffValues(a, b, { pairBy: ["id", "name"] });
+    expect(at(d, "scenes[s2]")).toMatchObject({ kind: "missing", baseline: { id: "s2", name: "乙" } });
+    expect(at(d, "scenes[s9]")).toMatchObject({ kind: "extra", candidate: { id: "s9", name: "丙" } });
+    expect(d).toHaveLength(2);
   });
 });

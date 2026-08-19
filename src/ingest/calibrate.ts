@@ -43,8 +43,13 @@ function keyOf(v: unknown, key: string): string | null {
 /**
  * 数组里的元素是否都带该键。
  *
- * 只要有一个没有就整体退回按下标比 —— 混着比会让路径含义不一致，
- * 报告里一半是 `[s1]` 一半是 `[3]`，看的人无法判断下标指的是原序还是新序。
+ * 有一个没有，这个键就整体不可用 —— 但只是这个键：剩下的键接着认，
+ * 全都不可用才退回按下标。所以一个数组里的路径段可以既有 `[s1]` 又有 `[卧室]`。
+ *
+ * 界线不在「混不混」，而在混的是什么：两个都是身份值就无所谓，
+ * 每个路径段仍然指名道姓，照着能找到它指的那个东西。身份值混下标才不行 ——
+ * `[3]` 里的 3 是基准的顺序还是生成物的顺序，看的人无从判断，
+ * 而且两侧任一边重排它就漂了。
  *
  * 空数组平凡成立。否则候选侧 clues: [] 会把整个数组拖回按下标比，
  * 32 条缺失全印成 clues[0]…clues[31]，而这份清单本该是下一轮的路线图。
@@ -57,6 +62,26 @@ function allHaveKey(arr: unknown[], key: string): boolean {
 function pickPairKeys(baseline: unknown[], candidate: unknown[], pairBy: string[]): string[] {
   if (baseline.length === 0 && candidate.length === 0) return [];
   return pairBy.filter((key) => allHaveKey(baseline, key) && allHaveKey(candidate, key));
+}
+
+/**
+ * 按键值把数组分桶。同一个值下有几个元素，桶里就有几个，一个都不丢。
+ *
+ * 不用 `new Map(arr.map(...))`：那样建索引，同键者只留最后一个，被顶掉的
+ * 既配不上对、也进不了后面的 missing/extra，直接从报告里消失。
+ * id 在实践中唯一，name 不唯一 —— 分类器以标题为键的重名缺陷本轮不修，
+ * 真实数据里就有两个「卧室」—— 所以传 ["id","name"] 时这条路必被踩到。
+ * 度量工具最不能有的就是这个失败方向：报出的差异数偏小，且不留痕迹。
+ */
+function bucketBy(arr: unknown[], key: string): Map<string, unknown[]> {
+  const buckets = new Map<string, unknown[]>();
+  for (const v of arr) {
+    const k = keyOf(v, key) as string;
+    const bucket = buckets.get(k);
+    if (bucket) bucket.push(v);
+    else buckets.set(k, [v]);
+  }
+  return buckets;
 }
 
 /** 配上的一对，外加它是靠哪个键配上的 —— 路径段和 id 怎么处理都取决于这个键 */
@@ -122,16 +147,20 @@ function walkArray(baseline: unknown[], candidate: unknown[], path: string, out:
   let bRest = baseline;
   let cRest = candidate;
   for (const key of keys) {
-    const bMap = new Map(bRest.map((v) => [keyOf(v, key) as string, v]));
-    const cMap = new Map(cRest.map((v) => [keyOf(v, key) as string, v]));
+    const bBuckets = bucketBy(bRest, key);
+    const cBuckets = bucketBy(cRest, key);
     const bLeft: unknown[] = [];
     const cLeft: unknown[] = [];
-    for (const k of new Set([...bMap.keys(), ...cMap.keys()])) {
-      const b = bMap.get(k);
-      const c = cMap.get(k);
-      if (b !== undefined && c !== undefined) pairs.push({ key, seg: k, baseline: b, candidate: c });
-      else if (b !== undefined) bLeft.push(b);
-      else cLeft.push(c);
+    for (const k of new Set([...bBuckets.keys(), ...cBuckets.keys()])) {
+      const bs = bBuckets.get(k) ?? [];
+      const cs = cBuckets.get(k) ?? [];
+      // 桶内按出现次序两两配。同名的两个「卧室」谁对谁本就无从判断，
+      // 按次序配至少保证两侧都在场、都被比过。长的那侧多出来的推回
+      // bLeft/cLeft，跟着走后面的轮次，最终照常报 missing/extra —— 关键是不消失。
+      const paired = Math.min(bs.length, cs.length);
+      for (let i = 0; i < paired; i++) pairs.push({ key, seg: k, baseline: bs[i], candidate: cs[i] });
+      for (let i = paired; i < bs.length; i++) bLeft.push(bs[i]);
+      for (let i = paired; i < cs.length; i++) cLeft.push(cs[i]);
     }
     bRest = bLeft;
     cRest = cLeft;
