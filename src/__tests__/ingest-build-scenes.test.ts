@@ -88,7 +88,10 @@ describe("字段口径", () => {
   test("丢弃的条目要报数 —— 不静默丢东西", () => {
     const s = sec("农场外围", "x", [item("捕兽夹", "a"), item("霰弹枪", "b")]);
     const r = buildScenes([s], kinds([["农场外围", "scene"]]), ["scene_01"]);
-    expect(r.warnings.join()).toContain("2");
+    // 整条 warning 列表比对，不用 join().toContain("2")：
+    // 那种写法在报数算成 12 / 20 / 22 时照样绿，数字也可能是从别的 warning 蹭来的。
+    // 这条测试买的就是「那个数是 2」，就得把条数和文案一起钉死。
+    expect(r.warnings).toEqual(["2 个 ▶ 条目本轮未消费（属线索/物品，留给下一轮）"]);
   });
 });
 
@@ -100,7 +103,12 @@ describe("重名标题", () => {
 
   test("报一条 warning —— 分类器以标题为键，两块只能拿到同一类", () => {
     const r = buildScenes([sec("卧室", "a"), sec("卧室", "b")], kinds([["卧室", "scene"]]), ["scene_01", "scene_02"]);
-    expect(r.warnings.join()).toContain("卧室");
+    // 「一条」是这条测试的全部内容：每块各报一条（这里就是两条）的实现，
+    // 在 join().toContain("卧室") 下同样绿。所以先数条数，再看那一条说了什么 ——
+    // 报数说「出现 2 次」才算认出这是重名，只是提到标题不算。
+    const dup = r.warnings.filter((w) => w.includes("卧室"));
+    expect(dup).toHaveLength(1);
+    expect(dup[0]).toContain("出现 2 次");
   });
 });
 
