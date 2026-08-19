@@ -44,6 +44,11 @@ export function assignSceneIds(sections: Section[]): string[] {
  *
  * 返回 Map 而不是像 assignSceneIds 那样返回等长数组，是因为键的性质不同：
  * 标题会重复，p{page}:L{line} 不会。以它为键既安全，下游也不必再维护一层下标对应。
+ *
+ * 「不会重复」这条不是本函数保证的，是 sectionize 给的：那边一行只 match 一次 ITEM_LINE
+ * 就 continue（sectionize.ts 的条目分支），所以同一个 (page, line) 上至多一个条目。
+ * 哪天那条规则放宽成一行允许两个 ▶，这里的 Map.set 会静默顶掉一个，而且 n 已经加过，
+ * 编号会跳号——正是本函数存在的理由所要避免的那种漂移。改那边时记得回头看这里。
  */
 export function assignItemIds(sections: Section[]): Map<string, string> {
   const out = new Map<string, string>();
