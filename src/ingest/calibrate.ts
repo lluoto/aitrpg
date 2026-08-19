@@ -52,7 +52,9 @@ function keyOf(v: unknown, key: string): string | null {
  * 而且两侧任一边重排它就漂了。
  *
  * 空数组平凡成立。否则候选侧 clues: [] 会把整个数组拖回按下标比，
- * 32 条缺失全印成 clues[0]…clues[31]，而这份清单本该是下一轮的路线图。
+ * 基准那 32 条线索全印成纯下标路径 —— 而且它们散在 14 个场景里、单场景最多 4 条，
+ * 每个数组各自从 0 数起，所以印出来的是一堆重复的 clues[0]…clues[3]，
+ * 既认不出缺的是哪条，也没法拿去干活；而这份清单本该是下一轮的路线图。
  */
 function allHaveKey(arr: unknown[], key: string): boolean {
   return arr.every((v) => keyOf(v, key) !== null);
