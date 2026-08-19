@@ -1110,6 +1110,17 @@ function buildItems(): ModuleItem[] {
       sceneId: "farm_periphery",
       description: "体形小于35的角色会免疫。踩中时造成1D4+1伤害，挣脱需困难成功力量。大失败或乱动造成额外1d3伤害。伤害大于耐久半值有截肢风险。",
       type: "trap",
+      trap: {
+        damage: "1D4+1",
+        escape: { skill: "力量", difficulty: "hard", fumbleDamage: "1d3" },
+        sizImmunityBelow: 35,
+        maimAtHpRatio: 0.5,
+        detectedByClue: "clue_trap_detected",
+        // 模组只说"体形小于35免疫"，没给理由。踏板式捕兽夹靠体重压到底才击发，
+        // 所以按"分量不够压不动弹簧"写——这是推断，不是原文，故记入 inferred。
+        immuneNarration: "脚下咔的一声轻响，随即没了动静——分量不够，弹簧没被压到底。",
+        inferred: ["immuneNarration"],
+      },
     },
     {
       id: "trap_shotgun",
@@ -1117,6 +1128,11 @@ function buildItems(): ModuleItem[] {
       sceneId: "farm_periphery",
       description: "踩到的调查员有困难敏捷机会躲避，造成1d6伤害。无备弹且枪管被锯断，无法作为调查员武器再利用。",
       type: "trap",
+      trap: {
+        damage: "1d6",
+        avoid: { skill: "敏捷", difficulty: "hard" },
+        detectedByClue: "clue_trap_detected",
+      },
     },
     {
       id: "trap_sound",
@@ -1124,6 +1140,8 @@ function buildItems(): ModuleItem[] {
       sceneId: "farm_periphery",
       description: "一个音响陷阱，原本为警报用途，现因无人维护已经失效。",
       type: "trap",
+      // 无 trap 字段是刻意的，不是漏填：模组写明它已经失效。
+      // 留着条目是因为它仍然看得见——调查员会发现一个坏掉的警报器，那本身是线索。
     },
     {
       id: "trap_sulfuric_acid",
@@ -1131,6 +1149,11 @@ function buildItems(): ModuleItem[] {
       sceneId: "farm_villa",
       description: "从门上倒下一瓶硫酸，1D4+1初始伤害，未摆脱则1D3/回合持续。使用清水可急救。",
       type: "trap",
+      trap: {
+        damage: "1D4+1",
+        ongoing: { damage: "1D3", until: "冲洗掉残留的酸液" },
+        firstAid: "清水冲洗",
+      },
     },
   ];
 }
@@ -1473,6 +1496,5 @@ export const BARN_SUPPORT: ModuleSupport = {
   finaleSceneId: "maintenance_room",
   finaleClueId: "clue_bedroom_diary",
   bossNpcIdPattern: /mi[_-]?go/i,
-  trapSceneId: "farm_periphery",
-  trapClueId: "clue_trap_detected",
+
 };

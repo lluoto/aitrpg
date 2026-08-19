@@ -34,6 +34,32 @@ export interface ModuleData {
   narrative?: {
     entities: NarrativeEntity[];
   };
+  /**
+   * 生成溯源 —— 读取阶段对原文做过的每一次改写。
+   *
+   * 运行模组是生成物，不是手稿：读取模块会补数值、改写泄底的描述、
+   * 用世界模型约束修掉不合理处。没有这份记录，模组数据就成了黑盒，
+   * 出问题时无从判断到底是原文如此，还是生成阶段擅自改的。
+   */
+  provenance?: Provenance[];
+}
+
+/** 一条改写记录：原文、结果、理由，三者缺一不可 */
+export interface Provenance {
+  /** 被改写的字段路径，如 "items[3].trap.damage" */
+  path: string;
+  /** 原文片段 */
+  source: string;
+  /** 原文位置，如 "raw/section_09.txt:L42" */
+  sourceRef?: string;
+  /** 改写结果 */
+  result: string;
+  /** 为什么改 */
+  reason: string;
+  /** 谁改的：确定性规则 / LLM / 人工 */
+  by: "rule" | "llm" | "human";
+  /** 若由世界模型约束触发，记下命中的约束 ID */
+  constraintId?: string;
 }
 
 /**
@@ -66,6 +92,75 @@ export interface NarrativeEntity {
   recognition: string;
 }
 
+/**
+ * 陷阱机制 —— 模组原文里写死的可结算数值。
+ *
+ * 在此之前这些数字只存在于 ModuleItem.description 的散文里，引擎读不到，
+ * 于是人工抄进 play-module.ts 硬编码一份。两份各走各的：模组改了引擎不会红，
+ * 而且一个场景里只有被抄中的那个陷阱是活的，其余全是死数据。
+ *
+ * 声明成结构体之后，"模组特殊规则"这一层（DESIGN-LOG §1 优先级最高的一层）
+ * 才第一次对物理后果真正有内容——此前它只有物品与对话两个文本域。
+ */
+export interface TrapMechanics {
+  /** 伤害骰，CoC 表达式（如 "1D4+1"）。省略 = 不造成伤害 */
+  damage?: string;
+  /**
+   * 触发瞬间的躲避检定：成功则完全不受影响。
+   *
+   * 与 escape 是两件事，不能合并——霰弹枪拌锁是"来得及闪开就没事"，
+   * 捕兽夹是"已经咬住了，现在要掰开"。合成一个字段就会把
+   * 「躲过了」和「挣脱了」写成同一句话。
+   */
+  avoid?: {
+    skill: string;
+    difficulty: "regular" | "hard" | "extreme";
+  };
+  /** 已经中招后的挣脱检定。省略 = 无需挣脱 */
+  escape?: {
+    /** 属性或技能名（如 "力量"） */
+    skill: string;
+    difficulty: "regular" | "hard" | "extreme";
+    /** 大失败时的额外伤害骰 */
+    fumbleDamage?: string;
+  };
+  /** 未挣脱期间的持续伤害 */
+  ongoing?: {
+    /** 每回合伤害骰 */
+    damage: string;
+    /** 停止条件（叙事描述，供旁白使用） */
+    until: string;
+  };
+  /** 急救方式（叙事性说明；引擎目前不结算，写下来是为了旁白不必现编） */
+  firstAid?: string;
+  /**
+   * 事先发现即可规避：已找到此线索则该陷阱不再触发。
+   *
+   * 这是原先 ModuleSupport.trapClueId 承担的语义——侦查成功就不会踩中。
+   * 把它挪到陷阱自己身上，是因为一个场景里的多个陷阱本就该各有各的发现方式：
+   * 看见地上的铁齿不等于也看见了门后拌着的绳子。
+   */
+  detectedByClue?: string;
+  /**
+   * 体型免疫阈值：SIZ 严格小于此值则不触发。省略 = 无免疫。
+   * 模组常只给结论不给理由，理由属于推断——写进 inferred，别混进数据。
+   */
+  sizImmunityBelow?: number;
+  /** 单次伤害超过最大 HP 的此比例即致残（0–1）。省略 = 不致残 */
+  maimAtHpRatio?: number;
+  /** 触发时的叙事 */
+  triggerNarration?: string;
+  /** 因体型免疫而未触发时的叙事 */
+  immuneNarration?: string;
+  /**
+   * 模组原文未写、由读取阶段推断出来的字段名。
+   *
+   * 留着是为了让"这是原文如此"和"这是我们补的"永远分得开：
+   * 校对的人只需看这一行，就知道哪些值不能拿去反推模组作者的意图。
+   */
+  inferred?: string[];
+}
+
 /** 模组中的可拾取/可交互物品 */
 export interface ModuleItem {
   id: string;
@@ -79,6 +174,8 @@ export interface ModuleItem {
   revelation?: string;
   /** 物品属性（武器用） */
   properties?: Record<string, string | number>;
+  /** 陷阱结算数值（仅 type="trap"）。缺省 = 该陷阱纯叙事，不结算 */
+  trap?: TrapMechanics;
 }
 
 /** 场景 */
@@ -373,10 +470,9 @@ export interface ModuleSupport {
   finaleClueId: string;
   /** BOSS NPC id 匹配（战斗目标识别，如 /mi[_-]?go/i） */
   bossNpcIdPattern: RegExp;
-  /** 陷阱自动事件场景 ID（进入且未检测 → 受伤） */
-  trapSceneId: string;
-  /** 陷阱检测标记线索 ID（已检测则不触发） */
-  trapClueId: string;
+  // 原先这里有 trapSceneId / trapClueId 一对单数常量，指定"哪个场景有陷阱"。
+  // 已删除：陷阱现在是 ModuleItem.trap 结构化数据，按 sceneId 挂载，一个场景可以有多个。
+  // 留着这对字段只会诱导新模组继续走"引擎里硬编码一个陷阱"的老路。
   /**
    * 调查员配置（按顺序创建 PC）。可选：模组运行器已改为自行随机生成调查员
    * （见 play-module「模块 players 配置仅作为人设/兜底参考，不再写死身份」），

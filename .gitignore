@@ -2,6 +2,8 @@ node_modules/
 dist/
 data/
 tmp/
+# 本地代码索引（codegraph init 生成，随时可重建）
+.codegraph/
 .env
 *.log
 .opencode/
