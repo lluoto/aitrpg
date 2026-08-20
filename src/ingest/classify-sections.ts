@@ -5,14 +5,31 @@
 // 这些真场景根本没有朗读引文。所以这一步归 LLM。
 //
 // 分工没变：规则管死板形态（骰子、难度词、体型阈值），LLM 管需要理解的判断。
+//
+// 类别为什么有 item：
+// 原来只有 scene/npc/structure/rule 四类，而模组里「奇怪的卡片」「绑架犯的报道」
+// 「艾米丽与爱莉的棺材」这些块**在四个格子里没有正确答案** —— 它们是物品/线索，
+// 不是地点、不是人物、不是文档结构、不是规则。模型只能挑个最不离谱的，
+// 而「有描述的实体」最像 scene，于是全挤进了场景表。
+// 当时把这记成「场景精确率 20/27，要提精确率」，框架是错的：
+// 同一次实跑**漏报是 0**，真场景一个不落，召回满 —— 失的分全部来自无处安放的条目。
+// 那不是判错，是体系里缺格子。
+//
+// 只加 item 一类，没有一次加四类（还剩「背景事件」「行动流程」「通道」无处可去），
+// 是为了能归因：一次加多个，分不清是哪个起的作用。
+//
+// item 块**不进** buildScenes，也**不进** toItemInputs。
+// 后者是有意的：toItemInputs 给每个条目挂的 sceneId 取自 `ids[i]`，
+// 而非 scene 块的那个 id 从来没被写进任何 Scene.id —— 让 item 块进去
+// 只会造出一批指向不存在场景的悬空引用。物品块该怎么落地是下一轮的事。
 
 import type { LLMClient } from "../llm/client";
 import type { Section } from "./sectionize";
 import { extractJson } from "./llm-json";
 
-export type SectionKind = "scene" | "npc" | "structure" | "rule";
+export type SectionKind = "scene" | "npc" | "structure" | "rule" | "item";
 
-const VALID: readonly string[] = ["scene", "npc", "structure", "rule"];
+const VALID: readonly string[] = ["scene", "npc", "structure", "rule", "item"];
 
 /** 单个块给模型看的正文长度上限 —— 44 个块乘以全文会把 prompt 撑爆 */
 const EXCERPT_MAX = 120;
@@ -52,10 +69,14 @@ export function buildClassifyPrompt(sections: ClassifyInput[]): string {
 - npc：某个具体人物的设定（性格、知道什么、态度）。
 - structure：模组的文档结构，不是游戏内容。如前言、附录、写在最后、导入说明、结局说明。
 - rule：规则、数据表、怪物属性、KP 操作指引。
+- item：一件具体的东西，而不是一个地方。如某张卡片、某份报纸剪报、某封信、
+  某样在现场发现的物件。它可以被拿起、被阅读、被检查，但调查员不会"进入"它。
 
 注意：
 - 场景不一定有供朗读的引文段落，没有引文的也可能是场景。
 - 人物的名字作标题时通常是 npc，但"与某人的会面"这种描述一次遭遇的通常是 scene。
+- **判断 scene 还是 item，看调查员是"走进去"还是"拿起来"。**
+  一个房间、一片区域、一栋建筑是 scene；一张卡片、一份文件、一口棺材是 item。
 
 文本块：
 ${list}
@@ -82,11 +103,17 @@ function normalizeKey(k: string): string {
  *
  * 值这一侧是**故意**精确比对（`VALID.includes(v)` 原样比，不 trim、不转小写、
  * 不把 `-` 当 `_`），与兄弟模块 classify-items 的 normalizeKind 不对称。
- * 这个不对称是留着的，不是漏改：本步已公布的实跑成绩（命中 20 / 误报 7 / 漏报 0）
+ * 这个不对称是留着的，不是漏改：本步已公布的实跑成绩（命中 20 / 误报 4 / 漏报 0）
  * 就是拿现在这个解析器认下来的东西量出来的。放宽写法等于放宽「哪些回答算数」，
  * 那三个数会跟着动，而不重跑就没有新数去替换旧数 —— 于是公布的成绩变成一个
  * 没人量过的数字。要改的前提是先重跑一次、把三个数重新量出来，连着数一起改；
  * 只为了跟 classify-items 对称而对称，不值这个代价。
+ *
+ * 误报从 7 降到 4 是加了 item 类之后重跑量出来的（旧数是 7）。
+ * 移出场景表的正是「奇怪的卡片」「绑架犯的报道」「艾米丽与爱莉的棺材」这三个物品块。
+ * 同一次跑里物品覆盖 9/10、精确率 9/19、评分键左手边 39/39 全部持平 —— 没有倒退。
+ * 剩下的 4 个是「在小镇内询问路人」「关于艾米丽难产的事件」「旅店」「比较大的奇怪管道」，
+ * 其中**旅店是个真地方**，只是基准没把它建成场景 —— 那不是体系缺格子，是基准的取舍。
  */
 export function parseClassifyResponse(text: string, knownTitles: string[]): Map<string, SectionKind> {
   const out = new Map<string, SectionKind>();

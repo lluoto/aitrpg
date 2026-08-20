@@ -44,6 +44,11 @@ export function buildScenes(
   const titleCount = new Map<string, number>();
   let unclassified = 0;
   let droppedItems = 0;
+  // 判成 item 的块。单独记，是因为它跟 npc/structure/rule 的「跳过」性质不同：
+  // 那三类本来就不该变成任何东西，而 item 块是**认出来了却还没人接**
+  // （toItemInputs 只收 scene 块，让 item 块进去会造出指向不存在场景的悬空引用）。
+  // 不吭一声地丢掉，report 上就看不出这批内容去哪了。
+  let itemBlocks = 0;
 
   for (let i = 0; i < sections.length; i++) {
     const s = sections[i] as Section;
@@ -82,6 +87,7 @@ export function buildScenes(
       unclassified++;
       continue;
     }
+    if (kind === "item") itemBlocks++;
     if (kind !== "scene") continue;
 
     titleCount.set(s.title, (titleCount.get(s.title) ?? 0) + 1);
@@ -97,6 +103,9 @@ export function buildScenes(
   }
 
   if (unclassified > 0) warnings.push(`${unclassified} 个块没有分类结果，已跳过`);
+  if (itemBlocks > 0) {
+    warnings.push(`${itemBlocks} 个块判为 item（是物品/线索，不是地点），本轮无人消费 —— 它们不进场景表，也不进 toItemInputs`);
+  }
   // 文案改过一次。原来写「本轮未消费（属线索/物品，留给下一轮）」——
   // 写的时候是真的，那会儿场景这一轮之后没有下一步；现在同一次跑里紧接着就分类、
   // 建物品（实跑 17 条成了 ModuleItem），report 里这句话正压在「它们被消费掉」的
