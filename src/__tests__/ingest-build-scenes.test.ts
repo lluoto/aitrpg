@@ -41,6 +41,24 @@ describe("挑块", () => {
     expect(r.warnings.join()).toContain("没有分类结果");
   });
 
+  // item 块跟 npc/structure/rule 的跳过不是一回事：那三类本来就不该变成任何东西，
+  // 而 item 块是**认出来了却还没人接**。默不作声地丢掉，report 上就看不出
+  // 这批内容去了哪 —— 本仓库对「度量工具说不清话」是当 bug 处理的。
+  test("item 块不进场景表，但要报出来 —— 认出来又丢掉不能不吭声", () => {
+    const r = buildScenes(
+      [sec("农场外围"), sec("奇怪的卡片")],
+      kinds([["农场外围", "scene"], ["奇怪的卡片", "item"]]),
+      ["scene_01", "scene_02"],
+    );
+    expect(r.scenes.map((s) => s.name)).toEqual(["农场外围"]);
+    expect(r.warnings.join()).toContain("判为 item");
+  });
+
+  test("没有 item 块时不报这条 —— 空话会淹掉真话", () => {
+    const r = buildScenes([sec("农场外围")], kinds([["农场外围", "scene"]]), ["scene_01"]);
+    expect(r.warnings.join()).not.toContain("判为 item");
+  });
+
   test("标题为空的前置块跳过", () => {
     const r = buildScenes([sec("", "普瑞米尔的谷仓"), sec("报亭")], kinds([["报亭", "scene"]]), ["scene_01", "scene_02"]);
     expect(r.scenes.map((s) => s.name)).toEqual(["报亭"]);
