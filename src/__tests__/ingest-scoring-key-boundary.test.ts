@@ -57,6 +57,11 @@ const TOOLS_KEY_ALLOWLIST = new Set([
   "_gen-key-worksheet.ts",
   "_diag-confusion.ts",
   "_run-ingest.ts",
+  // `_exp-clue-followup.ts` —— 检验「对 item/event 两族追问一次能否提高线索召回」的实验。
+  // 它调 LLM，所以是这份白名单里风险最高的一条：同一个文件里既有 prompt 又有键。
+  // 约定与 `_run-ingest.ts` 相同 —— **键只在两次分类都返回之后才读**，
+  // 文件里有一行 `到这里为止没读过评分键` 标着分界。同样是约定不是保证。
+  "_exp-clue-followup.ts",
 ]);
 
 /**
