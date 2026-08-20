@@ -62,11 +62,18 @@ export interface Provenance {
   /** 原文片段 */
   source: string;
   /**
-   * 原文位置。摄取管线给的形态是 `p9:L13`（PDF 页号 + 页内行号），
-   * 由 sectionize 的 sourceKey() 产出。
+   * 原文位置。摄取管线给的形态是 `p9:L13`，由 sectionize 的 sourceKey() 产出。
    *
-   * 别和 `raw/section_09.txt:L42` 那种写法混着用 —— 后者指的是 raw 切片文件，
-   * 而切片是派生物且不进版本库，PDF 才是权威源。
+   * **页码是真的，行号不是 PDF 的行号，是清洗后的行号。** cleanPageText 会把
+   * 栏宽硬换行接回去、各页压缩 1.8×–6.0×，所以差距很大：`防盗门的钥匙` 这里写
+   * `p6:L17`，PDF 里实际在第 67 行。**照它去 PDF 数行会落空**，
+   * 详见 sectionize.ts 里 `SourceRef.line` 上那段实测。
+   *
+   * 它能干的事是「唯一标识这条改写来自哪一处」，做不到「带你翻到 PDF 那一行」。
+   * 要后者，得让 cleanPageText 把原始行号一路带出来（现在是丢掉的）。
+   *
+   * 另外别和 `raw/section_09.txt:L42` 那种写法混着用 —— 那是第三种坐标系，
+   * 指 raw 切片文件；切片是派生物且不进版本库，PDF 才是权威源。
    */
   sourceRef?: string;
   /** 改写结果 */

@@ -28,9 +28,20 @@ export interface Section {
 
 /** 原文位置，供 Provenance.sourceRef 使用 */
 export interface SourceRef {
-  /** 页码，从 1 起 */
+  /** 页码，从 1 起。这个是真页码，与 PDF 一致 */
   page: number;
-  /** 页内行号，从 1 起 */
+  /**
+   * **清洗后**的页内行号，从 1 起 —— 不是 PDF 里的行号。
+   *
+   * cleanPageText 把栏宽硬换行接回去，各页压缩 1.8×–6.0×，所以两者差得很远：
+   * `捕兽夹` 在 sourceKey 里是 p9:L13，PDF 实际在 p9:L40（差 27 行）；
+   * `防盗门的钥匙` 是 p6:L17，PDF 实际 p6:L67（差 50 行）。
+   * 实测见 `tools/_diag-lineno.ts`。
+   *
+   * 拿它当唯一键是够的（同一清洗行不会有两个条目）；
+   * 拿它去 PDF 里数行找原文**会落空**。要真能追回 PDF 行号，
+   * 得让 cleanPageText 把原始行号一路带出来，而它现在是丢掉的。
+   */
   line: number;
 }
 
@@ -38,11 +49,13 @@ export interface SourceRef {
  * 位置的字符串形式，如 `p9:L13`。
  *
  * 条目分类以它为键。不能像块分类那样以名字为键 —— 标题会重复
- * （`驾驶证` 在证物室和交火现场各出现一次），而页内行号天然唯一，
+ * （`驾驶证` 在证物室和交火现场各出现一次），而清洗后的行号天然唯一，
  * 同一行不会有两个条目。
  *
- * 它同时充当 Provenance.sourceRef。注意这确立的是「PDF 页号 + 页内行号」
- * 这个坐标系：raw 切片文件加行号是另一套，两者指的不是同一个东西，别混着长。
+ * 它同时充当 Provenance.sourceRef。**坐标系是「真页码 + 清洗后行号」**，
+ * 不是 PDF 的行号 —— 见 SourceRef.line 上那段实测。
+ * 也不是 raw 切片文件加行号那一套（那是第三种坐标系）。
+ * 三者别混着长，尤其别以为这个能拿去 PDF 里数行。
  */
 export function sourceKey(ref: SourceRef): string {
   return `p${ref.page}:L${ref.line}`;
