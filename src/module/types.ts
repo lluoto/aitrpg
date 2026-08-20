@@ -46,11 +46,28 @@ export interface ModuleData {
 
 /** 一条改写记录：原文、结果、理由，三者缺一不可 */
 export interface Provenance {
-  /** 被改写的字段路径，如 "items[3].trap.damage" */
+  /**
+   * 被改写的字段路径。数组段用元素的 id，如 `items[item_07].trap.damage`。
+   *
+   * 不用下标：产出物的顺序不必与手写那份一致，下标路径在按身份配对之后
+   * 既指不出是哪一条，也会随任一侧重排而漂。
+   *
+   * 别拿它去跟校准报告（calibrate.ts）里的路径逐字对：那边的数组段印的是**配对键**
+   * 的值，通常是 name（`items[防盗门的钥匙]`）。形态不同，两边都没错 ——
+   * 这里由生成侧自己写，它当然认得自己的 id；校准器要跨两份结构配对，
+   * 而两套 id 本就设计成不一样（内部句柄 scene_07 vs 手写意译 adrian_bedroom），
+   * 按 id 一条都配不上，只能退到 name。
+   */
   path: string;
   /** 原文片段 */
   source: string;
-  /** 原文位置，如 "raw/section_09.txt:L42" */
+  /**
+   * 原文位置。摄取管线给的形态是 `p9:L13`（PDF 页号 + 页内行号），
+   * 由 sectionize 的 sourceKey() 产出。
+   *
+   * 别和 `raw/section_09.txt:L42` 那种写法混着用 —— 后者指的是 raw 切片文件，
+   * 而切片是派生物且不进版本库，PDF 才是权威源。
+   */
   sourceRef?: string;
   /** 改写结果 */
   result: string;

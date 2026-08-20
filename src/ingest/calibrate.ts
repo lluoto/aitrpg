@@ -11,7 +11,7 @@
 export interface FieldDiff {
   /** 字段路径，如 `scenes[farm_periphery].clues[trap_bear].description` */
   path: string;
-  kind: "missing" | "extra" | "changed" | "id-mismatch";
+  kind: "missing" | "extra" | "changed" | "id-mismatch" | "ref-mismatch";
   /** 基准侧的值（kind=extra 时无） */
   baseline?: unknown;
   /** 候选侧的值（kind=missing 时无） */
@@ -45,6 +45,35 @@ export interface DiffOptions {
    * 与当初按下标比较是同一个坑。
    */
   pairBy?: string[];
+
+  /**
+   * 引用字段：值是指向别处 id 的句柄，不是内容。
+   *
+   * 基准 `key_anti_theft.sceneId` 是 `police_evidence_room`，生成侧只会是 `scene_NN`。
+   * 按名字配上之后这些字段会全部报成 changed —— 但那不是生成器不准，
+   * 它是「id 是内部句柄」往下再走一层：sceneId 是指向 id 的引用。
+   * 不摘出去，changed 就混进了不该算的东西，而 connections[].targetSceneId
+   * 只会让这个污染更重。
+   *
+   * **只拦对象的键。** 拦截点在 walk 的对象分支上，按键名匹配。
+   * 所以 connections[].targetSceneId 管得住（元素是对象，它是对象的一个键），
+   * 而 npcIds[] 这种「引用本身就是数组元素」的形态管不住 —— 那条路走 walkArray，
+   * 没有可用配对键就退回按下标比两个标量，键名在那儿压根不存在。
+   * 把 "npcIds" 写进本列表不会有任何效果（拦截还要求两侧是字符串，那里 b 是整个数组）。
+   * 要处理它得在数组一侧另做一套，别在这儿找。
+   *
+   * `id` 不要放进来 —— 它已由 id-mismatch 处理。放进来的后果不是重复报，
+   * 而是**错分类**：按名字配上时 skipKey 在拦截之前就把 id 摘掉了、根本走不到这儿，
+   * 按 id 配上时两个 id 必然相等；真受影响的是「退回按下标」和「普通非数组对象」两条路，
+   * 那里本该报 changed 的会变成 ref-mismatch。
+   */
+  refFields?: string[];
+}
+
+/** 逐层传递的比对配置 */
+interface WalkCtx {
+  pairBy: string[];
+  refFields: string[];
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -117,7 +146,7 @@ function walk(
   candidate: unknown,
   path: string,
   out: FieldDiff[],
-  pairBy: string[],
+  ctx: WalkCtx,
   skipKey?: string,
 ): void {
   // 两侧都当"没有"处理：ModuleData 里可选字段极多，
@@ -129,14 +158,28 @@ function walk(
   if (cMissing) { out.push({ path, kind: "missing", baseline }); return; }
 
   if (Array.isArray(baseline) && Array.isArray(candidate)) {
-    walkArray(baseline, candidate, path, out, pairBy);
+    walkArray(baseline, candidate, path, out, ctx);
     return;
   }
 
   if (isObj(baseline) && isObj(candidate)) {
     for (const k of new Set([...Object.keys(baseline), ...Object.keys(candidate)])) {
       if (k === skipKey) continue;
-      walk(baseline[k], candidate[k], join(path, k), out, pairBy);
+      const b = baseline[k];
+      const c = candidate[k];
+      // 引用字段只在「两侧都有值、且值不同」时拦截。
+      // 一侧缺失是真缺字段，非字符串是形状问题 —— 两者都该照常报，
+      // 交给下面的 walk 处理。
+      if (
+        ctx.refFields.includes(k) &&
+        typeof b === "string" && b !== "" &&
+        typeof c === "string" && c !== "" &&
+        b !== c
+      ) {
+        out.push({ path: join(path, k), kind: "ref-mismatch", baseline: b, candidate: c });
+        continue;
+      }
+      walk(b, c, join(path, k), out, ctx);
     }
     return;
   }
@@ -144,13 +187,13 @@ function walk(
   if (baseline !== candidate) out.push({ path, kind: "changed", baseline, candidate });
 }
 
-function walkArray(baseline: unknown[], candidate: unknown[], path: string, out: FieldDiff[], pairBy: string[]): void {
-  const keys = pickPairKeys(baseline, candidate, pairBy);
+function walkArray(baseline: unknown[], candidate: unknown[], path: string, out: FieldDiff[], ctx: WalkCtx): void {
+  const keys = pickPairKeys(baseline, candidate, ctx.pairBy);
 
   // 没有可用配对键时顺序就是身份，只能按下标
   if (keys.length === 0) {
     const n = Math.max(baseline.length, candidate.length);
-    for (let i = 0; i < n; i++) walk(baseline[i], candidate[i], `${path}[${i}]`, out, pairBy);
+    for (let i = 0; i < n; i++) walk(baseline[i], candidate[i], `${path}[${i}]`, out, ctx);
     return;
   }
 
@@ -197,11 +240,11 @@ function walkArray(baseline: unknown[], candidate: unknown[], path: string, out:
       const cid = keyOf(pair.candidate, "id");
       if (bid !== null && cid !== null) {
         if (bid !== cid) out.push({ path: `${p}.id`, kind: "id-mismatch", baseline: bid, candidate: cid });
-        walk(pair.baseline, pair.candidate, p, out, pairBy, "id");
+        walk(pair.baseline, pair.candidate, p, out, ctx, "id");
         continue;
       }
     }
-    walk(pair.baseline, pair.candidate, p, out, pairBy);
+    walk(pair.baseline, pair.candidate, p, out, ctx);
   }
 
   // 每一轮都没人认领的：路径段用首选键（默认就是 id）。
@@ -218,7 +261,10 @@ function walkArray(baseline: unknown[], candidate: unknown[], path: string, out:
  */
 export function diffValues(baseline: unknown, candidate: unknown, opts: DiffOptions = {}): FieldDiff[] {
   const out: FieldDiff[] = [];
-  walk(baseline, candidate, "", out, opts.pairBy ?? ["id"]);
+  walk(baseline, candidate, "", out, {
+    pairBy: opts.pairBy ?? ["id"],
+    refFields: opts.refFields ?? [],
+  });
   return out;
 }
 
@@ -237,18 +283,29 @@ export function formatDiff(diffs: FieldDiff[]): string {
   if (diffs.length === 0) return "✓ 无差异";
 
   const lines: string[] = [];
-  const byKind: Record<FieldDiff["kind"], number> = { missing: 0, extra: 0, changed: 0, "id-mismatch": 0 };
+  const byKind: Record<FieldDiff["kind"], number> = {
+    missing: 0, extra: 0, changed: 0, "id-mismatch": 0, "ref-mismatch": 0,
+  };
   for (const d of diffs) byKind[d.kind]++;
 
   lines.push(
-    `差异 ${diffs.length} 处 — changed ${byKind.changed} / missing ${byKind.missing} / extra ${byKind.extra} / id 不一致 ${byKind["id-mismatch"]}`,
+    `差异 ${diffs.length} 处 — changed ${byKind.changed} / missing ${byKind.missing} / extra ${byKind.extra} / id 不一致 ${byKind["id-mismatch"]} / 引用不一致 ${byKind["ref-mismatch"]}`,
   );
   lines.push("");
   for (const d of diffs) {
     if (d.kind === "changed") lines.push(`  [changed] ${d.path}\n      基准: ${show(d.baseline)}\n      生成: ${show(d.candidate)}`);
     else if (d.kind === "missing") lines.push(`  [missing] ${d.path}   基准有而生成缺: ${show(d.baseline)}`);
     else if (d.kind === "extra") lines.push(`  [extra]   ${d.path}   生成多出: ${show(d.candidate)}`);
-    else lines.push(`  [id 不一致] ${d.path}   基准 ${show(d.baseline)} ↔ 生成 ${show(d.candidate)}`);
+    else if (d.kind === "id-mismatch") lines.push(`  [id 不一致] ${d.path}   基准 ${show(d.baseline)} ↔ 生成 ${show(d.candidate)}`);
+    else if (d.kind === "ref-mismatch") lines.push(`  [引用不一致] ${d.path}   基准 ${show(d.baseline)} ↔ 生成 ${show(d.candidate)}`);
+    else {
+      // 每种 kind 都写明，末尾不留兜底 —— ref-mismatch 自己就是被上一个兜底接住、
+      // 一声不响印成 [id 不一致] 的，加进并集时谁也没察觉。把 d.kind 赋给 never，
+      // 下次往并集里加种类时这里当场编译不过，而不是等报告里印出个错标签才发现：
+      // 错标签不会让任何东西变红，它只会让读报告的人得出错结论。
+      const exhaustive: never = d.kind;
+      throw new Error(`未知的差异类型：${String(exhaustive)}`);
+    }
   }
   return lines.join("\n");
 }

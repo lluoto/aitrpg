@@ -287,3 +287,72 @@ describe("多键配对下没人认领的元素", () => {
     expect(d).toHaveLength(2);
   });
 });
+
+describe("引用字段", () => {
+  test("refFields 里的字段值不同 → ref-mismatch，不计入 changed", () => {
+    // sceneId 是指向 id 的引用，不是内容。生成侧只会是 scene_NN，
+    // 基准是手写意译 police_evidence_room，两者本就不会一样
+    const a = { items: [{ id: "key_anti_theft", name: "防盗门的钥匙", sceneId: "police_evidence_room" }] };
+    const b = { items: [{ id: "item_10", name: "防盗门的钥匙", sceneId: "scene_09" }] };
+    const d = diffValues(a, b, { pairBy: ["id", "name"], refFields: ["sceneId"] });
+    expect(d.filter((x) => x.kind === "changed")).toEqual([]);
+    expect(at(d, "items[防盗门的钥匙].sceneId")).toMatchObject({
+      kind: "ref-mismatch",
+      baseline: "police_evidence_room",
+      candidate: "scene_09",
+    });
+  });
+
+  test("不传 refFields 时该字段仍是 changed —— 默认行为不变", () => {
+    const a = { items: [{ id: "k", name: "钥匙", sceneId: "police_evidence_room" }] };
+    const b = { items: [{ id: "k", name: "钥匙", sceneId: "scene_09" }] };
+    expect(at(diffValues(a, b), "items[k].sceneId")?.kind).toBe("changed");
+  });
+
+  test("值相同则无差异", () => {
+    const a = { items: [{ id: "k", sceneId: "s1" }] };
+    const b = { items: [{ id: "k", sceneId: "s1" }] };
+    expect(diffValues(a, b, { refFields: ["sceneId"] })).toEqual([]);
+  });
+
+  test("一侧压根没有该字段仍报 missing —— 那是真缺字段，不是引用对不上", () => {
+    const a = { items: [{ id: "k", sceneId: "s1" }] };
+    const b = { items: [{ id: "k" }] };
+    expect(at(diffValues(a, b, { refFields: ["sceneId"] }), "items[k].sceneId")?.kind).toBe("missing");
+  });
+
+  test("值不是字符串就不拦截 —— 引用只可能是 id 字符串", () => {
+    const a = { items: [{ id: "k", sceneId: 1 }] };
+    const b = { items: [{ id: "k", sceneId: 2 }] };
+    expect(at(diffValues(a, b, { refFields: ["sceneId"] }), "items[k].sceneId")?.kind).toBe("changed");
+  });
+
+  test("一侧是空字符串就不拦截 —— 那是没填，不是指向了别处", () => {
+    // 拦截要两侧都是非空字符串，所以 "" 对上 "scene_09" 落回 changed。
+    // 这跟本文件既有的约定是同一条：keyOf 也把空字符串当作「没有这个键」。
+    // 而且报成 ref-mismatch 会掩盖真问题 —— 引用不一致是预期内的噪音、看的人会略过，
+    // 但空串是生成器没把这个引用填上，是真缺陷，必须留在 changed 里被看见
+    const a = { items: [{ id: "k", sceneId: "" }] };
+    const b = { items: [{ id: "k", sceneId: "scene_09" }] };
+    expect(at(diffValues(a, b, { refFields: ["sceneId"] }), "items[k].sceneId")?.kind).toBe("changed");
+  });
+
+  test("多个引用字段一起声明", () => {
+    const a = { x: { aId: "p", bId: "q" } };
+    const b = { x: { aId: "r", bId: "s" } };
+    const d = diffValues(a, b, { refFields: ["aId", "bId"] });
+    expect(d.filter((x) => x.kind === "ref-mismatch")).toHaveLength(2);
+  });
+
+  test("统计行报出条数，且该类有自己的渲染行", () => {
+    // 统计行来自 byKind 计数，渲染行来自那条 if/else 链，两者互不相干：
+    // 只查统计行，把 ref-mismatch 的渲染分支整个删掉它也还是绿的 ——
+    // 那时每条引用差异都会印成 [id 不一致]，报告在说假话而测试全过。
+    // 所以这里连渲染出来的原文一起钉住
+    const a = { items: [{ id: "k", sceneId: "s1" }] };
+    const b = { items: [{ id: "k", sceneId: "s2" }] };
+    const txt = formatDiff(diffValues(a, b, { refFields: ["sceneId"] }));
+    expect(txt).toContain("差异 1 处 — changed 0 / missing 0 / extra 0 / id 不一致 0 / 引用不一致 1");
+    expect(txt).toContain("  [引用不一致] items[k].sceneId   基准 s1 ↔ 生成 s2");
+  });
+});
