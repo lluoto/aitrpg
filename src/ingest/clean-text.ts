@@ -7,6 +7,10 @@
 //   2. 长句在栏宽处被硬换行切断 —— "很简单的木质栅栏，\n上面的油漆都已经"
 //
 // 第 2 条尤其要紧：断在半句上的文本喂给 LLM，它会把两个半句当成两件事。
+//
+// 第 2 条有两个作用域：页内由 cleanPageText 处理，**跨页由 joinPages 处理**。
+// 分开是因为上游给的就是逐页文本，而句子不认页边界 —— 只做页内的话，
+// 正好断在页末的那些句子永远接不回来（实测全书 4 处）。
 
 /**
  * 句子终止标记。
@@ -95,4 +99,50 @@ export function cleanPageText(raw: string): string {
   }
 
   return out.join("").trim();
+}
+
+/**
+ * 跨页续行：把上一页末行没说完的话与下一页首行接起来。
+ *
+ * cleanPageText 的作用域是**单页**，而句子会跨页。实测第 6 页的最后一行就是
+ * `▶防盗门的钥匙：…这种先进防盗门可`，「不多见。」在第 7 页开头 ——
+ * 页内的行连接永远接不到它。下游 sectionize 于是把那一行当成场景正文，
+ * 条目正文就缺了后半截，抽取器再从缺半截的正文里抽机制。
+ * 全书这样的地方 4 处（实测见 tools/_diag-absorb.ts）。
+ *
+ * 判据直接用页内那一套 shouldJoin，不重写：同样的两行，
+ * 落在页中间还是正好跨页纯属排版偶然，两种情况必须得到同一个结果。
+ *
+ * **副作用要知道**：被接走的那一行从下一页消失，该页后续行的行号往上挪一格。
+ * SourceRef.line 是清洗后的行号，所以它会变 —— 那是内部句柄，代码改动本就允许它变。
+ * 而条目自身的位置不变（它在上一页），所以条目的键不受影响。
+ *
+ * 幂等：接完之后上一页末行以终止标点收尾，再跑一次不会再动。
+ */
+export function joinPages(pages: string[]): string[] {
+  const out = [...pages];
+  // 目前持有「末行」的那一页。不能直接看 i-1：连着两页都要接的时候，
+  // 中间那页会被掏空，末行仍留在更前面那一页上。
+  let tail = -1;
+
+  for (let i = 0; i < out.length; i++) {
+    if ((out[i] as string).trim() === "") continue;
+
+    if (tail >= 0) {
+      const prevLines = (out[tail] as string).split("\n");
+      const curLines = (out[i] as string).split("\n");
+      const prevLast = (prevLines[prevLines.length - 1] ?? "").trim();
+      const curFirst = (curLines[0] ?? "").trim();
+
+      if (prevLast !== "" && curFirst !== "" && shouldJoin(prevLast, curFirst)) {
+        prevLines[prevLines.length - 1] = prevLast + curFirst;
+        out[tail] = prevLines.join("\n");
+        out[i] = curLines.slice(1).join("\n");
+      }
+    }
+
+    if ((out[i] as string).trim() !== "") tail = i;
+  }
+
+  return out;
 }

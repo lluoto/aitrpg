@@ -7,7 +7,7 @@
 // 不清洗直接喂下游，句子是断的，数值旁边挂着制表符。
 
 import { describe, test, expect } from "bun:test";
-import { cleanPageText } from "../ingest/clean-text";
+import { cleanPageText, joinPages } from "../ingest/clean-text";
 
 describe("制表符包裹", () => {
   test("行内数字两侧的制表符收成单个空格", () => {
@@ -131,5 +131,75 @@ describe("空输入", () => {
   });
   test("纯空白返回空串", () => {
     expect(cleanPageText("  \n\t\n  ")).toBe("");
+  });
+});
+
+describe("跨页续行（joinPages）", () => {
+  // cleanPageText 的作用域是单页，而句子会跨页。实测四处：
+  // 第 6 页最后一行就是 `▶防盗门的钥匙：…这种先进防盗门可`，
+  // 「不多见。」在第 7 页开头，页内的行连接永远接不到它。
+  // 下游 sectionize 于是把它当成场景正文，条目正文就缺了后半截。
+
+  test("上一页末行没有终止标点 → 与下一页首行接起来", () => {
+    const pages = ["▶防盗门的钥匙：用来打开谷仓的门。这种先进防盗门可", "不多见。\n下一段正文。"];
+    expect(joinPages(pages)).toEqual([
+      "▶防盗门的钥匙：用来打开谷仓的门。这种先进防盗门可不多见。",
+      "下一段正文。",
+    ]);
+  });
+
+  test("上一页末行话说完了 → 不接", () => {
+    const pages = ["这一段说完了。", "新的一段。"];
+    expect(joinPages(pages)).toEqual(["这一段说完了。", "新的一段。"]);
+  });
+
+  test("下一页首行是新条目 → 不接", () => {
+    // 条目必须独占一行，它是下游切分的锚点
+    const pages = ["上一段没有句号收尾", "▶捕兽夹：体形小于 35 的角色会免疫"];
+    expect(joinPages(pages)).toEqual(["上一段没有句号收尾", "▶捕兽夹：体形小于 35 的角色会免疫"]);
+  });
+
+  test("上一页末行是标签 → 不接，它引出的是下面整块", () => {
+    const pages = ["维修间：", "这里堆着工具。"];
+    expect(joinPages(pages)).toEqual(["维修间：", "这里堆着工具。"]);
+  });
+
+  test("下一页首行是短标签（场景名）→ 不接，别被上一页吸走", () => {
+    const pages = ["上一段没有句号收尾", "农场主别墅：\n这里的正文。"];
+    expect(joinPages(pages)).toEqual(["上一段没有句号收尾", "农场主别墅：\n这里的正文。"]);
+  });
+
+  test("接完之后下一页只剩一行也不会留空页", () => {
+    const pages = ["没有收尾", "补上。"];
+    expect(joinPages(pages)).toEqual(["没有收尾补上。", ""]);
+  });
+
+  test("判据与页内用的是同一个 —— 不重写一份", () => {
+    // 页内 cleanPageText 对同样两行的处理，与跨页 joinPages 必须一致，
+    // 否则「在页中间」和「正好跨页」会得到不同结果，而那纯粹是排版偶然
+    const inPage = cleanPageText("这种先进防盗门可\n不多见。");
+    const crossPage = joinPages(["这种先进防盗门可", "不多见。"]).join("").trim();
+    expect(crossPage).toBe(inPage);
+  });
+
+  test("单页原样返回", () => {
+    expect(joinPages(["只有一页，没有收尾"])).toEqual(["只有一页，没有收尾"]);
+  });
+
+  test("空数组与空页不炸", () => {
+    expect(joinPages([])).toEqual([]);
+    expect(joinPages(["", ""])).toEqual(["", ""]);
+    expect(joinPages(["没有收尾", ""])).toEqual(["没有收尾", ""]);
+  });
+
+  test("幂等：接过一次再接不变", () => {
+    // 接完之后上一页末行以句号收尾，第二次就不该再动
+    const once = joinPages(["这种先进防盗门可", "不多见。\n后面还有。"]);
+    expect(joinPages(once)).toEqual(once);
+  });
+
+  test("连着两页都要接也处理得了", () => {
+    const pages = ["第一页没收尾", "第二页也没收尾", "第三页补上。"];
+    expect(joinPages(pages)).toEqual(["第一页没收尾第二页也没收尾第三页补上。", "", ""]);
   });
 });
