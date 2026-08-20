@@ -52,10 +52,20 @@ export interface DiffOptions {
    * 基准 `key_anti_theft.sceneId` 是 `police_evidence_room`，生成侧只会是 `scene_NN`。
    * 按名字配上之后这些字段会全部报成 changed —— 但那不是生成器不准，
    * 它是「id 是内部句柄」往下再走一层：sceneId 是指向 id 的引用。
-   * 不摘出去，changed 就混进了不该算的东西，而 connections[].targetSceneId、
-   * npcIds[] 只会让这个污染更重。
+   * 不摘出去，changed 就混进了不该算的东西，而 connections[].targetSceneId
+   * 只会让这个污染更重。
    *
-   * `id` 不要放进来 —— 它已由 id-mismatch 处理，重叠会同一件事报两遍。
+   * **只拦对象的键。** 拦截点在 walk 的对象分支上，按键名匹配。
+   * 所以 connections[].targetSceneId 管得住（元素是对象，它是对象的一个键），
+   * 而 npcIds[] 这种「引用本身就是数组元素」的形态管不住 —— 那条路走 walkArray，
+   * 没有可用配对键就退回按下标比两个标量，键名在那儿压根不存在。
+   * 把 "npcIds" 写进本列表不会有任何效果（拦截还要求两侧是字符串，那里 b 是整个数组）。
+   * 要处理它得在数组一侧另做一套，别在这儿找。
+   *
+   * `id` 不要放进来 —— 它已由 id-mismatch 处理。放进来的后果不是重复报，
+   * 而是**错分类**：按名字配上时 skipKey 在拦截之前就把 id 摘掉了、根本走不到这儿，
+   * 按 id 配上时两个 id 必然相等；真受影响的是「退回按下标」和「普通非数组对象」两条路，
+   * 那里本该报 changed 的会变成 ref-mismatch。
    */
   refFields?: string[];
 }
@@ -287,7 +297,15 @@ export function formatDiff(diffs: FieldDiff[]): string {
     else if (d.kind === "missing") lines.push(`  [missing] ${d.path}   基准有而生成缺: ${show(d.baseline)}`);
     else if (d.kind === "extra") lines.push(`  [extra]   ${d.path}   生成多出: ${show(d.candidate)}`);
     else if (d.kind === "id-mismatch") lines.push(`  [id 不一致] ${d.path}   基准 ${show(d.baseline)} ↔ 生成 ${show(d.candidate)}`);
-    else lines.push(`  [引用不一致] ${d.path}   基准 ${show(d.baseline)} ↔ 生成 ${show(d.candidate)}`);
+    else if (d.kind === "ref-mismatch") lines.push(`  [引用不一致] ${d.path}   基准 ${show(d.baseline)} ↔ 生成 ${show(d.candidate)}`);
+    else {
+      // 每种 kind 都写明，末尾不留兜底 —— ref-mismatch 自己就是被上一个兜底接住、
+      // 一声不响印成 [id 不一致] 的，加进并集时谁也没察觉。把 d.kind 赋给 never，
+      // 下次往并集里加种类时这里当场编译不过，而不是等报告里印出个错标签才发现：
+      // 错标签不会让任何东西变红，它只会让读报告的人得出错结论。
+      const exhaustive: never = d.kind;
+      throw new Error(`未知的差异类型：${String(exhaustive)}`);
+    }
   }
   return lines.join("\n");
 }

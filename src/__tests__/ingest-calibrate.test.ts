@@ -327,6 +327,16 @@ describe("引用字段", () => {
     expect(at(diffValues(a, b, { refFields: ["sceneId"] }), "items[k].sceneId")?.kind).toBe("changed");
   });
 
+  test("一侧是空字符串就不拦截 —— 那是没填，不是指向了别处", () => {
+    // 拦截要两侧都是非空字符串，所以 "" 对上 "scene_09" 落回 changed。
+    // 这跟本文件既有的约定是同一条：keyOf 也把空字符串当作「没有这个键」。
+    // 而且报成 ref-mismatch 会掩盖真问题 —— 引用不一致是预期内的噪音、看的人会略过，
+    // 但空串是生成器没把这个引用填上，是真缺陷，必须留在 changed 里被看见
+    const a = { items: [{ id: "k", sceneId: "" }] };
+    const b = { items: [{ id: "k", sceneId: "scene_09" }] };
+    expect(at(diffValues(a, b, { refFields: ["sceneId"] }), "items[k].sceneId")?.kind).toBe("changed");
+  });
+
   test("多个引用字段一起声明", () => {
     const a = { x: { aId: "p", bId: "q" } };
     const b = { x: { aId: "r", bId: "s" } };
@@ -334,9 +344,15 @@ describe("引用字段", () => {
     expect(d.filter((x) => x.kind === "ref-mismatch")).toHaveLength(2);
   });
 
-  test("统计行列出引用不一致的条数", () => {
+  test("统计行报出条数，且该类有自己的渲染行", () => {
+    // 统计行来自 byKind 计数，渲染行来自那条 if/else 链，两者互不相干：
+    // 只查统计行，把 ref-mismatch 的渲染分支整个删掉它也还是绿的 ——
+    // 那时每条引用差异都会印成 [id 不一致]，报告在说假话而测试全过。
+    // 所以这里连渲染出来的原文一起钉住
     const a = { items: [{ id: "k", sceneId: "s1" }] };
     const b = { items: [{ id: "k", sceneId: "s2" }] };
-    expect(formatDiff(diffValues(a, b, { refFields: ["sceneId"] }))).toContain("引用不一致 1");
+    const txt = formatDiff(diffValues(a, b, { refFields: ["sceneId"] }));
+    expect(txt).toContain("差异 1 处 — changed 0 / missing 0 / extra 0 / id 不一致 0 / 引用不一致 1");
+    expect(txt).toContain("  [引用不一致] items[k].sceneId   基准 s1 ↔ 生成 s2");
   });
 });
