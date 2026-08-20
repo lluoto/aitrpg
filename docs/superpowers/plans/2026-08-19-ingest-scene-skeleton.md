@@ -1044,7 +1044,7 @@ import { readFileSync } from "fs";
 import { loadConfig } from "../src/config";
 import { LLMClient } from "../src/llm/client";
 import { extractPages } from "../src/ingest/pdf-source";
-import { cleanPageText } from "../src/ingest/clean-text";
+import { cleanPageText, joinPages } from "../src/ingest/clean-text";
 import { sectionize } from "../src/ingest/sectionize";
 import { toClassifyInputs, classifySections } from "../src/ingest/classify-sections";
 import { assignSceneIds } from "../src/ingest/scene-id";
@@ -1056,7 +1056,12 @@ const PDF = "C:\\aitrpg\\MikuFan-普瑞米尔的谷仓\\普瑞米尔的谷仓 ve
 const OUT = "tools/ingest-out";
 
 const raw = await extractPages(new Uint8Array(readFileSync(PDF)));
-const pages = raw.map(cleanPageText);
+// 先逐页清洗，再把跨页断掉的句子接起来。**两段都要**：
+// 只做前者，正好断在页末的句子永远接不回来（实测 5 处页边界，其中 4 处的
+// 上一行是 ▶ 条目，`▶防盗门的钥匙` 的「不多见。」就落在下一页开头）。
+// tools/ 被 .gitignore 排除，这一行是这个组合唯一进版本库的记录 ——
+// 照着重建 runner 的时候漏掉 joinPages，测试会全绿而修好的东西悄悄停摆。
+const pages = joinPages(raw.map(cleanPageText));
 const sections = sectionize(pages);
 const inputs = toClassifyInputs(sections);
 
