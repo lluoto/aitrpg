@@ -694,6 +694,20 @@ id 不同的单列成 `id-mismatch`，不去污染 changed 那个计数。实跑
 
 **当前最好成绩：F1 0.66 / 正确边可达 17/20**（起点 F1 0.00 / 可达 1）。
 
+⚠️ **这是实验脚本的成绩，不是管线的成绩。** 读取层至今一条边都不产 ——
+`src/ingest/build-scenes.ts:95` 硬写 `connections: []`，推图只活在
+`tools/_exp-conn-infer.ts` 里，从没接进 `build-scenes`。
+端到端跑出来的 `ModuleData` 里 connections 仍然是 0。
+要把它变成管线的成绩得改行为，开分支走评审。
+
+**顺带查清了一件相关的事**：断开**不是**线索门禁造成的。
+门禁机制是有的（`src/module/types.ts:310-312` 的 `requiredClueId` / `checkRequired`，
+运行层在 `src/world/module-loader.ts:60` 据此置 `locked`），
+但手写基准 `src/module/barn-of-premier.ts` 里这两个字段**用了 0 处**——
+44 条边全部无门禁，`condition` 只是给人看的描述文字。
+所以「算可达性时无视条件」这个口径是对的，不存在虚高。
+（若将来读取层开始产 `requiredClueId`，判据得跟着改。）
+
 **还没验的**：两段式——先让模型给场景的从属层级，再由层级机械导出边。
 以及缺口追问目前是每个分量问一次（这次 5 次调用），能不能合并成一次。
 
