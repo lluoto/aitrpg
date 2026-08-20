@@ -62,6 +62,9 @@ const TOOLS_KEY_ALLOWLIST = new Set([
   // 约定与 `_run-ingest.ts` 相同 —— **键只在两次分类都返回之后才读**，
   // 文件里有一行 `到这里为止没读过评分键` 标着分界。同样是约定不是保证。
   "_exp-clue-followup.ts",
+  // `_exp-line-attribution.ts` —— 检验「同页续句归属交给 LLM」能否把分类推到 33/33。
+  // 与上一条同样的约定与同样的残余风险：**键只在全部分类返回之后才读**。
+  "_exp-line-attribution.ts",
 ]);
 
 /**
