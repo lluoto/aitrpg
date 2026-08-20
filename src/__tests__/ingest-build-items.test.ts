@@ -173,6 +173,68 @@ describe("无名条目", () => {
   });
 });
 
+describe("产出了但可疑的物品", () => {
+  test("description 为空仍产出，但要报数 —— 没有描述的物品没法叙事", () => {
+    // 实跑 item_20（p8:L6「抽屉里的关于***号农场的转购协议」）就是这个形状：
+    // ▶ 行有名字、冒号后什么都没有。这种多半是分块产物，得看见。
+    const r = buildItems(
+      [input("p8:L6", "抽屉里的转购协议", "")],
+      kinds([["p8:L6", "item"]]),
+      ids([["p8:L6", "item_20"]]),
+    );
+    // 行为不变：物品照样产出。这条 warning 说的是「放过去了」，不是「丢掉了」
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0]?.description).toBe("");
+    // 整条列表比对，不用 join().toContain("1")：那种写法在报成 11 / 21 时照样绿
+    expect(r.warnings).toEqual([
+      "1 个条目产出了物品但 description 为空（▶ 行只有名字没有正文），已照原样产出",
+    ]);
+  });
+
+  test("无名条目已按「没有名字」报过，不再重复计进空描述 —— 一条输入只报一次", () => {
+    // name 与 text 双空的条目在 nameless 那关就 continue 了，压根没成为物品。
+    // 空描述这个数只数「产出了的」，不然同一条输入会在两个数里各占一席，
+    // 读的人会以为有两条问题条目。
+    const r = buildItems(
+      [input("p4:L12", "", "")],
+      kinds([["p4:L12", "item"]]),
+      ids([["p4:L12", "item_01"]]),
+    );
+    expect(r.items).toEqual([]);
+    expect(r.warnings).toEqual(["1 个条目被判成物品/陷阱但没有名字，已跳过"]);
+  });
+
+  test("重名物品报一条 warning 并点出名字 —— 校准器按 name 配对，重名会有一个报成 extra", () => {
+    // 实跑的 item_14 / item_15 都叫「驾驶证」：原文确实写了两遍，基准只收一次。
+    // 只报个数字的话，读的人没法把它找出来；兄弟模块（buildScenes 的重名标题）
+    // 也是把名字写进文案的，跟着那个口径。
+    const r = buildItems(
+      [input("p6:L17", "驾驶证", "住址甲"), input("p7:L12", "驾驶证", "住址乙")],
+      kinds([["p6:L17", "item"], ["p7:L12", "item"]]),
+      ids([["p6:L17", "item_14"], ["p7:L12", "item_15"]]),
+    );
+    // 行为不变：本轮不去重，两个都产出
+    expect(r.items.map((i) => i.id)).toEqual(["item_14", "item_15"]);
+    // 先数条数再看内容：每个重名条目各报一条（这里就是两条）的实现，
+    // 在 join().toContain("驾驶证") 下同样绿
+    const dup = r.warnings.filter((w) => w.includes("驾驶证"));
+    expect(dup).toHaveLength(1);
+    expect(dup[0]).toBe(
+      "物品名「驾驶证」出现 2 次；校准器按 name 配对，其中一个会报成 extra，那不是幻觉。本轮不去重，两个都产出",
+    );
+  });
+
+  test("名字各不相同就不报重名 —— 这个数不能一有物品就响", () => {
+    const r = buildItems(
+      [input("p1:L1", "钥匙", "a"), input("p1:L2", "照片", "b")],
+      kinds([["p1:L1", "item"], ["p1:L2", "item"]]),
+      ids([["p1:L1", "item_01"], ["p1:L2", "item_02"]]),
+    );
+    expect(r.items).toHaveLength(2);
+    expect(r.warnings).toEqual([]);
+  });
+});
+
 describe("调用契约", () => {
   test("条目的 key 不在 ids 里直接抛 —— 那是编程错误", () => {
     expect(() => buildItems([input("p1:L1", "钥匙", "x")], kinds([["p1:L1", "item"]]), ids([]))).toThrow();

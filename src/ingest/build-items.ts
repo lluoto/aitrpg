@@ -14,7 +14,11 @@ export interface BuildItemsResult {
   items: ModuleItem[];
   /** 陷阱抽取的改写留痕，path 已 rebase 到根 */
   provenance: Provenance[];
-  /** 跳过的条目、抽不到机制的陷阱 —— 不静默丢东西 */
+  /**
+   * 跳过的条目、抽不到机制的陷阱、产出了但可疑的物品 —— 不静默丢东西，
+   * 也不静默放东西过去。后者原先没人报：空描述和重名都是照产不误、report 里一片空白，
+   * 而它们恰好是最需要有人看一眼的两种形状。
+   */
   warnings: string[];
 }
 
@@ -50,6 +54,10 @@ export function buildItems(
   let unclassified = 0;
   let nameless = 0;
   let noMech = 0;
+  let emptyDesc = 0;
+  // 只统计**真产出了**的物品的名字。放在循环外面按 name 计数，是因为重名的两条
+  // 各自独立、可能隔着十几个条目，边走边比对没法覆盖。
+  const nameCount = new Map<string, number>();
 
   for (const input of inputs) {
     const id = ids.get(input.key);
@@ -91,12 +99,36 @@ export function buildItems(
       }
     }
 
+    // 以下两个数说的是「产出了什么」，不是「跳过了什么」，所以记在这儿 ——
+    // item 已经建齐、紧接着就 push，走到这一行的条目必定进 items。
+    // 无名条目在上面那关已经 continue 了，不会在这里再被算一次：
+    // 一条输入只该出现在一个数里，否则读的人会以为有两条问题条目。
+
+    // 名字有、冒号后什么都没有的 ▶ 行（实跑 p8:L6「抽屉里的关于***号农场的转购协议」）。
+    // 没有描述的物品没法叙事，多半是分块产物，值得看一眼。
+    // text 在 sectionize 那层已经 trim 过（`sectionize.ts:78-79`），所以精确比空串就够，
+    // 与上面 name === "" 同一口径。
+    if (item.description === "") emptyDesc++;
+    nameCount.set(item.name, (nameCount.get(item.name) ?? 0) + 1);
+
     items.push(item);
   }
 
   if (unclassified > 0) warnings.push(`${unclassified} 个条目没有分类结果，已跳过`);
   if (nameless > 0) warnings.push(`${nameless} 个条目被判成物品/陷阱但没有名字，已跳过`);
   if (noMech > 0) warnings.push(`${noMech} 个陷阱条目一条机制都抽不到，按纯叙事处理（不带 trap 字段）`);
+  // 注意这两条 warning 的语气：说的是「放过去了，你看一眼」，不是「已丢弃」。
+  // 空描述的物品照样在 items 里，重名的两个也都在 —— 去重是个判断，本轮没做。
+  if (emptyDesc > 0) {
+    warnings.push(`${emptyDesc} 个条目产出了物品但 description 为空（▶ 行只有名字没有正文），已照原样产出`);
+  }
+  // 点出名字而不是只报个数：报数说明「有重名」，名字才让人找得到它。
+  // 兄弟模块的重名标题（`build-scenes.ts` 那条）也是这个写法。
+  for (const [name, n] of nameCount) {
+    if (n > 1) {
+      warnings.push(`物品名「${name}」出现 ${n} 次；校准器按 name 配对，其中一个会报成 extra，那不是幻觉。本轮不去重，两个都产出`);
+    }
+  }
 
   return { items, provenance, warnings };
 }
