@@ -32,9 +32,18 @@ describe("prompt 构建", () => {
     expect(p.length).toBeLessThan(2000);
   });
 
-  test("四个类别都在 prompt 里说明", () => {
+  test("五个类别都在 prompt 里说明", () => {
     const p = buildClassifyPrompt(SECS);
-    for (const k of ["scene", "npc", "structure", "rule"]) expect(p).toContain(k);
+    for (const k of ["scene", "npc", "structure", "rule", "item"]) expect(p).toContain(k);
+  });
+
+  // item 这一类是为「奇怪的卡片」「绑架犯的报道」这种块加的 —— 它们在原来的
+  // 四个格子里没有正确答案，只能挤进 scene。光在枚举里加一个词不够，
+  // 得给模型一条能判的界线，否则它照样往 scene 里放。
+  test("给出 scene 与 item 的判别界线，不能只列类别名", () => {
+    const p = buildClassifyPrompt(SECS);
+    expect(p).toContain("走进去");
+    expect(p).toContain("拿起来");
   });
 
   test("要求纯 JSON 输出 —— 混着解释文字会让解析器难做", () => {
@@ -49,6 +58,13 @@ describe("响应解析", () => {
     const m = parseClassifyResponse('{"农场外围":"scene","菲碧·特里坎":"npc","附录":"structure"}', titles);
     expect(m.get("农场外围")).toBe("scene");
     expect(m.get("菲碧·特里坎")).toBe("npc");
+  });
+
+  // 新类别得真能被解析器认下来。VALID 是原样精确比对的，
+  // 枚举里漏加一个词，模型答对了也会被静默丢弃 —— 表现成「模型没分类」。
+  test("item 类别能被解析", () => {
+    const m = parseClassifyResponse('{"农场外围":"item"}', titles);
+    expect(m.get("农场外围")).toBe("item");
   });
 
   test("代码围栏包裹也能解析 —— 模型很爱加 ```json", () => {
