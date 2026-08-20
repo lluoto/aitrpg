@@ -91,10 +91,15 @@ describe("type 由规则定", () => {
     expect(t("住宅钥匙")).toBe("key");
   });
 
-  test("名字含「照片/证/文件」→ document", () => {
+  // 名字写全，不写成「证」：规则认的是「驾驶证」「证件」这两个整词，
+  // 单字「证」不在里面 —— 有人照着旧名字加一条「结婚证」，会拿到 loot 而不是 document。
+  // 规则本身没错，单字「证」加不得：那会把「证物室」也一并吞进来。
+  test("名字含「照片/驾驶证/证件/文件/协议/日记/信件」→ document", () => {
     expect(t("农场的照片")).toBe("document");
     expect(t("驾驶证")).toBe("document");
     expect(t("老旧文件")).toBe("document");
+    // 单字「证」不命中，钉住上面那句话
+    expect(t("结婚证")).toBe("loot");
   });
 
   test("都不中 → loot", () => {

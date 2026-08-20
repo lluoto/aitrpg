@@ -79,6 +79,14 @@ function normalizeKey(k: string): string {
  *
  * 认不出的一律丢弃，不做兜底猜测：把不认识的东西默认成 scene，
  * 会让分类结果虚高而没人察觉——宁可少认，也不要悄悄多认。
+ *
+ * 值这一侧是**故意**精确比对（`VALID.includes(v)` 原样比，不 trim、不转小写、
+ * 不把 `-` 当 `_`），与兄弟模块 classify-items 的 normalizeKind 不对称。
+ * 这个不对称是留着的，不是漏改：本步已公布的实跑成绩（命中 20 / 误报 7 / 漏报 0）
+ * 就是拿现在这个解析器认下来的东西量出来的。放宽写法等于放宽「哪些回答算数」，
+ * 那三个数会跟着动，而不重跑就没有新数去替换旧数 —— 于是公布的成绩变成一个
+ * 没人量过的数字。要改的前提是先重跑一次、把三个数重新量出来，连着数一起改；
+ * 只为了跟 classify-items 对称而对称，不值这个代价。
  */
 export function parseClassifyResponse(text: string, knownTitles: string[]): Map<string, SectionKind> {
   const out = new Map<string, SectionKind>();

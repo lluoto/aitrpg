@@ -38,6 +38,10 @@ export interface ItemInput {
  *
  * npc 块上的条目（菲碧·特里坎名下那两条）在基准里是 ModuleNPC.knowledge / .secrets，
  * 是另一轮的事；rule/structure 块上的条目不属于任何场景。查不到分类的块一律不取，不猜。
+ *
+ * 同一次跑里，传进来的 ids 必须与 buildScenes 收到的是**同一个数组**：
+ * 这里的 sceneId 取 `ids[i]`，而那个值正是 buildScenes 在同一下标上写进 Scene.id 的。
+ * 换一个等长的 string[] 照样过类型、照样跑完，只会把物品静默挂到别的场景名下。
  */
 export function toItemInputs(
   sections: Section[],

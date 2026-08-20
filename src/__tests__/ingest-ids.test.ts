@@ -1,8 +1,13 @@
 // 摄取管线 · id 分配
 //
 // id 是内部句柄，不与基准的手写意译 id 对齐（那是语义翻译，机械复现不了，
-// 把基准 id 喂进 prompt 又等于泄题）。所以这里能测的只有四条功能需求：
+// 把基准 id 喂进 prompt 又等于泄题）。所以 id 本身能测的只有四条功能需求：
 // 唯一、同输入稳定、纯 ASCII、与输入一一对应。
+//
+// 但这个文件测的不止 id：底下还钉了 sourceKey 的形态（`p9:L13`）。
+// 形态不是 id 的性质，钉在这儿是因为它同时充当 assignItemIds 的键与 Provenance.sourceRef，
+// 一变两处齐错。原来这段只写「能测的只有四条」，把它漏在了话外 ——
+// 正是本轮在收的那种「注释比代码少说一件事」。
 
 import { describe, test, expect } from "bun:test";
 import { assignSceneIds, assignItemIds } from "../ingest/ids";

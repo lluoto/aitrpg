@@ -24,6 +24,11 @@ export interface BuildScenesResult {
  *
  * ids 必须与 sections 等长且按下标对应（见 assignSceneIds）。
  * kinds 以标题为键，是 classifySections 的原样产出。
+ *
+ * 同一次跑里，传进来的 ids 必须与 toItemInputs 收到的是**同一个数组**：
+ * 物品的 sceneId 取的是 `ids[i]`，指的就是本函数在同一个下标上写进 Scene.id 的那个值。
+ * 换一个等长的 string[] 照样过类型、照样跑完，只会把物品静默挂到别的场景名下 ——
+ * 这种错不会抛，只会让校准报告里多出一批对不上的 sceneId。
  */
 export function buildScenes(
   sections: Section[],
@@ -47,12 +52,23 @@ export function buildScenes(
     // buildScenes 一条都不消费，所以它等于全部块上条目数的总和，与分类结果无关。
     //
     // 原来它在 kind === "scene" 之后加，于是挂在 structure/npc/rule 块上的条目
-    // （实跑里 16 条）连同 title 为空的前置块上的（`sectionize.ts:102-103`
-    // 明确给「任何标题之前的条目」留了位置）一起，无声无息地没了。
+    // （实跑里 2 条，都在 npc 块「菲碧·特里坎」名下 —— 基准把这两条收作
+    // ModuleNPC.knowledge / .secrets，不是物品）连同 title 为空的前置块上的
+    // （`sectionize` 里 ITEM_LINE 那一支的 `if (!cur)` 就是专为
+    // 「出现在任何标题之前的条目」留的位置）一起，无声无息地没了。
     // warnings 那个字段的注释写着「不静默丢东西」，那就得是这个口径。
     //
+    // 这里原先写的是 16，错在搬错了单位：16 是**有条目的块**数
+    // （实跑 15 个场景块加上那 1 个 npc 块），规格里那句「39 个 ▶ 条目落在 16 个块里」
+    // 说的是块。非场景块上的条目数是 2 —— report 自己就能驳倒 16：
+    // 全文 39 条、到物品那一步 37 条，差额就是这 2 条。
+    //
+    // 顺带把原来的 `sectionize.ts:102-103` 换成指名道姓：本轮往那个文件里插了
+    // sourceKey，那段代码已经挪到 116-117。行号每插一次就烂一次，不如指分支。
+    //
     // 口径保持「全部块」不变，但要知道它和下游对不上，且这不是 bug：
-    // 下游的 toItemInputs 只收 scene 块上的条目（`classify-items.ts:57-58`），
+    // 下游的 toItemInputs 只收 scene 块上的条目（那边 `kinds.get(s.title) !== "scene"`
+    // 那一关就把别的类挡在外面了），
     // 所以实跑里这条报 39、物品那一步只见到 37（2 条挂在 npc 块上）。
     // 留全部块口径是因为它是个不动的分母：场景口径的数会跟着分类器一起动，
     // 看到数变了会分不清是抽取有进展还是分类把块挪了个类。文案里点明「含非场景块」，
