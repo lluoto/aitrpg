@@ -14,6 +14,11 @@
 // 搜索空间从「整本 32 线索 + 10 物品 + 44 连接」缩到单场景的 0–4 个候选，
 // 于是每条判断都有依据、可复核。工作表在 tools/ingest-out/key-worksheet.txt。
 //
+// **这个办法有一处盲区，而且已经害过一次**：按场景切候选，就看不见**跨场景**的基准对象。
+// clue_adrian_wallet 挂在 `与艾德里安的会面` 名下，内容却是证物室与交火现场的物品 ——
+// 于是 p7:L11 那一栏的候选里根本没有它，第一版把那条标成了 `none`（详见该条注释）。
+// 复核时对「基准里没有对应对象」这类判断要额外去全本搜一遍，别只信工作表那一屏。
+//
 // 键是对着《普瑞米尔的谷仓 ver1.03.pdf》定的。PDF 换版本这份键就得重建 ——
 // 键用 `p{page}:L{line}`，而那个行号是**清洗后**的（见 sectionize 的 SourceRef.line），
 // 清洗逻辑一变行号就漂。重建时先跑工作表脚本。
@@ -21,13 +26,31 @@
 /** 一个条目在基准里实际是什么。一条可以同时是多个（`老旧文件` 就是 clue 又是 item）。 */
 export type ActualKind =
   | { kind: "clue"; id: string }
+  /**
+   * 也包含**陷阱**。基准没有独立的陷阱结构，陷阱就是 `ModuleItem.type === "trap"`，
+   * 所以这里不设 `trap` 变体 —— 这个字段记的是「基准里实际是什么」，基准里它就是 item。
+   *
+   * 但分类器的六种类别里**有** `trap`，而且它 4/4 全判对
+   * （见 docs/index-program.md §条目分类的混淆矩阵）。于是 `p9:L13`/`p9:L15`/`p9:L17`/`p10:L4`
+   * 这 4 条 —— 39 条里的 10% —— 只有在**算分时把 item id 解回 `ModuleItem.type`**
+   * 才算得中；直接拿 `trap` 去比 `item`，4 个正确答案会被记成 4 个 miss。
+   *
+   * 这条约定原先一个字都没落在代码里，全靠下一个人自己想到。现在由
+   * `ingest-scoring-key-boundary.test.ts` 的「陷阱条目 ↔ type=trap 的基准物品」双向钉住。
+   */
   | { kind: "item"; id: string }
   | { kind: "connection" }
   | { kind: "npc_knowledge" }
   | { kind: "npc_secret" }
   /** 分支叙事：基准里没有对应结构，引擎层也没有 */
   | { kind: "event" }
-  /** 基准根本没收这一条 —— 不是抽错，是基准的取舍 */
+  /**
+   * 基准根本没收这一条 —— 不是抽错，是基准的取舍。
+   *
+   * **「收了但只收一份」不算 `none`。** p7:L11 第一版就是这么错的：基准把两处的 `驾驶证`
+   * 去重成一个 `item:drivers_license`，被记成了「没收」，于是分类器一个正确答案被判成错。
+   * 真要表达去重，得另开字段（比如 `duplicateOf`），挤进这里就等于让报告再也分不开这两件事。
+   */
   | { kind: "none" };
 
 const clue = (id: string): ActualKind => ({ kind: "clue", id });
@@ -65,8 +88,13 @@ export const ENTRY_SCORING_KEY: Record<string, ActualKind[]> = {
   // ── 与艾德里安的会面 ──
   // 精神分析那条是 clue_adrian_psychoanalysis 的第一个 findMethod
   "p5:L15": [clue("clue_adrian_psychoanalysis")],
-  // 冷静后认罪并告知农庄 = clue_adrian_farm_location（findMethods 写的是 npc_dialogue）
-  "p5:L17": [clue("clue_adrian_farm_location")],
+  // 一条对两条线索：条目正文的前半句「如果他冷静了下来，会认罪，并宣言那些失踪案件都是
+  // 自己所做，但是要求调查员帮助他的妻女，并且他会告知藏匿的农庄」**逐字**就是
+  // clue_adrian_psychoanalysis 的 description 结尾（revelation 又复述了一遍）；
+  // 而「告知藏匿的农庄」本身另收成 clue_adrian_farm_location（findMethods 写的是 npc_dialogue）。
+  // 先前只标了后者 —— 按本键在 p8:L5 已经立下的先例（一条条目里有两个基准对象就标两个），
+  // 前者也该在。这不改准确率（分类器答的是 event，两种标法都算错），改的是覆盖数与一对多不变式。
+  "p5:L17": [clue("clue_adrian_psychoanalysis"), clue("clue_adrian_farm_location")],
   // 夺枪导致击毙：纯分支结局，基准里没有任何结构承载它
   "p6:L1": [event],
 
@@ -76,9 +104,23 @@ export const ENTRY_SCORING_KEY: Record<string, ActualKind[]> = {
   "p7:L3": [item("drivers_license")],
 
   // ── 交火现场 ──
-  // 驾驶证在这里是第二次出现。基准只在证物室收了一个，
-  // 而原文自己写着「在交火现场已经发现了这个东西也要去除」—— 所以这条是基准有意不收
-  "p7:L11": [none],
+  // 驾驶证在这里是第二次出现。**这条先前标成 `none`，是错的，而且是把一个正确答案判成了错**。
+  //
+  // 两处站不住：
+  //  1. `item:drivers_license` 是存在的（barn-of-premier.ts 的 buildItems）。它的 sceneId 是
+  //     police_evidence_room，所以**绑定**是单份 —— 但那个对象基准收了。去重不等于没收，
+  //     而 `none` 的语义写死在类型上：「基准根本没收这一条」。
+  //  2. 基准还专门为这条写了 clue_adrian_wallet：description 是「如果调查员从证物室获得
+  //     **或从交火现场找到**艾德里安的东西（**驾驶证**、住宅钥匙、农场照片等）」，
+  //     findMethods 是 `[{type:"item", …「从证物室/交火现场获取艾德里安的物品」}]`。
+  //     物件与场景基准都点名了。
+  //
+  // 分类器这条答的是 `item`，是对的；旧键把它记成了错。键是尺子，尺子上的错比被量的东西上的错更糟。
+  //
+  // 如果哪天真想要「一个基准对象只许被一个条目认领」这条计分口径，那是另一个字段的事
+  //（比如给标记加个 `duplicateOf`），不能挤进 `none` —— 挤进来就等于用「基准没收」
+  // 去表达「基准收了但只收一份」，两件事在报告里再也分不开。
+  "p7:L11": [item("drivers_license")],
   "p7:L12": [item("key_house")],
 
   // ── 艾德里安在镇子内的住宅 ──
