@@ -7,6 +7,7 @@
 // ⚠ 纯搬运，不改行为。判据是全量测试与主循环脚手架全绿。
 
 import type { ModuleNPC, NPCInstanceState } from "../module/types";
+import { occupationTagWeight } from "../agent/player-agent";
 import type { WorldState } from "../world/state";
 import { say } from "./narration";
 export function noteEntityMentions(text: string, w: WorldState): void {
@@ -144,4 +145,110 @@ export function splitLeadingStageDirection(text: string, speakerName?: string): 
  *
  * 这是把括号神态转成叙述句时带出来的：括号里写的是"（焦虑不安地搓着手说）"，
  * 切出来就自带了动词，而拼接方按"动作 + 说："的模板无条件补了一个。
+ */
+
+
+const OUTGOING = /健谈|外向|好奇|直率|急躁|热情|多话|爱管闲事|喜欢打听|口无遮拦/;
+const RESERVED = /寡言|沉默|内向|谨慎|冷淡|木讷|不善言辞|惜字如金|怕生/;
+
+/**
+ * 同伴的一句话 —— 两名调查员之间的非叙事性交流。
+ *
+ * 之前整局日志里，两个人从头到尾没对彼此说过一个字：所有输出要么是对 NPC 提问，
+ * 要么是引擎旁白。两个人一起走完全程，却像各自在演独角戏。
+ *
+ * 这类话故意不推动情节（模板也推动不了）：它的作用是让现场有两个人。
+ * 寡言的人给短句，外向的人给长句 —— 同一个发现，不同的人反应本来就不一样。
+ * 返回空串表示这次不说话，由调用方决定频率。
+ */
+export function partnerRemark(
+  personality: string,
+  kind: "clue" | "san",
+  avoid?: string,
+): string {
+  const reserved = RESERVED.test(personality) && !OUTGOING.test(personality);
+  const pools: Record<"clue" | "san", { terse: string[]; talkative: string[] }> = {
+    clue: {
+      terse: ["给我看看。", "嗯。收着。", "……先别动它。", "记下来。"],
+      talkative: [
+        "给我看看——这东西不该在这儿。",
+        "等等，你从哪儿翻出来的？",
+        "这跟刚才那位说的对得上。",
+        "我不喜欢这个。真的。",
+        "先记下来，回头我们对一遍。",
+      ],
+    },
+    san: {
+      terse: ["……你还好吧。", "站稳了。", "看着我。"],
+      talkative: [
+        "你脸色不对——先坐下，别硬撑。",
+        "深呼吸。我在这儿。",
+        "别看那边了，看我。",
+      ],
+    },
+  };
+  const pool = reserved ? pools[kind].terse : pools[kind].talkative;
+  const usable = pool.length > 1 ? pool.filter((x) => x !== avoid) : pool;
+  return usable[Math.floor(Math.random() * usable.length)];
+}
+
+/**
+ * 这一轮谁开口的倾向分。
+ *
+ * 原先是 askTurn % 2 硬轮流 —— 两个人像在排队发言，不像两个人在办案。
+ * 现在看三件事：
+ *   1. 职业对"交谈"这件事的偏好（复用 player-agent 的标签体系，不另写职业正则）
+ *   2. 性格是外向还是寡言（八项里的"特质"是自由文本，只能按词判）
+ *   3. 话题跟这个人的经历沾不沾边 —— 谁的背景里出现过这些词，谁更可能接话。
+ *      医生遇到伤情、记者遇到镇上的传闻，本来就该是他先开口。
+ * 最后减去"刚说过"的惩罚：话多的那个不该把整局包圆，寡言的也得有开口的时候。
+ */
+export function askerScore(
+  pc: { occupation: string; personality: string; background?: string },
+  topic: string,
+  recentAsks: number,
+): number {
+  let s = occupationTagWeight(pc.occupation, "talk") + occupationTagWeight(pc.occupation, "social");
+
+  const traits = pc.personality || "";
+  if (OUTGOING.test(traits)) s += 0.8;
+  if (RESERVED.test(traits)) s -= 0.8;
+
+  if (topic) {
+    const bg = `${pc.background ?? ""}${traits}`;
+    const words = [...new Set(topic.match(/[\u4e00-\u9fa5]{2,4}/g) ?? [])];
+    s += Math.min(words.filter((w) => bg.includes(w)).length, 3) * 0.5;
+  }
+
+  return s - recentAsks * 0.6;
+}
+
+/**
+ * 拆出台词开头的括号神态。
+ *
+ * 引擎会在台词前加一句叙述引导桥（"歪着头想了想，说："），而 LLM 常常在台词
+ * 开头又写一遍括号神态，两者叠起来就成了：
+ *   歪着头想了想，说："（歪着头想了想）加比哥哥半个月前就不回来了……"
+ * 同一个动作说两遍。
+ *
+ * 提示词里已经明令不要用括号起头，实测仍有约四成台词照写 —— 模型守不住的
+ * 约束就得由代码兜底。firstEncounter 那条路早就用 hasInlineAction 这么做了，
+ * 这里是把同一个约定补齐。
+ *
+ * 只切开头那一处；句中穿插的括号是有效的韵律信息（见 docs/voice-readiness.md
+ * 第五节），保留不动。
+ */
+export function speechLead(action: string): string {
+  const a = action.trim();
+  return /[说问道答]$/.test(a) ? `${a}：` : `${a}，说：`;
+}
+
+/** 剥离台词首尾引号 + 内部 LLM 残留的成对引号包裹（如 '整句'），避免"…'…。'"不对称 */
+/**
+ * NPC 说话时提到了什么 —— 把台词里出现过的叙事实体标成"已被提起"。
+ *
+ * 只扫 NPC 台词，故意不扫场景描述。特里坎家的原文描述里本来就写着院子一旁
+ * 停着一座拖车房，调查员进门就看见了；但那时它只是一座拖车。要等菲碧说出
+ * "他十五岁就搬到外面拖车住了"，它才变成"失踪男孩的房间"。
+ * 看见与认出是两件事，混在一起这段桥就没得演了。
  */
