@@ -2,6 +2,83 @@
 
 > 从 `docs/index-program.md` 拆出的 log，**只追加**。索引 `docs/notes/index.json`（重建：`bun scripts/docs-index.ts`）。
 
+### ✅ 拆 play-module：先抽播报层与 NPC 对话（2026-08-21）
+
+**起因是量出来的读取成本**，不是「看着太长」。`play-module.ts` 3537 行里
+`runModuleInner` 一个函数占 2615 行 / **74%**，里面按注释能切出近 30 个块，
+但**没有一个是能整段读进来的单元** —— 每次改动只能靠行号开窗口猜，
+窄了缺上下文、宽了浪费。本轮改伤势时读了 `applyDamage`/`check` 3 次、陷阱段 4 次，
+不是因为内容多，是因为没有「陷阱处理」这个可寻址的东西。
+
+这也是当初 `chooseConnection` 必须抽出闭包才能测的同一个病。
+
+**怎么定要抽哪一块**：写 `tools/_scan-free-idents.ts` 扫「用到但没在段内定义」的名字。
+第一版结果全是噪音（`the`/`driven`/`a` —— 注释里的英文单词被当成标识符），
+剥掉注释、字符串、模板串、正则字面量并排除属性访问之后才干净。
+**但正则扫描仍不可信**（`say` 时有时无），最后是拿 tsc 报错当权威清单：
+切出去 → `bun run typecheck` → 它精确列出 5 个解析不了的名字。
+
+**分了三层，依赖单向**：
+
+| 文件 | 行数 | 装什么 |
+|---|---|---|
+| `src/play/narration.ts` | 74 | `RunContext` / `runCtx` / `say` / `sayMech` / `divider` |
+| `src/play/npc-text.ts` | 148 | `analyseNpcData` / `splitLeadingStageDirection` / `stripOuterQuotes` / `noteEntityMentions` |
+| `src/play/npc-dialogue.ts` | 770 | 16 个对话生成函数 |
+
+播报层必须先抽：拆出去的子模块要够到 `say()`，留在 play-module 里它们就得
+反过来 import，成环。
+
+**唯一的真闭包依赖是 `nextRevealBridge`**（捕获 `lastRevealBridge`，
+用来避免连续两次用同一句引导语）。改成参数注入而不是把状态挪进 `RunContext` ——
+函数自己声明需要什么，比隐式捕获清楚。6 处调用点用脚本批量补，手改容易漏。
+
+**结果**：`runModuleInner` 2615 → 1873 行（74% → 71%），
+play-module 3537 → 2630 行。
+
+**纯搬运的判据**：1325 条测试 + typecheck + 主循环脚手架 10/10 通关。
+⚠ 只看通关率会误判 —— 头一轮 fuzz 出 10/10 True End，而之前量到过 6~8 True，
+差点当成回归；连跑三轮看到 7 True/3 Normal 才确认是固有方差
+（检定走 `Math.random`，不可播种）。**方差没量清之前不要下回归结论。**
+
+**顺带发现第二条无种子的假红**：`npc-reaction.test.ts` 的
+「高稳定性减少负面情绪」，全量里偶发红，单独跑 5/5 全过，全量重跑两次也全绿。
+仓里已知的那条在 `coc-engine.test.ts:131`，这是第二条。
+
+### ✅ 拆 play-module 续：检定层与陷阱（2026-08-21）
+
+接着上一条往下拆。这两块的性质跟 NPC 对话不同，值得分开记。
+
+| 文件 | 行数 | 装什么 |
+|---|---|---|
+| `src/play/checks.ts` | 130 | `check` / `sanCheck` / `applyDamage` / 伤势状态 / flavor |
+| `src/play/trap-util.ts` | 97 | `rollDice` / `trapsInScene` / `attributeValue` / `isMajorWound` |
+| `src/play/traps.ts` | 220 | 一次进场的陷阱结算 |
+
+**checks 那块零依赖**（自由标识符扫描的 B 列全是函数参数误报，
+`cur`/`engine`/`next`/`diff` 这种），直接搬走即可。
+
+**陷阱块相反，是真耦合**：要 `triggeredTraps`（哪些响过）、
+`stepCounter`（决定轮到谁踩）、两个调查员、`world`、`scene`、两个 SAN 引擎。
+它原本还不是函数而是个 `for` 循环，得包一层。
+
+**包的写法要紧**：参数用解构接住、**名字与原闭包里的完全一致**，
+于是循环体一个字都不用改 —— 搬运的正确性只取决于「参数是不是同一批东西」，
+不取决于逐行改写有没有手滑。177 行手工改引用必然出错。
+
+显式列出依赖本身也是收益：现在能拿假场景 + 假陷阱直接喂 `runSceneTraps`。
+
+**为什么要多一个 trap-util**：`traps.ts` 要用 `rollDice`/`trapsInScene`，
+它们还在 play-module 里，直接 import 就成环 —— 单独抽出来打断。
+
+**判据**：typecheck + 1325 测试 + `tools/_diag-wounds.ts` 40 局对照
+（伤害 74 次、分档同量级、「体质检定不被自身伤势罚」的不变量仍成立）。
+
+**累计**：play-module 3537 → 2267 行。但 `runModuleInner` 仍占 75%（1703 行）——
+**比例没降**，因为抽走的多是它外面的模块级函数与它里面耦合最松的块。
+剩下的是真主循环（场景推进、对话编排、战斗、结局），
+再往下拆得先想清楚状态怎么切，不是搬运能解决的。
+
 ### 自由行动解析：agent 支持，引擎扔掉，而 intent 判别撑不住（2026-08-20）
 
 问题是「要改成自由行动解析，现在的 subagent 支不支持」。逐层查下来：
