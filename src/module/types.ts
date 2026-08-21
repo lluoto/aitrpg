@@ -130,6 +130,21 @@ export interface TrapMechanics {
   /** 伤害骰，CoC 表达式（如 "1D4+1"）。省略 = 不造成伤害 */
   damage?: string;
   /**
+   * 事先发现检定：进入陷阱区时做侦查/灵感检定，成功则发现陷阱并绕开。
+   *
+   * 与 avoid 是两件事：detect 是"在踩中之前就发现了"，avoid 是"踩中瞬间闪开"。
+   * 成功发现后会自动设置 detectedByClue，后续不再触发。
+   */
+  detect?: {
+    skill: string;
+    difficulty: "regular" | "hard" | "extreme";
+    /** 夜晚或其他条件下的惩罚骰数（0 = 无惩罚） */
+    penaltyDice?: number;
+    /** 有特定背景（如军事经历）可改用此技能 */
+    alternativeSkill?: string;
+    alternativeBackground?: string;
+  };
+  /**
    * 触发瞬间的躲避检定：成功则完全不受影响。
    *
    * 与 escape 是两件事，不能合并——霰弹枪拌锁是"来得及闪开就没事"，

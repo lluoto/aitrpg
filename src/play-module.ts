@@ -22,6 +22,7 @@ import { sharedWorldModel, DEFAULT_CTHULHU_PATH } from "./world/world-model-load
 import { WorldModelIntegrator, type SceneContext as WmSceneContext } from "./world/world-model-integrator";
 
 import { writeFileSync, mkdirSync } from "fs";
+import { calcSeverity, severityLabel, woundPenaltyDice, type WoundSeverity } from "./combat/wound-effects";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 /**
@@ -736,9 +737,17 @@ async function createRandomPlayerSetup(
 }
 
 // ── 检定 ──
-function check(skillVal: number, pcName: string, skillLabel: string, diff: "regular"|"hard"|"extreme" = "regular"): CoCCheckResult {
-  const r = CoCEngine.skillCheck(skillVal, diff);
-  sayMech(`➜ ${pcName} 【${skillLabel}】 ${skillVal}% → d100=${r.roll} → ${SUCCESS_LEVEL_LABELS[r.successLevel]}`);
+// penaltyDice: 惩罚骰数量（来自伤势、环境等）
+function check(
+  skillVal: number,
+  pcName: string,
+  skillLabel: string,
+  diff: "regular" | "hard" | "extreme" = "regular",
+  penaltyDice: number = 0,
+): CoCCheckResult {
+  const r = CoCEngine.skillCheck(skillVal, diff, 0, penaltyDice);
+  const penaltyNote = penaltyDice > 0 ? ` [${penaltyDice}惩罚骰]` : "";
+  sayMech(`➜ ${pcName} 【${skillLabel}】 ${skillVal}%${penaltyNote} → d100=${r.roll} → ${SUCCESS_LEVEL_LABELS[r.successLevel]}`);
   return r;
 }
 
@@ -776,10 +785,23 @@ function sanCheck(pcName: string, engine: SanityEngine, sanCost: string): void {
 }
 
 // ── HP 伤害处理 ──
-function applyDamage(pc: CoCGeneratedCharacter, pcName: string, dmg: number): void {
+// 返回伤害等级，供调用方做重伤体质检定。
+// 伤害等级按**单次伤害 / maxHp** 计算，不是剩余 HP 比例。
+function applyDamage(pc: CoCGeneratedCharacter, pcName: string, dmg: number): WoundSeverity {
+  const severity = calcSeverity(dmg, pc.maxHp);
   pc.hp = Math.max(0, pc.hp - dmg);
-  const ratio = pc.hp / pc.maxHp;
-  sayMech(`❤ ${pcName} HP ${pc.hp + dmg} → ${pc.hp}${pc.hp <= 0 ? "（昏迷/濒死！）" : pc.hp <= pc.maxHp * 0.5 ? "（轻伤）" : ""}`);
+  const suffix = pc.hp <= 0
+    ? "（昏迷/濒死！）"
+    : severity !== "scratch" ? `（${severityLabel(severity)}）` : "";
+  sayMech(`❤ ${pcName} HP ${pc.hp + dmg} → ${pc.hp}${suffix}`);
+
+  // 重伤/致命伤惩罚骰提示
+  const penalty = woundPenaltyDice(severity);
+  if (penalty > 0 && pc.hp > 0) {
+    sayMech(`⚠ ${pcName} 因伤势承受 ${penalty} 惩罚骰，后续行动受阻。`);
+  }
+
+  return severity;
 }
 
 // ── 主流程 ──
@@ -2517,6 +2539,32 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
         continue;
       }
 
+      // 事先发现检定：侦查/灵感检定，成功则发现陷阱并绕开
+      if (mech.detect) {
+        // 检查是否有特定背景可以用替代技能（如军事背景用灵感）
+        const bgKeywords = ["军", "soldier", "military", "veteran", "army", "navy", "marine"];
+        const hasMilitaryBg = bgKeywords.some(kw =>
+          (pc.archetypeId?.toLowerCase() ?? "").includes(kw)
+        );
+        const useAlt = hasMilitaryBg && mech.detect.alternativeSkill;
+        const skillName = useAlt ? mech.detect.alternativeSkill! : mech.detect.skill;
+        const skillVal = resolveCheckValue(pc, skillName);
+
+        if (skillVal > 0) {
+          // 惩罚骰（夜晚等）：每个惩罚骰多掷一颗十位骰取最差
+          const penalty = mech.detect.penaltyDice ?? 0;
+          const label = `${skillName}（发现${trapItem.name}）${penalty > 0 ? `[${penalty}惩罚骰]` : ""}`;
+          const r = check(skillVal, vName, label, mech.detect.difficulty, penalty);
+          if (r.isSuccess) {
+            say(`\n${vName}${useAlt ? "凭着直觉感到危险" : "仔细观察后"}发现了前方的陷阱，小心绕开了。`);
+            if (mech.detectedByClue) {
+              world.discoverClue(mech.detectedByClue);
+            }
+            continue;
+          }
+        }
+      }
+
       // 躲避：来得及闪开就完全无事，与"已经中招后挣脱"是两回事
       if (mech.avoid) {
         const label = `${mech.avoid.skill}（躲避${trapItem.name}）`;
@@ -2530,28 +2578,98 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       say(`\n${vName}${mech.triggerNarration ?? `触发了${trapItem.name}！`}`);
 
       let total = 0;
+      let severity: WoundSeverity = "scratch";
       if (mech.damage) {
         total = rollDice(mech.damage);
-        applyDamage(pc, vName, total);
+        severity = applyDamage(pc, vName, total);
       }
 
+      // ── 重伤体质检定（CoC 7e Major Wound）──
+      // deep（50-74%）或 grievous（≥75%）需要 CON 检定，失败则昏迷
+      if (severity === "deep" || severity === "grievous") {
+        const conCheck = check(pc.attributes.constitution, vName, "体质（重伤）", "regular");
+        if (!conCheck.isSuccess) {
+          say(`${vName}因伤势过重昏迷过去！`);
+          pc.hp = 0; // 昏迷状态
+        }
+      }
+
+      // ── 挣脱检定（捕兽夹等）──
+      let escaped = false;
       if (mech.escape) {
         const label = `${mech.escape.skill}（挣脱${trapItem.name}）`;
         const r = check(attributeValue(pc.attributes, mech.escape.skill), vName, label, mech.escape.difficulty);
         if (r.isSuccess) {
           say(`${vName}挣脱了出来。`);
+          escaped = true;
         } else if (r.successLevel === "fumble" && mech.escape.fumbleDamage) {
           const extra = rollDice(mech.escape.fumbleDamage);
           say(`${vName}越挣扎，情况越糟。`);
-          applyDamage(pc, vName, extra);
+          const extraSev = applyDamage(pc, vName, extra);
           total += extra;
+          // 额外伤害也可能触发重伤
+          if ((extraSev === "deep" || extraSev === "grievous") && pc.hp > 0) {
+            const conCheck2 = check(pc.attributes.constitution, vName, "体质（重伤）", "regular");
+            if (!conCheck2.isSuccess) {
+              say(`${vName}因伤势过重昏迷过去！`);
+              pc.hp = 0;
+            }
+          }
         } else {
           say(`${vName}一时挣不开，只能等同伴过来搭手。`);
-          if (mech.ongoing) {
-            const tick = rollDice(mech.ongoing.damage);
-            applyDamage(pc, vName, tick);
-            total += tick;
-            sayMech(`${trapItem.name}持续造成伤害，直到${mech.ongoing.until}。${mech.firstAid ? `急救：${mech.firstAid}` : ""}`);
+        }
+      }
+
+      // ── 持续伤害（硫酸等）──
+      // 没有 escape 或者 escape 失败都会触发 ongoing
+      if (mech.ongoing && !escaped && pc.hp > 0) {
+        const tick = rollDice(mech.ongoing.damage);
+        const tickSev = applyDamage(pc, vName, tick);
+        total += tick;
+        sayMech(`${trapItem.name}持续造成伤害，直到${mech.ongoing.until}。`);
+
+        // 急救知识检定：化学/医学/科学才知道怎么救
+        // 不是每个人都知道硫酸要用水冲
+        if (mech.firstAid) {
+          const partner = pc === c1 ? c2 : c1;
+          const partnerName = pc === c1 ? p1.shortName : p0.shortName;
+          // 优先检定化学，其次医学
+          const chemVal = resolveCheckValue(partner, "化学");
+          const medVal = resolveCheckValue(partner, "医学");
+          const useSkill = chemVal >= medVal ? "化学" : "医学";
+          const useVal = Math.max(chemVal, medVal);
+          if (useVal > 0) {
+            const knowCheck = check(useVal, partnerName, `${useSkill}（判断急救方式）`, "regular");
+            if (knowCheck.isSuccess) {
+              sayMech(`${partnerName}知道应该${mech.firstAid}！`);
+              // 急救检定
+              const faVal = resolveCheckValue(partner, "急救");
+              if (faVal > 0) {
+                const faCheck = check(faVal, partnerName, "急救", "regular");
+                if (faCheck.isSuccess) {
+                  say(`${partnerName}迅速${mech.firstAid}，阻止了持续伤害。`);
+                } else {
+                  say(`${partnerName}尝试急救但没能完全控制住情况。`);
+                  // 失败也扣一次持续伤害
+                  if (pc.hp > 0) {
+                    const tick2 = rollDice(mech.ongoing.damage);
+                    applyDamage(pc, vName, tick2);
+                    total += tick2;
+                  }
+                }
+              }
+            } else {
+              say(`${partnerName}不知道该怎么处理这种伤势……`);
+            }
+          }
+        }
+
+        // 持续伤害也可能触发重伤
+        if ((tickSev === "deep" || tickSev === "grievous") && pc.hp > 0) {
+          const conCheck3 = check(pc.attributes.constitution, vName, "体质（重伤）", "regular");
+          if (!conCheck3.isSuccess) {
+            say(`${vName}因伤势过重昏迷过去！`);
+            pc.hp = 0;
           }
         }
       }

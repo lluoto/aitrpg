@@ -1117,6 +1117,14 @@ function buildItems(): ModuleItem[] {
       type: "trap",
       trap: {
         damage: "1D4+1",
+        // 事先发现：侦查检定，夜晚惩罚骰；有军事背景可用灵感
+        detect: {
+          skill: "侦查",
+          difficulty: "regular",
+          penaltyDice: 1, // 夜晚
+          alternativeSkill: "灵感",
+          alternativeBackground: "军事",
+        },
         escape: { skill: "力量", difficulty: "hard", fumbleDamage: "1d3" },
         sizImmunityBelow: 35,
         maimAtHpRatio: 0.5,
@@ -1135,6 +1143,13 @@ function buildItems(): ModuleItem[] {
       type: "trap",
       trap: {
         damage: "1d6",
+        detect: {
+          skill: "侦查",
+          difficulty: "regular",
+          penaltyDice: 1, // 夜晚
+          alternativeSkill: "灵感",
+          alternativeBackground: "军事",
+        },
         avoid: { skill: "敏捷", difficulty: "hard" },
         detectedByClue: "clue_trap_detected",
       },
