@@ -203,6 +203,33 @@ cp ../世界模型/cthulhu_extracted/cthulhu_world_model.jsonl assets/
 
 ---
 
+## 归档完整性核对（2026-08-21）
+
+跑 `tools/_audit-workdir.ts` + `tools/_audit-orphans.ts` 全量盘了一次
+`C:\aitrpg`，结论：**没有未归档的内容**。上面几张表覆盖了顶层全部 24 项。
+
+| | |
+|---|---|
+| 顶层条目 | 24（6 目录 + 18 文件） |
+| 在版本控制里 | **只有 `poc/`** |
+| 有远端 | **只有 `poc/`**（github.com/lluoto/aitrpg） |
+| 总体量 | 3.86 GB，其中 `世界模型/` 占 3.66 GB / 99453 文件 |
+
+⚠ **记录不等于备份**。`世界模型/v18_output/v18_all_master.jsonl`（229MB）
+是唯一一份，运行时默认直接读它（`DEFAULT_V18_PATH`）——丢了整层就没了。
+已记入 `docs/todo.json` 的 `risk-01`。
+
+**盘点时判据错过两次，都是同一类**：
+
+1. 先用 PowerShell 列目录，中文名全是乱码 → 换 `fs.readdirSync`
+2. 判断「文件名有没有被 poc 引用」时，用去掉扩展名的短词做子串匹配，
+   于是 `PLAN`、`docs` 这种词到处命中，**18 个文件全部"被引用"** ——
+   收紧成「带扩展名的完整文件名」才对。
+
+第 2 条的教训跟这轮反复踩的是同一个：**判据没验就用**。
+收紧后重跑，仍是 18/18 命中，但这次是真的 ——
+`docs/index-world-model.md` 里那张 yaml 表逐个索引了它们。
+
 ## 不在范围内（已确认）
 
 - `消弭/` —— 另一份在别处开发中的原创模组（《璀璨欢宴》），未完成。其中 `AI_KP与TTRPG相关学术工作备忘录_v1.docx` 是 `DESIGN-LOG.md` 引用的那份综述来源
