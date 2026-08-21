@@ -1,0 +1,816 @@
+{
+  "generated": "2026-08-21",
+  "source": "docs/index-program.md",
+  "note": "架构地图。按 title 找 section，只取需要的那节，不必整份读。",
+  "maintain": "新增文件顺手补一行；与代码不符以代码为准。改完重跑 bun scripts/docs-index.ts",
+  "sections": [
+    {
+      "id": "sec-01",
+      "title": "快速定位",
+      "prose": [],
+      "tables": [
+        {
+          "columns": [
+            "我想……",
+            "去看"
+          ],
+          "rows": [
+            [
+              "跑一局剧本，从头到尾",
+              "`src/play-module.ts`"
+            ],
+            [
+              "自由跑团（非剧本）的服务端",
+              "`src/api/game-session.ts`"
+            ],
+            [
+              "命令行玩",
+              "`src/index.ts`"
+            ],
+            [
+              "改 CoC 检定/SAN/伤害规则",
+              "`src/rules/coc-engine.ts`"
+            ],
+            [
+              "改 NPC 怎么说话",
+              "`src/llm/npc-dialogue-prompts.ts`、`src/agent/npc-agent.ts`"
+            ],
+            [
+              "改世界状态怎么存",
+              "`src/state/world-state-manager.ts`"
+            ],
+            [
+              "加 HTTP 接口",
+              "`src/api/server.ts`"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-02",
+      "title": "三条并行的局面驱动",
+      "prose": [
+        "这是本仓最容易走错的地方：**同时存在三套\"跑一局\"的实现，互不共享状态**。",
+        "`play-module.ts` 文件头明确写着与自由跑团\"互不共享状态，混在一起只会互相污染\"——**是有意为之，不是事故**。"
+      ],
+      "tables": [
+        {
+          "columns": [
+            "路径",
+            "入口",
+            "形态"
+          ],
+          "rows": [
+            [
+              "剧本杀（线性）",
+              "`src/play-module.ts` → `src/api/scripted-session.ts`",
+              "吃 `ModuleData` + `ModuleSupport`，按场景推进到结局"
+            ],
+            [
+              "自由跑团",
+              "`src/api/game-session.ts`",
+              "玩家任意行动，LLM + 律书即时裁决"
+            ],
+            [
+              "命令行",
+              "`src/index.ts`",
+              "readline 主循环，单人"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-03",
+      "title": "引擎核心",
+      "prose": [],
+      "tables": [
+        {
+          "columns": [
+            "路径",
+            "职责",
+            "关键导出"
+          ],
+          "rows": [
+            [
+              "src/play-module.ts",
+              "剧本引擎主入口（3100+ 行）：KP 描述 → PL 决策 → 检定 → 世界推进，有 LLM 用 LLM 无 LLM 用模板",
+              "runModule, rollDice, trapsInScene, isMajorWound, speechLead"
+            ],
+            [
+              "src/index.ts",
+              "CLI 主循环（1398 行，无导出）：输入 → 意图解析 → 律书判定 → 状态写入 → KP 叙事 → NPC 反应 → 快照",
+              "（入口，main() 在 842 行）"
+            ],
+            [
+              "src/types.ts",
+              "全局类型中枢：ActionIntent / CombatResult / WorldEntity / WorldState / Effect",
+              "ActionIntent, WorldState, WorldEntity, CombatResult"
+            ],
+            [
+              "src/config.ts",
+              "从环境变量装配 LLMConfig，缺 key 时告警降级",
+              "loadConfig, LLMConfig"
+            ],
+            [
+              "src/log.ts",
+              "诊断日志；明确划界——面向玩家的正文不走本模块",
+              "log, LogLevel"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-04",
+      "title": "规则引擎（确定性，不经 LLM）",
+      "prose": [
+        "> `dnd5e.yaml` / `spells.yaml` / `grail-engine.ts` 与 CoC 主线无关，属另外两套规则集，均仍被实际加载。"
+      ],
+      "tables": [
+        {
+          "columns": [
+            "路径",
+            "职责",
+            "关键导出"
+          ],
+          "rows": [
+            [
+              "src/rules/coc-engine.ts",
+              "全项目 CoC 规则核心：d100 roll-under、奖惩骰、SAN 检定与疯狂、伤害加值、命中部位、对抗",
+              "CoCEngine, SanityEngine, rollBoutOfMadness, calcDamageBonus"
+            ],
+            [
+              "src/rules/coc-equipment.ts",
+              "护甲减伤、武器属性表、负重、装备耐久",
+              "COC_ARMOR, COC_WEAPONS_FULL, applyArmorToDamage, calcEncumbrance"
+            ],
+            [
+              "src/rules/coc-chase.ts",
+              "CoC 7e 追逐：抽象距离段、障碍表、射程惩罚、车辆追逐",
+              "ChaseEngine, rangeFromDistance, shootingPenaltyForRange"
+            ],
+            [
+              "src/rules/coc-cr.ts",
+              "信用评级 → 收入/初始物品/购买权限，外加羁绊与 SAN 恢复",
+              "CR_TIERS, SHOP_CATALOG, getCrTier, createDefaultBonds"
+            ],
+            [
+              "src/rules/coc-ruleset-mod.ts",
+              "规则集变体钩子（如 Pulp），不侵入 coc-engine 核心",
+              "DEFAULT_COC_HOOKS, registerRulesetMod"
+            ],
+            [
+              "src/rules/rules-engine.ts",
+              "律书路由器：按 activeRuleset 分发到 CoC / dnd5e / grail 三个引擎",
+              "RulesEngine, RulesetId, UnifiedCombatResult"
+            ],
+            [
+              "src/rules/apply-action.ts",
+              "状态变更的合法性闸门：校验提议动作并返回不可变 StateDelta",
+              "applyAction, ProposedAction, StateDelta, RejectReason"
+            ],
+            [
+              "src/rules/coc-session-scenario.ts",
+              "把 apply-action 闸门实例化到 CoC 会话（目前只接了难度这一个枚举）",
+              "COC_SESSION_SCENARIO, buildDifficultyGateState"
+            ],
+            [
+              "src/rules/status-effects.ts",
+              "状态/疾病系统：六类分类、持续回合与叠层、逐回合 tick",
+              "StatusEffect, createStatus, statusTick"
+            ],
+            [
+              "src/rules/game-time.ts",
+              "昼夜循环：8 段时段 + 回合推进 + 时段氛围文案",
+              "GameTime, advanceTime, periodAtmosphere"
+            ],
+            [
+              "src/rules/random-tables.ts",
+              "通用加权随机表引擎，用于不依赖 LLM 的随机内容",
+              "RandomTable, registerTable, rollTable"
+            ],
+            [
+              "src/rules/module-difficulty.ts",
+              "把模组 difficulty 四档翻译成 DC 偏移/失败产出/push 叙事",
+              "assessModuleDifficulty, getDifficultyProfile"
+            ],
+            [
+              "src/rules/story-generator.ts",
+              "纯模板的故事/场景生成器（不调 LLM）",
+              "StoryGenerator, GeneratedStory, HorrorSubgenre"
+            ],
+            [
+              "src/engine/rule-engine.ts",
+              "D&D 5e 的 YAML 规则匹配 + 骰子执行器",
+              "RuleEngine"
+            ],
+            [
+              "src/spell/spell-engine.ts",
+              "D&D 5e 法术引擎：环位管理与施法执行",
+              "SpellEngine, SpellDef, CastResult"
+            ],
+            [
+              "src/rules/grail-engine.ts",
+              "自研「圣杯」规则集：五段位阶压制与士气连锁",
+              "GrailEngine, GrailRank, inferGrailRank"
+            ],
+            [
+              "src/investigation/investigation-engine.ts",
+              "多技能路径线索评估：主/辅检定、三技能阈值免投骰、全失败走预设 fallback",
+              "InvestigationEngine"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-05",
+      "title": "战斗与同伴",
+      "prose": [],
+      "tables": [
+        {
+          "columns": [
+            "路径",
+            "职责",
+            "关键导出"
+          ],
+          "rows": [
+            [
+              "src/combat/npc-combat.ts",
+              "NPC 战斗状态机：读 YAML 生物配置（战术/目标优先级/逃跑阈值/士气）",
+              "NPCCombatEngine"
+            ],
+            [
+              "src/combat/companion-manager.ts",
+              "队友生命周期：入队、AI 自主行动与玩家热接管、战死/士气崩溃离队",
+              "CompanionManager, positionLabel"
+            ],
+            [
+              "src/combat/wound-effects.ts",
+              "伤势分级与部位致残、惩罚骰、Major Wound 体质检定、清创",
+              "calcSeverity, applyWoundEffects, getDisability"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-06",
+      "title": "Agent 层",
+      "prose": [],
+      "tables": [
+        {
+          "columns": [
+            "路径",
+            "职责",
+            "关键导出"
+          ],
+          "rows": [
+            [
+              "src/agent/kp-agent.ts",
+              "KP：只做场景描述、事件注入、节奏控制，不扮 NPC 不判规则",
+              "KPAgent"
+            ],
+            [
+              "src/agent/npc-agent.ts",
+              "单个 NPC：人格卡 + 独立记忆 buffer + LLM 对话，落库 NPCStore",
+              "NPCAgent"
+            ],
+            [
+              "src/agent/player-agent.ts",
+              "LLM 驱动的调查员 PC；无 LLM 时按职业标签权重走性格模板",
+              "PlayerAgent, createPlayerCharacter, occupationTagWeight"
+            ],
+            [
+              "src/agent/agent-registry.ts",
+              "NPC Agent 热插拔容器：进场景按需注册，死亡自动注销",
+              "AgentRegistry, RegistryHook"
+            ],
+            [
+              "src/agent/constraints.ts",
+              "NPC 输出后置约束：拦秘密泄露、超 knowledge 编造、态度不一致",
+              "applyConstraints, checkSecretLeak, checkKnowledgeBoundary"
+            ],
+            [
+              "src/agent/npc-reaction.ts",
+              "确定性反应决策表（无 LLM）：战斗/社交/事件三类反应及情绪迁移",
+              "getNPCReactions, updateMood"
+            ],
+            [
+              "src/agent/companion-agent.ts",
+              "AI 队友战斗决策：技能+性格+装备+状态推导权重后随机抽取",
+              "CompanionAgent, Situation"
+            ],
+            [
+              "src/agent/types.ts",
+              "Agent 层类型中枢：NPCTraits / NPCMood / MemoryEntry / KPDirective",
+              "DEFAULT_NPC_TRAITS, NPC_MOODS, asNPCMood"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-07",
+      "title": "LLM 层",
+      "prose": [
+        "> **无 LLM 可运行链路是系统性设计的**：`fallback.ts` + `mock-client.ts` + `intent.ts` 的 regex 退化 + `background-profile.ts` 的模板背景 + `investigation-engine.ts` 的预设 fallback，构成完整闭环。"
+      ],
+      "tables": [
+        {
+          "columns": [
+            "路径",
+            "职责",
+            "关键导出"
+          ],
+          "rows": [
+            [
+              "src/llm/client.ts",
+              "OpenAI 兼容客户端（OpenAI/DeepSeek/Ollama），流式、jsonMode、超时",
+              "LLMClient, extractMessageContent"
+            ],
+            [
+              "src/llm/npc-dialogue-prompts.ts",
+              "运行时对话的 prompt 工厂（1075 行）：主动开口、回应提问、转场、救场、线索揭示",
+              "generateNpcReply, generateNpcProactive, generatePcQuestion"
+            ],
+            [
+              "src/llm/generate-llm-expanded.ts",
+              "**NPC 预生成管线**：为带 knowledge[] 的 NPC 批量生成 llmExpanded，已有的跳过，无 API 降级模板",
+              "applyAllLlmExpandedWithLLM, applyLlmExpanded, selfIntroduction"
+            ],
+            [
+              "src/llm/intent.ts",
+              "自然语言 → ActionIntent；无 LLM 时退化为 regex",
+              "parseIntent, parseIntentLLM"
+            ],
+            [
+              "src/llm/narrator.ts",
+              "战斗叙事：按伤害比映射伤势等级，套模板或交 LLM 润色，出口过世界观约束",
+              "generateNarrative, templateNarrative"
+            ],
+            [
+              "src/llm/fallback.ts",
+              "LLM 不可用时的兜底叙事模板池",
+              "fallbackNarrative, DEGRADATION_NOTICE"
+            ],
+            [
+              "src/llm/mock-client.ts",
+              "离线假 LLM：按场景 id 返回预写文本，让无 key 时整条循环可跑可测",
+              "MockLLMClient"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-08",
+      "title": "角色",
+      "prose": [],
+      "tables": [
+        {
+          "columns": [
+            "路径",
+            "职责",
+            "关键导出"
+          ],
+          "rows": [
+            [
+              "src/character/coc-character.ts",
+              "CoC 7e 建卡全流程：属性投骰、职业约束、技能点分配、年龄修正、衍生值",
+              "createCoCCharacter, COC_SKILLS, SKILL_NAME_MAP"
+            ],
+            [
+              "src/character/background-profile.ts",
+              "背景故事纯模板生成（无 LLM）：1920s 人名池 + 八项背景元素",
+              "randomCoCName, buildBaseBackgroundProfile, composeBackstory"
+            ],
+            [
+              "src/character/character-factory.ts",
+              "D&D 5e 侧角色创建：职业模板注册表 + 属性下限约束",
+              "CharacterFactory, ALL_ARCHETYPES, getArchetype"
+            ],
+            [
+              "src/character/career-file.ts",
+              "角色跨模组历程的 JSON 存储（原子写入）。**实际在用的那套**",
+              "CareerFileStore"
+            ],
+            [
+              "src/character/career.ts",
+              "同上的 SQLite 版。**CareerStore 类全仓无人 new，半废弃**；仅 computeCurrentState 仍被复用",
+              "computeCurrentState, CareerStore"
+            ],
+            [
+              "src/character/qiankun-subclasses.ts",
+              "乾坤职业体系映射到 D&D 子职业的纯数据表（2426 行）",
+              "QIANKUN_SUBCLASSES, QIANKUN_LEGENDARY_TEMPLATES"
+            ],
+            [
+              "src/character/prestige-classes.ts",
+              "D&D 进阶职业纯数据表（28 行）",
+              "PRESTIGE_CLASSES"
+            ],
+            [
+              "src/pl/character-display.ts",
+              "角色卡渲染：完整表、一行摘要、高亮技能",
+              "displayCharacterSheet, characterSummary"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-09",
+      "title": "存储与状态",
+      "prose": [],
+      "tables": [
+        {
+          "columns": [
+            "路径",
+            "职责",
+            "关键导出"
+          ],
+          "rows": [
+            [
+              "src/state/world-state-manager.ts",
+              "**真相源**：Bun SQLite 上的实体/场景/效果/事件读写门面，LLM 只读不写",
+              "WorldStateManager, SceneRecord, SceneExit"
+            ],
+            [
+              "src/state/schema.ts",
+              "世界状态建表 DDL",
+              "createSchema"
+            ],
+            [
+              "src/state/event-types.ts",
+              "事件日志与快照的数据形状",
+              "GameEvent, StateChange, SnapshotSummary"
+            ],
+            [
+              "src/state/game-state-manager.ts",
+              "会话存档 JSON 读写，与 SQLite 真相源相互独立",
+              "saveGameState, loadGameState"
+            ],
+            [
+              "src/db/index.ts",
+              "NPC 的 SQLite 持久化：人格卡、记忆、关系值、情绪",
+              "NPCStore"
+            ],
+            [
+              "src/session/player-session.ts",
+              "多玩家 per-receiver 视图：按可见性给每人不同旁白，秘密隔离",
+              "PlayerSession, VisibilityRule"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-10",
+      "title": "API 与前端",
+      "prose": [],
+      "tables": [
+        {
+          "columns": [
+            "路径",
+            "职责",
+            "关键导出"
+          ],
+          "rows": [
+            [
+              "src/api/server.ts",
+              "HTTP/WS 入口（Bun.serve）：管理两类会话实例池，暴露 REST 路由",
+              "（入口，无导出）"
+            ],
+            [
+              "src/api/game-session.ts",
+              "自由跑团单局总装配（2470 行）：串起 LLM、律书、CoC 引擎、Agent、世界状态、战斗/调查/法术/经济",
+              "GameSession, ActionResponse"
+            ],
+            [
+              "src/api/scripted-session.ts",
+              "剧本杀会话：把 play-module 包成可外部驱动的一局，岔口挂起等提交",
+              "ScriptedSession, createScriptedSession"
+            ],
+            [
+              "src/api/module-editor.ts",
+              "模组 JSON 的 CRUD + 结构校验",
+              "loadModuleFile, saveModuleFile, createBlankModule"
+            ],
+            [
+              "src/api/character-store.ts / session-store.ts",
+              "角色卡 / 会话元数据的 JSON 落盘",
+              "saveCharacter / saveSessionMeta"
+            ],
+            [
+              "src/api/ws-handler.ts",
+              "WebSocket 登记与按 sessionId 广播",
+              "broadcastToSession, sendToKp"
+            ],
+            [
+              "frontend/src/App.vue",
+              "前端根组件（724 行）：开始屏/游戏屏、响应式会话状态、规则集主题",
+              "—"
+            ],
+            [
+              "frontend/src/KPDashboard.vue",
+              "守秘人控制台（494 行）：分页展示 KP 状态并提供操作表单",
+              "—"
+            ],
+            [
+              "frontend/src/CombatGrid.vue / SceneOverview.vue / NpcChat.vue / CharacterEditor.vue / ModuleEditor.vue / SettingsPanel.vue",
+              "战斗站位 / 场景概览 / NPC 单聊 / 角色卡编辑 / 模组编辑 / 设置",
+              "—"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-11",
+      "title": "语音与音频",
+      "prose": [],
+      "tables": [
+        {
+          "columns": [
+            "路径",
+            "职责"
+          ],
+          "rows": [
+            [
+              "src/voice/speech-plan.ts",
+              "语音路由判定（只判不合成）：念不念、谁念、prebaked 还是 realtime；分界依据是消息有没有经过 LLM"
+            ],
+            [
+              "scripts/gen-speech.ts",
+              "预制语音离线合成（Windows SAPI），键的口径来自 speech-plan.ts"
+            ],
+            [
+              "scripts/gen-bgm.ts",
+              "环境音床生成：噪声→低通→混响→LFO→限幅，带交叉淡化保证循环点连续"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-12",
+      "title": "经济与政治（独立模块）",
+      "prose": [
+        "`src/economy/` 六个文件：`politic-economy-engine.ts`（总编排）+ `faction-system` / `trade-system` / `policy-system` / `finance-system` / `types.ts`。纯回合结算，不经 LLM。"
+      ],
+      "tables": []
+    },
+    {
+      "id": "sec-13",
+      "title": "测试（42 个）",
+      "prose": [
+        "分两簇。**规则纯逻辑单测**：coc-character / coc-engine / coc-combat / coc-equipment / coc-chase / coc-spells / coc-mythos-module / investigation-* / rule-engine / grail-ruleset / story-generator / politico-economy / trap-mechanics。",
+        "**回归测试**（更值得读）——每个都锁着一次\"类型说一套、数据是另一套、类型检查全绿\"的静默失效：",
+        "**明显缺测**：HTTP/API 层本身（server.ts 的路由、静态托管、会话超时）、前端 9 个 .vue、LLM 客户端与提示词组装（只测了 intent 的 regex 兜底）、语音/BGM 实际生成链路、数值域的 applyAction。"
+      ],
+      "tables": [
+        {
+          "columns": [
+            "测试",
+            "锁的是什么事故"
+          ],
+          "rows": [
+            [
+              "entity-round-trip",
+              "WorldEntity 缺声明字段导致 UPDATE 把已存值抹成 NULL"
+            ],
+            [
+              "scene-exits",
+              "exits 写入 `{target,desc}[]` 而 getScene() 声明返回 `string[]`，JSON.parse 让类型检查全程沉默"
+            ],
+            [
+              "scene-write-path",
+              "场景激活必须只有 setScene() 一条写入路径"
+            ],
+            [
+              "message-history",
+              "act() 的消息必须进 messageHistory，否则历史恒空、语音层缺源"
+            ],
+            [
+              "kp-scene-truth",
+              "在场判定必须跟界面场景走，不得读玩家 position"
+            ],
+            [
+              "coc-character-wiring",
+              "建卡必须走 createCoCCharacter，否则技能检定读不到真实技能值"
+            ],
+            [
+              "investigation-wiring",
+              "调查必须真接进 handleSkillCheck，而不是裸掷 d100"
+            ],
+            [
+              "world-model-sharing",
+              "WorldModelLoader 必须进程内共享（实测加载三遍驻留 1938MB）"
+            ],
+            [
+              "world-state-truth-source",
+              "SAN/物品/装备写入必须到达真相源，而不是停在进程内 Map"
+            ],
+            [
+              "rule-content-boundary",
+              "版权边界：受限规则书内容必须已从发行树删除"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-14",
+      "title": "工具脚本（`tools/` 整个目录被 .gitignore 排除）",
+      "prose": [],
+      "tables": [
+        {
+          "columns": [
+            "路径",
+            "职责"
+          ],
+          "rows": [
+            [
+              "tools/run-play.mjs",
+              "跑团记录生成器，输出 Markdown 完整记录，`--mock` 强制离线"
+            ],
+            [
+              "tools/simulate-module.ts",
+              "双调查员跑团演示，固定用 MockLLM，偏冒烟"
+            ],
+            [
+              "tools/convert-world-model.ts",
+              "一次性数据迁移：v16 jsonl → v17 格式"
+            ],
+            [
+              "tools/test-career-file.mjs",
+              "自建 assert 的遗留验证，已被 bun test 覆盖"
+            ],
+            [
+              "tools/_verify-read-build.ts / _verify-runpath.ts",
+              "一次性调试脚本（下划线前缀）"
+            ],
+            [
+              "tools/check_warehouse.mjs",
+              "一次性排查脚本，无通用价值"
+            ],
+            [
+              "tools/_cmp-raw.ts",
+              "一次性：PDF 逐页文本 vs `tools/modules/raw/` 切片的重合度比对"
+            ],
+            [
+              "tools/_diag-strand.ts",
+              "取证脚本：定位「条目正文丢后半截」发生在哪一层。在 `extractPages` / `cleanPageText` / `sectionize` 三个边界各打一份，标出片段与它该属的条目相隔几行。**下一轮修那个 bug 前先跑它**，产物 `tools/ingest-out/diag-strand.txt`。它推翻过一个错诊断（原以为是读取顺序，实际是分页与条目单行取值两回事），别凭症状猜"
+            ],
+            [
+              "tools/_diag-absorb.ts",
+              "取证脚本：把「条目吃到下一个 `▶`/标题为止」这条待选规则**先复现一遍再决定要不要实现**。逐条列出会被吸收的行、标跨页/同页。产物 `tools/ingest-out/diag-absorb.txt`。它量出跨页 4 行 / 同页 21 行、同页里四成会误吃场景正文，据此否掉了一个已经写进文档的修法方向"
+            ],
+            [
+              "tools/_diag-lineno.ts",
+              "取证脚本：逐页比对「原始行数 vs 清洗后行数」，并拿真实条目对照 `sourceKey` 给的行号与 PDF 实际行号。产物 `tools/ingest-out/diag-lineno.txt`。它证伪了 `Provenance.sourceRef` 的文档（见下面 §sourceRef 那条）"
+            ],
+            [
+              "tools/_diag-joined.ts",
+              "取证脚本：`joinPages` 到底接了哪几处、哪些条目正文因此变了。产物 `tools/ingest-out/diag-joined.txt`。**它是「分类器逐条输出不独立」那条结论的证据来源**——正文没变的条目标签照样会翻，所以不能按单条归因。注意它把「接走首行的那一页」和「被接走首行的那一页」都列出来，所以列出 10 段 = 5 处边界"
+            ],
+            [
+              "tools/_diag-p15.ts",
+              "取证脚本：列出页内以 ASCII 连续句点收尾的行及其上下文形态，并倒出 p15 整页原始行。产物 `tools/ingest-out/diag-p15.txt`。**它把「ASCII 省略号有两种含义」这个症状级诊断推进到了真因**——p15 的结局与奖励表整片被焊（见 §p15 那节）"
+            ],
+            [
+              "tools/_diag-labels.ts",
+              "取证脚本：把「纯拉丁行」「以骰子/数值收尾」两条候选判据在**全书**上跑，逐条列出上下文供判真假阳，并复现「加上这两条否决」之后的完整输出与逐页行数变化。产物 `tools/ingest-out/diag-labels.txt`。**它量出 22 真阳 / 6 假阳、8/18 页受影响，据此否掉了这两条判据**——假阳全落在 `extract-trap` 正在读的陷阱描述上"
+            ],
+            [
+              "tools/_diag-findmethods.ts",
+              "取证脚本：倒出基准 32 条线索的 `findMethods` 全貌，验两件事——`type` 是否自身不一致（是，3 条）、`skillName` 是否逐字来自 description（15/16）。产物 `tools/ingest-out/diag-findmethods.txt`"
+            ],
+            [
+              "tools/_diag-skillwords.ts",
+              "取证脚本：逐场景比对「原文技能词」与「基准 findMethods 记录」。产物 `diag-skillwords.txt`。量出 54 vs 19（2.8×），并指出超产集中在技能属于陷阱/连接的那七个场景"
+            ],
+            [
+              "tools/_exp-conn-hierarchy.ts",
+              "**实验脚本**：只问层级（谁在谁里面），边靠两条规则导出（子↔父、顶层↔枢纽）。产物 `exp-conn-hierarchy.txt`。层级判断 9/11 对；但规则把上游误报也连上了枢纽，14 条错边由此而来"
+            ],
+            [
+              "tools/_diag-block-owner.ts",
+              "取证脚本：块归属能不能靠文档顺序定。**可计分样本只有 1 个**（真值取自基准线索名，对得上的只有一条），两个口径都没命中。结论是这个原语不值得单独做——它服务的 population 只有 ~7 块，而形状相同的「场景→父场景」已有 9/11 的解"
+            ],
+            [
+              "tools/_diag-hub.ts",
+              "取证脚本：枢纽认不认得出来。四个确定性信号（被提到次数/提到别人/位置/长度）**全无区分度**，值都是 0/1/2；**问模型 5/5 全对**。产物 `diag-hub.txt`"
+            ],
+            [
+              "tools/_exp-conn-infer.ts",
+              "**实验脚本**：让 LLM 推连接图，再按不连通分量追问补边，**同一次运行内分阶段打分**（第一遍有摆动，跨次不能比）。产物 `exp-conn-infer.txt` 与原始响应。第一遍 F1 0.71 / 可达 9；补边后 F1 0.58 / 可达 17。**21 条补边只 1 条对，却因解锁整片农场让可达 +8**"
+            ],
+            [
+              "tools/_diag-conn-metric.ts",
+              "**判据的抗刷测试**：拿五种刷法（全连接/顺序链/保守/一半瞎连/空）攻「F1 + 正确边可达」这对判据，看能不能把刷法与真解分开。产物 `diag-conn-metric.txt`。结论：**没有一种能同时骗过两项**。本会话第一次在采用判据之前先攻它——前两个判据都是采用之后才被证伪的"
+            ],
+            [
+              "tools/_diag-conn-order.ts",
+              "取证脚本：文档顺序能不能预测连接、朴素「相邻双向连」的精确率与可达性。产物 `diag-conn-order.txt`。**它把「判据换成可达性」这条自己刚提出的修正证伪了**——朴素解可达 43/43 而精确率 21%。注意它跑在 43 个块上而非 27 个场景，数偏乐观"
+            ],
+            [
+              "tools/_diag-connections.ts",
+              "取证脚本：基准 44 条 `connections` 有多少在 PDF 文本里有依据。产物 `diag-connections.txt`。量出**只有 6 条（14%）**，而无据的 38 条里 18 条是返回边、8 条是枢纽放射——**据此把 connections 从「抽取活」重新定性为「结构推断活」**"
+            ],
+            [
+              "tools/_diag-runnable.ts",
+              "取证脚本：生成的 `ModuleData` **引擎能不能跑**。产物 `diag-runnable.txt`。它量出**可达 1/27、connections 总数 0**，而同期「差异 179 处」看着像挺接近——**内容相似度与可运行性是两个口径**，一直只报了前者"
+            ],
+            [
+              "tools/_followup-prompts.ts",
+              "两次追问的 prompt，**只此一份**。抽出来是因为两个实验各自重打过一遍然后漂了——删掉例子就掉 2 分。prompt 的字面内容是测量条件的一部分，两处各写一份等于两台不同的秤"
+            ],
+            [
+              "tools/_exp-line-attribution.ts",
+              "**实验脚本**：同页续句归属交给 LLM 判，端到端看分类涨不涨。产物 `exp-line-attribution.txt`。结论是**行归属做对了但分类没涨（−1）**，据此推翻了「剩下 2 个分类错误是根因 B 的下游」那个推断，并暴露出判据选错——行归属改善的是文本完整度，不是分类"
+            ],
+            [
+              "tools/_exp-clue-followup.ts",
+              "**实验脚本**：分族对条目追问，拿评分键算前后对比。产物 `exp-clue-followup.txt` 与 `exp-signature.txt`。它先否掉了「得到东西 vs 知道事情」（−2），再验成了 item 族的「带走的东西 vs 去翻的地方」（+7）与 event 族的「往下还有得查吗」（+2），合计 **22/33 → 31/33，0 弄坏**。**验一个分类修法的标准做法就是它**——不改管线、两次调用、有前后数、带逐条签名验稳定（8 次跑签名全同）"
+            ],
+            [
+              "tools/_diag-confusion.ts",
+              "取证脚本：给 `▶` 条目分类器出混淆矩阵——逐条拿名字去基准里找它对应什么结构，只认强匹配（`name` 逐字 / `findMethods.description` 逐字含）。产物 `diag-confusion.txt`。**量出「57% 的条目无法按名字核验」，据此确定手建评分键是唯一可行的线索计分办法**。弱匹配单独列出不进矩阵——`.includes` 在描述上兜底会造出假的双命中"
+            ],
+            [
+              "tools/_diag-skill-scoped.ts",
+              "取证脚本：把技能词抽取限定在已判为 `clue` 的条目上再量。产物 `diag-skill-scoped.txt`。**它否掉了「findMethods 当首切片」**——限定后变成 12 vs 19（0.6×），召回塌陷且塌在分类器误判的那几个场景上。读上一次实跑的 `item-kinds.txt`，不重调 LLM，避免引入采样变量"
+            ],
+            [
+              "tools/_diag-sentence-end.ts",
+              "取证脚本：改共用正则前后，全书 `cleanPageText` 输出**逐字节**快照对比（`bun tools/_diag-sentence-end.ts <tag>` → `snap-clean-<tag>.txt`），外加「哪些行以 ASCII 连续句点收尾」的清单。**「把 `\\.{2,}` 并进 `SENTENCE_END` 会改动既有行为」这条结论就是它量出来的**——共用正则的改动一律先过它，别靠推理"
+            ],
+            [
+              "tools/_diag-blocks.ts",
+              "取证脚本：把 p1→p2 那处错接手工补回去，与修好的输出逐块比标题/正文/`sourceRef`。产物 `tools/ingest-out/diag-blocks.txt`。**它推翻了一个推理出来的说法**（原以为缺陷会让块数从 44 掉到 43，实测两边都是 44、行号一行没挪，唯一差别是一块的正文被污染）——所以那个缺陷躲过了所有按计数做的验收"
+            ],
+            [
+              "tools/_run-ingest.ts",
+              "**摄取管线的端到端实跑器**（约 250 行）：读 PDF → 清洗 → 切分 → **块分类 → 建场景骨架 → 条目分类 → 建 ModuleItem** → 对基准 diff。含 `RecordingClient`，把**每一次** LLM 调用的 prompt 与原始响应都落盘（两次调用，单组字段会让后一次覆盖前一次，而那是「模型到底答没答」的唯一证据）。**清洗那一段的组合是 `joinPages(raw.map(cleanPageText))`，两段都要**——本文件被 `.gitignore` 排除，这个组合唯一进版本库的记录是 `docs/superpowers/plans/2026-08-19-ingest-scene-skeleton.md` 的 Step 2 代码块（已订正）。照着重建 runner 时漏掉 `joinPages`，跨页续行就悄悄停摆，而单测全绿——`joinPages` 的测试直接调它，不经过这条组合。下面 §模组摄取 里所有实跑数**全部出自它**——`身份覆盖 20/20`、`物品覆盖 9/10`、`精确率 9/19`、`差异 179 处`（先前这里写的 `9/17` 与 `178 处` 与下面的表对不上，实测是后者），以及上一轮的 `命中 20 / 误报 7 / 漏报 0`。重跑它是唯一能复现这些数的途径。它还印三样光看 diff 看不出来的：口径对账（覆盖+误报 是否等于生成数，防重名两边同时吃掉）、悬空引用（`item.sceneId` 是否都指得到人）、以及逐条目的分类结果"
+            ],
+            [
+              "src/ingest/scoring-key.ts",
+              "**手建的条目评分键**（39 条 `▶` → 它在基准里实际是什么）。**它绝不能进 prompt**——是评分口径不是输入，由 `ingest-scoring-key-boundary.test.ts` 结构性拦着（扫 `src/` 与 `tools/` 两侧，后者带白名单）。没有 `trap` 变体：陷阱在基准里就是 `ModuleItem.type=\"trap\"`，所以 4 条陷阱条目标成 `item(...)`，**算分时必须把 id 解回 `item.type` 才算得中**，否则 4 个正确答案会被记成 4 个 miss（39 条的 10%）——这条约定由测试钉住，不靠记性"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sec-15",
+      "title": "关键文档",
+      "prose": [],
+      "tables": [
+        {
+          "columns": [
+            "路径",
+            "内容"
+          ],
+          "rows": [
+            [
+              "docs/kp-tool-surface-assessment.md",
+              "**架构主文档**：AI KP 工具面评估与 apply_action 迁移计划，多个测试直接引其章节号当验收依据"
+            ],
+            [
+              "DESIGN-LOG.md",
+              "架构决策日志，把学术综述提炼成设计原则并逐条对照实现"
+            ],
+            [
+              "docs/kp-tool-numeric-domain-design.md",
+              "决策记录：给 StateVariableSpec 加 tagged domain 联合"
+            ],
+            [
+              "docs/rules-licensing-audit.md + NOTICE.md",
+              "版权合规线，直接产生了 rule-content-boundary.test.ts"
+            ],
+            [
+              "docs/voice-readiness.md",
+              "语音接入准备度与进度"
+            ],
+            [
+              "docs/deploy.md",
+              "部署决策：为何单容器、静态托管踩坑"
+            ],
+            [
+              "docs/scene-visuals.md",
+              "场景视觉方向（状态：暂缓）"
+            ],
+            [
+              "frontend/DESIGN.md",
+              "前端设计系统：语义颜色令牌与排版规范"
+            ]
+          ]
+        }
+      ]
+    }
+  ]
+}
