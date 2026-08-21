@@ -29,6 +29,7 @@ import { toItemInputs, classifyItems, type ItemInput, type ItemKind } from "./cl
 import { refineItemKinds } from "./classify-followup";
 import { assignSceneIds, assignItemIds } from "./ids";
 import { buildScenes } from "./build-scenes";
+import { inferConnections } from "./infer-connections";
 import { buildItems } from "./build-items";
 import type { Scene } from "../module/types";
 import type { ModuleItem, Provenance } from "../module/types";
@@ -140,6 +141,27 @@ export async function classifyAndBuild(
   const kinds = await classifySections(classifyInputs, client);
   const ids = assignSceneIds(sections);
   const { scenes, warnings: sceneWarnings } = buildScenes(sections, kinds, ids);
+
+  // 连接必须在 buildScenes **之后** —— 它要的是最终进了场景表的那批，
+  // 不是全部块。上一轮量过：场景表里多 3 个误报块，模型就会把边分给垃圾节点，
+  // 正确边可达从 20 掉到 11。**上游的精确率直接决定这一步的成绩。**
+  stage("推断连接");
+  const conns = await inferConnections(scenes, client);
+  const nameById = new Map(scenes.map((s) => [s.id, s.name]));
+  for (const s of scenes) {
+    const targets = conns.get(s.id);
+    if (!targets) continue;
+    // condition 是必填的，而模型这一步只答「走不走得通」，不答「要什么条件」，
+    // 所以只能填一句复述。挑「前往<场景名>」这个写法是因为运行时的
+    // `isRedundantMoveLine`（play-module.ts:101）正好把它识别成复述并抑制，
+    // 界面上不会多出一行废话；换个别的写法反而会被当成真条件显示出来。
+    // 门禁字段（requiredClueId / checkRequired）一概不填 ——
+    // 那是另一件事，基准那 44 条边自己也一处没用。
+    s.connections = targets.map((targetSceneId) => ({
+      targetSceneId,
+      condition: `前往${nameById.get(targetSceneId) ?? targetSceneId}`,
+    }));
+  }
 
   const itemInputs = toItemInputs(sections, kinds, ids);
   stage("条目分类");
