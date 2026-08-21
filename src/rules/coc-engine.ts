@@ -16,21 +16,28 @@ export function rollD10(): number {
   return Math.floor(Math.random() * 10); // 0-9 (tens die)
 }
 
-/** 奖励骰：投 2 个十面骰，取优（对玩家有利的） */
-export function bonusDie(): number {
-  const a = rollD10();
-  const b = rollD10();
+/**
+ * 奖励骰：额外投 `count` 个十位骰，连同本来那颗一起取优。
+ *
+ * CoC 7e：N 个奖励骰 = 掷 N+1 颗十位骰取最好。原先写死投 2 颗，
+ * 于是「1 个奖励骰」与「2 个奖励骰」掷出来完全一样——**数量表达不出来**。
+ */
+export function bonusDie(count: number = 1): number {
+  const n = Math.max(1, count);
+  let best = rollD10();
+  for (let i = 0; i < n; i++) best = Math.min(best, rollD10());
   // CoC 7e: 十位 0-9 + 个位 1-10 → 范围 1-100
   const ones = Math.floor(Math.random() * 10) + 1; // 1-10
-  return Math.min(a, b) * 10 + ones;
+  return best * 10 + ones;
 }
 
-/** 惩罚骰：投 2 个十面骰，取劣 */
-export function penaltyDie(): number {
-  const a = rollD10();
-  const b = rollD10();
+/** 惩罚骰：额外投 `count` 个十位骰，连同本来那颗一起取劣。见 bonusDie 的说明。 */
+export function penaltyDie(count: number = 1): number {
+  const n = Math.max(1, count);
+  let worst = rollD10();
+  for (let i = 0; i < n; i++) worst = Math.max(worst, rollD10());
   const ones = Math.floor(Math.random() * 10) + 1; // 1-10
-  return Math.max(a, b) * 10 + ones;
+  return worst * 10 + ones;
 }
 
 /** 普通 d100 */
@@ -151,11 +158,11 @@ export class CoCEngine {
     let roll: number;
 
     if (netDice > 0) {
-      // 奖励骰
-      roll = bonusDie();
+      // 奖励骰：把净数量传下去，2 个和 1 个不该掷出一样的分布
+      roll = bonusDie(netDice);
     } else if (netDice < 0) {
       // 惩罚骰
-      roll = penaltyDie();
+      roll = penaltyDie(-netDice);
     } else {
       roll = regularD100();
     }

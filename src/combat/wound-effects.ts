@@ -63,8 +63,15 @@ export interface Disability {
 export function calcSeverity(damage: number, maxHp: number): WoundSeverity {
   if (maxHp <= 0) return "flesh";
   const ratio = damage / maxHp;
-  if (ratio > 0.75) return "grievous";
-  if (ratio > 0.50) return "deep";   // CoC Major Wound 阈值
+  // 边界取 >= 而不是 > —— CoC 7e 的 Major Wound 是「单次伤害**等于或大于**最大 HP 一半」。
+  // 原先写 `> 0.50`，于是"10 点体力挨 5 点"这种最常见的一击恰好落在边界外，
+  // 被判成轻伤、不掷体质、不加惩罚骰。上面注释写的一直是「50~74% → deep」，
+  // 是代码与注释不符，注释才是对的。
+  //
+  // ⚠ 别拿它去统一 play-module 的 `isMajorWound`：那条是陷阱截肢，
+  // 模组原文写的是「伤害**大于**耐久半值」，用 `>` 是对的。两条规则本就不同口径。
+  if (ratio >= 0.75) return "grievous";
+  if (ratio >= 0.50) return "deep";   // CoC Major Wound 阈值
   if (ratio > 0.25) return "flesh";
   return "scratch";
 }

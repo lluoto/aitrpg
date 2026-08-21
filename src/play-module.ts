@@ -49,6 +49,16 @@ interface RunContext {
   origins: LineOrigin[];
   onLine?: (line: string, origin: LineOrigin) => void;
   decide?: Decider;
+  /**
+   * 角色名 → 尚未处理的最重伤势。`check()` 据此自动加惩罚骰。
+   *
+   * 放这里而不是 WorldState：WorldState 装的是**模组**状态（线索/场景/NPC），
+   * 而 HP 一直挂在角色对象上。伤势跟 HP 是同一类东西（本局的角色身体状态），
+   * 拆到两个地方存只会让「这个人现在什么状况」要查两处。
+   * 放 RunContext 是因为 `check()` 是模块级函数、只拿得到角色名，
+   * 而 AsyncLocalStorage 正是 `say`/`sayMech` 用来够到本局状态的同一条路。
+   */
+  wounds: Map<string, WoundSeverity>;
 }
 const runCtx = new AsyncLocalStorage<RunContext>();
 
@@ -199,7 +209,10 @@ export function chooseConnection(
 /**
  * 重伤判定：单次伤害大于耐久半值。
  *
- * 模组 trap_bear 条目写的是"伤害大于耐久半值有截肢风险"，与 CoC 7e 的重伤规则同口径。
+ * 模组 trap_bear 条目写的是"伤害大于耐久半值有截肢风险"——**大于**，所以用 `>`。
+ *
+ * ⚠ 这跟 CoC 7e 的 Major Wound **不是同一个口径**（那条是「等于或大于」，
+ * 见 combat/wound-effects.ts 的 calcSeverity）。两处故意不同，别去"统一"。
  * 抽出来是为了能测 —— 边界（恰好等于半值）容易写成 >=，那会把普通擦伤也判成截肢。
  */
 export function isMajorWound(damage: number, maxHp: number): boolean {
@@ -736,17 +749,66 @@ async function createRandomPlayerSetup(
   };
 }
 
+// ── 伤势状态 ──
+// 记「未处理的最重一处」而不是累加：CoC 里伤是伤，不是叠加的减值。
+const SEVERITY_RANK: Record<string, number> = {
+  scratch: 0, flesh: 1, deep: 2, grievous: 3, lethal: 4,
+};
+
+/**
+ * 两处伤取更重的那个。
+ *
+ * 抽成纯函数是为了能测这条规则：**后来的轻伤不能盖掉先前的重伤**。
+ * 写成无脑覆盖的话，重伤之后擦破一下皮，惩罚骰就没了。
+ */
+export function worseWound(cur: WoundSeverity | undefined, next: WoundSeverity): WoundSeverity {
+  if (!cur) return next;
+  return (SEVERITY_RANK[next] ?? 0) > (SEVERITY_RANK[cur] ?? 0) ? next : cur;
+}
+
+/** 记一处伤；比现有的更重才覆盖 */
+function recordWound(pcName: string, sev: WoundSeverity): void {
+  const ctx = runCtx.getStore();
+  if (!ctx) return;
+  ctx.wounds.set(pcName, worseWound(ctx.wounds.get(pcName), sev));
+}
+
+/** 伤势被处理掉（急救成功等） */
+function healWound(pcName: string): void {
+  runCtx.getStore()?.wounds.delete(pcName);
+}
+
+/**
+ * 当前伤势该加几个惩罚骰。
+ *
+ * 上限 2 —— CoC 7e 的奖励/惩罚骰最多 2 个，而 `woundPenaltyDice` 给致命伤返回 3。
+ * 不在那边改是因为它是伤势模型的一部分（3 表示「比重伤重得多」），
+ * 截断属于掷骰规则，归这里。
+ */
+function woundPenaltyOf(pcName: string): number {
+  const sev = runCtx.getStore()?.wounds.get(pcName);
+  return sev ? Math.min(2, woundPenaltyDice(sev)) : 0;
+}
+
 // ── 检定 ──
-// penaltyDice: 惩罚骰数量（来自伤势、环境等）
+// penaltyDice: 额外惩罚骰（环境等）。角色身上的伤势会**自动**再加，不用调用方操心。
+//
+// ignoreWound: 只给「重伤体质检定」用 —— 那一掷是在结算**这处伤本身**，
+// 让它被自己造成的伤势罚一次是双重计算（实跑抓到过：
+// 「体质（重伤）51% [1惩罚骰·伤势]」，那个惩罚骰正是同一处伤给的）。
 function check(
   skillVal: number,
   pcName: string,
   skillLabel: string,
   diff: "regular" | "hard" | "extreme" = "regular",
   penaltyDice: number = 0,
+  ignoreWound: boolean = false,
 ): CoCCheckResult {
-  const r = CoCEngine.skillCheck(skillVal, diff, 0, penaltyDice);
-  const penaltyNote = penaltyDice > 0 ? ` [${penaltyDice}惩罚骰]` : "";
+  const fromWound = ignoreWound ? 0 : woundPenaltyOf(pcName);
+  const total = Math.min(2, penaltyDice + fromWound);
+  const r = CoCEngine.skillCheck(skillVal, diff, 0, total);
+  const why = fromWound > 0 ? (penaltyDice > 0 ? "环境+伤势" : "伤势") : "";
+  const penaltyNote = total > 0 ? ` [${total}惩罚骰${why ? "·" + why : ""}]` : "";
   sayMech(`➜ ${pcName} 【${skillLabel}】 ${skillVal}%${penaltyNote} → d100=${r.roll} → ${SUCCESS_LEVEL_LABELS[r.successLevel]}`);
   return r;
 }
@@ -795,10 +857,11 @@ function applyDamage(pc: CoCGeneratedCharacter, pcName: string, dmg: number): Wo
     : severity !== "scratch" ? `（${severityLabel(severity)}）` : "";
   sayMech(`❤ ${pcName} HP ${pc.hp + dmg} → ${pc.hp}${suffix}`);
 
-  // 重伤/致命伤惩罚骰提示
+  // 记进本局伤势 —— check() 会自动据此加惩罚骰，直到被急救处理掉
   const penalty = woundPenaltyDice(severity);
   if (penalty > 0 && pc.hp > 0) {
-    sayMech(`⚠ ${pcName} 因伤势承受 ${penalty} 惩罚骰，后续行动受阻。`);
+    recordWound(pcName, severity);
+    sayMech(`⚠ ${pcName} 因伤势承受 ${woundPenaltyOf(pcName)} 惩罚骰，直到伤口得到处理。`);
   }
 
   return severity;
@@ -831,7 +894,7 @@ export async function runModule(
   support: ModuleSupport,
   opts: RunOptions = {},
 ): Promise<{ lines: string[]; origins: LineOrigin[] }> {
-  const ctx: RunContext = { lines: [], origins: [], onLine: opts.onLine, decide: opts.decide };
+  const ctx: RunContext = { lines: [], origins: [], onLine: opts.onLine, decide: opts.decide, wounds: new Map() };
   await runCtx.run(ctx, () => runModuleInner(module, support));
   return { lines: ctx.lines, origins: ctx.origins };
 }
@@ -2552,8 +2615,9 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
 
         if (skillVal > 0) {
           // 惩罚骰（夜晚等）：每个惩罚骰多掷一颗十位骰取最差
+          // 惩罚骰不写进 label —— check() 自己会标，写这儿会打印两遍
           const penalty = mech.detect.penaltyDice ?? 0;
-          const label = `${skillName}（发现${trapItem.name}）${penalty > 0 ? `[${penalty}惩罚骰]` : ""}`;
+          const label = `${skillName}（发现${trapItem.name}）`;
           const r = check(skillVal, vName, label, mech.detect.difficulty, penalty);
           if (r.isSuccess) {
             say(`\n${vName}${useAlt ? "凭着直觉感到危险" : "仔细观察后"}发现了前方的陷阱，小心绕开了。`);
@@ -2587,7 +2651,8 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       // ── 重伤体质检定（CoC 7e Major Wound）──
       // deep（50-74%）或 grievous（≥75%）需要 CON 检定，失败则昏迷
       if (severity === "deep" || severity === "grievous") {
-        const conCheck = check(pc.attributes.constitution, vName, "体质（重伤）", "regular");
+        // ignoreWound：这一掷结算的就是这处伤，不能被它自己罚
+        const conCheck = check(pc.attributes.constitution, vName, "体质（重伤）", "regular", 0, true);
         if (!conCheck.isSuccess) {
           say(`${vName}因伤势过重昏迷过去！`);
           pc.hp = 0; // 昏迷状态
@@ -2609,7 +2674,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
           total += extra;
           // 额外伤害也可能触发重伤
           if ((extraSev === "deep" || extraSev === "grievous") && pc.hp > 0) {
-            const conCheck2 = check(pc.attributes.constitution, vName, "体质（重伤）", "regular");
+            const conCheck2 = check(pc.attributes.constitution, vName, "体质（重伤）", "regular", 0, true);
             if (!conCheck2.isSuccess) {
               say(`${vName}因伤势过重昏迷过去！`);
               pc.hp = 0;
@@ -2648,6 +2713,9 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
                 const faCheck = check(faVal, partnerName, "急救", "regular");
                 if (faCheck.isSuccess) {
                   say(`${partnerName}迅速${mech.firstAid}，阻止了持续伤害。`);
+                  // 伤口处理掉了 → 撤掉伤势惩罚骰
+                  healWound(vName);
+                  sayMech(`${vName} 伤势得到处理，惩罚骰解除。`);
                 } else {
                   say(`${partnerName}尝试急救但没能完全控制住情况。`);
                   // 失败也扣一次持续伤害
@@ -2666,7 +2734,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
 
         // 持续伤害也可能触发重伤
         if ((tickSev === "deep" || tickSev === "grievous") && pc.hp > 0) {
-          const conCheck3 = check(pc.attributes.constitution, vName, "体质（重伤）", "regular");
+          const conCheck3 = check(pc.attributes.constitution, vName, "体质（重伤）", "regular", 0, true);
           if (!conCheck3.isSuccess) {
             say(`${vName}因伤势过重昏迷过去！`);
             pc.hp = 0;
