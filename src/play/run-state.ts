@@ -13,6 +13,8 @@
 
 import type { CoCGeneratedCharacter } from "../character/coc-character";
 import type { SanityEngine } from "../rules/coc-engine";
+import type { WorldModelIntegrator } from "../world/world-model-integrator";
+import type { WorldModelLoader } from "../world/world-model-loader";
 
 /**
  * 本局的两名调查员。
@@ -74,6 +76,26 @@ export interface Dedup {
 
 export function newDedup(): Dedup {
   return { lastAskBridge: "", lastRevealBridge: "", lastPartnerRemark: "" };
+}
+
+/**
+ * 世界模型接入：两个只读大模型 + 一份按场景的缓存。
+ *
+ * `integrator` 可以是 null —— 模型文件缺失/损坏时静默降级，其余流程照跑。
+ * 缓存只有一格（当前场景），因为注入点都在同一个场景内连着用，
+ * 换场景就该重算；做成 Map 反而会把 229MB 模型的派生文本越攒越多。
+ *
+ * ⚠ 两个 loader 都必须走 `sharedWorldModel()` 拿共享实例：
+ * v18 是 383688 条只读参考数据，独占一份约 229MB。命令行下一进程一局无所谓，
+ * 接进服务端后每开一局就再吃一份 —— 实测日志里出现过同一份模型被载入两次。
+ */
+export interface WorldModelCtx {
+  integrator: WorldModelIntegrator | null;
+  /** 神话侧模型，按路径另取一份 */
+  cthulhuLoader: WorldModelLoader;
+  /** 缓存所属场景；换场景即失效 */
+  cacheSceneId: string;
+  cacheText: string;
 }
 
 /** 建一份初始游标 */

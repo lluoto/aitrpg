@@ -51,7 +51,8 @@ import {
   recordWound, healWound, woundPenaltyOf,
 } from "./play/checks";
 import { runSceneTraps } from "./play/traps";
-import { newCursor, newDedup, type Cast } from "./play/run-state";
+import { newCursor, newDedup, type Cast, type WorldModelCtx } from "./play/run-state";
+import { buildWmContext, buildWorldContext } from "./play/llm-context";
 import { nextRevealBridge } from "./play/reveal-bridge";
 import { runCombatEncounter } from "./play/combat";
 import { rollDice, trapsInScene, attributeValue, isMajorWound } from "./play/trap-util";
@@ -580,9 +581,9 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   const world = new WorldState(module);
 
   // ── 世界模型（权威事实层，DESIGN-LOG §1）：懒加载；文件缺失/损坏时静默降级为 null ──
+  // 三样收进 wm（见 play/run-state.ts）：上下文构建器抽出去之后
+  // 谁都不该再从闭包里摸这几个变量。
   let wmIntegrator: WorldModelIntegrator | null = null;
-  let wmCacheSceneId = "";
-  let wmCacheText = "";
   try {
     // 必须走共享实例：v18 是 383688 条只读参考数据，独占一份约 229MB。
     // 命令行下一进程一局，自己 new 一个无所谓；接进服务端之后每开一局
@@ -593,98 +594,23 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   } catch {
     wmIntegrator = null; // 世界模型不可用 → 跳过注入，其余流程不受影响
   }
-  // 克苏鲁神话世界模型：同样共享，按路径各一份
-  const cthulhuLoader = sharedWorldModel(DEFAULT_CTHULHU_PATH);
-  function buildCthulhuContext(): string {
-    try {
-      if (!cthulhuLoader.isLoaded()) {
-        cthulhuLoader.load(DEFAULT_CTHULHU_PATH);
-      }
-      if (!cthulhuLoader.isLoaded()) return "";
-      const lines: string[] = [];
-      lines.push("[克苏鲁神话上下文]");
-      const deities = cthulhuLoader.getByType("deity");
-      if (deities.length > 0) {
-        lines.push("神话存在:");
-        for (const d of deities.slice(0, 6)) {
-          const name = d.name || "未知";
-          const domains = (d as any).domains ? `(领域: ${(d as any).domains.join("、")})` : "";
-          const mechanic = d.mechanic ? ` ${d.mechanic.slice(0, 80)}` : "";
-          lines.push(`  - ${name}${domains}${mechanic}`);
-        }
-      }
-      const mechanics = [
-        ...cthulhuLoader.getByType("power_system"),
-        ...cthulhuLoader.getByType("game_mechanic"),
-        ...cthulhuLoader.getByType("crafting"),
-        ...cthulhuLoader.getByType("cosmology"),
-      ].slice(0, 8);
-      if (mechanics.length > 0) {
-        lines.push("神秘机制:");
-        for (const m of mechanics) {
-          const name = m.name || "未知";
-          const mechanic = m.mechanic ? m.mechanic.slice(0, 90) : (m.description || "").slice(0, 90);
-          lines.push(`  - ${name}: ${mechanic}`);
-        }
-      }
-      const causals = cthulhuLoader.getByType("causal").slice(0, 3);
-      if (causals.length > 0) {
-        lines.push("可推进的怪异事件方向:");
-        for (const c of causals) {
-          const name = c.name || "未知";
-          const mechanic = c.mechanic ? c.mechanic.slice(0, 90) : "";
-          lines.push(`  - ${name}: ${mechanic}`);
-        }
-      }
-      return lines.length > 1 ? lines.join("\n") : "";
-    } catch {
-      return "";
-    }
-  }
-  /** 按当前场景构建世界模型注入块；同场景内节流复用（场景切换才重算） */
-  function buildWmContext(w: WorldState): string | undefined {
-    if (!wmIntegrator) return undefined;
-    const scene = w.currentScene;
-    const sceneId = scene?.id ?? "";
-    if (wmCacheSceneId === sceneId && wmCacheText) return wmCacheText;
-    const wmCtx: WmSceneContext = {
-      sceneId,
-      sceneName: scene?.name ?? "",
-      // 关键词 = 场景名 + 场景内线索名（保守匹配，避免噪声条目）
-      keywords: [scene?.name ?? "", ...(scene?.clues.map(c => c.name) ?? [])].filter(k => k.length > 0),
-      presentNPCs: scene?.npcIds ?? [],
-      discoveredClues: scene?.clues.filter(c => w.isClueFound(c.id)).map(c => c.name) ?? [],
-      round: w.round,
-      ruleset: "cosmic-horror",
-    };
-    let wmText = wmIntegrator.buildKPContext(wmCtx);
-    // 克苏鲁神话上下文（独立 loader，失败静默跳过；随缓存一并复用）
-    const cthulhuText = buildCthulhuContext();
-    if (cthulhuText) {
-      wmText = wmText ? `${wmText}\n\n${cthulhuText}` : cthulhuText;
-    }
-    wmCacheText = wmText;
-    wmCacheSceneId = sceneId;
-    return wmCacheText;
-  }
+  const wm: WorldModelCtx = {
+    integrator: wmIntegrator,
+    // 克苏鲁神话世界模型：同样共享，按路径各一份
+    cthulhuLoader: sharedWorldModel(DEFAULT_CTHULHU_PATH),
+    cacheSceneId: "",
+    cacheText: "",
+  };
+
   const pl1 = new PlayerAgent(createPlayerCharacter(
-    c1, p0.name, p0.occupation,
-    p0.personality,
-    p0.background,
-    p0.motive
+    c1, p0.name, p0.occupation, p0.personality, p0.background, p0.motive,
   ));
   const pl2 = new PlayerAgent(createPlayerCharacter(
-    c2, p1.name, p1.occupation,
-    p1.personality,
-    p1.background,
-    p1.motive
+    c2, p1.name, p1.occupation, p1.personality, p1.background, p1.motive,
   ));
 
   const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || "";
   const llmOk = llmEnabled(); // 判据见 llmEnabled —— 别再在这里重写一份
-  // LLM connection status — not printed to output, available for debug
-  // say(`LLM: ${llmOk ? "connected" : "template mode"}`);
-  // LLM client for NPC conversation (PC questions + NPC replies) — template mode falls back inside
   const llmClient: LLMClient | null = llmOk
     ? new LLMClient({
         apiKey,
@@ -847,71 +773,6 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     return t.replace(/[，,、\s]+$/, "").slice(0, 25);
   }
 
-  /** 构建全局调查上下文（WorldContext）— 跨场景串联，供所有 LLM 叙事生成点注入 */
-  function buildWorldContext(w: WorldState): WorldContext {
-    // 跨场景已发现线索名（跳过对话追踪用合成 id，如 clue_kn_/conv_kn_）
-    const discovered: string[] = [];
-    for (const sc of module.scenes) {
-      for (const cl of sc.clues) {
-        if (w.isClueFound(cl.id)) discovered.push(cl.name);
-      }
-    }
-    // 已接触的 NPC（按模块 npcIds 顺序）
-    const met = module.npcs
-      .filter(n => w.getNpcState(n.id)?.knownByPlayers)
-      .map(n => n.name.replace(/[（(].*[）)]$/, "").trim());
-    // 已访问场景名（sceneHistory 存的是 id，转成名字；当前场景去重）
-    const visited = w.getSnapshot().sceneHistory
-      .map(id => module.scenes.find(s => s.id === id)?.name)
-      .filter((n): n is string => !!n);
-    const current = w.currentScene?.name ?? "";
-    if (current && !visited.includes(current)) visited.push(current);
-    // 调查员目标
-    const goals = [pl1.pc.currentGoal, pl2.pc.currentGoal].filter((g): g is string => !!g && g.length > 0);
-    // 最近事件：WorldState 记录的历史（场景历史含事件串）
-    const history = w.getHistorySummary(5).filter(e => !module.scenes.some(s => s.name === e));
-    // 未探索的核心线索场景（模糊提示——引导调查方向，不点名场景内部细节）
-    const unexplored: string[] = [];
-    for (const sc of module.scenes) {
-      if (sc.id === w.currentScene?.id) continue;
-      const hasCore = sc.clues.some(cl => cl.importance === "core" && !w.isClueFound(cl.id));
-      if (hasCore) unexplored.push(sc.name);
-    }
-    // 剧情状态变量（DESIGN-LOG §2）：当前场景全量（含初始声明），其他场景只列运行时被修改过的（≠初始值）
-    const stateVars: string[] = [];
-    const curId = w.currentScene?.id ?? "";
-    for (const sc of module.scenes) {
-      const vars = w.getStateVars(sc.id);
-      const keys = Object.keys(vars);
-      if (keys.length === 0) continue;
-      const initial = sc.stateVars ?? {};
-      const shown = keys.filter(k => sc.id === curId || vars[k] !== initial[k]);
-      if (shown.length === 0) continue;
-      stateVars.push(`${sc.name}: ${shown.map(k => `${k}=${vars[k]}`).join("、")}`);
-    }
-    return {
-      visitedScenes: visited,
-      currentScene: current,
-      discoveredClues: discovered,
-      currentGoals: goals,
-      recentEvents: history,
-      metNpcs: met,
-      triggeredEvents: [],
-      // 只给"还有地方没去"这个事实，不给名字。
-      //
-      // 原先这里把未访问场景名拼进去，而这段会一路注入到 PC 提问的 prompt 里 ——
-      // 于是调查员会张口就问"拖车房在镇子哪里"，可那时根本没人提过拖车房。
-      // 上面第一行注释本来就写着"不点名场景内部细节"，是实现没做到。
-      // 地点该由 NPC 说出口或被玩家撞见来引入，不该从进度提示里漏出去。
-      unexploredHints: unexplored.length > 0
-        ? ["镇上仍有与案件相关的场所未曾到访（是哪些，调查员目前并不知道）"]
-        : [],
-      stateVars: stateVars.length > 0 ? stateVars : undefined,
-      worldModelContext: buildWmContext(w),
-    };
-  }
-
-  /** 在 NPC 首次对话后，给 PL 1-2 轮追问机会 */
   /**
    * 识别桥段 —— NPC 刚提起的东西，正好就在眼前，于是有这习惯的调查员自己看了过去。
    *
@@ -994,7 +855,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     };
 
     // ── 全局调查上下文（跨场景串联）：供所有 LLM 叙事生成点注入 ──
-    const worldCtx = buildWorldContext(w);
+    const worldCtx = buildWorldContext(module, [pl1, pl2], wm, w);
 
     // 未说出的知识：knowledgeReveals 中尚未作为线索展开的条目（保留下标 → 与 knowledge 一一对应）
     const unrevealedReveals = (npc.llmExpanded?.knowledgeReveals ?? [])
@@ -1199,7 +1060,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
                 .filter(({ ki }) => world.isClueFound(`clue_kn_${prevNpc.id}_${ki}`))
                 .map(r => r.text),
             ].filter(Boolean).join(" / ");
-            const transition = await generateNpcTransition(prevNpc, npc, scene, llmClient, buildWorldContext(world), prevLines);
+            const transition = await generateNpcTransition(prevNpc, npc, scene, llmClient, buildWorldContext(module, [pl1, pl2], wm, world), prevLines);
             say(`\n${transition}`);
             lastTransitionText = transition;
             introShown = true;
@@ -1210,7 +1071,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
         // 只做"承接动作"衔接（孩子进屋→大人开门），外貌由后续 impression 单独给出，
         // 不设 introShown，避免首 NPC 的外貌信息缺失。
         try {
-          const transition = await generateOpeningTransition(npc, scene, scene.openingAtmosphere, llmClient, buildWorldContext(world));
+          const transition = await generateOpeningTransition(npc, scene, scene.openingAtmosphere, llmClient, buildWorldContext(module, [pl1, pl2], wm, world));
           say(`\n${transition}`);
           lastTransitionText = transition;
         } catch { /* 承接失败则不打印，直接进入首 NPC */ }
@@ -1471,7 +1332,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
           { name: scene.name, description: scene.description },
           pcName,
           llmClient,
-          buildWorldContext(world),
+          buildWorldContext(module, [pl1, pl2], wm, world),
         );
         if (text) return text;
       }
@@ -1573,7 +1434,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
                       { name: scene.name, description: scene.description },
                       failCount,
                       llmClient,
-                      buildWorldContext(world),
+                      buildWorldContext(module, [pl1, pl2], wm, world),
                     );
                   }
                   const finalText = fallbackText || rescueText;
