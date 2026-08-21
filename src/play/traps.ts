@@ -9,6 +9,7 @@
 import type { ModuleData, Scene } from "../module/types";
 import type { WorldState } from "../world/state";
 import { resolveCheckValue } from "../character/coc-character";
+import { isDowned } from "./run-state";
 import type { Cast, Cursor } from "./run-state";
 import { say, sayMech } from "./narration";
 import { check, sanCheck, applyDamage, healWound } from "./checks";
@@ -44,9 +45,17 @@ for (const trapItem of trapsInScene(module.items, scene.id)) {
   const mech = trapItem.trap!;
   // 事先发现就绕开了 —— 这是原先 support.trapClueId 的语义，现在按陷阱各自声明
   if (mech.detectedByClue && world.isClueFound(mech.detectedByClue)) continue;
+  // 昏迷的人不会自己走进陷阱 —— 同伴多半是拖着他走的
+  const walkers = [
+    { pc: c1, name: p0.shortName },
+    { pc: c2, name: p1.shortName },
+  ].filter(x => !isDowned(x.pc));
+  if (walkers.length === 0) continue; // 都倒下了，没人踩得中
+
   triggeredTraps.add(trapItem.id);
-  const vName = stepCounter % 2 === 0 ? p0.shortName : p1.shortName;
-  const pc = stepCounter % 2 === 0 ? c1 : c2;
+  const picked = walkers[stepCounter % walkers.length]!;
+  const vName = picked.name;
+  const pc = picked.pc;
 
   // 体型免疫：模组给结论不给理由，理由写在数据的 immuneNarration 里并记入 inferred
   if (mech.sizImmunityBelow !== undefined && (pc.attributes.size ?? 50) < mech.sizImmunityBelow) {

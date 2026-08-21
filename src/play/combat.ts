@@ -12,6 +12,7 @@ import { CoCEngine, SUCCESS_LEVEL_LABELS } from "../rules/coc-engine";
 import { say, sayMech } from "./narration";
 import { sanCheck, check, applyDamage } from "./checks";
 import { rollDice } from "./trap-util";
+import { isDowned } from "./run-state";
 import type { Cast } from "./run-state";
 
 /**
@@ -221,9 +222,10 @@ if (migoEncounter) {
     round++;
     if (round > 1) say(`\n── 第 ${round} 回合 ──`);
 
-    // 调查员攻击
+    // 调查员攻击 —— 倒下的人不出手（CoC 7e：0 HP 即失去意识）
     for (const combatant of pcCombatants) {
       if (migoHp <= 0) break;
+      if (isDowned(combatant.pc)) continue;
       migoHp -= pcAttack(combatant);
     }
     if (migoHp <= 0) break;
@@ -231,7 +233,8 @@ if (migoEncounter) {
     // 显示调查员疲劳状态（从第2回合起）
     if (round >= 2) {
       const shown = new Set<string>();
-      for (const { name } of pcCombatants) {
+      for (const { name, pc } of pcCombatants) {
+        if (isDowned(pc)) continue; // 倒着的人没有"喘不上气"这回事
         const f = FATIGUE_THRESHOLDS.slice().reverse().find(t => fatigue[name] >= t.min)!;
         if (f.label && !shown.has(f.label)) {
           shown.add(f.label);

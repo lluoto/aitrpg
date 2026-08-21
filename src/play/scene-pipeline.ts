@@ -37,10 +37,11 @@ import {
 } from "./npc-text";
 import {
   runClueCheck, narrateClueDiscovery, checkClueSanLoss, investigableClues,
-  isPassiveClue, MAX_SCENE_ACTIONS, type ClueCtx,
+  isPassiveClue, MAX_SCENE_ACTIONS, tryReviveDowned, type ClueCtx,
 } from "./clue-check";
 // 从 move-util 取而不是从 play-module —— 后者会成环
 import { chooseConnection, isRedundantMoveLine, noticesEntity } from "./move-util";
+import { isDowned, standing } from "./run-state";
 import type { Cast, Cursor, Dedup, WorldModelCtx } from "./run-state";
 
 function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]!; }
@@ -92,18 +93,27 @@ const askCounts = new Map<string, number>();
  * 又变成了两人排队发言。真实的队伍里谁接话取决于这个人是谁、这话题跟他有没有关系，
  * 所以交给 askerScore 打分，同分时才随机。
  */
-export function pickAsker(ctx: SceneCtx, topic: string): PlayerAgent {
-  const {
-    module, support, world, cast, cursor, dedup, wm, llmClient,
-    agents, agents: [pl1, pl2],
-  } = ctx;
-  const scored = [pl1, pl2].map((p) => ({
-    p,
+/**
+ * 这一轮谁开口。昏迷的人不开口 —— 两人都昏迷则返回 null，调用方跳过这段对话。
+ *
+ * agent 与角色卡是两个对象，得按顺序对上才判得了昏迷：
+ * `agents[0]` 对 `cast.c1`，`agents[1]` 对 `cast.c2`。
+ */
+export function pickAsker(ctx: SceneCtx, topic: string): PlayerAgent | null {
+  const { cast, agents: [pl1, pl2] } = ctx;
+  const alive = [
+    { agent: pl1, pc: cast.c1 },
+    { agent: pl2, pc: cast.c2 },
+  ].filter(x => !isDowned(x.pc));
+  if (alive.length === 0) return null;
+
+  const scored = alive.map(({ agent }) => ({
+    p: agent,
     // 微小抖动：分数持平时不至于每次都选同一个
-    score: askerScore(p.pc, topic, askCounts.get(p.name) ?? 0) + Math.random() * 0.2,
+    score: askerScore(agent.pc, topic, askCounts.get(agent.name) ?? 0) + Math.random() * 0.2,
   }));
   scored.sort((a, b) => b.score - a.score);
-  const chosen = scored[0].p;
+  const chosen = scored[0]!.p;
   askCounts.set(chosen.name, (askCounts.get(chosen.name) ?? 0) + 1);
   return chosen;
 }
@@ -180,6 +190,8 @@ export async function conductNpcConversation(ctx: SceneCtx, npc: ModuleNPC, w: W
 
   // 谁开口要等 targetTopic 定下来才能判：话题跟谁的经历沾边，谁才更可能接这一句
   const asker = pickAsker(ctx, targetTopic);
+  // 两人都昏迷 → 没人问得出话，这段对话整个跳过
+  if (!asker) return;
 
   // ── PC question: 交给 LLM 结合场景/历史/重点生成自然提问（无 LLM 时降级为锚点引导话术） ──
   let question: string;
@@ -298,6 +310,19 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
   const scene = world.currentScene!;
   world.advanceRound();
   const round = world.round;
+
+  // 进场先看有没有人倒着 —— CoC 7e：HP 归零即失去意识，得靠同伴急救唤醒。
+  // 放在场景开头而不是每回合：每回合都试会变成必然成功的仪式，掷骰就没意义了。
+  tryReviveDowned({
+    module, support, world, scene, cast, cursor, dedup, wm,
+    agents, llmClient, attemptedClueIds: new Set(),
+  });
+
+  // 两人都还倒着 → 这个场景什么也做不了，交回主循环收尾
+  if (standing([cast.c1, cast.c2]).length === 0) {
+    say(`\n两名调查员都失去了意识，倒在${scene.name}。`);
+    return null;
+  }
 
   // Use global visit tracking — moveToScene increments before processScene runs,
   // so count > 1 means this is a revisit

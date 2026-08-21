@@ -52,7 +52,7 @@ import {
   recordWound, healWound, woundPenaltyOf,
 } from "./play/checks";
 import { runSceneTraps } from "./play/traps";
-import { newCursor, newDedup, type Cast, type WorldModelCtx } from "./play/run-state";
+import { newCursor, newDedup, standing, type Cast, type WorldModelCtx } from "./play/run-state";
 import { buildWmContext, buildWorldContext } from "./play/llm-context";
 import {
   runClueCheck, narrateClueDiscovery, checkClueSanLoss, investigableClues,
@@ -617,6 +617,15 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     }
     const nextConn = await processScene(sceneCtx);
     cursor.visitCount.set(currentId, (cursor.visitCount.get(currentId) ?? 0) + 1);
+
+    // 两人都还倒着 → 收尾。不能落进下面的「死路兜底」寻路：
+    // 那段会把 null 当成「这个场景没得做」，接着替他们规划下一站 ——
+    // 而他们此刻躺在地上，走不了。
+    if (standing([c1, c2]).length === 0) {
+      cursor.done = true;
+      break;
+    }
+
     if (nextConn) {
       const movingToFinale = nextConn.targetSceneId === support.finaleSceneId && world.isClueFound(support.finaleClueId);
       world.moveToScene(nextConn.targetSceneId);
@@ -690,8 +699,22 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   // ── Ending (data-driven from module) ──
   say(`\n${"\u2501".repeat(48)}`);
 
+  // 全员倒下：这不是「查完了」而是「没能查下去」，不该按线索进度评结局。
+  // CoC 7e 的 0 HP 是失去意识不是死亡 —— 醒来时案子还在那儿，只是他们退出了。
+  const allDown = standing([c1, c2]).length === 0;
+  if (allDown) {
+    say("");
+    divider("调查中止");
+    say(
+      "两名调查员再没能站起来。\n" +
+      "不知过了多久，意识回笼时天已经亮了 —— 有人把他们拖到了路边，或者他们自己爬了出来。\n" +
+      "案子还在那儿，只是这一次，他们没能走到最后。",
+      "verbatim",
+    );
+  }
+
   // Evaluate ending narrative from module support
-  const ending = support.evaluateEnding(
+  const ending = allDown ? null : support.evaluateEnding(
     (id: string) => world.isClueFound(id),
     (id: string) => world.isSceneVisited(id),
   );
