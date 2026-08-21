@@ -114,6 +114,65 @@ export function isRedundantMoveLine(condition: string, targetSceneName: string):
   return stripped === full || stripped === bare || (inner !== "" && stripped === inner);
 }
 
+/** `chooseConnection` 要问世界的那几件事。抽成接口是为了让它能脱离 WorldState 单测 */
+export interface MoveWorldView {
+  isSceneVisited(sceneId: string): boolean;
+  visitCount(sceneId: string): number;
+  /** 模组里到底有没有这个场景。指向不存在场景的连接必须排最后 —— 见下面 -5 那一支 */
+  sceneExists(sceneId: string): boolean;
+}
+
+export interface MoveChoice {
+  conn: SceneConnection | null;
+  /**
+   * true = 玩家说的话没对上任何一条连接，这个目的地是引擎按分数替他挑的。
+   *
+   * 这个字段是重点。原先这段逻辑埋在 `processScene` 的闭包里，
+   * 「玩家自己选的」和「引擎替他选的」出来一模一样，
+   * 外面无从分辨，也就没人能发现玩家的话被丢掉了。
+   */
+  forced: boolean;
+}
+
+/**
+ * 把玩家的一句话对到一条连接上。**纯函数，没有行为改动** ——
+ * 原样搬自 `processScene`，只是从闭包里挪出来好让它可测。
+ *
+ * 为什么值得挪：这个仓库已经栽过一次 —— 见
+ * `src/__tests__/narrative-entity-recognition.test.ts:55`，
+ * 「这道门原先长在 runModuleInner 的闭包里，测不到 —— 于是四局实跑一次都没演」。
+ * 主循环至今没有任何测试覆盖，改它之前先让它能被测。
+ */
+export function chooseConnection(
+  decision: { action: string },
+  unlocked: SceneConnection[],
+  world: MoveWorldView,
+): MoveChoice {
+  if (unlocked.length === 0) return { conn: null, forced: false };
+
+  for (const c of unlocked) {
+    // 去掉动词前缀再取前 8 字：condition 是"前往加比的拖车房"这种，
+    // 而玩家会说"我去加比那边看看"，比的是地名不是整句。
+    const core = c.condition.replace(/^(前往|进入|返回|去|到)\s*/, "").slice(0, 8);
+    if (decision.action.includes(core)) return { conn: c, forced: false };
+  }
+
+  // 没对上 —— 按"哪个更值得去"排个序替他挑一个。
+  const scored = unlocked.map(c => {
+    let score = 0;
+    // 目标场景不存在（模组数据有洞）→ 直接垫底。
+    // 少了这一支，坏连接反而会因为"没访问过"拿 +10 排到第一个去。
+    if (!world.sceneExists(c.targetSceneId)) return { conn: c, score: -5 };
+    if (!world.isSceneVisited(c.targetSceneId)) score += 10; else score -= 3;
+    const vc = world.visitCount(c.targetSceneId);
+    if (vc >= 3) score -= 8;
+    else if (vc >= 2) score -= 4;
+    return { conn: c, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return { conn: scored[0]!.conn, forced: true };
+}
+
 /**
  * 重伤判定：单次伤害大于耐久半值。
  *
@@ -2926,27 +2985,14 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       ? await decider(plContext, moveLabels)
       : await pl1.decideViaLLM(plContext, [], moveLabels);
 
-    // Match LLM output to a connection
-    let chosenConn: SceneConnection | null = null;
-    for (const c of unlocked as SceneConnection[]) {
-      const core = c.condition.replace(/^(前往|进入|返回|去|到)\s*/, "").slice(0, 8);
-      if (decision.action.includes(core)) { chosenConn = c; break; }
-    }
-    if (!chosenConn) {
-      // Score-based fallback
-      const scored = (unlocked as SceneConnection[]).map(c => {
-        let score = 0;
-        const tgt = module.scenes.find(s => s.id === c.targetSceneId);
-        if (!tgt) return { conn: c, score: -5 };
-        if (!world.isSceneVisited(c.targetSceneId)) score += 10; else score -= 3;
-        const vc = globalVisitCount.get(c.targetSceneId!) ?? 0;
-        if (vc >= 3) score -= 8;
-        else if (vc >= 2) score -= 4;
-        return { conn: c, score };
-      });
-      scored.sort((a, b) => b.score - a.score);
-      chosenConn = scored[0].conn;
-    }
+    // 匹配逻辑见 chooseConnection（本文件顶部）—— 挪出闭包是为了能单测
+    const picked = chooseConnection(decision, unlocked as SceneConnection[], {
+      isSceneVisited: (id) => world.isSceneVisited(id),
+      visitCount: (id) => globalVisitCount.get(id) ?? 0,
+      sceneExists: (id) => module.scenes.some(s => s.id === id),
+    });
+    const chosenConn = picked.conn;
+    if (!chosenConn) return null;
 
     // 只报地名的那种就别说了 —— 下一行的场景标题会把同一件事再讲一遍
     const dest = module.scenes.find(s => s.id === chosenConn.targetSceneId);
