@@ -162,17 +162,23 @@ describe("主循环脚手架", () => {
     expect(scoreHonored(run).unresolvable).toBe(0);
   }, 60_000);
 
-  test("【记录现状】玩家原样复述一个选项，引擎并不总是照做", async () => {
-    // 实测 26/29，三处不兑现每轮都复现（三轮结果完全一致）：
-    //   普瑞米尔 选「前往特里坎家」→ 实到 加比的拖车房
-    //   谷仓形建筑 选「返回农场外围（陷阱区）」→ 实到 农场主别墅
-    //   霍姆斯医院 选「返回镇上」→ 实到 报亭
-    //
-    // 断言写成"别变差"而不是"必须全中"：全中现在就是红的，
-    // 而钉死 26 会让修好之后也红。根因还没查，留给下一轮。
+  test("玩家原样复述一个选项，引擎必须照做", async () => {
+    // 曾经是 26/29。三处不兑现根因同一个：主循环的「访问≥6次强制改道」
+    // 在玩家**明确选了**去某地、到达后、渲染之前，把人一声不吭地弹到别处。
+    // 三处的实到全都是"被选中场景的第一条通往未访问场景的出边"，
+    // 且被选中场景此前进场次数都正好是 6。
     const run = await runLoop(pickLast);
-    const { scored, honored } = scoreHonored(run);
+    const { scored, honored, broken } = scoreHonored(run);
     expect(scored).toBeGreaterThan(20);
-    expect(honored).toBeGreaterThanOrEqual(scored - 3);
+    expect(broken).toEqual([]);
+    expect(honored).toBe(scored);
+  }, 60_000);
+
+  test("顺着引擎给的顺序走，仍然能通关", async () => {
+    // 这是"不再强制改道"这个改动最该守住的东西：
+    // 原先是那条强制改道在把玩家往终局赶。去掉它对正常玩法的影响必须为零。
+    const run = await runLoop((o) => o[0] ?? "");
+    const finale = BARN_OF_PREMIER.scenes.find(s => s.id === BARN_SUPPORT.finaleSceneId);
+    expect(run.entries.some(e => e.name === finale?.name)).toBe(true);
   }, 60_000);
 });
