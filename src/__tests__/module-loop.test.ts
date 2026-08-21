@@ -25,6 +25,8 @@ interface Stop {
   chose: string;
   /** 做这个决定时的播报位置。目的地 = 这之后的第一个进场标题 */
   at: number;
+  /** 这个岔口问的是"查什么"还是"去哪" —— 两者的选项不是一回事，别混着算 */
+  kind: "investigate" | "move";
 }
 
 interface LoopRun {
@@ -48,8 +50,12 @@ async function runLoop(pick: (options: string[]) => string): Promise<LoopRun> {
     decide: async (context: string, options: string[]): Promise<PlayerDecision> => {
       const scene = bareScene(context.match(/【场景】(.*)/)?.[1] ?? "?");
       const chose = pick(options);
-      stops.push({ scene, options, chose, at: lines.length });
-      return { action: chose, intent: "move" };
+      const kind = options.some(o => o.startsWith("调查")) ? "investigate" : "move";
+      stops.push({ scene, options, chose, at: lines.length, kind });
+      // intent 跟着选的东西走 —— 真的 agent 是自己报 intent 的（见 player-agent.ts）。
+      // 之前这里写死 "move"，结果调查阶段永远被跳过，等于没在测反转后的路径。
+      const intent = chose.startsWith("调查") ? "investigate" : "move";
+      return { action: chose, intent };
     },
   });
 
@@ -61,6 +67,7 @@ function scoreHonored(run: LoopRun) {
   let scored = 0, honored = 0, unresolvable = 0;
   const broken: string[] = [];
   for (const st of run.stops) {
+    if (st.kind !== "move") continue; // "查什么"的选项不是连接，不该拿来对
     const here = BARN_OF_PREMIER.scenes.find(s => s.name === st.scene);
     const conn = here?.connections.find(c => c.condition.trim() === bareOpt(st.chose));
     if (!conn) { unresolvable++; continue; }
@@ -172,6 +179,22 @@ describe("主循环脚手架", () => {
     expect(scored).toBeGreaterThan(20);
     expect(broken).toEqual([]);
     expect(honored).toBe(scored);
+  }, 60_000);
+
+  test("玩家自己决定查什么，而且真的会掷骰", async () => {
+    // 循环反转：原先进场就把线索全解光，玩家对"查什么"零决定权。
+    // 现在需要动手查的线索（模组里 32 条中的 9 条）会变成岔口上的选项。
+    //
+    // 光断言"出现了调查选项"不够 —— 那只证明菜单画出来了。
+    // 必须证明选了之后**真的掷了骰**，所以去看选择之后紧跟的检定播报。
+    const run = await runLoop((o) => o[0] ?? "");
+    const invStops = run.stops.filter(s => s.kind === "investigate");
+    expect(invStops.length).toBeGreaterThan(0);
+    expect(invStops.every(s => s.chose.startsWith("调查"))).toBe(true);
+
+    const rolledAfter = invStops.filter(st =>
+      run.lines.slice(st.at, st.at + 12).some(l => l.includes("[检定]")));
+    expect(rolledAfter.length).toBeGreaterThan(0);
   }, 60_000);
 
   test("顺着引擎给的顺序走，仍然能通关", async () => {
