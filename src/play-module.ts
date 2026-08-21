@@ -554,10 +554,25 @@ async function createPC(name: string, archId: string, archetype: any) {
 // 八项背景元素（形象/信念/重要之人/意义之地/宝贵之物/特质/伤口疤痕/恐惧症躁狂症）先由模板池生成，
 // 再经 LLM 增强并据此撰写背景故事（LLM 不可用时回退模板拼接）。
 
-/** 一次 LLM 对话（无 key/失败 → 返回空串，由调用方回退） */
-async function llmOnce(system: string, user: string, maxTokens = 500): Promise<string> {
+/**
+ * 这一局到底能不能打 LLM。
+ *
+ * 抽出来是因为原先有两份判据：`llmOnce` 只看有没有 key，
+ * runModuleInner 里那份还看 `LLM_DISABLED`/`LLM_MODE`。
+ * 于是开发机上只要 key 在环境里，`LLM_DISABLED=true` **拦不住车卡阶段打网络** ——
+ * 离线跑（测试、CI）会莫名其妙变慢甚至挂在超时上。两份判据只留一份。
+ */
+export function llmEnabled(): boolean {
+  if (process.env.LLM_DISABLED === "true" || process.env.LLM_MODE === "template") return false;
   const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
-  if (!apiKey || apiKey === "sk-placeholder" || apiKey.startsWith("${")) return "";
+  if (!apiKey || apiKey === "sk-placeholder" || apiKey.startsWith("${")) return false;
+  return true;
+}
+
+/** 一次 LLM 对话（不可用/失败 → 返回空串，由调用方回退） */
+async function llmOnce(system: string, user: string, maxTokens = 500): Promise<string> {
+  if (!llmEnabled()) return "";
+  const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
   try {
     const baseUrl = process.env.LLM_BASE_URL || "https://api.openai.com/v1";
     const model = process.env.LLM_MODEL || "gpt-4o-mini";
@@ -956,9 +971,8 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     p1.motive
   ));
 
-  const llmDisabled = process.env.LLM_DISABLED === "true" || process.env.LLM_MODE === "template";
   const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || "";
-  const llmOk = !llmDisabled && !!(apiKey && !apiKey.startsWith("${") && apiKey !== "sk-placeholder");
+  const llmOk = llmEnabled(); // 判据见 llmEnabled —— 别再在这里重写一份
   // LLM connection status — not printed to output, available for debug
   // say(`LLM: ${llmOk ? "connected" : "template mode"}`);
   // LLM client for NPC conversation (PC questions + NPC replies) — template mode falls back inside
