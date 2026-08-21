@@ -2,6 +2,49 @@
 
 > 从 `docs/index-program.md` 拆出的 log，**只追加**。索引 `docs/notes/index.json`（重建：`bun scripts/docs-index.ts`）。
 
+### ✅ 拆 play-module：先抽播报层与 NPC 对话（2026-08-21）
+
+**起因是量出来的读取成本**，不是「看着太长」。`play-module.ts` 3537 行里
+`runModuleInner` 一个函数占 2615 行 / **74%**，里面按注释能切出近 30 个块，
+但**没有一个是能整段读进来的单元** —— 每次改动只能靠行号开窗口猜，
+窄了缺上下文、宽了浪费。本轮改伤势时读了 `applyDamage`/`check` 3 次、陷阱段 4 次，
+不是因为内容多，是因为没有「陷阱处理」这个可寻址的东西。
+
+这也是当初 `chooseConnection` 必须抽出闭包才能测的同一个病。
+
+**怎么定要抽哪一块**：写 `tools/_scan-free-idents.ts` 扫「用到但没在段内定义」的名字。
+第一版结果全是噪音（`the`/`driven`/`a` —— 注释里的英文单词被当成标识符），
+剥掉注释、字符串、模板串、正则字面量并排除属性访问之后才干净。
+**但正则扫描仍不可信**（`say` 时有时无），最后是拿 tsc 报错当权威清单：
+切出去 → `bun run typecheck` → 它精确列出 5 个解析不了的名字。
+
+**分了三层，依赖单向**：
+
+| 文件 | 行数 | 装什么 |
+|---|---|---|
+| `src/play/narration.ts` | 74 | `RunContext` / `runCtx` / `say` / `sayMech` / `divider` |
+| `src/play/npc-text.ts` | 148 | `analyseNpcData` / `splitLeadingStageDirection` / `stripOuterQuotes` / `noteEntityMentions` |
+| `src/play/npc-dialogue.ts` | 770 | 16 个对话生成函数 |
+
+播报层必须先抽：拆出去的子模块要够到 `say()`，留在 play-module 里它们就得
+反过来 import，成环。
+
+**唯一的真闭包依赖是 `nextRevealBridge`**（捕获 `lastRevealBridge`，
+用来避免连续两次用同一句引导语）。改成参数注入而不是把状态挪进 `RunContext` ——
+函数自己声明需要什么，比隐式捕获清楚。6 处调用点用脚本批量补，手改容易漏。
+
+**结果**：`runModuleInner` 2615 → 1873 行（74% → 71%），
+play-module 3537 → 2630 行。
+
+**纯搬运的判据**：1325 条测试 + typecheck + 主循环脚手架 10/10 通关。
+⚠ 只看通关率会误判 —— 头一轮 fuzz 出 10/10 True End，而之前量到过 6~8 True，
+差点当成回归；连跑三轮看到 7 True/3 Normal 才确认是固有方差
+（检定走 `Math.random`，不可播种）。**方差没量清之前不要下回归结论。**
+
+**顺带发现第二条无种子的假红**：`npc-reaction.test.ts` 的
+「高稳定性减少负面情绪」，全量里偶发红，单独跑 5/5 全过，全量重跑两次也全绿。
+仓里已知的那条在 `coc-engine.test.ts:131`，这是第二条。
+
 ### 自由行动解析：agent 支持，引擎扔掉，而 intent 判别撑不住（2026-08-20）
 
 问题是「要改成自由行动解析，现在的 subagent 支不支持」。逐层查下来：
