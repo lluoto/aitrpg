@@ -2792,25 +2792,38 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       return `${discoveryFlavor(level)}${sanitizeRevelation(clue.revelation)}`;
     }
 
-    /** Run a single clue check (observation or skill) and return true if discovered */
+    /**
+     * Run a single clue check (observation or skill) and return true if discovered.
+     *
+     * ── skill 优先，passive 退化成兜底 ──
+     * 同一条线索如果既有 skill 又有 passive 方法，原先的实现遇到第一个 passive
+     * 就 return，于是 skill 检定**永远不会执行**。普查 32 条线索：4 条是这样，
+     * 而且全是 core（黑色钱包、尸体、床位、日记本）。
+     *
+     * 这直接导致**结局不区分**——True End 要的两条线索（日记、文件）都在卧室，
+     * 进门即得，去终局必须穿过卧室，所以走到头必得 True End。实测 10 局全 True End。
+     *
+     * 现在改成：
+     * 1. 先把 methods 分成 skill 组和 passive 组
+     * 2. 有 skill 就只跑 skill，不碰 passive
+     * 3. skill 失败累计 >= maxFails 时，**如果有 passive 方法**用它揭示
+     *    （比 failback/revelation 更自然：作者写的就是"这里还有另一种发现方式"）
+     * 4. 没有 skill 的线索，passive 照旧立即生效
+     */
     async function runClueCheck(clue: Clue): Promise<boolean> {
       if (world.isClueFound(clue.id)) return false;
-      for (const method of clue.findMethods) {
-        if (method.type === "observation" || method.type === "automatic" || method.type === "item") {
-          say(await narrateClueDiscovery(clue, "regular", ""));
-          world.discoverClue(clue.id);
-          checkClueSanLoss(clue);
-          return true;
-        }
-        if (method.type === "skill") {
-          // Fallback: no skillName → treat as observation (module data error guard)
-          if (!method.skillName) {
-            say(await narrateClueDiscovery(clue, "regular", ""));
-            world.discoverClue(clue.id);
-            checkClueSanLoss(clue);
-            return true;
-          }
-          // resolveCheckValue: 技能走 skillValues（含中文别名），属性（幸运/力量等）走 attributes/luck
+
+      const PASSIVE_TYPES = new Set(["observation", "automatic", "item"]);
+      const skillMethods = clue.findMethods.filter(
+        (m) => m.type === "skill" && m.skillName,
+      );
+      const passiveMethods = clue.findMethods.filter((m) =>
+        PASSIVE_TYPES.has(m.type),
+      );
+
+      // ── 有 skill 方法：skill 优先，passive 退化成兜底 ──
+      if (skillMethods.length > 0) {
+        for (const method of skillMethods) {
           const pcList = [c1, c2].sort((a, b) => {
             const va = resolveCheckValue(a, method.skillName!);
             const vb = resolveCheckValue(b, method.skillName!);
@@ -2822,7 +2835,13 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
           if (val > 0) {
             const name = pc === c1 ? p0.shortName : p1.shortName;
             say(`\n${name}${method.description}……`);
-            const r = check(val, name, method.skillName!, (method.difficulty as "regular"|"hard"|"extreme") ?? "regular");
+            const r = check(
+              val,
+              name,
+              method.skillName!,
+              (method.difficulty as "regular" | "hard" | "extreme") ??
+                "regular",
+            );
 
             if (r.isSuccess) {
               say(await narrateClueDiscovery(clue, r.successLevel, name));
@@ -2835,26 +2854,29 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
               const failCount = world.incrementClueFail(clue.id);
               if (r.successLevel === "fumble") {
                 say(`${failFlavor(true)}`);
-                // 大失败负面事件：额外 SAN 损耗（叙事重量）
                 const fumbleCost = "0/1d3";
                 sanCheck(name, pc === c1 ? san1 : san2, fumbleCost);
               } else {
                 say(`${failFlavor(false)}`);
               }
-              // ── failback 兜底：连续失败达到阈值 → 改道强制发现（Gumshoe 原则） ──
-              //
-              // core 线索**没写 failback 也要兜底**。实测：模组 26 条 core 线索，
-              // 写了 failback 的 0 条 —— 这套兜底一次都没生效过。
-              // 后果是一条永远查不到的 core 线索会把它所在的场景钉在移动评分的
-              // 最高优先级上（tgtHasCore → 0/25 分），队伍被无限拽回去重查，
-              // 直到跑满 40 轮也出不了镇。实测约 25% 的局这样报废。
+
+              // ── 兜底：连续失败达到阈值 → 用 passive 方法揭示（比 failback 更自然） ──
               const fb = clue.failback;
               if (fb || clue.importance === "core") {
                 const maxFails = fb?.maxFails ?? 2;
                 if (failCount >= maxFails) {
-                  // 作者手写 fallbackRevelation 优先（质量保证）；无则走 C档 LLM 补救叙事。
-                  // 没配 failback 的 core 线索用它自己的 revelation —— 那本来就是作者写的正文。
-                  const authored = fb ? fb.fallbackRevelation : clue.revelation;
+                  // 优先用 passive 方法 —— 作者写的"另一种发现方式"
+                  if (passiveMethods.length > 0) {
+                    say(await narrateClueDiscovery(clue, "regular", ""));
+                    world.discoverClue(clue.id);
+                    world.resetClueFails(clue.id);
+                    checkClueSanLoss(clue);
+                    return true;
+                  }
+                  // 无 passive → 用 failback/revelation
+                  const authored = fb
+                    ? fb.fallbackRevelation
+                    : clue.revelation;
                   let rescueText = "";
                   const fallbackText = authored
                     ? `历经周折，${sanitizeRevelation(authored)}`
@@ -2869,7 +2891,9 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
                     );
                   }
                   const finalText = fallbackText || rescueText;
-                  say(`\n${fallbackText || rescueText ? "（屡次搜寻未果，你们决定换个方式）\n" : ""}${finalText}`);
+                  say(
+                    `\n${finalText ? "（屡次搜寻未果，你们决定换个方式）\n" : ""}${finalText}`,
+                  );
                   if (fb?.sanCost) {
                     sanCheck(p0.shortName, san1, fb.sanCost);
                     sanCheck(p1.shortName, san2, fb.sanCost);
@@ -2879,13 +2903,24 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
                   return true;
                 }
               }
-              // 失败 → 继续尝试下一个 findMethod（同线索可能有多个技能/属性方法）
+              // 失败 → 继续尝试下一个 skill method
             }
           }
-          // PC 没有此技能/属性 → 尝试下一个 findMethod
+          // PC 没有此技能/属性 → 尝试下一个 skill method
         }
+        attemptedClueIds.add(clue.id); // 所有 skill 方法均失败 → 标记防死循环
+        return false;
       }
-      attemptedClueIds.add(clue.id); // 所有方法均失败 → 标记防死循环
+
+      // ── 只有 passive 方法：直接揭示 ──
+      if (passiveMethods.length > 0) {
+        say(await narrateClueDiscovery(clue, "regular", ""));
+        world.discoverClue(clue.id);
+        checkClueSanLoss(clue);
+        return true;
+      }
+
+      // 没有任何方法（数据错误）
       return false;
     }
 
