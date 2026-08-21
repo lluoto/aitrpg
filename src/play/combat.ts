@@ -10,7 +10,8 @@ import type { ModuleData, Scene, ModuleSupport } from "../module/types";
 import type { WorldState } from "../world/state";
 import { CoCEngine, SUCCESS_LEVEL_LABELS } from "../rules/coc-engine";
 import { say, sayMech } from "./narration";
-import { sanCheck } from "./checks";
+import { sanCheck, check, applyDamage } from "./checks";
+import { rollDice } from "./trap-util";
 import type { Cast } from "./run-state";
 
 /**
@@ -20,6 +21,28 @@ import type { Cast } from "./run-state";
  * 玩家这边只有疲劳惩罚骰，没有受伤路径 —— `applyDamage` 的调用点全在陷阱段。
  * 后果是伤势/惩罚骰那套机制在战斗里完全用不上。这是搬运时发现的，不在本次改动范围。
  */
+/**
+ * 从 NPC 描述里读战斗数值。模组 mi_go 那行原文：
+ * 「每回合攻击2次。格斗45%（1d6伤害）闪避35%」
+ *
+ * ⚠ 只在含「每回合攻击」的那一行上匹配，不要全描述搜 ——
+ * 同一段里还有「闪避35%」和「理智损失：0/1d6」，
+ * 全局贪心匹配会把闪避读成格斗值（实测踩过，读出 35 而不是 45）。
+ *
+ * 兜底值与模组保持一致：读不到时行为不应该悄悄变强或变弱。
+ */
+export function parseEnemyStats(desc: string): { skill: number; damage: string; times: number } {
+  const line = desc.split("\n").find(l => l.includes("每回合攻击")) ?? "";
+  const atk = line.match(/格斗\s*(\d+)\s*%/);
+  const dmg = line.match(/[（(]\s*(\d*[dD]\d+(?:\s*[+-]\s*\d+)?)\s*伤害\s*[）)]/);
+  const times = line.match(/每回合攻击\s*(\d+)\s*次/);
+  return {
+    skill: atk ? parseInt(atk[1]!, 10) : 45,
+    damage: (dmg?.[1] ?? "1d6").replace(/\s/g, ""),
+    times: times ? parseInt(times[1]!, 10) : 2,
+  };
+}
+
 export async function runCombatEncounter(
   cast: Cast,
   world: WorldState,
@@ -46,9 +69,19 @@ if (migoEncounter) {
 
   // Read Mi-Go HP from module NPC data: "HP11 MP15 DB无" → 11
   const migoNpc = module.npcs.find(n => support.bossNpcIdPattern.test(n.id));
-  const hpMatch = migoNpc?.description?.match(/\bHP\s*(\d+)/i);
+  const desc = migoNpc?.description ?? "";
+  const hpMatch = desc.match(/\bHP\s*(\d+)/i);
   const migoMaxHp = hpMatch ? parseInt(hpMatch[1], 10) : 11;
   let migoHp = migoMaxHp;
+
+  // 敌人的攻击也从模组描述里读，跟 HP 同一个路子 —— 别自己编数值。
+  // 原文那一行：「每回合攻击2次。格斗45%（1d6伤害）闪避35%」
+  //
+  // 原先这一段完全没有：引擎读了 HP 却把攻击那句丢了，于是敌人从头到尾不还手，
+  // 玩家在整场 Boss 战里掉不了一点血（`applyDamage` 的调用点全在陷阱段）。
+  // 后果是伤势/惩罚骰那套机制在战斗中完全用不上。
+  //
+  const enemyStats = parseEnemyStats(desc);
   const pcCombatants = [
     { pc: c1, name: p0.shortName, fightingKey: "fighting", firearmsKey: "firearms_pistol" },
     { pc: c2, name: p1.shortName, fightingKey: "fighting", firearmsKey: "firearms_pistol" },
@@ -85,6 +118,12 @@ if (migoEncounter) {
     normal: ["的攻击被{enemy}灵巧地躲开了。", "的攻击落空了——{enemy}以不符合体型的速度闪避了。", "的攻击划过空气，没能碰到{enemy}。"],
     fumble: ["的攻击落空，反而一个踉跄差点摔倒！", "用力过猛失去平衡，差点扑倒在地！"],
   };
+  const enemyAttackFlavors = [
+    "猛地探出一只覆着细毛的钳肢，朝你们抓来！",
+    "膜翼一振，整个身体贴地扑了上来！",
+    "发出一声刺耳的鸣叫，钳肢劈头砸下！",
+    "以不符合体型的速度欺近，钳肢横扫过来！",
+  ];
   function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
 
   // ── 疲劳系统 ──
@@ -132,6 +171,48 @@ if (migoEncounter) {
     }
   }
 
+  /**
+   * 敌人还手一次，打其中一名调查员。
+   *
+   * 按 CoC 的对抗掷法：攻方掷格斗，守方掷闪避，闪避成功即完全避开。
+   * 数值全部来自模组描述（格斗 55% / 1d6 / 每回合 1 次），不是编的。
+   *
+   * 伤害走 `applyDamage` —— 这样伤势分级、重伤体质检定、惩罚骰
+   * 那一整套才会在战斗里生效。原先这套只在陷阱段跑得到。
+   */
+  function enemyAttack(target: typeof pcCombatants[0]): void {
+    const { name, pc } = target;
+    if (pc.hp <= 0) return; // 已经倒下的不再挨打
+
+    say(`\n${enemyName}${pick(enemyAttackFlavors)}`);
+    const atk = check(enemyStats.skill, enemyName, "格斗", "regular");
+    if (!atk.isSuccess) {
+      say(`  ${name}堪堪避开了。`);
+      return;
+    }
+
+    // 守方闪避：CoC 里闪避是对抗掷，成功就完全避开
+    const dodgeVal = (pc.skillValues as Record<string, number>)["dodge"]
+      ?? Math.floor((pc.attributes.dexterity ?? 50) / 2);
+    const dodge = check(dodgeVal, name, "闪避", "regular");
+    if (dodge.isSuccess && dodge.successLevel <= atk.successLevel) {
+      say(`  ${name}向侧面一滚，避了开去。`);
+      return;
+    }
+
+    const dmg = rollDice(enemyStats.damage);
+    const severity = applyDamage(pc, name, dmg);
+
+    // 重伤要掷体质，跟陷阱那边同一套规则
+    if (severity === "deep" || severity === "grievous") {
+      const con = check(pc.attributes.constitution, name, "体质（重伤）", "regular", 0, true);
+      if (!con.isSuccess) {
+        say(`${name}因伤势过重昏迷过去！`);
+        pc.hp = 0;
+      }
+    }
+  }
+
   let round = 0;
   const MAX_ROUNDS = 4;
   let miGoFled = false;
@@ -159,10 +240,27 @@ if (migoEncounter) {
       }
     }
 
-    // 米戈反击：SAN 检定
+    // 敌人还手。
+    //
+    // 原先这里只有 SAN 检定，注释却写着「反击」—— 敌人从头到尾不造成 HP 伤害，
+    // 玩家整场 Boss 战掉不了一点血。现在按模组描述真的打回来，
+    // SAN 检定保留（看着它本身就折磨理智）。
+    for (let i = 0; i < enemyStats.times; i++) {
+      // 打谁：优先还站着的，都站着就随机 —— 不刻意集火倒下的人
+      const standing = pcCombatants.filter(x => x.pc.hp > 0);
+      if (standing.length === 0) break;
+      enemyAttack(pick(standing));
+    }
+
     say("");
     sanCheck(p0.shortName, san1, "0/1d3");
     sanCheck(p1.shortName, san2, "0/1d3");
+
+    // 两人都倒下 → 战斗结束，走失败结局
+    if (pcCombatants.every(x => x.pc.hp <= 0)) {
+      say(`\n两名调查员都失去了意识。`);
+      break;
+    }
 
     // 显示米戈状态
     const hpPct = migoHp / migoMaxHp;
