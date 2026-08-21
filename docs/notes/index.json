@@ -25,7 +25,7 @@
       "id": "rules",
       "name": "规则 / 检定 / 伤害",
       "file": "docs/notes/rules.md",
-      "count": 2
+      "count": 3
     }
   ],
   "records": [
@@ -611,6 +611,17 @@
       "line": 22,
       "lines": 28,
       "summary": "一局实跑里读出来的：调查员 HP 从 10 掉到 2（80%），全程只显示「轻伤」，"
+    },
+    {
+      "id": "rules-03",
+      "title": "惩罚骰接上后续检定，顺带修掉两个更深的错（2026-08-21，已修）",
+      "date": "2026-08-21",
+      "status": "fixed",
+      "group": "rules",
+      "file": "docs/notes/rules.md",
+      "line": 50,
+      "lines": 37,
+      "summary": "接线本身不难（`RunContext.wounds` 存「未处理的最重一处」，`check()` 自动加），"
     }
   ]
 }
