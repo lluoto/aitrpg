@@ -1,0 +1,103 @@
+{
+  "generated": "2026-08-21",
+  "source": "docs/index-program.md #已知问题",
+  "note": "已知问题 / 环境约束。severity=warn 的是踩过的坑，动手前先扫一遍。",
+  "items": [
+    {
+      "id": "todo-01",
+      "category": "同职责多实现",
+      "severity": "info",
+      "text": "三套局面驱动（见上）——有意为之"
+    },
+    {
+      "id": "todo-02",
+      "category": "同职责多实现",
+      "severity": "info",
+      "text": "两套角色历程存储：`career.ts`(SQLite) vs `career-file.ts`(JSON)，只有后者在用"
+    },
+    {
+      "id": "todo-03",
+      "category": "同职责多实现",
+      "severity": "info",
+      "text": "两套状态追踪：`src/world/state.ts`（内存，仅 play-module 用）vs `src/state/world-state-manager.ts`（SQLite）——最可能的整合目标"
+    },
+    {
+      "id": "todo-04",
+      "category": "废弃/无引用",
+      "severity": "cleanup",
+      "text": "`src/validator/item-validator.ts` —— 全仓（含测试）零 import，三个导出全部悬空"
+    },
+    {
+      "id": "todo-05",
+      "category": "废弃/无引用",
+      "severity": "cleanup",
+      "text": "`src/character/career.ts` 的 `CareerStore` 类 —— 无处 new"
+    },
+    {
+      "id": "todo-06",
+      "category": "废弃/无引用",
+      "severity": "cleanup",
+      "text": "`frontend/src/FlightPanel.vue` —— 未被任何组件引用的孤儿"
+    },
+    {
+      "id": "todo-07",
+      "category": "废弃/无引用",
+      "severity": "cleanup",
+      "text": "`character/prestige-classes.ts` 与 `qiankun-subclasses.ts` 只被 CLI 入口引用，服务端完全不碰"
+    },
+    {
+      "id": "todo-08",
+      "category": "测试套件里有一条会假红（约 1/100）",
+      "severity": "warn",
+      "text": "`src/__tests__/coc-engine.test.ts:131`「失败时损失 = sanCost 后半部分」：用 `new SanityEngine(1)` 凑「几乎必失败」，但 `coc-engine.ts:669` 的 `regularD100()` 没有种子，判定是 `roll <= currentSAN`。 `currentSAN` 是 1，掷出 1 就算通过，`expect(r.passed).toBe(false)` 于是红。概率正好 1%。"
+    },
+    {
+      "id": "todo-09",
+      "category": "测试套件里有一条会假红（约 1/100）",
+      "severity": "warn",
+      "text": "**先例存在、本轮不修**：它早于摄取管线，属规则引擎，修它要改 d100 的注入方式，是另一轮的活。"
+    },
+    {
+      "id": "todo-10",
+      "category": "测试套件里有一条会假红（约 1/100）",
+      "severity": "warn",
+      "text": "但它现在比以前更碍事：摄取这条线的产物是**一个数**（17/20），下一轮要重新测量， 而「`bun test` 全绿」是那个数唯一的背书。一个 1% 说谎的套件会把每一次这样的背书都打个折。"
+    },
+    {
+      "id": "todo-11",
+      "category": "全量 `expect()` 计数不能当回归信号，只有测试条数能",
+      "severity": "warn",
+      "text": "实测：同为 1156 个测试的两次跑，`expect()` 总数是 9412 与 9410；1151 个测试那次是 9443。 摆动幅度远超测试数变化能解释的范围。原因大概率就是上面那条无种子的随机测试 （断言数随分支走向变化），但无论原因如何，结论一样：**比 `expect()` 数会被噪音骗到。**"
+    },
+    {
+      "id": "todo-12",
+      "category": "全量 `expect()` 计数不能当回归信号，只有测试条数能",
+      "severity": "warn",
+      "text": "代价要说清楚：**条数管不住「断言被就地改弱」**。把 `toEqual([...])` 改成 `toContain(\"2\")` 条数不变而测试变瞎，本仓已经因为这个吃过三次亏。"
+    },
+    {
+      "id": "todo-13",
+      "category": "全量 `expect()` 计数不能当回归信号，只有测试条数能",
+      "severity": "warn",
+      "text": "所以改断言的轮次必须额外做两件事：看**逐文件**的 `expect()` 增量（单文件是稳定的）， 以及对新断言做**变异检验**（把实现按发现描述的方式改坏，确认测试变红，再还原）。 本轮那个 `llm-json` 的裸围栏用例就是这么抓出来的——它一开始是假绿的。"
+    },
+    {
+      "id": "todo-14",
+      "category": "环境陷阱（踩过）",
+      "severity": "warn",
+      "text": "本仓源文件**不能过 PowerShell 写**（`Set-Content` 会把中文 mojibake）。读也一样，用 Read 工具。"
+    },
+    {
+      "id": "todo-15",
+      "category": "环境陷阱（踩过）",
+      "severity": "warn",
+      "text": "`bash` 工具的 `workdir` 参数会卡死，用 `cd C:\\aitrpg\\poc; ...`"
+    },
+    {
+      "id": "todo-16",
+      "category": "环境陷阱（踩过）",
+      "severity": "warn",
+      "text": "精确分析写临时 `.ts` 用 bun 跑，并让脚本自己 `Bun.write` 落盘，不要经控制台"
+    }
+  ]
+}
