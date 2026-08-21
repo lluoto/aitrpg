@@ -3007,6 +3007,9 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     });
     const chosenConn = picked.conn;
     if (!chosenConn) return null;
+    // 记下"接下来这一步是玩家自己选的还是引擎替他挑的"。
+    // 主循环的「访问≥6次强制改道」要看它 —— 玩家明确要去的地方不能把人弹走。
+    arrivedByPlayerChoice = !picked.forced;
 
     // 只报地名的那种就别说了 —— 下一行的场景标题会把同一件事再讲一遍
     const dest = module.scenes.find(s => s.id === chosenConn.targetSceneId);
@@ -3024,6 +3027,14 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   const triggeredTraps = new Set<string>();
   const globalVisitCount = new Map<string, number>();
   const recentSceneIds: string[] = []; // anti-bounce: track last few scene transitions
+  /**
+   * 把人带到当前场景的那一步，是玩家自己选的吗。
+   *
+   * 用来挡住下面的「访问≥6次强制改道」：实测三处「选了 X 却到了 Y」全是它干的 ——
+   * 玩家明确选了去某地，到达后在渲染之前被一声不吭地弹到别处
+   * （见 module-loop.test.ts 与 docs/index-program.md）。
+   */
+  let arrivedByPlayerChoice = false;
 
   while (!done && rounds < 40) {
     rounds++;
@@ -3042,10 +3053,20 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     }
     // Hard limit: auto-redirect if scene visited 6+ times
     const visitCount = globalVisitCount.get(currentId) ?? 0;
-    if (visitCount >= 6 && currentId !== support.finaleSceneId) {
+    // 玩家自己要来的地方不算数 —— 他说了要来，就让他来，来几次是他的事。
+    // 兜底仍在：上面的 anti-bounce 和 rounds < 40 都还拦着，不会真的转不出去。
+    if (visitCount >= 6 && currentId !== support.finaleSceneId && !arrivedByPlayerChoice) {
       const currentScene = module.scenes.find(s => s.id === currentId);
       const forcedConn = currentScene?.connections.find(c => !world.isSceneVisited(c.targetSceneId));
-      if (forcedConn) { globalVisitCount.set(currentId, visitCount + 1); world.moveToScene(forcedConn.targetSceneId); continue; }
+      if (forcedConn) {
+        // 出声。原先这里是**静默**传送：玩家说"返回镇上"，
+        // 引擎回一句"返回镇上。"，然后人在报亭，中间一个字都没有。
+        say(`\n这地方已经翻来覆去看过太多遍，再耗下去也不会有新东西了。`, "verbatim");
+        globalVisitCount.set(currentId, visitCount + 1);
+        arrivedByPlayerChoice = false;
+        world.moveToScene(forcedConn.targetSceneId);
+        continue;
+      }
       done = true;
       break;
     }
@@ -3062,6 +3083,8 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     } else {
       // Dead-end safeguard: processScene returned null (no actions),
       // but check if there are still unvisited scenes in the module
+      // 这条路上的移动不是玩家选的，别让它豁免下一轮的强制改道
+      arrivedByPlayerChoice = false;
       const allModuleScenes = module.scenes;
       const unvisitedScenes = allModuleScenes.filter(s => !world.isSceneVisited(s.id));
       if (unvisitedScenes.length > 0) {
