@@ -1058,14 +1058,40 @@ connections 那边现在就还是分叉状态 —— F1 0.72 是脚本的成绩�
 
 **这一轮栽的两个跟头，都值得记**：
 
-1. **`tools/` 不在类型检查范围内。** `tsconfig.json` 的 `include` 只有 `src/**/*.ts`。
+1. **`tools/` 不在类型检查范围内**（**下一节已修**）。`tsconfig.json` 的 `include` 只有 `src/**/*.ts`。
    重构中两次把 runner 改坏（`inputs`、`pages` 未定义），**typecheck 两次都是绿的**，
    全靠实跑才炸出来。而所有实跑数字都出自那个 runner。
    量过了：把 `tools/**/*.ts` 纳入只多 10 个错，集中在 3 个无关脚本
    （`_verify-read-build` / `_verify-runpath` / `simulate-module`），
    `_run-ingest.ts` 与各实验脚本都是干净的。
-   **这次没做**：那 3 个文件是 gitignore 的，改它们不进版本库，
-   而 tsconfig 的改动会进 —— 等于让 typecheck 在有 tools/ 的机器上必红。留给下一轮。
+   （当时判断「改 gitignore 的文件不进版本库」而缓了一轮，下一节做掉了。）
+
+### 把 tools/ 纳入类型检查：10 个错里有 1 个真 bug（2026-08-20）
+
+`tsconfig.json` 的 `include` 加上 `tools/**/*.ts`。
+干净检出上 `tools/` 不存在，glob 匹配不到就是空集，不会报错 ——
+`src/**/*.ts` 始终匹配得到，不会出现「没有输入文件」。
+
+10 个错，分四类：
+
+| 类 | 数 | 是什么 |
+|---|---|---|
+| TS5097 | 5 | import 路径带 `.ts` 后缀。仓库其余地方都不这么写，改掉而**不是**开 `allowImportingTsExtensions` —— 为 5 行 gitignore 的脚本去放宽全仓编译选项，方向不对 |
+| TS2345 | 3 | 三个脚本都传 `"coc7e"` 当规则集 id，而 `RulesetId` 是 `"dnd5e" \| "cosmic-horror" \| "grail"`。**那个值早就不存在了**，一直没人发现 |
+| TS2367 | 1 | `simulate-module.ts` 比 `e.type === "narrative"`，事件类型里没这个值 |
+| TS2339 | 1 | `simulate-module.ts` 读 `res.state.secondPlayer`，属性不存在 |
+
+**后两个要分开说，一度被我混为一谈：**
+
+- TS2367 那个**不是 bug**。原式是 `e.type === "narrative" || e.type === "narration"`，
+  前半永远为假，后半接住了，**行为正确**，只是句死代码。
+- TS2339 那个**是真 bug**。`secondPlayer` 不存在 → `p2` 恒为 `undefined` →
+  **队友的 HP 一次都没显示过**，而那个脚本抬头就写着「洛水 + 希尔妲」。
+  队友实际在 `state.companions` 里。改成按名字取而不是按下标 —— 下标会随创建顺序变。
+
+**这就是这条改动的全部理由**：一个「显示两个玩家」的脚本，
+有一半从来没显示过，而它安静地跑了不知道多久。
+本轮重构 runner 时两次改出未定义变量、typecheck 两次全绿，是同一个洞的另一种表现。
 
 2. **边界测试是全文扫字符串的，注释里提到那个模块名就会被自己判红。**
    `pipeline.ts` 的注释原本写着「见 ...-boundary.test.ts」，那串字里含着被禁的子串。
