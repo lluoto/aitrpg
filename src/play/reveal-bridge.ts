@@ -30,7 +30,6 @@ export function nextRevealBridge(
   dedup.lastRevealBridge = b;
   return b;
 }
-    // NPC 对话生成已抽到 src/play/npc-dialogue.ts（纯搬运，见该文件头部说明）
 export function buildRevealBridge(
   npc: ModuleNPC,
   s: ReturnType<typeof analyseNpcData> | null,
