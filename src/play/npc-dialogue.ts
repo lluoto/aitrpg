@@ -13,6 +13,8 @@ import { say } from "./narration";
 import {
   analyseNpcData, splitLeadingStageDirection, stripOuterQuotes, noteEntityMentions,
 } from "./npc-text";
+import { nextRevealBridge } from "./reveal-bridge";
+import type { Dedup } from "./run-state";
 /** Generate player-facing impression from NPC data (skip stat blocks / KP notes) */
 export function buildPcImpression(npc: ModuleNPC): string {
   const name = npc.name.replace(/[（(].*[）)]$/, "").trim();
@@ -641,14 +643,15 @@ export function buildToneBridge(npc: ModuleNPC, profile: SpeechProfile): string 
 /**
  * Data-driven knowledge reveal — bridges from NPC data, not hardcoded by type
  *
- * `nextBridge` 由调用方注入：取一条引导桥并记住它，供下一次躲开。
- * 那个「上次用的是哪句」的状态属于一局，留在 play-module 的闭包里；
- * 这里显式声明依赖，而不是靠闭包隐式捕获 —— 抽出闭包时这是唯一一处真依赖。
+ * 拿 `dedup` 而不是拿一个 `nextBridge` 回调：
+ * 早先这里确实是回调注入，因为引导桥要读写 `lastRevealBridge`，
+ * 而那个变量还埋在 runModuleInner 的闭包里够不到。
+ * 去重状态收进 `Dedup` 之后，这里直接调 `nextRevealBridge` 即可。
  */
 export function revealNpcKnowledge(
   npc: ModuleNPC,
   w: WorldState,
-  nextBridge: (npc: ModuleNPC, s: ReturnType<typeof analyseNpcData> | null, isFirst: boolean) => string,
+  dedup: Dedup,
   profile?: SpeechProfile,
 ): void {
   /** 检查 reveal 是否满足可见条件 */
@@ -681,7 +684,7 @@ export function revealNpcKnowledge(
     ).speech;
     // 知识揭示用数据驱动引导桥，避免"裸引号知识条目"直出（不像人话）
     const s = analyseNpcData(npc);
-    say(`\n${nextBridge(npc, s, true)}"${clean}"`);
+    say(`\n${nextRevealBridge(dedup, npc, s, true)}"${clean}"`);
     noteEntityMentions(clean, w);
     w.discoverClue(`clue_kn_${npc.id}_${ki}`);
     return;
@@ -698,7 +701,7 @@ export function revealNpcKnowledge(
     const hint = revealed[i];
     const hintIndex = npc.knowledge.indexOf(hint);
     // Data-driven bridges — use mumbling frame for unconscious NPCs
-    say(`\n${nextBridge(npc, s, i === 0)}"${hint}"`);
+    say(`\n${nextRevealBridge(dedup, npc, s, i === 0)}"${hint}"`);
     noteEntityMentions(hint, w);
     w.discoverClue(`clue_kn_${npc.id}_${hintIndex}`);
   }

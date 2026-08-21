@@ -56,6 +56,26 @@ export interface Cursor {
   arrivedByPlayerChoice: boolean;
 }
 
+/**
+ * 叙事去重 —— 「上次用的是哪句」，避免连着两次一模一样。
+ *
+ * 这类状态原先靠闭包捕获，直接后果是 npc-dialogue 抽不干净：
+ * 它要用引导桥，而引导桥要读写 `lastRevealBridge`，够不到就只能
+ * 把整个函数当回调注入。收成对象之后那个回调参数就不需要了。
+ */
+export interface Dedup {
+  /** 上一次用过的提问引导 */
+  lastAskBridge: string;
+  /** NPC 侧的引导桥 */
+  lastRevealBridge: string;
+  /** 上一次同伴说过的话 */
+  lastPartnerRemark: string;
+}
+
+export function newDedup(): Dedup {
+  return { lastAskBridge: "", lastRevealBridge: "", lastPartnerRemark: "" };
+}
+
 /** 建一份初始游标 */
 export function newCursor(): Cursor {
   return {
