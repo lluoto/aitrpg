@@ -106,6 +106,23 @@ export interface WorldModelCtx {
   cacheText: string;
 }
 
+/**
+ * 失去意识 —— CoC 7e：HP 归零即昏迷，不能行动。
+ *
+ * 抽成一个判定而不是各处写 `pc.hp <= 0`，是因为「谁能行动」这件事
+ * 原先散在三个选人点上（线索检定轮转、陷阱踩中者、提问者），
+ * 而且**一处都没检查** —— 日志里出现过「两名调查员都失去了意识」之后
+ * 两人继续查线索、掷理智、陷入疯狂。
+ */
+export function isDowned(pc: { hp: number }): boolean {
+  return pc.hp <= 0;
+}
+
+/** 还能行动的人。全倒下时返回空数组，调用方据此收尾。 */
+export function standing<T extends { hp: number }>(pcs: T[]): T[] {
+  return pcs.filter((p) => !isDowned(p));
+}
+
 /** 建一份初始游标 */
 export function newCursor(): Cursor {
   return {

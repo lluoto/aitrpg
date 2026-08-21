@@ -13,7 +13,8 @@ import type { LLMClient } from "../llm/client";
 import { resolveCheckValue } from "../character/coc-character";
 import { generateClueRevelation, generateFailRescue } from "../llm/npc-dialogue-prompts";
 import { say } from "./narration";
-import { check, sanCheck, discoveryFlavor, failFlavor } from "./checks";
+import { check, sanCheck, discoveryFlavor, failFlavor, healWound } from "./checks";
+import { isDowned, standing } from "./run-state";
 import { buildWorldContext } from "./llm-context";
 // 从 npc-text 取而不是从 play-module —— 后者会成环（play-module 已经 import 本文件）
 import { partnerRemark, speechLead } from "./npc-text";
@@ -46,6 +47,36 @@ export interface ClueCtx {
   llmClient: LLMClient | null;
   /** 本次进场已试过的线索 —— 试过就从选项里拿掉，防死循环 */
   attemptedClueIds: Set<string>;
+}
+
+/**
+ * 同伴急救把倒下的人弄醒。CoC 7e：急救成功回 1 HP 并恢复意识。
+ *
+ * 每次进场试一轮 —— 不做成「每回合都试」是因为那会变成必然成功的仪式，
+ * 掷骰就没意义了。救不醒就得拖着走，直到下一个场景。
+ */
+export function tryReviveDowned(ctx: ClueCtx): void {
+  const { cast: { c1, c2, p0, p1 } } = ctx;
+  const pairs = [
+    { pc: c1, name: p0.shortName, mate: c2, mateName: p1.shortName },
+    { pc: c2, name: p1.shortName, mate: c1, mateName: p0.shortName },
+  ];
+  for (const { pc, name, mate, mateName } of pairs) {
+    if (!isDowned(pc)) continue;
+    if (isDowned(mate)) continue; // 施救者自己也倒着，没人能救
+
+    const faVal = resolveCheckValue(mate, "急救");
+    if (faVal <= 0) continue;
+    say(`\n${mateName}半跪下来，检查${name}的伤势……`);
+    const r = check(faVal, mateName, "急救", "regular");
+    if (r.isSuccess) {
+      pc.hp = 1;
+      healWound(name); // 处理过的伤口不再压着惩罚骰
+      say(`${name}猛地咳嗽起来，睁开了眼睛。`);
+    } else {
+      say(`${name}没有反应，只能先拖到安全的地方。`);
+    }
+  }
 }
 
 /** 如果线索有 SAN 损失定义，触发检定 */
@@ -115,13 +146,15 @@ export async function runClueCheck(ctx: ClueCtx, clue: Clue): Promise<boolean> {
   // ── 有 skill 方法：skill 优先，passive 退化成兜底 ──
   if (skillMethods.length > 0) {
     for (const method of skillMethods) {
-      const pcList = [c1, c2].sort((a, b) => {
+      // 昏迷的人不参与轮转 —— CoC 7e：HP 归零即失去意识，不能行动
+      const pcList = standing([c1, c2]).sort((a, b) => {
         const va = resolveCheckValue(a, method.skillName!);
         const vb = resolveCheckValue(b, method.skillName!);
         return vb - va;
       });
-      const offset = cursor.stepCounter++ % 2;
-      const pc = pcList[offset % pcList.length];
+      if (pcList.length === 0) return false; // 都倒下了，这条线索查不成
+      const offset = cursor.stepCounter++ % pcList.length;
+      const pc = pcList[offset]!;
       const val = resolveCheckValue(pc, method.skillName!);
       if (val > 0) {
         const name = pc === c1 ? p0.shortName : p1.shortName;
