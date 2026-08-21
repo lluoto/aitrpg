@@ -128,6 +128,46 @@ npc-dialogue 只要「叙事去重」，traps 只要「角色 + 世界 + 循环�
 只留下函数体，tsc 直接报语法错。**机械改动之后要看 tsc 报的是不是语法错** ——
 语法错通常意味着切歪了，不是缺 import。
 
+### ✅ 抽 Boss 战，以及为什么在线索块前面停下（2026-08-21）
+
+**战斗抽出去了**（`src/play/combat.ts`，172 行）。依赖很干净：
+`cast` + `world` + `scene` + `support` + `module`，不碰游标。
+
+搬的时候发现 `migoFought` 这个变量**写了从没被读**，顺手去掉。
+
+**验证战斗还在打**要单独量，光看测试和通关率不够 ——
+`tools/_diag-combat.ts` 10 局：遭遇 6 局、击退 1 局、攻击掷骰 59 次、
+疲劳惩罚骰 8 次。这几个数一起对上才说明战斗轮真的在跑。
+
+顺带把 `_extract-block.ts` 每次搬运在原处留下的占位注释残渣清了 ——
+连着几次搬运之后剩下一堆孤立的同款注释，指向的还不是同一个文件。
+
+**在线索块前面停下的理由（有数据）**：
+
+线索检定是我改得最多的一块（skill 优先、failback 兜底都在这儿），
+按理该优先抽。但扫下来它跟前几块性质不同：
+
+1. **四个函数不连续** —— `sanitizeRevelation` / `checkClueSanLoss` /
+   `narrateClueDiscovery` / `runClueCheck` 中间隔着 `getUnlockedConnections`
+2. **要注入三样东西** —— `buildWorldContext`、`sayPartnerRemark`、
+   每场景的 `attemptedClueIds`
+3. **`buildWorldContext` 被对话与线索两边共用**（5 处），
+   而它自己又依赖 `buildWmContext` → 世界模型缓存那类状态
+
+也就是说抽线索块会拖出一条链：线索 → `buildWorldContext` → `buildWmContext`
+→ wm 状态分组。每步都不大，加起来就不小了，而且中途出错的面比前几次宽。
+
+**下一步的形状**：先把 wm 那类状态收进 `run-state.ts`，
+把 `buildWmContext` + `buildWorldContext` 抽成 `src/play/llm-context.ts`，
+线索块才好干净地跟着走。或者退一步 —— 把 `buildWorldContext` 当**服务注入**
+（线索模块只要「给我当前世界上下文」，不必知道怎么拼），
+那是正当的依赖注入，跟当初 `nextBridge` 那种「状态够不到的变通」不是一回事。
+
+**累计**：play-module 3537 → 2031 行，`runModuleInner` 2615 → 1511 行。
+**比例仍是 74%** —— 三轮下来一直没降，因为每次抽走的都是它内部相对独立的块，
+而剩下的是真正互相缠着的主循环。比例不降本身就是信号：
+再往下不是搬运问题，是状态边界问题。
+
 ### 自由行动解析：agent 支持，引擎扔掉，而 intent 判别撑不住（2026-08-20）
 
 问题是「要改成自由行动解析，现在的 subagent 支不支持」。逐层查下来：
