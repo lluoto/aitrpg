@@ -30,9 +30,10 @@ import { refineItemKinds } from "./classify-followup";
 import { assignSceneIds, assignItemIds } from "./ids";
 import { buildScenes } from "./build-scenes";
 import { inferConnections } from "./infer-connections";
+import { extractEndings } from "./extract-endings";
 import { buildItems } from "./build-items";
 import type { Scene } from "../module/types";
-import type { ModuleItem, Provenance } from "../module/types";
+import type { Ending, ModuleItem, Provenance } from "../module/types";
 
 /**
  * 一次摄取的全部产物与中间量。
@@ -62,6 +63,11 @@ export interface IngestResult {
   items: ModuleItem[];
   provenance: Provenance[];
   itemWarnings: string[];
+  /**
+   * 从 structure 块里抽出来的结局。
+   * 抽不到就是空数组 —— 那意味着模组跑起来不会自行结束。
+   */
+  endings: Ending[];
 }
 
 /**
@@ -171,6 +177,15 @@ export async function classifyAndBuild(
   const itemIds = assignItemIds(sections);
   const { items, provenance, warnings: itemWarnings } = buildItems(itemInputs, itemKinds, itemIds);
 
+  // 结局藏在 structure 块里。整批送过去、让模型自己找，而不是按标题挑 ——
+  // 「结局」这个词是这份模组的写法，别的模组未必这么写标题。
+  // structure 块一共就 8 个，全送也不贵。
+  stage("抽结局");
+  const structureBlocks = sections
+    .filter((s) => s.title !== "" && kinds.get(s.title) === "structure")
+    .map((s) => ({ title: s.title, body: s.body }));
+  const endings = await extractEndings(structureBlocks, client);
+
   return {
     sections,
     classifyInputs,
@@ -185,5 +200,6 @@ export async function classifyAndBuild(
     items,
     provenance,
     itemWarnings,
+    endings,
   };
 }

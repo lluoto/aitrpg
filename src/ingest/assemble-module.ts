@@ -13,7 +13,7 @@
 // 理由：模组数据是给主持人当事实用的，编出来的「性格：沉默寡言」
 // 会被当成原文里写着的东西照着演。宁可空着让人一眼看出缺，
 // 也不要填一个看起来像模像样的假值。
-import type { ModuleData, ModuleItem, ModuleNPC, Provenance, Scene } from "../module/types";
+import type { Ending, ModuleData, ModuleItem, ModuleNPC, Provenance, Scene } from "../module/types";
 import type { Section } from "./sectionize";
 import type { SectionKind } from "./classify-sections";
 
@@ -25,6 +25,7 @@ export interface AssembleInput {
   scenes: Scene[];
   items: ModuleItem[];
   provenance: Provenance[];
+  endings?: Ending[];
 }
 
 export interface AssembleOptions {
@@ -86,7 +87,7 @@ export function assembleModule(input: AssembleInput, opts: AssembleOptions): Ass
       expectedDuration: "",
       triggerWarnings: [],
     },
-    endings: [],
+    endings: input.endings ?? [],
     items: input.items,
     provenance: input.provenance,
   };
