@@ -8,9 +8,8 @@
 
 import type { ModuleData, Scene } from "../module/types";
 import type { WorldState } from "../world/state";
-import type { CoCGeneratedCharacter } from "../character/coc-character";
 import { resolveCheckValue } from "../character/coc-character";
-import type { SanityEngine } from "../rules/coc-engine";
+import type { Cast, Cursor } from "./run-state";
 import { say, sayMech } from "./narration";
 import { check, sanCheck, applyDamage, healWound } from "./checks";
 import { rollDice, trapsInScene, attributeValue } from "./trap-util";
@@ -19,32 +18,25 @@ import type { WoundSeverity } from "../combat/wound-effects";
 /**
  * 一次进场的陷阱结算。
  *
- * 参数用解构接住、名字与原先闭包里的一致 —— 这样循环体一个字都不用改，
- * 搬运的正确性只取决于「参数是不是同一批东西」，不取决于逐行改写有没有手滑。
+ * 与 npc-dialogue 不同，这一段是**真耦合**运行状态的：要两名调查员、world、
+ * 当前场景，还有「哪些陷阱响过」与「这次轮到谁踩」。
  *
- * 与 npc-dialogue 不同，这一段是**真耦合**运行状态的：
- * 要两个调查员、world、当前场景，还有 `triggeredTraps`（哪些已经响过）
- * 与 `stepCounter`（决定这次轮到谁踩）。所以接口只能显式列出来，
- * 列出来本身也是收益 —— 现在能拿假场景 + 假陷阱直接喂它。
+ * 参数按概念分组（`cast` / `cursor`）而不是平铺 —— 平铺过一版是 11 个散参数，
+ * 每个都要读一遍才知道这函数碰什么。现在拿到 `cast` 就知道它动角色，
+ * 拿到 `cursor` 就知道它参与循环推进。
+ *
+ * 内部仍用解构把名字还原成原闭包里的那些，于是循环体一个字都没改 ——
+ * 搬运的正确性只取决于「参数是不是同一批东西」。
  */
-export interface TrapRunOpts {
-  module: ModuleData;
-  scene: Scene;
-  world: WorldState;
-  /** 本局已经响过的陷阱，跨进场累积 */
-  triggeredTraps: Set<string>;
-  /** 只读：决定这次轮到谁踩，以及开局第 0 步不触发 */
-  stepCounter: number;
-  p0: { shortName: string };
-  p1: { shortName: string };
-  c1: CoCGeneratedCharacter;
-  c2: CoCGeneratedCharacter;
-  san1: SanityEngine;
-  san2: SanityEngine;
-}
-
-export async function runSceneTraps(o: TrapRunOpts): Promise<void> {
-  const { module, scene, world, triggeredTraps, stepCounter, p0, p1, c1, c2, san1, san2 } = o;
+export async function runSceneTraps(
+  cast: Cast,
+  world: WorldState,
+  cursor: Cursor,
+  module: ModuleData,
+  scene: Scene,
+): Promise<void> {
+  const { p0, p1, c1, c2, san1, san2 } = cast;
+  const { triggeredTraps, stepCounter } = cursor;
 
 for (const trapItem of trapsInScene(module.items, scene.id)) {
   if (triggeredTraps.has(trapItem.id) || stepCounter <= 0) continue;

@@ -51,6 +51,7 @@ import {
   recordWound, healWound, woundPenaltyOf,
 } from "./play/checks";
 import { runSceneTraps } from "./play/traps";
+import { newCursor, type Cast } from "./play/run-state";
 import { rollDice, trapsInScene, attributeValue, isMajorWound } from "./play/trap-util";
 // 这几个测试按老路径从 play-module import，转出去别断
 export { worseWound } from "./play/checks";
@@ -558,6 +559,11 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   const san2 = new SanityEngine(c2.attributes.power ?? 50);
   san2.state.currentSAN = c2.attributes.power ?? 50;
   san2.state.maxSAN = c2.attributes.power ?? 50;
+
+  // 名字/角色卡/SAN 引擎三者一一对应，收成一个概念传给下游 ——
+  // 散着传最容易出的错是错位：拿 p0 的名字配 c2 的角色卡，
+  // 日志上看不出来（名字是对的），掉的却是另一个人的血。
+  const cast: Cast = { p0, p1, c1, c2, san1, san2 };
 
   // 1.5 模块威胁分析 → 武器许可重审
   const threat = analyzeThreats(module, {
@@ -1480,10 +1486,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     // NPC 对话生成已抽到 src/play/npc-dialogue.ts（纯搬运，见该文件头部说明）
 
     // 陷阱结算已抽到 src/play/traps.ts
-    await runSceneTraps({
-      module, scene, world, triggeredTraps, stepCounter,
-      p0, p1, c1, c2, san1, san2,
-    });
+    await runSceneTraps(cast, world, cursor, module, scene);
 
     // Mi-Go Combat Encounter — 多回合战斗系统
     const migoEncounter = support.encounters.find(e =>
@@ -1744,7 +1747,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
             const vb = resolveCheckValue(b, method.skillName!);
             return vb - va;
           });
-          const offset = stepCounter++ % 2;
+          const offset = cursor.stepCounter++ % 2;
           const pc = pcList[offset % pcList.length];
           const val = resolveCheckValue(pc, method.skillName!);
           if (val > 0) {
@@ -2064,7 +2067,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     if (!chosenConn) return null;
     // 记下"接下来这一步是玩家自己选的还是引擎替他挑的"。
     // 主循环的「访问≥6次强制改道」要看它 —— 玩家明确要去的地方不能把人弹走。
-    arrivedByPlayerChoice = !picked.forced;
+    cursor.arrivedByPlayerChoice = !picked.forced;
 
     // 只报地名的那种就别说了 —— 下一行的场景标题会把同一件事再讲一遍
     const dest = module.scenes.find(s => s.id === chosenConn.targetSceneId);
@@ -2075,24 +2078,17 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   }
 
   // ── Game loop: scene entry → exploration → analysis → advance ──
-  let done = false;
-  let rounds = 0;
-  let stepCounter = 0; // round-robin counter for PC skill checks
-  /** 已触发过的陷阱 id —— 一个场景可以挂多个陷阱，各自只响一次 */
-  const triggeredTraps = new Set<string>();
+  //
+  // 循环游标收进 cursor（见 play/run-state.ts）：
+  // 这几个看着像局部变量，实际是跨场景的不变量，而且 stepCounter 是
+  // 线索检定与陷阱**共享**的 —— 散在闭包里时这层共享看不出来，
+  // arrivedByPlayerChoice 更是「静默传送」那个 bug 的所在。
+  const cursor = newCursor();
   const globalVisitCount = new Map<string, number>();
   const recentSceneIds: string[] = []; // anti-bounce: track last few scene transitions
-  /**
-   * 把人带到当前场景的那一步，是玩家自己选的吗。
-   *
-   * 用来挡住下面的「访问≥6次强制改道」：实测三处「选了 X 却到了 Y」全是它干的 ——
-   * 玩家明确选了去某地，到达后在渲染之前被一声不吭地弹到别处
-   * （见 module-loop.test.ts 与 docs/index-program.md）。
-   */
-  let arrivedByPlayerChoice = false;
 
-  while (!done && rounds < 40) {
-    rounds++;
+  while (!cursor.done && cursor.rounds < 40) {
+    cursor.rounds++;
     const currentId = world.currentSceneId;
     recentSceneIds.push(currentId);
     if (recentSceneIds.length > 5) recentSceneIds.shift();
@@ -2102,7 +2098,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       const last6 = recentSceneIds.slice(-6);
       const unique = new Set(last6);
       if (unique.size <= 2) {
-        done = true;
+        cursor.done = true;
         break;
       }
     }
@@ -2110,7 +2106,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     const visitCount = globalVisitCount.get(currentId) ?? 0;
     // 玩家自己要来的地方不算数 —— 他说了要来，就让他来，来几次是他的事。
     // 兜底仍在：上面的 anti-bounce 和 rounds < 40 都还拦着，不会真的转不出去。
-    if (visitCount >= 6 && currentId !== support.finaleSceneId && !arrivedByPlayerChoice) {
+    if (visitCount >= 6 && currentId !== support.finaleSceneId && !cursor.arrivedByPlayerChoice) {
       const currentScene = module.scenes.find(s => s.id === currentId);
       const forcedConn = currentScene?.connections.find(c => !world.isSceneVisited(c.targetSceneId));
       if (forcedConn) {
@@ -2118,11 +2114,11 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
         // 引擎回一句"返回镇上。"，然后人在报亭，中间一个字都没有。
         say(`\n这地方已经翻来覆去看过太多遍，再耗下去也不会有新东西了。`, "verbatim");
         globalVisitCount.set(currentId, visitCount + 1);
-        arrivedByPlayerChoice = false;
+        cursor.arrivedByPlayerChoice = false;
         world.moveToScene(forcedConn.targetSceneId);
         continue;
       }
-      done = true;
+      cursor.done = true;
       break;
     }
     const nextConn = await processScene();
@@ -2133,13 +2129,13 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       // 叙事高潮场景：让 processScene 渲染后再退出
       if (movingToFinale) {
         await processScene(); // 渲染终局场景（NPC对话+线索发现）
-        done = true;
+        cursor.done = true;
       }
     } else {
       // Dead-end safeguard: processScene returned null (no actions),
       // but check if there are still unvisited scenes in the module
       // 这条路上的移动不是玩家选的，别让它豁免下一轮的强制改道
-      arrivedByPlayerChoice = false;
+      cursor.arrivedByPlayerChoice = false;
       const allModuleScenes = module.scenes;
       const unvisitedScenes = allModuleScenes.filter(s => !world.isSceneVisited(s.id));
       if (unvisitedScenes.length > 0) {
@@ -2193,7 +2189,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
           continue;
         }
       }
-      done = true;
+      cursor.done = true;
     }
   }
 
@@ -2237,7 +2233,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   const san2Insane = san2.state.indefiniteInsanity ? ` (不定疯狂: ${san2.state.indefiniteLevel}级)` : san2.state.temporaryInsanity ? " (已触发临时疯狂)" : "";
   say(`  ${p1.name}: SAN ${san2.state.currentSAN}/${san2.state.maxSAN}${san2Insane}${san2Phobias}${san2Manias}`);
 
-  say(`\n模组结束。 约 ${rounds} 轮回合`);
+  say(`\n模组结束。 约 ${cursor.rounds} 轮回合`);
   say(`\n${"\u2501".repeat(48)}`);
   say(characterSummary(c1));
   say(characterSummary(c2));
