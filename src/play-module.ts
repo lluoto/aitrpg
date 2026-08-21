@@ -547,20 +547,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   const prologueLines = await generatePrologue(pl1, pl2);
   for (const line of prologueLines) say(line);
 
-  // ── Free-form NPC conversation helper ──
-    // NPC 对话生成已抽到 src/play/npc-dialogue.ts（纯搬运，见该文件头部说明）
-
-  /**
-   * 识别桥段 —— NPC 刚提起的东西，正好就在眼前，于是有这习惯的调查员自己看了过去。
-   *
-   * 三个条件缺一不可（见 WorldState.getPendingRecognition）：被提起过、此刻看得见、还没演过。
-   * 再加一道职业门：不是谁都会下意识把话里的东西和眼前景物对上，
-   * 门开给所有人这段就不再是"某个人的习惯"，而是引擎在提示玩家该去哪。
-   *
-   * 命中即占用本轮，调用方直接 return —— 人在认出什么东西的当口，
-   * 不会同时开口问下一个问题。
-   */
-    // NPC 对话生成已抽到 src/play/npc-dialogue.ts（纯搬运，见该文件头部说明）
+  // NPC 对话与识别桥段都在 src/play/scene-pipeline.ts
 
   // ── Game loop: scene entry → exploration → analysis → advance ──
   //

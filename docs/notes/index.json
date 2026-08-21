@@ -702,13 +702,13 @@
     },
     {
       "id": "rules-05",
-      "title": "待修：倒下之后照样行动（2026-08-21，已定位）",
+      "title": "倒下之后照样行动（2026-08-21，已修）",
       "date": "2026-08-21",
-      "status": "warn",
+      "status": "fixed",
       "group": "rules",
       "file": "docs/notes/rules.md",
       "line": 115,
-      "lines": 15,
+      "lines": 34,
       "summary": "敌人开始还手之后暴露出来的：日志里出现「两名调查员都失去了意识」，"
     }
   ]
