@@ -168,6 +168,60 @@ npc-dialogue 只要「叙事去重」，traps 只要「角色 + 世界 + 循环�
 而剩下的是真正互相缠着的主循环。比例不降本身就是信号：
 再往下不是搬运问题，是状态边界问题。
 
+### ✅ 打通 LLM 上下文那条链，线索检定抽出（2026-08-21）
+
+上一条判断「抽线索块会拖出一条链」，按 A 方案先解链。
+
+**第一步：wm 状态收进 `WorldModelCtx`**（`integrator` + 神话 loader + 一格缓存），
+`buildCthulhuContext` / `buildWmContext` / `buildWorldContext` 抽成
+`src/play/llm-context.ts`（174 行）。
+
+`buildWorldContext` 是关键 —— 它被对话与线索两边共用 5 处，
+留在闭包里线索块就抽不干净。
+
+**这块必须单独验**：这两个函数只在 LLM 可用时才注入 prompt，
+**离线跑整局根本不会碰它们，全量测试绿不代表没坏**。
+写了 `tools/_diag-wmctx.ts` 直接调：2020 字符、第二次命中缓存、
+换场景后缓存失效重算 —— 缓存那一格从闭包变量改成对象字段，最容易在这里写错。
+
+**第二步：线索检定抽成 `src/play/clue-check.ts`**（294 行），
+连带 `sanitizeRevelation` / `sayPartnerRemark` / `isPassiveClue` / `investigableClues`。
+
+依赖多是实情不是设计失误 —— 它同时碰世界、场景、两名调查员、两个 agent、LLM、
+以及本次进场的「试过哪些」。收成 `ClueCtx` 一个参数，
+调用点读起来是「按这套处境查线索」而不是十个散参数。
+⚠ `scene` 与 `attemptedClueIds` 是**每次进场**的，ctx 也就得每次进场重建。
+
+**踩到一个环**：`clue-check` 要 `partnerRemark` / `speechLead`，
+而它们在 play-module 里 —— 但 play-module 已经 import 了 clue-check。
+把这两个（连同 `askerScore`、`OUTGOING`/`RESERVED`）搬进 `npc-text.ts` 打断，
+再从 play-module 转出给测试。**抽出来的模块反向 import 原文件就是环的信号**，
+tsc 不会报，得自己看依赖方向。
+
+**这轮的机械改动出错三次**，都是切割边界差一点：
+把 `extractSceneEssence` 的函数头带走、把 `pl2` 与 LLM 客户端初始化多带走、
+把陷阱/战斗调用点误切进 clue-check。**判据是 tsc 报的是不是语法错或
+「Cannot find name」批量出现** —— 那通常意味着切歪了，不是缺 import。
+
+**累计**：play-module 3537 → **1580** 行，`runModuleInner` 2615 → **1156** 行。
+比例 73%，仍然没降 —— 但绝对值降了 56%，且剩下的确实是主循环骨架
+（场景推进、对话编排、移动排序、结局）。
+
+| 文件 | 行数 |
+|---|---|
+| `play-module.ts` | 1580 |
+| `play/npc-dialogue.ts` | 773 |
+| `play/clue-check.ts` | 294 |
+| `play/npc-text.ts` | 255 |
+| `play/traps.ts` | 212 |
+| `play/combat.ts` | 203 |
+| `play/llm-context.ts` | 174 |
+| `play/checks.ts` | 130 |
+| `play/run-state.ts` | 111 |
+| `play/trap-util.ts` | 97 |
+| `play/narration.ts` | 74 |
+| `play/reveal-bridge.ts` | 76 |
+
 ### 自由行动解析：agent 支持，引擎扔掉，而 intent 判别撑不住（2026-08-20）
 
 问题是「要改成自由行动解析，现在的 subagent 支不支持」。逐层查下来：
