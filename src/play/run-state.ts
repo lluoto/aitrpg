@@ -52,6 +52,14 @@ export interface Cursor {
   stepCounter: number;
   /** 本局已经响过的陷阱 id，跨进场累积 */
   triggeredTraps: Set<string>;
+  /**
+   * 每个场景进过几次。
+   *
+   * 主循环写、场景流水线读（判断是不是首次进场、给移动选项排序）。
+   * 这层读写分离原先埋在闭包里 —— 收进来之后才看得出
+   * 「谁在推进它」和「谁只是参考它」是两拨代码。
+   */
+  visitCount: Map<string, number>;
   /** 主循环是否该收尾 */
   done: boolean;
   /** 这次进场是不是玩家自己选的目的地 —— 是就别再替他改道 */
@@ -104,6 +112,7 @@ export function newCursor(): Cursor {
     rounds: 0,
     stepCounter: 0,
     triggeredTraps: new Set<string>(),
+    visitCount: new Map<string, number>(),
     done: false,
     arrivedByPlayerChoice: false,
   };
