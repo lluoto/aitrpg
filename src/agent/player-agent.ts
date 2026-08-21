@@ -24,6 +24,14 @@ export interface PlayerDecision {
   targetNpcId?: string; // 尝试交谈的 NPC ID
   skillToUse?: string; // 尝试使用的技能
   targetSceneId?: string; // 尝试前往的场景 ID
+  /**
+   * 行动对象的**名字**（"那张卡片"、"菲碧"）。
+   *
+   * 跟上面三个 id 字段是两回事：agent 只知道自己想动谁，不知道它的 id ——
+   * 名字换 id 要有当前世界里有什么的信息，那在引擎那一侧。
+   * 硬把名字塞进 id 字段会让下游按 id 去查、查不到、静默当成没指定。
+   */
+  targetName?: string;
 }
 
 export interface FallbackContext {
@@ -236,7 +244,19 @@ export class PlayerAgent {
       `【历史行动】`,
       this.history.slice(-3).map((h) => `KP: ${h.kp}\n你: ${h.action}`).join("\n\n") || "（这是你的第一回合）",
       ``,
-      `现在，作为 ${this.pc.name}，你要怎么做？简短描述你的行动。`,
+      `现在，作为 ${this.pc.name}，你要怎么做？`,
+      ``,
+      // 为什么要它自己报 intent：以前是拿回复做关键词匹配猜的，
+      // 而生成这句话的时候它本来就知道自己要干什么 —— 猜是多余的，而且会错。
+      // 实测「我打开手电筒照向管道深处」被判成 combat（「打开」里的「打」命中战斗词表）。
+      // 让它直接说，猜测这一步整个消失。
+      `先用一行 JSON 说明你的行动，然后不要写别的：`,
+      `{"action":"你的行动，一两句话，用第一人称","intent":"下面之一","target":"行动对象，没有就留空"}`,
+      `intent 的取值：`,
+      `  investigate 细看某个具体东西  search 翻找、搜索一片区域`,
+      `  talk 与人交谈、询问          move 前往别的地方`,
+      `  combat 攻击、开火            observe 观察环境、聆听、不动手`,
+      `  use_item 使用身上的物品      other 以上都不是`,
     ]
       .filter(Boolean)
       .join("\n");
@@ -409,8 +429,63 @@ export class PlayerAgent {
   }
 
   /** 解析 LLM 输出的行动文本为结构化决策 */
+  /** intent 的合法取值。与 PlayerDecision["intent"] 保持一致 */
+  private static readonly INTENTS = [
+    "investigate", "talk", "search", "move", "combat", "use_item", "observe", "other",
+  ] as const;
+
+  /**
+   * 先试着按 JSON 读 —— agent 现在会自报 intent。
+   * 读不出来（模型没照格式、或者是旧的纯文本回复）就退回关键词匹配。
+   *
+   * 留着关键词那条路不是为了保险好看：`fallbackDecision` 那一支、
+   * 以及任何没走新 prompt 的调用方，回来的仍然是纯文本。
+   */
   parseAction(content: string): PlayerDecision {
-    // 尝试提取技能名
+    const structured = this.parseStructured(content);
+    if (structured) return structured;
+    return this.parseByKeyword(content);
+  }
+
+  private parseStructured(content: string): PlayerDecision | null {
+    const fenced = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const body = fenced ? (fenced[1] as string) : content;
+    const s = body.indexOf("{");
+    const e = body.lastIndexOf("}");
+    if (s < 0 || e <= s) return null;
+    let obj: Record<string, unknown>;
+    try {
+      obj = JSON.parse(body.slice(s, e + 1)) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+    const action = typeof obj.action === "string" ? obj.action.trim() : "";
+    // 没有 action 就不算数 —— 只有 intent 没有行动描述，KP 那边什么都念不出来。
+    if (action === "") return null;
+    const rawIntent = typeof obj.intent === "string" ? obj.intent.trim() : "";
+    const intent = (PlayerAgent.INTENTS as readonly string[]).includes(rawIntent)
+      ? (rawIntent as PlayerDecision["intent"])
+      : // intent 认不出来时**不要**回退到关键词猜：那正是这次要去掉的东西。
+        // 归到 other，让下游按「说不清要干什么」处理，比猜一个错的强。
+        "other";
+    const target = typeof obj.target === "string" ? obj.target.trim() : "";
+    return {
+      action,
+      intent,
+      // 技能仍从行动文字里认。它跟 intent 不一样：技能名是专有名词，
+      // 出现即命中，没有「打开/打」那种子串歧义。
+      skillToUse: this.findSkill(action),
+      // target 拿到的是名字（「那张卡片」「菲碧」），而 PlayerDecision 上的
+      // targetClueId / targetNpcId / targetSceneId 要的是 **id**。
+      // 名字换 id 需要知道当前世界里有什么，agent 这一层没有那份信息，
+      // 所以这里不填 —— 由拿得到世界状态的一方去解析。硬塞一个名字进 id 字段
+      // 会让下游按 id 去查、查不到、然后静默当成没指定。
+      ...(target !== "" ? { targetName: target } : {}),
+    };
+  }
+
+  /** 技能名是专有名词，出现即命中，没有「打开/打」那种子串歧义 */
+  private findSkill(content: string): string | undefined {
     const skillKeywords = [
       "侦查", "spot_hidden", "聆听", "listen", "图书馆", "library_use", "医学", "medicine",
       "急救", "first_aid", "说服", "persuade", "话术", "fast_talk", "恐吓", "intimidate",
@@ -418,14 +493,12 @@ export class PlayerAgent {
       "格斗", "fighting", "手枪", "firearms_pistol", "步枪", "firearms_rifle",
       "潜行", "stealth", "妙手", "sleight_of_hand", "机械维修", "mechanical_repair",
     ];
+    for (const sk of skillKeywords) if (content.includes(sk)) return sk;
+    return undefined;
+  }
 
-    let foundSkill: string | undefined;
-    for (const sk of skillKeywords) {
-      if (content.includes(sk)) {
-        foundSkill = sk;
-        break;
-      }
-    }
+  private parseByKeyword(content: string): PlayerDecision {
+    const foundSkill = this.findSkill(content);
 
     // 判断意图
     let intent: PlayerDecision["intent"] = "other";
