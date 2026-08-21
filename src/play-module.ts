@@ -46,6 +46,15 @@ import {
 import {
   analyseNpcData, splitLeadingStageDirection, stripOuterQuotes, quoteDialogue, noteEntityMentions,
 } from "./play/npc-text";
+import {
+  check, sanCheck, applyDamage, discoveryFlavor, failFlavor,
+  recordWound, healWound, woundPenaltyOf,
+} from "./play/checks";
+import { runSceneTraps } from "./play/traps";
+import { rollDice, trapsInScene, attributeValue, isMajorWound } from "./play/trap-util";
+// 这几个测试按老路径从 play-module import，转出去别断
+export { worseWound } from "./play/checks";
+export { rollDice, trapsInScene, attributeValue, isMajorWound } from "./play/trap-util";
 import type { LineOrigin, Decider, RunContext } from "./play/narration";
 
 // ====== 模块级工具：供 runModule 内外所有层可见 ======
@@ -173,93 +182,7 @@ export function chooseConnection(
   return { conn: scored[0]!.conn, forced: true };
 }
 
-/**
- * 重伤判定：单次伤害大于耐久半值。
- *
- * 模组 trap_bear 条目写的是"伤害大于耐久半值有截肢风险"——**大于**，所以用 `>`。
- *
- * ⚠ 这跟 CoC 7e 的 Major Wound **不是同一个口径**（那条是「等于或大于」，
- * 见 combat/wound-effects.ts 的 calcSeverity）。两处故意不同，别去"统一"。
- * 抽出来是为了能测 —— 边界（恰好等于半值）容易写成 >=，那会把普通擦伤也判成截肢。
- */
-export function isMajorWound(damage: number, maxHp: number): boolean {
-  return damage > Math.floor(maxHp / 2);
-}
-
-/**
- * 掷骰 —— CoC 伤害表达式 "1D4+1" / "1d6" / "2D6+2" / "1d3-1"。
- *
- * 没有复用 RuleEngine.roll()：那是 D&D 规则引擎上的实例方法，构造时要读 dnd5e.yaml，
- * 而且它的正则 `/(\d+)d(\d+)/` 只认小写 d —— 模组条目写的是 "1D4+1"，
- * 喂进去匹配不上，会静默返回 0。静默的 0 比抛错坏得多：
- * 捕兽夹会变成咬住了却不掉血，而日志上一个字都不会提。
- *
- * 表达式非法直接抛错，不做兜底：那是模组数据的错，该在测试里就炸出来，
- * 而不是跑到一半悄悄把伤害算成 0。rng 可注入，好让测试不靠运气。
- */
-export function rollDice(expr: string, rng: () => number = Math.random): number {
-  const m = expr.trim().match(/^(\d*)[dD](\d+)(?:\s*([+-])\s*(\d+))?$/);
-  if (!m) throw new Error(`无法解析的骰子表达式: "${expr}"`);
-  const count = m[1] === "" ? 1 : parseInt(m[1] as string, 10);
-  const sides = parseInt(m[2] as string, 10);
-  if (count < 1 || sides < 1) throw new Error(`骰子表达式数值非法: "${expr}"`);
-  let total = 0;
-  for (let i = 0; i < count; i++) total += Math.floor(rng() * sides) + 1;
-  if (m[3]) total += (m[3] === "-" ? -1 : 1) * parseInt(m[4] as string, 10);
-  return Math.max(0, total);
-}
-
-/**
- * 取某场景里所有会结算的陷阱。
- *
- * 此前引擎只认 support.trapSceneId / trapClueId 这一对单数常量，一个场景只能有一个陷阱。
- * 而 farm_periphery 一个场景就挂着捕兽夹、锯短霰弹枪、音响三个条目 —— 后两个从来没被触发过，
- * 是彻头彻尾的死数据。改成按场景过滤 items 之后，模组加陷阱不必再动引擎。
- *
- * 没有 trap 字段的条目会被跳过：那表示它纯叙事（如已失效的音响陷阱），
- * 看得见、可以被描述，但不参与结算。
- */
-export function trapsInScene(items: ModuleItem[], sceneId: string): ModuleItem[] {
-  return items.filter((it) => it.type === "trap" && it.sceneId === sceneId && !!it.trap);
-}
-
-/**
- * 中文属性名 → CoC 角色属性字段。
- *
- * 模组条目是中文写的（"挣脱需困难成功力量"），角色卡存的是英文键。
- * 这层映射此前不存在，因为检定属性是人工挑好硬编码进引擎的；
- * 一旦改成从数据读，模组里写什么就得认什么。
- */
-const ATTR_KEY_BY_CN: Record<string, string> = {
-  力量: "strength",
-  敏捷: "dexterity",
-  体质: "constitution",
-  体型: "size",
-  智力: "intelligence",
-  意志: "power",
-  教育: "education",
-  外貌: "appearance",
-};
-
-/**
- * 按中文名取属性值。认不出的名字回落到 fallback 并出声 ——
- * 静默回落会让"模组写错属性名"表现成"这个检定莫名其妙是 50%"，无从查起。
- */
-export function attributeValue(
-  attrs: Record<string, number | undefined>,
-  cnName: string,
-  fallback = 50,
-): number {
-  const key = ATTR_KEY_BY_CN[cnName];
-  if (!key) {
-    console.warn(`[trap] 未知属性名「${cnName}」，回落 ${fallback}`);
-    return fallback;
-  }
-  const v = attrs[key];
-  return typeof v === "number" ? v : fallback;
-}
-
-/** 外向/寡言的用词 —— 车卡的八项里"特质"一项就是自由文本，只能按词判 */
+    // NPC 对话生成已抽到 src/play/npc-dialogue.ts（纯搬运，见该文件头部说明）
 const OUTGOING = /健谈|外向|好奇|直率|急躁|热情|多话|爱管闲事|喜欢打听|口无遮拦/;
 const RESERVED = /寡言|沉默|内向|谨慎|冷淡|木讷|不善言辞|惜字如金|怕生/;
 
@@ -583,123 +506,7 @@ async function createRandomPlayerSetup(
   };
 }
 
-// ── 伤势状态 ──
-// 记「未处理的最重一处」而不是累加：CoC 里伤是伤，不是叠加的减值。
-const SEVERITY_RANK: Record<string, number> = {
-  scratch: 0, flesh: 1, deep: 2, grievous: 3, lethal: 4,
-};
-
-/**
- * 两处伤取更重的那个。
- *
- * 抽成纯函数是为了能测这条规则：**后来的轻伤不能盖掉先前的重伤**。
- * 写成无脑覆盖的话，重伤之后擦破一下皮，惩罚骰就没了。
- */
-export function worseWound(cur: WoundSeverity | undefined, next: WoundSeverity): WoundSeverity {
-  if (!cur) return next;
-  return (SEVERITY_RANK[next] ?? 0) > (SEVERITY_RANK[cur] ?? 0) ? next : cur;
-}
-
-/** 记一处伤；比现有的更重才覆盖 */
-function recordWound(pcName: string, sev: WoundSeverity): void {
-  const ctx = runCtx.getStore();
-  if (!ctx) return;
-  ctx.wounds.set(pcName, worseWound(ctx.wounds.get(pcName), sev));
-}
-
-/** 伤势被处理掉（急救成功等） */
-function healWound(pcName: string): void {
-  runCtx.getStore()?.wounds.delete(pcName);
-}
-
-/**
- * 当前伤势该加几个惩罚骰。
- *
- * 上限 2 —— CoC 7e 的奖励/惩罚骰最多 2 个，而 `woundPenaltyDice` 给致命伤返回 3。
- * 不在那边改是因为它是伤势模型的一部分（3 表示「比重伤重得多」），
- * 截断属于掷骰规则，归这里。
- */
-function woundPenaltyOf(pcName: string): number {
-  const sev = runCtx.getStore()?.wounds.get(pcName);
-  return sev ? Math.min(2, woundPenaltyDice(sev)) : 0;
-}
-
-// ── 检定 ──
-// penaltyDice: 额外惩罚骰（环境等）。角色身上的伤势会**自动**再加，不用调用方操心。
-//
-// ignoreWound: 只给「重伤体质检定」用 —— 那一掷是在结算**这处伤本身**，
-// 让它被自己造成的伤势罚一次是双重计算（实跑抓到过：
-// 「体质（重伤）51% [1惩罚骰·伤势]」，那个惩罚骰正是同一处伤给的）。
-function check(
-  skillVal: number,
-  pcName: string,
-  skillLabel: string,
-  diff: "regular" | "hard" | "extreme" = "regular",
-  penaltyDice: number = 0,
-  ignoreWound: boolean = false,
-): CoCCheckResult {
-  const fromWound = ignoreWound ? 0 : woundPenaltyOf(pcName);
-  const total = Math.min(2, penaltyDice + fromWound);
-  const r = CoCEngine.skillCheck(skillVal, diff, 0, total);
-  const why = fromWound > 0 ? (penaltyDice > 0 ? "环境+伤势" : "伤势") : "";
-  const penaltyNote = total > 0 ? ` [${total}惩罚骰${why ? "·" + why : ""}]` : "";
-  sayMech(`➜ ${pcName} 【${skillLabel}】 ${skillVal}%${penaltyNote} → d100=${r.roll} → ${SUCCESS_LEVEL_LABELS[r.successLevel]}`);
-  return r;
-}
-
-// ── 根据成功等级生成发现 flavor ──
-function discoveryFlavor(level: string): string {
-  const m: Record<string, string[]> = {
-    critical: ["仔细查看之下，一个令人震惊的发现——", "拨开遮挡物，露出的东西让所有人都倒吸一口凉气——", "当视线落定，真相让人心头一震——"],
-    extreme:  ["凑近仔细观察，目光停在一处——", "翻开杂物，下面的东西引起了注意——", "移开遮挡物，露出了一样东西——"],
-    hard:     ["仔细查看之下有了发现——", "目光扫过一处不寻常的地方——", "定睛看去，那里确实有什么——"],
-    regular:  ["目光扫过，注意到一个细节——", "手指触到某个不寻常的东西——", "视线在某处停了一下——", "靠近查看，发现了一些东西——"],
-  };
-  const pool = m[level] || m.regular;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
-// ── 失败 flavor ──
-function failFlavor(fumble: boolean): string {
-  if (fumble) {
-    return ["可惜没能发现什么——反而一个失手把东西碰乱了。", "糟糕，什么也没找到，还弄出了不小的动静。"][Math.floor(Math.random() * 2)];
-  }
-  return ["可惜没能发现什么有用的东西。", "搜索了一番，一无所获。", "什么也没有。"][Math.floor(Math.random() * 3)];
-}
-
-// ── SAN 检定 ──
-function sanCheck(pcName: string, engine: SanityEngine, sanCost: string): void {
-  const result = engine.sanityCheck(sanCost);
-  const outcome = sanOutcomeLabel(result.passed);
-  sayMech(`🧠 ${pcName} 【理智检定】 SAN ${engine.state.currentSAN + result.sanLoss} → d100=${result.roll} → ${outcome}，损失 ${result.sanLoss} SAN (剩余 ${engine.state.currentSAN})`);
-  if (result.temporaryInsanityTriggered) {
-    say(`\n⚠ ${pcName} 陷入了临时疯狂！${result.boutOfMadness ?? ""}`);
-  }
-  if (result.indefiniteInsanityTriggered) {
-    say(`\n⚠ ${pcName} 陷入了不定疯狂（${result.indefiniteLevel}级）！${result.newPhobia ? `获得恐惧症: ${result.newPhobia}` : ""}`);
-  }
-}
-
-// ── HP 伤害处理 ──
-// 返回伤害等级，供调用方做重伤体质检定。
-// 伤害等级按**单次伤害 / maxHp** 计算，不是剩余 HP 比例。
-function applyDamage(pc: CoCGeneratedCharacter, pcName: string, dmg: number): WoundSeverity {
-  const severity = calcSeverity(dmg, pc.maxHp);
-  pc.hp = Math.max(0, pc.hp - dmg);
-  const suffix = pc.hp <= 0
-    ? "（昏迷/濒死！）"
-    : severity !== "scratch" ? `（${severityLabel(severity)}）` : "";
-  sayMech(`❤ ${pcName} HP ${pc.hp + dmg} → ${pc.hp}${suffix}`);
-
-  // 记进本局伤势 —— check() 会自动据此加惩罚骰，直到被急救处理掉
-  const penalty = woundPenaltyDice(severity);
-  if (penalty > 0 && pc.hp > 0) {
-    recordWound(pcName, severity);
-    sayMech(`⚠ ${pcName} 因伤势承受 ${woundPenaltyOf(pcName)} 惩罚骰，直到伤口得到处理。`);
-  }
-
-  return severity;
-}
+    // NPC 对话生成已抽到 src/play/npc-dialogue.ts（纯搬运，见该文件头部说明）
 
 // ── 主流程 ──
 // 引擎通用化：module 承载纯数据（场景/线索/NPC），support 承载模块专属钩子/常量
@@ -1671,182 +1478,12 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     }
 
     // NPC 对话生成已抽到 src/play/npc-dialogue.ts（纯搬运，见该文件头部说明）
-    // ── Scene-specific auto events (fire once on entry) ──
-    // Farm periphery: when entering without trap detection → take damage
-    //
-    // 按模组条目 trap_bear 结算。原先是写死的 `1 + rand(3)`（1~3 点），
-    // 连模组的最小值都够不到 —— 条目写的是 1D4+1，最少 2 点；挣脱要困难力量检定，
-    // 大失败再加 1d3，伤害超过耐久半值有截肢风险。这些原先一条都没有，
-    // 于是日志里出现了"铁齿咬进小腿 → 掉 1 点 → 成功通过陷阱区"这种读起来很荒谬的序列。
-    for (const trapItem of trapsInScene(module.items, scene.id)) {
-      if (triggeredTraps.has(trapItem.id) || stepCounter <= 0) continue;
 
-      const mech = trapItem.trap!;
-      // 事先发现就绕开了 —— 这是原先 support.trapClueId 的语义，现在按陷阱各自声明
-      if (mech.detectedByClue && world.isClueFound(mech.detectedByClue)) continue;
-      triggeredTraps.add(trapItem.id);
-      const vName = stepCounter % 2 === 0 ? p0.shortName : p1.shortName;
-      const pc = stepCounter % 2 === 0 ? c1 : c2;
-
-      // 体型免疫：模组给结论不给理由，理由写在数据的 immuneNarration 里并记入 inferred
-      if (mech.sizImmunityBelow !== undefined && (pc.attributes.size ?? 50) < mech.sizImmunityBelow) {
-        say(`\n${vName}${mech.immuneNarration ?? `踩上了${trapItem.name}，却什么也没发生。`}`);
-        continue;
-      }
-
-      // 事先发现检定：侦查/灵感检定，成功则发现陷阱并绕开
-      if (mech.detect) {
-        // 检查是否有特定背景可以用替代技能（如军事背景用灵感）
-        const bgKeywords = ["军", "soldier", "military", "veteran", "army", "navy", "marine"];
-        const hasMilitaryBg = bgKeywords.some(kw =>
-          (pc.archetypeId?.toLowerCase() ?? "").includes(kw)
-        );
-        const useAlt = hasMilitaryBg && mech.detect.alternativeSkill;
-        const skillName = useAlt ? mech.detect.alternativeSkill! : mech.detect.skill;
-        const skillVal = resolveCheckValue(pc, skillName);
-
-        if (skillVal > 0) {
-          // 惩罚骰（夜晚等）：每个惩罚骰多掷一颗十位骰取最差
-          // 惩罚骰不写进 label —— check() 自己会标，写这儿会打印两遍
-          const penalty = mech.detect.penaltyDice ?? 0;
-          const label = `${skillName}（发现${trapItem.name}）`;
-          const r = check(skillVal, vName, label, mech.detect.difficulty, penalty);
-          if (r.isSuccess) {
-            say(`\n${vName}${useAlt ? "凭着直觉感到危险" : "仔细观察后"}发现了前方的陷阱，小心绕开了。`);
-            if (mech.detectedByClue) {
-              world.discoverClue(mech.detectedByClue);
-            }
-            continue;
-          }
-        }
-      }
-
-      // 躲避：来得及闪开就完全无事，与"已经中招后挣脱"是两回事
-      if (mech.avoid) {
-        const label = `${mech.avoid.skill}（躲避${trapItem.name}）`;
-        const a = check(attributeValue(pc.attributes, mech.avoid.skill), vName, label, mech.avoid.difficulty);
-        if (a.isSuccess) {
-          say(`\n${vName}察觉到不对，堪堪闪开了。`);
-          continue;
-        }
-      }
-
-      say(`\n${vName}${mech.triggerNarration ?? `触发了${trapItem.name}！`}`);
-
-      let total = 0;
-      let severity: WoundSeverity = "scratch";
-      if (mech.damage) {
-        total = rollDice(mech.damage);
-        severity = applyDamage(pc, vName, total);
-      }
-
-      // ── 重伤体质检定（CoC 7e Major Wound）──
-      // deep（50-74%）或 grievous（≥75%）需要 CON 检定，失败则昏迷
-      if (severity === "deep" || severity === "grievous") {
-        // ignoreWound：这一掷结算的就是这处伤，不能被它自己罚
-        const conCheck = check(pc.attributes.constitution, vName, "体质（重伤）", "regular", 0, true);
-        if (!conCheck.isSuccess) {
-          say(`${vName}因伤势过重昏迷过去！`);
-          pc.hp = 0; // 昏迷状态
-        }
-      }
-
-      // ── 挣脱检定（捕兽夹等）──
-      let escaped = false;
-      if (mech.escape) {
-        const label = `${mech.escape.skill}（挣脱${trapItem.name}）`;
-        const r = check(attributeValue(pc.attributes, mech.escape.skill), vName, label, mech.escape.difficulty);
-        if (r.isSuccess) {
-          say(`${vName}挣脱了出来。`);
-          escaped = true;
-        } else if (r.successLevel === "fumble" && mech.escape.fumbleDamage) {
-          const extra = rollDice(mech.escape.fumbleDamage);
-          say(`${vName}越挣扎，情况越糟。`);
-          const extraSev = applyDamage(pc, vName, extra);
-          total += extra;
-          // 额外伤害也可能触发重伤
-          if ((extraSev === "deep" || extraSev === "grievous") && pc.hp > 0) {
-            const conCheck2 = check(pc.attributes.constitution, vName, "体质（重伤）", "regular", 0, true);
-            if (!conCheck2.isSuccess) {
-              say(`${vName}因伤势过重昏迷过去！`);
-              pc.hp = 0;
-            }
-          }
-        } else {
-          say(`${vName}一时挣不开，只能等同伴过来搭手。`);
-        }
-      }
-
-      // ── 持续伤害（硫酸等）──
-      // 没有 escape 或者 escape 失败都会触发 ongoing
-      if (mech.ongoing && !escaped && pc.hp > 0) {
-        const tick = rollDice(mech.ongoing.damage);
-        const tickSev = applyDamage(pc, vName, tick);
-        total += tick;
-        sayMech(`${trapItem.name}持续造成伤害，直到${mech.ongoing.until}。`);
-
-        // 急救知识检定：化学/医学/科学才知道怎么救
-        // 不是每个人都知道硫酸要用水冲
-        if (mech.firstAid) {
-          const partner = pc === c1 ? c2 : c1;
-          const partnerName = pc === c1 ? p1.shortName : p0.shortName;
-          // 优先检定化学，其次医学
-          const chemVal = resolveCheckValue(partner, "化学");
-          const medVal = resolveCheckValue(partner, "医学");
-          const useSkill = chemVal >= medVal ? "化学" : "医学";
-          const useVal = Math.max(chemVal, medVal);
-          if (useVal > 0) {
-            const knowCheck = check(useVal, partnerName, `${useSkill}（判断急救方式）`, "regular");
-            if (knowCheck.isSuccess) {
-              sayMech(`${partnerName}知道应该${mech.firstAid}！`);
-              // 急救检定
-              const faVal = resolveCheckValue(partner, "急救");
-              if (faVal > 0) {
-                const faCheck = check(faVal, partnerName, "急救", "regular");
-                if (faCheck.isSuccess) {
-                  say(`${partnerName}迅速${mech.firstAid}，阻止了持续伤害。`);
-                  // 伤口处理掉了 → 撤掉伤势惩罚骰
-                  healWound(vName);
-                  sayMech(`${vName} 伤势得到处理，惩罚骰解除。`);
-                } else {
-                  say(`${partnerName}尝试急救但没能完全控制住情况。`);
-                  // 失败也扣一次持续伤害
-                  if (pc.hp > 0) {
-                    const tick2 = rollDice(mech.ongoing.damage);
-                    applyDamage(pc, vName, tick2);
-                    total += tick2;
-                  }
-                }
-              }
-            } else {
-              say(`${partnerName}不知道该怎么处理这种伤势……`);
-            }
-          }
-        }
-
-        // 持续伤害也可能触发重伤
-        if ((tickSev === "deep" || tickSev === "grievous") && pc.hp > 0) {
-          const conCheck3 = check(pc.attributes.constitution, vName, "体质（重伤）", "regular", 0, true);
-          if (!conCheck3.isSuccess) {
-            say(`${vName}因伤势过重昏迷过去！`);
-            pc.hp = 0;
-          }
-        }
-      }
-
-      if (total > 0 && mech.maimAtHpRatio !== undefined && total > Math.floor(pc.maxHp * mech.maimAtHpRatio)) {
-        const ratioLabel = mech.maimAtHpRatio === 0.5 ? "半值" : `${mech.maimAtHpRatio} 倍`;
-        sayMech(`${vName} 单次伤害 ${total} 点，超过耐久${ratioLabel} —— 有截肢风险。`);
-      }
-
-      // 一次进场最多真正踩中一个陷阱。
-      //
-      // 常理约束：铁齿咬住小腿之后，人不会在同一瞬间又走进下一根拌锁绳——
-      // 会停下、会喊人、会开始一寸寸看脚下。放开这条，实跑里出现过
-      // 「HP 10 → 6 → 0」两个陷阱连响把调查员直接打昏的序列。
-      // 没踩中的陷阱不记入 triggeredTraps，下次再进这个场景仍然在等着。
-      break;
-    }
+    // 陷阱结算已抽到 src/play/traps.ts
+    await runSceneTraps({
+      module, scene, world, triggeredTraps, stepCounter,
+      p0, p1, c1, c2, san1, san2,
+    });
 
     // Mi-Go Combat Encounter — 多回合战斗系统
     const migoEncounter = support.encounters.find(e =>
