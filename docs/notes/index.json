@@ -25,7 +25,7 @@
       "id": "rules",
       "name": "规则 / 检定 / 伤害",
       "file": "docs/notes/rules.md",
-      "count": 3
+      "count": 5
     }
   ],
   "records": [
@@ -688,6 +688,28 @@
       "line": 50,
       "lines": 37,
       "summary": "接线本身不难（`RunContext.wounds` 存「未处理的最重一处」，`check()` 自动加），"
+    },
+    {
+      "id": "rules-04",
+      "title": "Boss 战里敌人根本不还手（2026-08-21，已修）",
+      "date": "2026-08-21",
+      "status": "fixed",
+      "group": "rules",
+      "file": "docs/notes/rules.md",
+      "line": 87,
+      "lines": 28,
+      "summary": "那段注释写着「米戈反击」，底下却只掷 SAN 检定。"
+    },
+    {
+      "id": "rules-05",
+      "title": "待修：倒下之后照样行动（2026-08-21，已定位）",
+      "date": "2026-08-21",
+      "status": "warn",
+      "group": "rules",
+      "file": "docs/notes/rules.md",
+      "line": 115,
+      "lines": 15,
+      "summary": "敌人开始还手之后暴露出来的：日志里出现「两名调查员都失去了意识」，"
     }
   ]
 }
