@@ -45,6 +45,40 @@ play-module 3537 → 2630 行。
 「高稳定性减少负面情绪」，全量里偶发红，单独跑 5/5 全过，全量重跑两次也全绿。
 仓里已知的那条在 `coc-engine.test.ts:131`，这是第二条。
 
+### ✅ 拆 play-module 续：检定层与陷阱（2026-08-21）
+
+接着上一条往下拆。这两块的性质跟 NPC 对话不同，值得分开记。
+
+| 文件 | 行数 | 装什么 |
+|---|---|---|
+| `src/play/checks.ts` | 130 | `check` / `sanCheck` / `applyDamage` / 伤势状态 / flavor |
+| `src/play/trap-util.ts` | 97 | `rollDice` / `trapsInScene` / `attributeValue` / `isMajorWound` |
+| `src/play/traps.ts` | 220 | 一次进场的陷阱结算 |
+
+**checks 那块零依赖**（自由标识符扫描的 B 列全是函数参数误报，
+`cur`/`engine`/`next`/`diff` 这种），直接搬走即可。
+
+**陷阱块相反，是真耦合**：要 `triggeredTraps`（哪些响过）、
+`stepCounter`（决定轮到谁踩）、两个调查员、`world`、`scene`、两个 SAN 引擎。
+它原本还不是函数而是个 `for` 循环，得包一层。
+
+**包的写法要紧**：参数用解构接住、**名字与原闭包里的完全一致**，
+于是循环体一个字都不用改 —— 搬运的正确性只取决于「参数是不是同一批东西」，
+不取决于逐行改写有没有手滑。177 行手工改引用必然出错。
+
+显式列出依赖本身也是收益：现在能拿假场景 + 假陷阱直接喂 `runSceneTraps`。
+
+**为什么要多一个 trap-util**：`traps.ts` 要用 `rollDice`/`trapsInScene`，
+它们还在 play-module 里，直接 import 就成环 —— 单独抽出来打断。
+
+**判据**：typecheck + 1325 测试 + `tools/_diag-wounds.ts` 40 局对照
+（伤害 74 次、分档同量级、「体质检定不被自身伤势罚」的不变量仍成立）。
+
+**累计**：play-module 3537 → 2267 行。但 `runModuleInner` 仍占 75%（1703 行）——
+**比例没降**，因为抽走的多是它外面的模块级函数与它里面耦合最松的块。
+剩下的是真主循环（场景推进、对话编排、战斗、结局），
+再往下拆得先想清楚状态怎么切，不是搬运能解决的。
+
 ### 自由行动解析：agent 支持，引擎扔掉，而 intent 判别撑不住（2026-08-20）
 
 问题是「要改成自由行动解析，现在的 subagent 支不支持」。逐层查下来：
