@@ -51,6 +51,8 @@ import {
   recordWound, healWound, woundPenaltyOf,
 } from "./play/checks";
 import { runSceneTraps } from "./play/traps";
+import { newCursor, newDedup, type Cast } from "./play/run-state";
+import { nextRevealBridge } from "./play/reveal-bridge";
 import { rollDice, trapsInScene, attributeValue, isMajorWound } from "./play/trap-util";
 // 这几个测试按老路径从 play-module import，转出去别断
 export { worseWound } from "./play/checks";
@@ -288,50 +290,6 @@ export function speechLead(action: string): string {
  * "他十五岁就搬到外面拖车住了"，它才变成"失踪男孩的房间"。
  * 看见与认出是两件事，混在一起这段桥就没得演了。
  */
-    // NPC 对话生成已抽到 src/play/npc-dialogue.ts（纯搬运，见该文件头部说明）
-function buildRevealBridge(
-  npc: ModuleNPC,
-  s: ReturnType<typeof analyseNpcData> | null,
-  isFirst: boolean,
-  avoid?: string,
-): string {
-  const speechText = npc.personality.speech || "";
-  const isMumbling = /喃喃|昏迷|含糊|意识不清/.test(speechText);
-  if (isMumbling) return isFirst ? "昏迷中喃喃道：" : "含混不清地继续说：";
-  const pick = <T,>(arr: T[]): T => {
-    const pool = arr.length > 1 ? arr.filter((x) => x !== avoid) : arr;
-    return pool[Math.floor(Math.random() * pool.length)];
-  };
-  if (isFirst) {
-    // isFirst=true：紧跟开场白后的首次信息吐露。用叙述化承接引导（情绪/神态类，无"说"字、
-    // 无重复"急切"、无依赖屋内道具的肢体动作——对话可能在门口/任意阶段发生，避免叙述穿越）
-    return s?.isChild ? pick(["歪着头想了想，说：", "眨巴着眼睛说：", "抱着皮球晃了晃，说："]) :
-      s?.isAnxious ? pick(["抿了抿嘴唇，声音有些发颤：", "垂下眼帘，声音低沉下来：", "深吸一口气，声音发紧："]) :
-      s?.isTalkative ? pick(["压低声音说：", "凑近了些，兴致勃勃地说：", "眉飞色舞地说："]) :
-      s?.isCautious ? pick(["压低声音说：", "环顾了一下四周，低声说：", "皱着眉头说："]) :
-      s?.isGentle ? pick(["温和地说：", "语气柔和地继续说：", "不紧不慢地开口："]) :
-      s?.isOfficial ? pick(["用公事公办的口吻说：", "面无表情地说：", "语气平淡地告知：", "目光扫过你们："]) :
-      s?.isRough ? pick(["粗声粗气地说：", "叼着烟含糊地说：", "不耐烦地咂了咂嘴，说："]) :
-      pick([
-        "接着说：", "想了想，开口道：", "告诉你们：",
-        "停顿了一下，开口：", "换了口气说：", "像是斟酌了一下用词：",
-        "声音里听不出情绪：", "缓缓道：",
-      ]);
-  }
-  return s?.isChild ? pick(["又小声补充道：", "压低声音，神秘兮兮地说：", "朝你们招招手，悄声说："]) :
-    s?.isAnxious ? pick(["声音颤抖着补充说：", "吸了吸鼻子，又说：", "用袖口擦了擦眼角，接着说：", "声音越来越小："]) :
-    s?.isTalkative ? pick(["又说：", "话锋一转，继续道：", "跟连珠炮似的接着说："]) :
-    s?.isCautious ? pick(["顿了顿，又说：", "略微犹豫了一下，补充道：", "压着嗓子又说："]) :
-    s?.isGentle ? pick(["想了想，又说：", "语气依然温和地补充：", "耐心地继续说道："]) :
-    s?.isOfficial ? pick(["又翻了一页，说：", "补充道：", "面无表情地继续说："]) :
-    s?.isRough ? pick(["又补了一句：", "哼了一声，继续说：", "叼着烟含混地说："]) :
-    pick([
-      "又说：", "想了想，补充道：", "继续说道：",
-      "顿了顿：", "补了一句：", "话没停：", "隔了一会儿才说：",
-    ]);
-}
-
-// ── 场景氛围要点：给 LLM 做风格约束的精简描述（防止 prologue 与进入场景时的完整描述重复）──
 function extractSceneEssence(description: string): string {
   const first = (description ?? "").split(/[。；\n]/)[0]?.trim() ?? "";
   return first.length > 60 ? first.slice(0, 60) + "…" : first;
@@ -558,6 +516,11 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   const san2 = new SanityEngine(c2.attributes.power ?? 50);
   san2.state.currentSAN = c2.attributes.power ?? 50;
   san2.state.maxSAN = c2.attributes.power ?? 50;
+
+  // 名字/角色卡/SAN 引擎三者一一对应，收成一个概念传给下游 ——
+  // 散着传最容易出的错是错位：拿 p0 的名字配 c2 的角色卡，
+  // 日志上看不出来（名字是对的），掉的却是另一个人的血。
+  const cast: Cast = { p0, p1, c1, c2, san1, san2 };
 
   // 1.5 模块威胁分析 → 武器许可重审
   const threat = analyzeThreats(module, {
@@ -995,14 +958,9 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     return chosen;
   }
 
-  /** 上一次用过的提问引导，避免连着两次一模一样 */
-  let lastAskBridge = "";
-
-  /** 同上，NPC 侧的引导桥 */
-  let lastRevealBridge = "";
-
-  /** 上一次同伴说过的话，避免复读 */
-  let lastPartnerRemark = "";
+  // 叙事去重收进 dedup（见 play/run-state.ts）—— 抽 npc-dialogue 时
+  // 就是这几个变量够不到，逼出了一处回调注入；收成对象后那处已经去掉。
+  const dedup = newDedup();
 
   /**
    * 同伴接一句话。
@@ -1013,22 +971,12 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     const traits = partner.pc.personality || "";
     const chance = RESERVED.test(traits) && !OUTGOING.test(traits) ? 0.25 : 0.5;
     if (Math.random() > chance) return;
-    const remark = partnerRemark(traits, kind, lastPartnerRemark);
-    lastPartnerRemark = remark;
+    const remark = partnerRemark(traits, kind, dedup.lastPartnerRemark);
+    dedup.lastPartnerRemark = remark;
     const gesture = kind === "san" ? "转过头" : "凑过来看了一眼";
     say(`\n${partner.name}${speechLead(gesture)}"${remark}"`);
   }
-
-  /** 取一条 NPC 引导桥并记住它，供下一次躲开 */
-  function nextRevealBridge(
-    npc: ModuleNPC,
-    s: ReturnType<typeof analyseNpcData> | null,
-    isFirst: boolean,
-  ): string {
-    const b = buildRevealBridge(npc, s, isFirst, lastRevealBridge);
-    lastRevealBridge = b;
-    return b;
-  }
+  // nextRevealBridge 已随 buildRevealBridge 一起搬到 src/play/reveal-bridge.ts
 
   async function conductNpcConversation(npc: ModuleNPC, w: WorldState): Promise<void> {
     const displayName = npc.name.replace(/[（(].*[）)]$/, "").trim();
@@ -1136,9 +1084,9 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       "皱了皱眉，问：", "点点头，接着问：", "换了个语气问：", "顿了顿，问：",
       "看了对方一眼，问：", "压低声音问：", "不太确定地问：", "直截了当地问：",
     ];
-    const pool = askBridges.filter((b) => b !== lastAskBridge);
+    const pool = askBridges.filter((b) => b !== dedup.lastAskBridge);
     const askBridge = pick(pool);
-    lastAskBridge = askBridge;
+    dedup.lastAskBridge = askBridge;
     say(`\n${asker.name}${askBridge}"${stripOuterQuotes(question)}"`);
 
     // NPC 回复：LLM 可用时走 LLM；无 LLM 时 generateNpcReply 内 templateReply 按 preferredIndex
@@ -1162,7 +1110,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       // 动作会被说两遍。转成叙述句而不是保留括号，是因为"（面带忧虑）我儿子失踪了"
       // 读起来是剧本提示，"面带忧虑，说：「我儿子失踪了」"才像人话。
       const { action, speech } = splitLeadingStageDirection(stripOuterQuotes(reply), displayName);
-      const lead = action ? speechLead(action) : nextRevealBridge(npc, s, false);
+      const lead = action ? speechLead(action) : nextRevealBridge(dedup, npc, s, false);
       say(`\n${displayName}${lead}"${speech}"`);
       noteEntityMentions(speech, w);
       // 标记本轮实际说出的 reveal（避免下次重复）。
@@ -1364,7 +1312,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
             }
           }
         }
-        revealNpcKnowledge(npc, world, nextRevealBridge, speechProfile);
+        revealNpcKnowledge(npc, world, dedup, speechProfile);
         world.adjustRelationship(npc.id, 1);
         // 自由对话：PL 可以追问 NPC 1-2 轮
         if (firstMeeting && speechProfile.type !== "coma_rapid" && speechProfile.type !== "none") {
@@ -1395,7 +1343,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
           const dialogueText = generateNpcDialogue(npc, npcState, speechProfile, world);
           say(`\n${mentalVoiceBridge(speechProfile, displayName, "：")}`);
           say(`"${dialogueText}"`);
-          revealNpcKnowledge(npc, world, nextRevealBridge, speechProfile);
+          revealNpcKnowledge(npc, world, dedup, speechProfile);
           world.adjustRelationship(npc.id, 1);
         } else {
           const approachBehavior = npc.behaviors?.find(b => b.trigger === "player_approach");
@@ -1411,7 +1359,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
             say(behaviorBridge);
             say(`"${dialogueText}"`);
           }
-          revealNpcKnowledge(npc, world, nextRevealBridge, speechProfile);
+          revealNpcKnowledge(npc, world, dedup, speechProfile);
           world.adjustRelationship(npc.id, 1);
           // 自由对话：PL 可以追问 NPC 1-2 轮。
           // 此处无需再判 firstMeeting 或排除 coma_rapid/none：外层已是 else if (firstMeeting)，
@@ -1427,12 +1375,12 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
           // Unconscious NPC: show impression, then reveal mumbling knowledge
           const pcImpression = buildPcImpression(npc);
           if (!introShown) say(`\n${pcImpression}——依然处于昏迷状态，无法交流。`);
-          revealNpcKnowledge(npc, world, nextRevealBridge, speechProfile);
+          revealNpcKnowledge(npc, world, dedup, speechProfile);
         } else if (speechProfile.type === "mental_voice") {
           const dialogueText = generateNpcDialogue(npc, npcState, speechProfile, world, true);
           say(`\n${mentalVoiceBridge(speechProfile, displayName, "：", true)}`);
           say(`"${dialogueText}"`);
-          revealNpcKnowledge(npc, world, nextRevealBridge, speechProfile);
+          revealNpcKnowledge(npc, world, dedup, speechProfile);
           world.adjustRelationship(npc.id, 1);
         } else {
           const dialogueText = generateNpcDialogue(npc, npcState, speechProfile, world, true);
@@ -1441,7 +1389,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
             say(`\n${displayName}${toneBridge}`);
             say(`"${dialogueText}"`);
           }
-          revealNpcKnowledge(npc, world, nextRevealBridge, speechProfile);
+          revealNpcKnowledge(npc, world, dedup, speechProfile);
           world.adjustRelationship(npc.id, 1);
         }
       }
@@ -1480,10 +1428,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     // NPC 对话生成已抽到 src/play/npc-dialogue.ts（纯搬运，见该文件头部说明）
 
     // 陷阱结算已抽到 src/play/traps.ts
-    await runSceneTraps({
-      module, scene, world, triggeredTraps, stepCounter,
-      p0, p1, c1, c2, san1, san2,
-    });
+    await runSceneTraps(cast, world, cursor, module, scene);
 
     // Mi-Go Combat Encounter — 多回合战斗系统
     const migoEncounter = support.encounters.find(e =>
@@ -1744,7 +1689,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
             const vb = resolveCheckValue(b, method.skillName!);
             return vb - va;
           });
-          const offset = stepCounter++ % 2;
+          const offset = cursor.stepCounter++ % 2;
           const pc = pcList[offset % pcList.length];
           const val = resolveCheckValue(pc, method.skillName!);
           if (val > 0) {
@@ -2064,7 +2009,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     if (!chosenConn) return null;
     // 记下"接下来这一步是玩家自己选的还是引擎替他挑的"。
     // 主循环的「访问≥6次强制改道」要看它 —— 玩家明确要去的地方不能把人弹走。
-    arrivedByPlayerChoice = !picked.forced;
+    cursor.arrivedByPlayerChoice = !picked.forced;
 
     // 只报地名的那种就别说了 —— 下一行的场景标题会把同一件事再讲一遍
     const dest = module.scenes.find(s => s.id === chosenConn.targetSceneId);
@@ -2075,24 +2020,17 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   }
 
   // ── Game loop: scene entry → exploration → analysis → advance ──
-  let done = false;
-  let rounds = 0;
-  let stepCounter = 0; // round-robin counter for PC skill checks
-  /** 已触发过的陷阱 id —— 一个场景可以挂多个陷阱，各自只响一次 */
-  const triggeredTraps = new Set<string>();
+  //
+  // 循环游标收进 cursor（见 play/run-state.ts）：
+  // 这几个看着像局部变量，实际是跨场景的不变量，而且 stepCounter 是
+  // 线索检定与陷阱**共享**的 —— 散在闭包里时这层共享看不出来，
+  // arrivedByPlayerChoice 更是「静默传送」那个 bug 的所在。
+  const cursor = newCursor();
   const globalVisitCount = new Map<string, number>();
   const recentSceneIds: string[] = []; // anti-bounce: track last few scene transitions
-  /**
-   * 把人带到当前场景的那一步，是玩家自己选的吗。
-   *
-   * 用来挡住下面的「访问≥6次强制改道」：实测三处「选了 X 却到了 Y」全是它干的 ——
-   * 玩家明确选了去某地，到达后在渲染之前被一声不吭地弹到别处
-   * （见 module-loop.test.ts 与 docs/index-program.md）。
-   */
-  let arrivedByPlayerChoice = false;
 
-  while (!done && rounds < 40) {
-    rounds++;
+  while (!cursor.done && cursor.rounds < 40) {
+    cursor.rounds++;
     const currentId = world.currentSceneId;
     recentSceneIds.push(currentId);
     if (recentSceneIds.length > 5) recentSceneIds.shift();
@@ -2102,7 +2040,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       const last6 = recentSceneIds.slice(-6);
       const unique = new Set(last6);
       if (unique.size <= 2) {
-        done = true;
+        cursor.done = true;
         break;
       }
     }
@@ -2110,7 +2048,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     const visitCount = globalVisitCount.get(currentId) ?? 0;
     // 玩家自己要来的地方不算数 —— 他说了要来，就让他来，来几次是他的事。
     // 兜底仍在：上面的 anti-bounce 和 rounds < 40 都还拦着，不会真的转不出去。
-    if (visitCount >= 6 && currentId !== support.finaleSceneId && !arrivedByPlayerChoice) {
+    if (visitCount >= 6 && currentId !== support.finaleSceneId && !cursor.arrivedByPlayerChoice) {
       const currentScene = module.scenes.find(s => s.id === currentId);
       const forcedConn = currentScene?.connections.find(c => !world.isSceneVisited(c.targetSceneId));
       if (forcedConn) {
@@ -2118,11 +2056,11 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
         // 引擎回一句"返回镇上。"，然后人在报亭，中间一个字都没有。
         say(`\n这地方已经翻来覆去看过太多遍，再耗下去也不会有新东西了。`, "verbatim");
         globalVisitCount.set(currentId, visitCount + 1);
-        arrivedByPlayerChoice = false;
+        cursor.arrivedByPlayerChoice = false;
         world.moveToScene(forcedConn.targetSceneId);
         continue;
       }
-      done = true;
+      cursor.done = true;
       break;
     }
     const nextConn = await processScene();
@@ -2133,13 +2071,13 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       // 叙事高潮场景：让 processScene 渲染后再退出
       if (movingToFinale) {
         await processScene(); // 渲染终局场景（NPC对话+线索发现）
-        done = true;
+        cursor.done = true;
       }
     } else {
       // Dead-end safeguard: processScene returned null (no actions),
       // but check if there are still unvisited scenes in the module
       // 这条路上的移动不是玩家选的，别让它豁免下一轮的强制改道
-      arrivedByPlayerChoice = false;
+      cursor.arrivedByPlayerChoice = false;
       const allModuleScenes = module.scenes;
       const unvisitedScenes = allModuleScenes.filter(s => !world.isSceneVisited(s.id));
       if (unvisitedScenes.length > 0) {
@@ -2193,7 +2131,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
           continue;
         }
       }
-      done = true;
+      cursor.done = true;
     }
   }
 
@@ -2237,7 +2175,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   const san2Insane = san2.state.indefiniteInsanity ? ` (不定疯狂: ${san2.state.indefiniteLevel}级)` : san2.state.temporaryInsanity ? " (已触发临时疯狂)" : "";
   say(`  ${p1.name}: SAN ${san2.state.currentSAN}/${san2.state.maxSAN}${san2Insane}${san2Phobias}${san2Manias}`);
 
-  say(`\n模组结束。 约 ${rounds} 轮回合`);
+  say(`\n模组结束。 约 ${cursor.rounds} 轮回合`);
   say(`\n${"\u2501".repeat(48)}`);
   say(characterSummary(c1));
   say(characterSummary(c2));
