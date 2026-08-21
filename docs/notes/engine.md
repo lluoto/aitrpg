@@ -79,6 +79,55 @@ play-module 3537 → 2630 行。
 剩下的是真主循环（场景推进、对话编排、战斗、结局），
 再往下拆得先想清楚状态怎么切，不是搬运能解决的。
 
+### ✅ 状态按「谁在写」分组（2026-08-21）
+
+上一条卡在「状态怎么切」。先量：`runModuleInner` 的闭包里平铺着**六类**
+互不相干的状态，`WorldState` 只是其中一类 ——
+所以这不是「给世界状态记录分类」的问题。
+
+| 类别 | 变量 | 生命周期 | 谁在写 |
+|---|---|---|---|
+| 模组配置 | `module` `support` `threat` | 建局后只读 | — |
+| 角色 | `p0/p1` `c1/c2` `san1/san2` | 整局 | 伤害、SAN、物品 |
+| 世界 | `world` | 整局 | 线索、场景、NPC |
+| 世界模型 | `wmIntegrator` `wmCache*` | 整局 | 只有缓存 |
+| 叙事去重 | `lastAskBridge` `lastRevealBridge` `lastPartnerRemark` | 整局 | 每次播报 |
+| 循环游标 | `done` `rounds` `stepCounter` `arrivedByPlayerChoice` `triggeredTraps` | 整局 | 主循环 |
+
+**这些缝是实的**：前两次抽取各自只需要一个切片 ——
+npc-dialogue 只要「叙事去重」，traps 只要「角色 + 世界 + 循环游标」。
+而 `wounds` 在做惩罚骰时已经先挪进 `RunContext` 了，那是这个分解的第一刀。
+
+**本轮收了 `Cast` / `Cursor` / `Dedup` 三类**（`src/play/run-state.ts`）。
+世界模型缓存留着，等它的使用方抽出去时再一并处理。
+
+**分组不是为了参数变少，是为了每个参数都是一个完整概念。**
+收成一个大 bag 会把依赖重新藏起来，那正是抽出闭包要消除的东西 ——
+拿到 `cast` 就知道这函数动角色，拿到 `cursor` 就知道它参与循环推进。
+
+**两处立刻兑现的收益**：
+
+1. `runSceneTraps` 参数 **11 → 4**（`cast, world, cursor, module, scene`）
+2. **`revealNpcKnowledge` 那个回调注入没有了。** 早先它被迫接一个
+   `nextBridge` 函数参数，因为引导桥要读写 `lastRevealBridge`，
+   而那变量埋在闭包里够不到 —— **那处别扭正是状态没分类的症状**。
+   `Dedup` 收成对象后，`buildRevealBridge` + `nextRevealBridge`
+   一起搬进 `src/play/reveal-bridge.ts`，直接调即可。
+
+**两个值得记的细节**：
+
+- `stepCounter` 是**线索检定与陷阱共享**的（线索那边 `++`，陷阱那边只读它决定谁踩），
+  这层共享散在闭包里时完全看不出来。
+- `Cast` 把「名字 / 角色卡 / SAN 引擎」绑成一体，防的是错位 ——
+  拿 `p0` 的名字配 `c2` 的角色卡，日志上看不出来（名字是对的），掉的却是另一个人的血。
+
+**判据**：typecheck + 1325 测试 + fuzz 10/10 + `module-loop` 11 条
+（其中几条专门守着 `arrivedByPlayerChoice` 的静默传送）+ 伤势诊断 40 局同量级。
+
+⚠ 用脚本批量改名时切割边界差了一行，把 `extractSceneEssence` 的函数头带走、
+只留下函数体，tsc 直接报语法错。**机械改动之后要看 tsc 报的是不是语法错** ——
+语法错通常意味着切歪了，不是缺 import。
+
 ### 自由行动解析：agent 支持，引擎扔掉，而 intent 判别撑不住（2026-08-20）
 
 问题是「要改成自由行动解析，现在的 subagent 支不支持」。逐层查下来：
