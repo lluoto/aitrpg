@@ -786,11 +786,21 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
     `\n接下来去哪？`,
   ].filter(Boolean).join("\n");
 
+  // 这个场景还剩什么没查 —— 上面的调查循环可能是因为玩家选了「离开」才退出的，
+  // 那时线索还在。
+  //
+  // 原先这里传的是空数组，有两个后果：
+  //   1. prompt 里不会列出「你可以调查的线索」，玩家不知道还有东西没看
+  //   2. `scoreAction` 会因为 `availableClues.length === 0` 给调查类意图**扣 0.3 分**
+  //      —— 不只是没提示，是在主动压制「留下来再查查」这个选择
+  // 对「有线索后玩家自行决定行动」这个设计来说，正好是反的。
+  const stillInvestigable = investigableClues(clueCtx).map(cl => `调查${cl.name}`);
+
   // 走上下文里的决策器；没给就是内置 AI 玩家，与原有跑法完全一致
   const decider = runCtx.getStore()?.decide;
   const decision = decider
     ? await decider(plContext, moveLabels)
-    : await pl1.decideViaLLM(plContext, [], moveLabels);
+    : await pl1.decideViaLLM(plContext, stillInvestigable, moveLabels);
 
   // 匹配逻辑见 chooseConnection（本文件顶部）—— 挪出闭包是为了能单测
   const picked = chooseConnection(decision, unlocked as SceneConnection[], {

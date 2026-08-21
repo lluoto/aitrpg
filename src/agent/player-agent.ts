@@ -151,7 +151,11 @@ const OCCUPATION_PROFILES: OccupationProfile[] = [
 ];
 
 // ====== 情境加权函数 ======
-function scoreActionByContext(action: FallbackAction, ctx: FallbackContext): number {
+//
+// 导出是为了能测「可查线索数」这一项：传空数组会给调查类意图扣 0.3 分，
+// 而移动决策点一度真的在传空数组 —— 不只是没提示玩家还有东西可查，
+// 是在主动压制「留下来再查查」这个选择。
+export function scoreActionByContext(action: FallbackAction, ctx: FallbackContext): number {
   let score = 1.0;
   const desc = ctx.sceneDescription;
 
