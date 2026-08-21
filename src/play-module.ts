@@ -2859,12 +2859,45 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       return false;
     }
 
-    // Track skill-check clues that failed this visit (prevent infinite re-investigation bouncing)
+    /**
+     * 这一次进场里已经试过的线索 —— 试过就从选项里拿掉。
+     *
+     * 这个 Set 原先是**只写不读**的死变量（注释说防重复调查循环，实际不起作用）。
+     * 现在真的用上了：检定失败的线索必须退出选项，
+     * 否则玩家会在同一个抽屉上反复失败直到用完行动次数。
+     */
     const attemptedClueIds = new Set<string>();
 
-    // ── Auto-resolve clue investigations (original behavior — no LLM calls) ──
+    /** 一个场景里最多让玩家行动几次。存在只为兜底：别把整局锁死在一个房间 */
+    const MAX_SCENE_ACTIONS = 6;
+
+    /**
+     * 这条线索不动手也会注意到吗。
+     *
+     * 判据跟 runClueCheck 的实际行为对齐：它遍历 findMethods，
+     * 碰到 observation/automatic/item 就直接揭示，只有 skill 才掷骰。
+     * 所以"有任一被动方法"= 进门就会看见。
+     */
+    const isPassiveClue = (cl: Clue) =>
+      cl.findMethods.some(m => m.type === "observation" || m.type === "automatic" || m.type === "item");
+
+    /**
+     * 要动手查才拿得到的线索 —— 这些**不再自动掷骰**，交给玩家决定查不查。
+     *
+     * 这是"循环反转"的核心：原先进场就把所有线索解光，
+     * 走到岔口时玩家已经无事可做，只剩"去哪"可选。
+     * color（花絮）仍走自动 —— 让玩家逐条勾选氛围描写只是噪音。
+     */
+    const investigableClues = () => scene.clues.filter(cl =>
+      !world.isClueFound(cl.id) &&
+      cl.importance !== "color" &&
+      !isPassiveClue(cl) &&
+      !attemptedClueIds.has(cl.id));
+
+    // ── 进场自动揭示：只处理"不动手也会注意到"的 ──
     for (const clue of scene.clues) {
       if (world.isClueFound(clue.id)) continue;
+      if (clue.importance !== "color" && !isPassiveClue(clue)) continue; // 留给玩家
       if (clue.importance === "color") {
         // Color clues: skill 类线索走 runClueCheck（有检定输出）；
         // 纯 automatic/observation 自动揭示但用 flavor+revelation 叙述（不再裸输出"发现了X。"）
@@ -2883,6 +2916,47 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
         continue;
       }
       await runClueCheck(clue);
+    }
+
+    // ── 场景内行动：玩家自己决定查什么 ──
+    //
+    // 这是"循环反转"。原先进场就把线索全解光，走到岔口时玩家已经无事可做，
+    // 只剩"去哪"可选 —— 他对"查什么"零决定权。
+    //
+    // 没有可查线索时整段跳过，不产生任何额外的 LLM 调用。
+    for (let act = 0; act < MAX_SCENE_ACTIONS; act++) {
+      const clueOpts = investigableClues();
+      if (clueOpts.length === 0) break;
+
+      const labels = clueOpts.map(cl => `调查${cl.name}`);
+      const leaveLabel = "离开这里";
+      const ctx = [
+        `【场景】${scene.name}`,
+        scene.description,
+        clueOpts.length > 0 ? `你注意到这里还有些地方值得细看。` : "",
+        `\n你要做什么？（也可以选择离开）`,
+      ].filter(Boolean).join("\n");
+
+      const decider = runCtx.getStore()?.decide;
+      const decision = decider
+        ? await decider(ctx, [...labels, leaveLabel])
+        : await pl1.decideViaLLM(ctx, labels, [leaveLabel]);
+
+      // 先看他有没有点名某条线索。名字是专有名词，出现即命中。
+      // 放在 intent 前面是有意的：**不能只信 intent**。
+      // 不设 intent 的决策器（PlayerDecision.intent 是可选的）会让"永远不调查"
+      // 成为默认行为，而那正是这次要修的毛病。点了名就照做。
+      const hit = clueOpts.find(cl =>
+        decision.action.includes(cl.name) ||
+        (decision.targetName ? cl.name.includes(decision.targetName) : false));
+
+      // 没点名 —— 说要走就走，说不清要查什么也当作不查了，别替他挑一个
+      if (!hit) break;
+
+      // 记进 attemptedClueIds：检定失败的线索不能一直挂在选项里，
+      // 否则玩家会在同一个抽屉上反复失败直到用完行动次数。
+      attemptedClueIds.add(hit.id);
+      await runClueCheck(hit);
     }
 
     // ── Gather movement options ──
