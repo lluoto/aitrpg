@@ -197,18 +197,24 @@ describe("主循环脚手架", () => {
     expect(rolledAfter.length).toBeGreaterThan(0);
   }, 60_000);
 
-  test("顺着引擎给的顺序走，调查能推进开", async () => {
-    // 本来想断言"能通关"，但实测**通关率只有 6/8**，断言会 25% 概率红。
+  test("顺着引擎给的顺序走，必定通关", async () => {
+    // 这条一度只能写成"覆盖 >= 8 个场景"，因为通关率只有 **6/8** ——
+    // 一条永远查不到的 core 线索会把它所在的场景钉在移动评分最高优先级上，
+    // 队伍被无限拽回去重查，跑满 40 轮也出不了镇。
     //
-    // 而且这个不稳是**既有的**，不是循环反转带来的：
-    // 拿改动前的 play-module.ts（2642f4e）跑同样 8 轮，同样是 6/8。
-    // 掉线的那两局都是跑满 40 轮的乱逛局，只覆盖 10/13 个场景。
-    // 根因另记（见 docs/index-program.md），不在这条测试的职责范围内。
-    //
-    // 所以断言立在跨轮稳定的量上：实测 16 轮里最少覆盖 10 个场景，
-    // 阈值取 8 —— 够低不会误报，够高能抓住"卡在第一个房间出不去"这类崩溃。
+    // 根因是 failback 兜底只对显式配了 failback 的线索生效，
+    // 而模组 26 条 core 线索里配了的有 **0 条**。修掉之后
+    // 实测 8/8 通关、每局固定 16 个场景 / 21 次进场，所以敢写死。
     const run = await runLoop((o) => o[0] ?? "");
-    const distinct = new Set(run.entries.map(e => e.name));
-    expect(distinct.size).toBeGreaterThanOrEqual(8);
+    const finale = BARN_OF_PREMIER.scenes.find(s => s.id === BARN_SUPPORT.finaleSceneId);
+    expect(run.entries.some(e => e.name === finale?.name)).toBe(true);
+  }, 60_000);
+
+  test("查不到的 core 线索不会把队伍钉在原地", async () => {
+    // 上一条的另一面：不光要能通关，还要**不绕远路**。
+    // 没兜底的时候掉线局会跑满 40 轮上限；正常局是 21 次进场。
+    // 阈值取 30 —— 高于正常值有余量，低于 40 能抓住"又被拽回去循环"。
+    const run = await runLoop((o) => o[0] ?? "");
+    expect(run.entries.length).toBeLessThan(30);
   }, 60_000);
 });

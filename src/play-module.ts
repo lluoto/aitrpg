@@ -2842,14 +2842,22 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
                 say(`${failFlavor(false)}`);
               }
               // ── failback 兜底：连续失败达到阈值 → 改道强制发现（Gumshoe 原则） ──
+              //
+              // core 线索**没写 failback 也要兜底**。实测：模组 26 条 core 线索，
+              // 写了 failback 的 0 条 —— 这套兜底一次都没生效过。
+              // 后果是一条永远查不到的 core 线索会把它所在的场景钉在移动评分的
+              // 最高优先级上（tgtHasCore → 0/25 分），队伍被无限拽回去重查，
+              // 直到跑满 40 轮也出不了镇。实测约 25% 的局这样报废。
               const fb = clue.failback;
-              if (fb) {
-                const maxFails = fb.maxFails ?? 2;
+              if (fb || clue.importance === "core") {
+                const maxFails = fb?.maxFails ?? 2;
                 if (failCount >= maxFails) {
-                  // 作者手写 fallbackRevelation 优先（质量保证）；无则走 C档 LLM 补救叙事
+                  // 作者手写 fallbackRevelation 优先（质量保证）；无则走 C档 LLM 补救叙事。
+                  // 没配 failback 的 core 线索用它自己的 revelation —— 那本来就是作者写的正文。
+                  const authored = fb ? fb.fallbackRevelation : clue.revelation;
                   let rescueText = "";
-                  const fallbackText = fb.fallbackRevelation
-                    ? `历经周折，${sanitizeRevelation(fb.fallbackRevelation)}`
+                  const fallbackText = authored
+                    ? `历经周折，${sanitizeRevelation(authored)}`
                     : "";
                   if (!fallbackText && llmClient) {
                     rescueText = await generateFailRescue(
@@ -2862,7 +2870,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
                   }
                   const finalText = fallbackText || rescueText;
                   say(`\n${fallbackText || rescueText ? "（屡次搜寻未果，你们决定换个方式）\n" : ""}${finalText}`);
-                  if (fb.sanCost) {
+                  if (fb?.sanCost) {
                     sanCheck(p0.shortName, san1, fb.sanCost);
                     sanCheck(p1.shortName, san2, fb.sanCost);
                   }
