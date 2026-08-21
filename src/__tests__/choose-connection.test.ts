@@ -12,6 +12,7 @@ function view(over: Partial<MoveWorldView> = {}): MoveWorldView {
     isSceneVisited: () => false,
     visitCount: () => 0,
     sceneExists: () => true,
+    sceneName: () => "",
     ...over,
   };
 }
@@ -87,15 +88,32 @@ describe("chooseConnection", () => {
     expect(r.forced).toBe(false);
   });
 
-  test("【记录现状】地名超 8 字且带括号时会漏匹配", () => {
-    // condition 去掉动词后取前 8 字，"艾德里安的农场（沿着小路向北）" 截出来是
-    // "艾德里安的农场（" —— 带着半个括号。于是玩家说「我去艾德里安的农场」对不上，
-    // 被判成 forced 强制移动。
-    //
-    // 这条不是在给错误行为背书，是**先把现状钉住**再改：
-    // 主循环至今零测试覆盖，改之前得先有能证明改动生效的东西。
+  test("地名带括号补充时也能对上", () => {
+    // 曾经对不上：condition 去掉动词后取前 8 字，
+    // "艾德里安的农场（沿着小路向北）" 截成 "艾德里安的农场（" —— 带着半个括号。
+    // 括号里往往是走法说明，玩家不会照念。
     const a = conn("前往艾德里安的农场（沿着小路向北）", "farm");
     const r = chooseConnection({ action: "我去艾德里安的农场" }, [a], view());
+    expect(r.conn).toBe(a);
+    expect(r.forced).toBe(false);
+  });
+
+  test("按目标场景的真名也能对上", () => {
+    // condition 和场景名可以完全不一样。玩家看着场景名说话，
+    // 而选项文本用的是 condition —— 两边都得认。
+    const a = conn("返回镇上", "premier");
+    const r = chooseConnection(
+      { action: "我们回普瑞米尔" },
+      [a],
+      view({ sceneName: (id) => (id === "premier" ? "普瑞米尔" : "") }),
+    );
+    expect(r.forced).toBe(false);
+  });
+
+  test("单字不算匹配", () => {
+    // 键短于 2 字就丢掉：一个字满大街都是，会把不相干的话判成移动。
+    const a = conn("前往东", "east");
+    const r = chooseConnection({ action: "我把手电筒往东边照了照" }, [a], view());
     expect(r.forced).toBe(true);
   });
 });

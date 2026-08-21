@@ -120,6 +120,8 @@ export interface MoveWorldView {
   visitCount(sceneId: string): number;
   /** 模组里到底有没有这个场景。指向不存在场景的连接必须排最后 —— 见下面 -5 那一支 */
   sceneExists(sceneId: string): boolean;
+  /** 目标场景的真名。condition 和场景名可以不一样（「返回镇上」→「普瑞米尔」）*/
+  sceneName(sceneId: string): string;
 }
 
 export interface MoveChoice {
@@ -132,6 +134,27 @@ export interface MoveChoice {
    * 外面无从分辨，也就没人能发现玩家的话被丢掉了。
    */
   forced: boolean;
+}
+
+/**
+ * 一条连接可以用哪些说法认出来。
+ *
+ * 原先只有一个键：condition 去掉动词后取前 8 字。它在括号上会断成半个 ——
+ * 「前往艾德里安的农场（沿着小路向北）」截出来是「艾德里安的农场（」，
+ * 于是玩家说「我去艾德里安的农场」永远对不上，被判成引擎替他挑的。
+ *
+ * 现在给三个键，命中任意一个就算：
+ *   1. 去掉动词的整句（最严，最准）
+ *   2. 再去掉括号补充 —— 括号里往往是"（沿着小路向北）"这类走法说明，玩家不会照念
+ *   3. 目标场景的**真名** —— condition 和场景名可以不一样（「返回镇上」→「普瑞米尔」）
+ *
+ * 短于 2 字的键丢掉：单个字满大街都是，会把不相干的话判成移动。
+ */
+function matchKeys(c: SceneConnection, world: MoveWorldView): string[] {
+  const noVerb = c.condition.replace(/^(前往|进入|返回|回到|离开|去|到)\s*/, "").trim();
+  const noParen = noVerb.replace(/[（(][^）)]*[）)]/g, "").trim();
+  const sceneName = world.sceneName(c.targetSceneId).trim();
+  return [noVerb, noParen, sceneName].filter(k => k.length >= 2);
 }
 
 /**
@@ -151,10 +174,9 @@ export function chooseConnection(
   if (unlocked.length === 0) return { conn: null, forced: false };
 
   for (const c of unlocked) {
-    // 去掉动词前缀再取前 8 字：condition 是"前往加比的拖车房"这种，
-    // 而玩家会说"我去加比那边看看"，比的是地名不是整句。
-    const core = c.condition.replace(/^(前往|进入|返回|去|到)\s*/, "").slice(0, 8);
-    if (decision.action.includes(core)) return { conn: c, forced: false };
+    if (matchKeys(c, world).some(k => decision.action.includes(k))) {
+      return { conn: c, forced: false };
+    }
   }
 
   // 没对上 —— 按"哪个更值得去"排个序替他挑一个。
@@ -3078,6 +3100,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       isSceneVisited: (id) => world.isSceneVisited(id),
       visitCount: (id) => globalVisitCount.get(id) ?? 0,
       sceneExists: (id) => module.scenes.some(s => s.id === id),
+      sceneName: (id) => module.scenes.find(s => s.id === id)?.name ?? "",
     });
     const chosenConn = picked.conn;
     if (!chosenConn) return null;
