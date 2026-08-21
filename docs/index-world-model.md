@@ -236,3 +236,135 @@ cp ../世界模型/cthulhu_extracted/cthulhu_world_model.jsonl assets/
 
 结果：`src/module/` 只剩 `barn-of-premier.ts` / `threat-analyzer.ts` / `types.ts` 三个源码文件；
 poc 目录（不含 node_modules 与 .git）从 409MB 降到 **179.6MB**。
+
+---
+
+## 遗物母版工程（`relics/`，URF v0.5）
+
+独立的遗物提取与框架化工程。已产出 7 本书的母版，正在推进 worldmodel 管道化。
+
+### 核心文档
+
+| 路径 | 内容 |
+|---|---|
+| `relics/_standard/处理标准_v1.md` | 提取判据标准（T0–TΩ 判据、术语碰撞、铁律、校验器规定） |
+| `relics/_tools/worldmodel/WORKFLOW.md` | **P0 管道工作流**（2026-08-19 新建） |
+| `relics/末法王座/母版_v1.md` | 首个实证批次，17 件遗物 |
+| `relics/疯巫妖的实验日志/母版_v1.md` | v1.1 更新：补录两件神器 + T5 边界验证 |
+
+### P0 世界模型管道（`relics/_tools/worldmodel/`）
+
+从原文到 D&D 5e 可接入规则的完整管道。去掉角色/剧情后，提取法术、物品、生物、机制等世界观设定。
+
+#### 管道结构
+
+```
+01_discover_mentions  →  mentions.jsonl (全文位置锚点，无上限)
+          ↓
+03_stream_cluster     →  clusters.jsonl (流式去重)
+          ↓                   ↑
+          ↓             [bge-m3 替换 Jaccard — 待部署]
+          ↓
+05_fusion             →  enriched_mentions.jsonl (+ v17 分类)
+          ↓
+06_surface_summary    →  surface_summary.jsonl (纯逻辑合并)
+          ↓
+07_classify_entries   →  world_entries.jsonl (qwen 分类过滤)
+          ↓
+08_dnd_convert        →  dnd_rules.jsonl (GPT/Claude → D&D 5e)
+```
+
+#### 脚本清单
+
+| 脚本 | 功能 | 依赖 | 状态 |
+|---|---|---|---|
+| `01_discover_mentions.mjs` | 原文 n-gram 发现 → mentions.jsonl | 无 | ✅ 完整运行 |
+| `02_collect_contexts.mjs` | 多层上下文 → contexts.jsonl | 01 | ✅ 224K 条 |
+| `03_stream_cluster.mjs` | **流式聚类去重** → clusters.jsonl | 01 | ✅ **2026-08-20 新建** |
+| `03_embed_mentions.mjs` | 真 embedding → vectors.jsonl | 01 | ⏳ 待 bge-m3 |
+| `03_pseudo_embed.mjs` | LLM 伪 embedding → pseudo_vectors.jsonl | 01 | ✅ 备用 |
+| `04_candidate_pairs.mjs` | 候选实体对 → candidate_pairs.jsonl | 03 | ✅ 就绪 |
+| `05_fusion.mjs` | v17 分类 + P0 位置锚点融合 | 01+02 | ✅ 中文匹配已修复 |
+| `06_surface_summary.mjs` | **纯逻辑合并** clusters → surface_summary | 03 | ✅ **2026-08-20 新建** |
+| `07_classify_entries.mjs` | **qwen 分类**过滤 → world_entries + junk | 06 | ✅ **2026-08-20 新建** |
+| `08_dnd_convert.mjs` | **GPT/Claude → D&D 5e** 规则格式 | 07 | ✅ **2026-08-20 新建** |
+
+#### 关键修复（2026-08-20）
+
+- **去掉 maxPositions=100 上限**：原来每个 surface 只保留前 100 个位置，导致高频词（林云、死亡之书等）只覆盖前几章，后期战斗完全丢失。现在无上限，由流式聚类去重控制产出量。
+- **流式聚类**（03_stream_cluster）：读一条 mention → 与已有簇比较 → 语义相似则丢弃，不同则新建簇。「林云点了点头」保留第一次，后续自动去重；「林云取出死亡之书」是新语义，自动保留。
+- **中文匹配修复**（05_fusion）：禁用 Levenshtein 模糊匹配（中文字形无语义关联），调严 contains 匹配阈值。
+- **io.mjs 流式读取**：支持超大 JSONL 文件（224K+ 条），避免 `ERR_STRING_TOO_LONG`。
+
+#### 验证：148-150 章战斗场景
+
+用末法王座第 148-150 章（林云 vs 凯恩/死亡之书化身）验证管道效果：
+
+| 修复前 | 修复后 |
+|---|---|
+| 关键实体命中：0 个 | 关键实体命中：全部 |
+| 林云/死亡之书/凯恩/毁灭之日：全 MISS | 凯恩 37 簇、毁灭之日 20 簇、死亡之书 16 簇 |
+| 原因：maxPositions=100 在前几章耗尽配额 | 流式聚类覆盖全文，语义去重 |
+
+#### 执行示例
+
+```powershell
+$src = "C:\aitrpg\世界模型\末法王座-庄毕凡.txt"
+$out = "C:\aitrpg\世界模型\relics\_scan\_末法王座_worldmodel"
+
+# 阶段1-3: 本地纯计算
+node 03_stream_cluster.mjs $src --out-dir $out --chapter-range 148-150
+node 06_surface_summary.mjs --data-dir $out
+
+# 阶段4: qwen 分类 (LiteLLM)
+node 07_classify_entries.mjs --data-dir $out --model qwen3.5-9b
+
+# 阶段5: D&D 转换 (GPT)
+$env:OPENAI_API_KEY="sk-..."
+node 08_dnd_convert.mjs --data-dir $out --type spell,item,creature
+```
+
+### 战斗展开（设计方向，未实现）
+
+原文中强者对战常有大段省略（如「三小时战斗」用几句话带过）。未来 `09_battle_expand.mjs` 的设计方向：
+
+- **不是提取，是约束生成**：原文没写的内容，根据已有 world_entries 中的法术/机制规则补全
+- **输出战斗骨架**：标记哪些阶段原文有写（直接提取），哪些省略（标注约束条件供人工/LLM 填充）
+- **输入依赖**：world_entries（法术列表）+ 全书其他详细战斗作为 few-shot 样本
+- **需要更多战斗场景数据后再开发**
+
+### 神器对决启发式
+
+独立文件：`relics/_standard/artifact_conflict_heuristics.yaml`
+
+- 定位为 GM 参考，非硬规则
+- 适用 T5 级效果互相作用等边缘情况
+- 核心理念：叙事决策 > 规则推导
+
+### T5 判据更新（2026-08-19）
+
+`处理标准_v1.md` §3.4.10 更新：
+
+> **核心：效果受规则裁决（T4），还是效果定义规则如何运行（T5）？**
+>
+> - T4 = 规则裁决效果的成败（有判定、有边界）
+> - T5 = 效果定义规则如何运行（移除后规则本身变化）
+>
+> **边界验证**：
+> 1. 有失败/被抵抗/上限记录？→ T4
+> 2. 无使用记录？→ 默认 T4，标注「有 T5 路径」
+> 3. 无边界 + 有记录证明无豁免 → 移除测试 → T5
+>
+> **注意**：「神权」「至高」等标签仅供参考，不自动升级
+
+### 待办
+
+- [x] P0 完整运行末法王座（224K mentions）
+- [x] 05_fusion.mjs 融合（enriched 14200 / new 210062 / orphans 5887）
+- [x] 流式聚类脚本 + 148-150 章验证
+- [x] 06/07/08 三阶段脚本编写
+- [ ] 部署 bge-m3 embedding 模型（WSL + vllm，替换 Jaccard）
+- [ ] 07 qwen 分类全量测试
+- [ ] 08 GPT/Claude D&D 转换测试
+- [ ] 战斗展开脚本设计（需更多战斗样本）
+- [ ] 推广至其他书籍
