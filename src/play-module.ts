@@ -907,7 +907,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
 
     // Use global visit tracking — moveToScene increments before processScene runs,
     // so count > 1 means this is a revisit
-    const prevVisits = globalVisitCount.get(scene.id) ?? 0;
+    const prevVisits = cursor.visitCount.get(scene.id) ?? 0;
     const isRevisit = prevVisits > 0;
     say(`\n${isRevisit ? "\u2501 \u518d\u6b21\u6765\u5230" : "\u2501"} ${scene.name}`);
 
@@ -1317,7 +1317,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       .map(id => module.npcs.find(n => n.id === id)?.name ?? id)
       .filter(Boolean);
     const npcLine = npcPresent.length > 0 ? `在场的人: ${npcPresent.join("、")}` : "";
-    const isFirstVisit = (globalVisitCount.get(scene.id) ?? 0) === 0;
+    const isFirstVisit = (cursor.visitCount.get(scene.id) ?? 0) === 0;
 
     // ── 移动排序：保证关键场景（医院等）不被线性捷径跳过 ──
     // 规则（分数越低越优先）：
@@ -1341,7 +1341,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
           ? tgt.clues.some(cl => cl.importance === "core" && !world.isClueFound(cl.id))
           : false;
         const tgtViaHub = hubTargets.has(c.targetSceneId);
-        const visits = globalVisitCount.get(c.targetSceneId) ?? 0;
+        const visits = cursor.visitCount.get(c.targetSceneId) ?? 0;
         if (tgtHasCore && !tgtViaHub) return 0;                      // 仅当前场景可达的 core 场景
         if (c.targetSceneId === HUB_SCENE_ID && scene.id !== HUB_SCENE_ID && anyCoreUndiscovered) return 10; // 回枢纽
         if (tgtHasCore && visits === 0) return 20;                   // 未访问的 core 场景
@@ -1353,7 +1353,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     });
 
     const moveLabels = sortedUnlocked.map((c) => {
-      const vc = globalVisitCount.get(c.targetSceneId) ?? 0;
+      const vc = cursor.visitCount.get(c.targetSceneId) ?? 0;
       const suffix = vc >= 3 ? " (已充分探索)" : vc >= 1 ? ` (已访问${vc}次)` : "";
       return `${c.condition.trim()}${suffix}`;
     });
@@ -1376,7 +1376,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     // 匹配逻辑见 chooseConnection（本文件顶部）—— 挪出闭包是为了能单测
     const picked = chooseConnection(decision, unlocked as SceneConnection[], {
       isSceneVisited: (id) => world.isSceneVisited(id),
-      visitCount: (id) => globalVisitCount.get(id) ?? 0,
+      visitCount: (id) => cursor.visitCount.get(id) ?? 0,
       sceneExists: (id) => module.scenes.some(s => s.id === id),
       sceneName: (id) => module.scenes.find(s => s.id === id)?.name ?? "",
     });
@@ -1400,9 +1400,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   // 这几个看着像局部变量，实际是跨场景的不变量，而且 stepCounter 是
   // 线索检定与陷阱**共享**的 —— 散在闭包里时这层共享看不出来，
   // arrivedByPlayerChoice 更是「静默传送」那个 bug 的所在。
-  const cursor = newCursor();
-  const globalVisitCount = new Map<string, number>();
-  const recentSceneIds: string[] = []; // anti-bounce: track last few scene transitions
+  const cursor = newCursor();  const recentSceneIds: string[] = []; // anti-bounce: track last few scene transitions
 
   while (!cursor.done && cursor.rounds < 40) {
     cursor.rounds++;
@@ -1420,7 +1418,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       }
     }
     // Hard limit: auto-redirect if scene visited 6+ times
-    const visitCount = globalVisitCount.get(currentId) ?? 0;
+    const visitCount = cursor.visitCount.get(currentId) ?? 0;
     // 玩家自己要来的地方不算数 —— 他说了要来，就让他来，来几次是他的事。
     // 兜底仍在：上面的 anti-bounce 和 rounds < 40 都还拦着，不会真的转不出去。
     if (visitCount >= 6 && currentId !== support.finaleSceneId && !cursor.arrivedByPlayerChoice) {
@@ -1430,7 +1428,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
         // 出声。原先这里是**静默**传送：玩家说"返回镇上"，
         // 引擎回一句"返回镇上。"，然后人在报亭，中间一个字都没有。
         say(`\n这地方已经翻来覆去看过太多遍，再耗下去也不会有新东西了。`, "verbatim");
-        globalVisitCount.set(currentId, visitCount + 1);
+        cursor.visitCount.set(currentId, visitCount + 1);
         cursor.arrivedByPlayerChoice = false;
         world.moveToScene(forcedConn.targetSceneId);
         continue;
@@ -1439,7 +1437,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       break;
     }
     const nextConn = await processScene();
-    globalVisitCount.set(currentId, (globalVisitCount.get(currentId) ?? 0) + 1);
+    cursor.visitCount.set(currentId, (cursor.visitCount.get(currentId) ?? 0) + 1);
     if (nextConn) {
       const movingToFinale = nextConn.targetSceneId === support.finaleSceneId && world.isClueFound(support.finaleClueId);
       world.moveToScene(nextConn.targetSceneId);
