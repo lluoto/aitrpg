@@ -1,106 +1,142 @@
-// 改动前后各跑一次的自检。把我反复犯的几类错做成机器判据，别靠记性。
+// 改动前后各跑一次的自检。把反复犯的几类错做成机器判据，别靠记性。
 //
 // 用法：
 //   bun scripts/preflight.ts            全查
 //   bun scripts/preflight.ts --quick    只查快的（跳过测试）
 //
-// 背景：一轮里连着犯了五次同类失误（机械切割截断语义单元、假绿测试、
-// 判据写错），每次都要一个来回才发现。能变成检查项的就别留给注意力。
+// ⚠ 这份脚本自己返工过一次。上一版六项检查里，**五项能被同一段坏代码骗过**：
+//   1. 切割残渣：只认 `return|await|赋值` 四种起手式 → 函数头被删后留下
+//      `register()` / `if` / `for` 一个都不报；同时不看花括号深度 →
+//      合法函数里「JSDoc + return」被当成切歪（这是 174 个假阳性的来源）。
+//   3. 循环依赖：正则 `from ["']\.\.\/play-module["']` → dynamic import、
+//      带扩展名的路径、别名、`export ... from`、`require()` 全漏；
+//      而注释和字符串里的 import 文本反倒会误报。
+//   4. PowerShell 风险：只查 `.ts`、只认 `spawnSync`，命中之后还只放进
+//      `notes`，脚本照样 `exit 0` —— 报了等于没报。
+//   5. typecheck：只 grep stdout 里的 `error TS`。进程没起来、被信号杀掉、
+//      或者 tsc 换个输出格式，三种情况都是「炸了但报绿」。
+//   6. 测试条数：只 print，不跟任何基线比 —— 那不是回归检查。
+//
+// 判据都抽到了 `src/diagnostics/source-scan.ts`，每一项有「应报」「不应报」
+// 两侧测试（`src/__tests__/diag-preflight-checks.test.ts`）。
 
-import { readFileSync, readdirSync, statSync } from "fs";
+import { readFileSync, readdirSync, statSync, existsSync } from "fs";
 import { join } from "path";
 import { spawnSync } from "child_process";
+import {
+  findTruncatedBlocks, findPlaceholderResidue, findReverseImports, findShellRisks,
+  judgeProcess, parseTestOutput, judgeTestCount,
+  type Finding, type TestBaseline,
+} from "../src/diagnostics/source-scan";
 
 const quick = process.argv.includes("--quick");
 const problems: string[] = [];
 const notes: string[] = [];
 
-function walk(dir: string): string[] {
+const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".codegraph", ".superpowers"]);
+
+function walk(dir: string, exts: string[]): string[] {
   const out: string[] = [];
+  if (!existsSync(dir)) return out;
   for (const e of readdirSync(dir)) {
+    if (SKIP_DIRS.has(e)) continue;
     const p = join(dir, e);
-    if (statSync(p).isDirectory()) out.push(...walk(p));
-    else if (p.endsWith(".ts")) out.push(p);
+    let st;
+    try { st = statSync(p); } catch { continue; }
+    if (st.isDirectory()) out.push(...walk(p, exts));
+    else if (exts.some((x) => p.toLowerCase().endsWith(x))) out.push(p);
   }
   return out;
 }
 
-const srcFiles = walk("src");
+const read = (f: string) => readFileSync(f, "utf8"); // 中文源码必须走 fs，不能过 PowerShell
+const push = (fs: Finding[]) => { for (const f of fs) problems.push(`${f.file}:${f.line}  ${f.message}`); };
 
-// ── 1. 切割残渣：文档注释紧跟着**语句**（而不是声明） ──
+const srcFiles = walk("src", [".ts"]);
+
+// ── 1. 切割残渣：**顶层**块注释后面直接是语句 ──
 //
-// 机械切割最常见的后果：注释块留下、函数头被搬走，于是 `*/` 下面直接是
-// 函数体的第一条语句。
-//
-// ⚠ 判据必须收窄。第一版写成「下一行不是声明就报警」，
-// 结果 174 个假阳性 —— 接口字段、对象属性、switch case、联合类型的续行
-// 全被算进去了，真问题（2 个）被淹没。判据没验就上，正是这轮反复犯的错。
-//
-// 现在只认最确定的一种：`*/` 紧跟 `return` / 赋值 / `await`，
-// 那在文档注释后面出现几乎必然是切歪了。
-const CUT_SIGNS = /^(return\b|await\b|const \w+ = (await )?\w+\(|\w+ = )/;
-for (const f of srcFiles) {
-  const lines = readFileSync(f, "utf8").split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i]!.trim() !== "*/") continue;
-    const next = (lines[i + 1] ?? "").trim();
-    if (CUT_SIGNS.test(next)) {
-      problems.push(`${f}:${i + 2}  文档注释后面直接是语句 —— 切割可能截断了函数头`);
-    }
-  }
-}
+// 收窄的关键是花括号深度必须为 0。深度 ≥ 1 的地方（接口字段、对象属性、
+// switch case、联合类型续行、函数体内的说明）本来就允许注释后面跟非声明，
+// 上一版没这一条，174 个假阳性淹掉 2 个真问题。
+// 有了深度之后，判据可以反过来写：顶层注释后面**不是声明**就报，
+// 于是 `register()` / `if` / `for` 这些残骸也一并认出来。
+for (const f of srcFiles) push(findTruncatedBlocks(f, read(f)));
 
 // ── 2. 搬运残渣：同一句占位注释出现多次 ──
-const PLACEHOLDER = /已抽到 src\/play\/[\w-]+\.ts（纯搬运/;
-for (const f of srcFiles) {
-  const lines = readFileSync(f, "utf8").split("\n");
-  const hits = lines.map((l, i) => (PLACEHOLDER.test(l) ? i + 1 : 0)).filter(Boolean);
-  if (hits.length > 1) {
-    problems.push(`${f}  搬运占位注释残留 ${hits.length} 处（L${hits.join(", L")}）`);
-  }
-}
+for (const f of srcFiles) push(findPlaceholderResidue(f, read(f)));
 
 // ── 3. 循环依赖：src/play/* 反向 import play-module ──
 // 抽出来的模块反向 import 原文件就是环。tsc 不报，得自己看。
+// 用 Bun 的解析器取 import（见 source-scan.scanImports）：静态/动态/require/
+// `export ... from` 都认，注释与字符串里的 import 文本不认。
 for (const f of srcFiles.filter((p) => p.includes("play") && !p.endsWith("play-module.ts"))) {
-  const t = readFileSync(f, "utf8");
-  if (/from\s+["']\.\.\/play-module["']/.test(t)) {
-    problems.push(`${f}  反向 import play-module —— 成环，把需要的东西也抽出来`);
-  }
+  push(findReverseImports(f, read(f), "play-module"));
 }
 
-// ── 4. 中文过 PowerShell：脚本里不该用 Select-String 读源码 ──
-// 排除本文件 —— 它是那个检查器，提到这两个词是判据本身。
-// 只认**真调用**（spawnSync / 反引号命令串里出现），不认文案里提到这两个词 ——
-// 否则连「警告不要用它」的文字本身都会被报，判据自己咬自己。
-for (const f of walk("scripts")) {
-  if (f.endsWith("preflight.ts")) continue;
-  const t = readFileSync(f, "utf8");
-  const realCall = /spawnSync\([^)]*(Select-String|Get-Content)|["'`][^"'`]*\|\s*(Select-String|Get-Content)/;
-  if (realCall.test(t)) {
-    notes.push(`${f}  真的在调 Select-String/Get-Content —— 读中文源码会 mojibake，用 fs.readFileSync`);
-  }
-}
+// ── 4. 中文过 PowerShell ──
+//
+// 范围从「只有 scripts/*.ts」扩到仓库里真正在跑的脚本类型：
+// `.ts/.js/.mjs/.cjs/.ps1`，覆盖 src、scripts、tools、frontend。
+// `src/__tests__` 排除 —— 那里的坏样例是**判据的输入夹具**，不是真调用；
+// 这条排除有明确理由，不是「让输出变绿」。
+//
+// 命中一律进 problems。上一版放进 notes 然后 exit 0，等于报了也没人拦。
+const scriptExts = [".ts", ".js", ".mjs", ".cjs", ".ps1"];
+const scriptFiles = [
+  ...walk("src", scriptExts).filter((p) => !p.includes(join("src", "__tests__"))),
+  ...walk("scripts", scriptExts),
+  ...walk("tools", scriptExts),
+  ...walk("frontend", scriptExts),
+];
+for (const f of scriptFiles) push(findShellRisks(f, read(f)));
 
 // ── 5. typecheck ──
+// 先看退出状态（error / signal / status），再看输出。
+// 只 grep 输出的话，进程没起来时输出是空串，判据会当成「零个错」。
 const tsc = spawnSync("bun", ["run", "typecheck"], { encoding: "utf8", shell: true });
-const tsErrors = (tsc.stdout + tsc.stderr).split("\n").filter((l) => /error TS/.test(l));
-if (tsErrors.length) {
+const tscVerdict = judgeProcess("typecheck", tsc);
+const tscOut = (tsc.stdout ?? "") + (tsc.stderr ?? "");
+if (!tscVerdict.ok) {
+  problems.push(tscVerdict.reason);
+  const tsErrors = tscOut.split("\n").filter((l) => /error TS/.test(l));
   const syntax = tsErrors.filter((l) => /TS1\d{3}/.test(l));
-  problems.push(`typecheck 报 ${tsErrors.length} 个错`);
-  if (syntax.length) {
-    problems.push(`  其中 ${syntax.length} 个是**语法错** —— 通常意味着切歪了，不是缺 import`);
-  }
+  if (tsErrors.length) problems.push(`  输出里能认出 ${tsErrors.length} 条 error TS`);
+  if (syntax.length) problems.push(`  其中 ${syntax.length} 条是**语法错** —— 通常意味着切歪了，不是缺 import`);
   for (const e of tsErrors.slice(0, 5)) problems.push("  " + e.trim());
+} else {
+  // 退出码 0 但输出里有 error TS = tsc 的行为变了，同样要拦
+  const stray = tscOut.split("\n").filter((l) => /error TS/.test(l));
+  if (stray.length) problems.push(`typecheck 退出码 0，输出里却有 ${stray.length} 条 error TS —— 判据与工具行为不一致，先查清楚`);
+  else notes.push("typecheck 通过（退出码 0）");
 }
 
-// ── 6. 测试条数（只有条数是可靠回归信号） ──
+// ── 6. 测试：退出状态 + 条数基线 ──
+// 「只打印当前条数」不是检查 —— 跟什么比？有基线才有回归。
+const BASELINE_PATH = "docs/test-baseline.json";
 if (!quick) {
   const t = spawnSync("bun", ["test"], { encoding: "utf8", shell: true });
-  const ran = (t.stdout + t.stderr).match(/Ran (\d+) tests/);
-  const failed = (t.stdout + t.stderr).match(/(\d+) fail/);
-  if (ran) notes.push(`测试 ${ran[1]} 条`);
-  if (failed && failed[1] !== "0") problems.push(`测试有 ${failed[1]} 条失败`);
+  const text = (t.stdout ?? "") + (t.stderr ?? "");
+  const verdict = judgeProcess("bun test", t);
+  const counts = parseTestOutput(text);
+
+  if (!existsSync(BASELINE_PATH)) {
+    problems.push(`缺少测试基线 ${BASELINE_PATH} —— 没有基线就没有回归检查；先跑一次并写入 {"tests":N,"files":M}`);
+  } else {
+    const base = JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as TestBaseline;
+    const r = judgeTestCount(counts, base);
+    problems.push(...r.problems);
+    notes.push(...r.notes);
+  }
+  // 退出码与条数是两条独立证据，都要看：
+  // 条数对得上但进程非零退出（比如收尾时崩了）同样是坏的。
+  if (!verdict.ok && (counts.failed ?? 0) === 0) {
+    problems.push(`${verdict.reason}（输出里没解析到失败条数 —— 别因为「看着没 fail」就放过）`);
+  } else if (!verdict.ok) {
+    problems.push(verdict.reason);
+  }
+} else {
+  notes.push("--quick：跳过测试与条数基线检查");
 }
 
 // ── 输出 ──

@@ -1,0 +1,10 @@
+{
+  "tests": 1557,
+  "files": 77,
+  "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
+  "history": [
+    { "tests": 1341, "files": 66, "when": "判据返工前" },
+    { "tests": 1527, "files": 73, "when": "补入 7 组诊断判据校准测试（phrasing/downed/wounds/combat/fuzz/backup/preflight），含接真实现的变异红线" },
+    { "tests": 1557, "files": 77, "when": "修判据报出来的四个真缺陷：跨局状态残留 / 昏迷者仍在掷骰 / 战斗攻击不读伤势 / 两名调查员重名" }
+  ]
+}

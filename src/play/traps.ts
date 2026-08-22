@@ -11,7 +11,7 @@ import type { WorldState } from "../world/state";
 import { resolveCheckValue } from "../character/coc-character";
 import { isDowned } from "./run-state";
 import type { Cast, Cursor } from "./run-state";
-import { say, sayMech } from "./narration";
+import { say, sayMech, emit } from "./narration";
 import { check, sanCheck, applyDamage, healWound } from "./checks";
 import { rollDice, trapsInScene, attributeValue } from "./trap-util";
 import type { WoundSeverity } from "../combat/wound-effects";
@@ -116,13 +116,22 @@ for (const trapItem of trapsInScene(module.items, scene.id)) {
     const conCheck = check(pc.attributes.constitution, vName, "体质（重伤）", "regular", 0, true);
     if (!conCheck.isSuccess) {
       say(`${vName}因伤势过重昏迷过去！`);
+      // ⚠ 这条路径**没有 HP → 0 的播报**（HP 还有剩，人先倒了）。
+      // 只认 `HP n → 0` 的判据在这里必然漏报。
+      if (pc.hp > 0) emit({ type: "downed", who: vName, cause: "major-wound-con" });
       pc.hp = 0; // 昏迷状态
     }
   }
 
   // ── 挣脱检定（捕兽夹等）──
+  //
+  // ⚠ 昏迷的人不挣扎 —— CoC 7e：HP 归零即失去意识。
+  // 这一条原先没有，于是「重伤体质检定失败 → 昏迷」之后紧接着就是
+  // 「➜ 欧内斯特 【力量（挣脱捕兽夹）】」：躺着的人在用力掰铁齿。
+  // 是 `tools/_diag-downed.ts` 改用结构化事件之后报出来的（12 局 2 次），
+  // 旧判据只认 `HP n → 0` 那一行，而这条路径**根本没有那一行**，所以看不见。
   let escaped = false;
-  if (mech.escape) {
+  if (mech.escape && !isDowned(pc)) {
     const label = `${mech.escape.skill}（挣脱${trapItem.name}）`;
     const r = check(attributeValue(pc.attributes, mech.escape.skill), vName, label, mech.escape.difficulty);
     if (r.isSuccess) {
@@ -138,6 +147,7 @@ for (const trapItem of trapsInScene(module.items, scene.id)) {
         const conCheck2 = check(pc.attributes.constitution, vName, "体质（重伤）", "regular", 0, true);
         if (!conCheck2.isSuccess) {
           say(`${vName}因伤势过重昏迷过去！`);
+          if (pc.hp > 0) emit({ type: "downed", who: vName, cause: "major-wound-con" });
           pc.hp = 0;
         }
       }
@@ -156,8 +166,13 @@ for (const trapItem of trapsInScene(module.items, scene.id)) {
 
     // 急救知识检定：化学/医学/科学才知道怎么救
     // 不是每个人都知道硫酸要用水冲
-    if (mech.firstAid) {
-      const partner = pc === c1 ? c2 : c1;
+    //
+    // ⚠ 施救的是**同伴**，同伴自己躺着就没人能救 —— 与 `tryReviveDowned`
+    // 里那条 `if (isDowned(mate)) continue` 是同一条规则，这里原先漏了。
+    // `tools/_diag-downed.ts` 报出来的另外 2 次违规就是它：
+    // 「➜ 亨利 【化学（判断急救方式）】」「➜ 亨利 【急救】」，而亨利此刻 HP 为 0。
+    const partner = pc === c1 ? c2 : c1;
+    if (mech.firstAid && !isDowned(partner)) {
       const partnerName = pc === c1 ? p1.shortName : p0.shortName;
       // 优先检定化学，其次医学
       const chemVal = resolveCheckValue(partner, "化学");
@@ -198,6 +213,7 @@ for (const trapItem of trapsInScene(module.items, scene.id)) {
       const conCheck3 = check(pc.attributes.constitution, vName, "体质（重伤）", "regular", 0, true);
       if (!conCheck3.isSuccess) {
         say(`${vName}因伤势过重昏迷过去！`);
+        if (pc.hp > 0) emit({ type: "downed", who: vName, cause: "major-wound-con" });
         pc.hp = 0;
       }
     }

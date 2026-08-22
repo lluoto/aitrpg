@@ -9,7 +9,8 @@
 import { CoCEngine, SanityEngine, SUCCESS_LEVEL_LABELS, sanOutcomeLabel, type CoCCheckResult } from "../rules/coc-engine";
 import { calcSeverity, severityLabel, woundPenaltyDice, type WoundSeverity } from "../combat/wound-effects";
 import type { CoCGeneratedCharacter } from "../character/coc-character";
-import { runCtx, say, sayMech } from "./narration";
+import { runCtx, say, sayMech, emit } from "./narration";
+import type { ActorKind } from "./events";
 // ── 伤势状态 ──
 // 记「未处理的最重一处」而不是累加：CoC 里伤是伤，不是叠加的减值。
 const SEVERITY_RANK: Record<string, number> = {
@@ -31,12 +32,19 @@ export function worseWound(cur: WoundSeverity | undefined, next: WoundSeverity):
 export function recordWound(pcName: string, sev: WoundSeverity): void {
   const ctx = runCtx.getStore();
   if (!ctx) return;
-  ctx.wounds.set(pcName, worseWound(ctx.wounds.get(pcName), sev));
+  const kept = worseWound(ctx.wounds.get(pcName), sev);
+  ctx.wounds.set(pcName, kept);
+  // 事件报的是**真的存进去的那一处**，不是传进来的那一处 ——
+  // 「后来的轻伤盖掉先前的重伤」这种错，只有这样才看得出来。
+  emit({ type: "wound", who: pcName, severity: kept, penaltyDice: woundPenaltyOf(pcName) });
 }
 
 /** 伤势被处理掉（急救成功等） */
 export function healWound(pcName: string): void {
-  runCtx.getStore()?.wounds.delete(pcName);
+  const ctx = runCtx.getStore();
+  if (!ctx?.wounds.has(pcName)) return;
+  ctx.wounds.delete(pcName);
+  emit({ type: "wound-healed", who: pcName });
 }
 
 /**
@@ -57,6 +65,10 @@ export function woundPenaltyOf(pcName: string): number {
 // ignoreWound: 只给「重伤体质检定」用 —— 那一掷是在结算**这处伤本身**，
 // 让它被自己造成的伤势罚一次是双重计算（实跑抓到过：
 // 「体质（重伤）51% [1惩罚骰·伤势]」，那个惩罚骰正是同一处伤给的）。
+//
+// actorKind: 这一掷是谁发起的。敌人还手也走 `check()`（`combat.ts` 的 `enemyAttack`），
+// 播报出来同样是「➜ 米戈 【格斗】」—— 从文本上分不出攻击者是敌是我，
+// 「敌人会不会还手」和「昏迷的人还在不在掷骰」两个判据都栽在这里。
 export function check(
   skillVal: number,
   pcName: string,
@@ -64,6 +76,7 @@ export function check(
   diff: "regular" | "hard" | "extreme" = "regular",
   penaltyDice: number = 0,
   ignoreWound: boolean = false,
+  actorKind: ActorKind = "pc",
 ): CoCCheckResult {
   const fromWound = ignoreWound ? 0 : woundPenaltyOf(pcName);
   const total = Math.min(2, penaltyDice + fromWound);
@@ -71,6 +84,21 @@ export function check(
   const why = fromWound > 0 ? (penaltyDice > 0 ? "环境+伤势" : "伤势") : "";
   const penaltyNote = total > 0 ? ` [${total}惩罚骰${why ? "·" + why : ""}]` : "";
   sayMech(`➜ ${pcName} 【${skillLabel}】 ${skillVal}%${penaltyNote} → d100=${r.roll} → ${SUCCESS_LEVEL_LABELS[r.successLevel]}`);
+  emit({
+    type: "check",
+    actor: pcName,
+    actorKind,
+    skill: skillLabel,
+    skillValue: skillVal,
+    envPenalty: penaltyDice,
+    woundPenalty: fromWound,
+    totalPenalty: total,
+    ignoreWound,
+    woundAware: true,
+    roll: r.roll,
+    success: r.isSuccess,
+    level: r.successLevel,
+  });
   return r;
 }
 
@@ -99,6 +127,7 @@ export function sanCheck(pcName: string, engine: SanityEngine, sanCost: string):
   const result = engine.sanityCheck(sanCost);
   const outcome = sanOutcomeLabel(result.passed);
   sayMech(`🧠 ${pcName} 【理智检定】 SAN ${engine.state.currentSAN + result.sanLoss} → d100=${result.roll} → ${outcome}，损失 ${result.sanLoss} SAN (剩余 ${engine.state.currentSAN})`);
+  emit({ type: "san-check", actor: pcName, roll: result.roll, loss: result.sanLoss, passed: result.passed });
   if (result.temporaryInsanityTriggered) {
     say(`\n⚠ ${pcName} 陷入了临时疯狂！${result.boutOfMadness ?? ""}`);
   }
@@ -112,11 +141,20 @@ export function sanCheck(pcName: string, engine: SanityEngine, sanCost: string):
 // 伤害等级按**单次伤害 / maxHp** 计算，不是剩余 HP 比例。
 export function applyDamage(pc: CoCGeneratedCharacter, pcName: string, dmg: number): WoundSeverity {
   const severity = calcSeverity(dmg, pc.maxHp);
+  const before = pc.hp;
   pc.hp = Math.max(0, pc.hp - dmg);
   const suffix = pc.hp <= 0
     ? "（昏迷/濒死！）"
     : severity !== "scratch" ? `（${severityLabel(severity)}）` : "";
   sayMech(`❤ ${pcName} HP ${pc.hp + dmg} → ${pc.hp}${suffix}`);
+  // ⚠ 播报里 HP 归零那一行的后缀是「昏迷/濒死！」，**把伤势标签盖掉了**。
+  // 事件带上原始 severity，据文本分档漏掉的正是这一档。
+  emit({
+    type: "damage",
+    who: pcName, from: before, to: pc.hp, maxHp: pc.maxHp,
+    amount: before - pc.hp, severity,
+  });
+  if (pc.hp <= 0 && before > 0) emit({ type: "downed", who: pcName, cause: "hp-zero" });
 
   // 记进本局伤势 —— check() 会自动据此加惩罚骰，直到被急救处理掉
   const penalty = woundPenaltyDice(severity);

@@ -36,7 +36,10 @@ import { AsyncLocalStorage } from "node:async_hooks";
 // 播报输出层已抽到 src/play/narration.ts —— 拆出去的子模块要够到 say()，
 // 留在这里它们就得反过来 import play-module，成环。
 export type { LineOrigin, Decider, RunContext } from "./play/narration";
-import { runCtx, say, sayMech, divider } from "./play/narration";
+export type { PlayEvent, PlayEventType, ActorKind, DownedCause } from "./play/events";
+export { ofType } from "./play/events";
+import { runCtx, say, sayMech, divider, emit } from "./play/narration";
+import type { PlayEvent } from "./play/events";
 import {
   buildPcImpression, stripDoorOpenPrefix, stripDialogueLead, classifySpeechStyle,
   mentalVoiceBridge, handleNonSpeakingNpc, brainwaveFlavor, buildIdentityLine,
@@ -232,17 +235,47 @@ async function writeBackstory(
 }
 
 /**
- * 随机创建一名调查员：随机职业（避开已用职业）+ 随机人名 + 八项背景 + 背景故事。
+ * 抽一个**没被用过的短名**。
+ *
+ * 抽成纯函数是为了能测：随机重名的概率不高，靠实跑撞不出来，
+ * 但一旦撞上，整局日志的身份归属就全乱了（见调用点注释）。
+ * 名字池有限，所以重抽有上限；抽不开就退回加后缀，绝不死循环。
+ */
+export function pickDistinctName(
+  archetypeId: string,
+  used: string[],
+  roll: (id: string) => { full: string; short: string } = randomCoCName,
+  maxTries = 12,
+): { full: string; short: string } {
+  let last = roll(archetypeId);
+  for (let i = 0; i < maxTries; i++) {
+    if (!used.includes(last.short)) return last;
+    last = roll(archetypeId);
+  }
+  // 池子太小或运气太差：加后缀保证唯一。丑，但比两个人同名可解释得多。
+  let suffix = 2;
+  while (used.includes(`${last.short}${suffix}`)) suffix++;
+  return { full: `${last.full}（${suffix}）`, short: `${last.short}${suffix}` };
+}
+
+/**
+ * 随机创建一名调查员：随机职业（避开已用职业）+ 随机人名（避开重名）+ 八项背景 + 背景故事。
  * 返回与 ModulePlayerSetup 兼容的配置对象。
  */
 async function createRandomPlayerSetup(
   module: ModuleData,
   usedArchetypeIds: string[],
+  usedShortNames: string[] = [],
 ): Promise<{ p0: any; pc: CoCGeneratedCharacter }> {
   const archs = getCoCArchetypes();
   const available = archs.filter(a => !usedArchetypeIds.includes(a.id));
   const archetype = pick(available.length > 0 ? available : archs);
-  const { full, short } = randomCoCName(archetype.id);
+  // 重名要避开 —— `shortName` 是**播报与日志里唯一的身份标记**：
+  // 「➜ 亨利 【急救】」在两个调查员都叫亨利时无法归属，日志里会出现
+  // 「亨利半跪下来，检查亨利的伤势」，诊断也只能把两人的行动算到一个人头上
+  // （实测 seed 95028 就是这样，`_diag-downed.ts` 因此报了 2 次假违规）。
+  // 重抽有限次，抽不开就加个后缀 —— 名字池不大，不能死循环。
+  const { full, short } = pickDistinctName(archetype.id, usedShortNames);
   const pc = await createPC(full, archetype.id, archetype);
   const anchors = randomPersonAnchors();
   const profile = await enhanceBackgroundProfile(pc.backgroundProfile ?? buildBaseBackgroundProfile(archetype), {
@@ -277,6 +310,14 @@ export interface RunOptions {
    * `(line) => ...` 即可 —— 少接一个参数在类型上是合法的。
    */
   onLine?: (line: string, origin: LineOrigin) => void;
+  /**
+   * 结构化事件回调（见 `play/events.ts`）。诊断脚本与测试用，剧本逻辑不读。
+   *
+   * 为什么不让诊断继续解析播报文本：有些事实**文本里根本没有** ——
+   * 「重伤体质检定失败导致的昏迷」没有 HP→0 那一行，
+   * 「➜ 米戈 【格斗】」看不出攻击者是敌是我。补正则只会补出下一个假阳性。
+   */
+  onEvent?: (event: PlayEvent) => void;
   /** 由谁做决策。缺省用内置 AI 玩家，即原有的自动跑法 */
   decide?: Decider;
 }
@@ -292,7 +333,11 @@ export async function runModule(
   support: ModuleSupport,
   opts: RunOptions = {},
 ): Promise<{ lines: string[]; origins: LineOrigin[] }> {
-  const ctx: RunContext = { lines: [], origins: [], onLine: opts.onLine, decide: opts.decide, wounds: new Map() };
+  const ctx: RunContext = {
+    lines: [], origins: [],
+    onLine: opts.onLine, onEvent: opts.onEvent, decide: opts.decide,
+    wounds: new Map(),
+  };
   await runCtx.run(ctx, () => runModuleInner(module, support));
   return { lines: ctx.lines, origins: ctx.origins };
 }
@@ -303,7 +348,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   // 1. Create characters — 车卡随机化：随机职业+人名，八项背景+背景故事
   // 默认两名调查员（模块 players 配置仅作为人数/兜底参考，不再写死身份）
   const r1 = await createRandomPlayerSetup(module, []);
-  const r2 = await createRandomPlayerSetup(module, [r1.p0.archetypeId]);
+  const r2 = await createRandomPlayerSetup(module, [r1.p0.archetypeId], [r1.p0.shortName]);
   const p0 = r1.p0;
   const p1 = r2.p0;
   const c1 = r1.pc;
@@ -690,6 +735,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
   // CoC 7e 的 0 HP 是失去意识不是死亡 —— 醒来时案子还在那儿，只是他们退出了。
   const allDown = standing([c1, c2]).length === 0;
   if (allDown) {
+    emit({ type: "aborted", reason: "all-down" });
     say("");
     divider("调查中止");
     say(
@@ -708,7 +754,11 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
 
   if (ending) {
     say(``);
-    divider(support.endLabels[ending.id] ?? ending.id);
+    const label = support.endLabels[ending.id] ?? ending.id;
+    divider(label);
+    // 「进过终局场景」不等于「有结局」：全员倒下时 evaluateEnding 返回 null，
+    // 这条事件也就不会发。fuzz 的通关判据认这条，不认场景名。
+    emit({ type: "ending", id: ending.id, label });
     for (const line of ending.lines) {
       say(line, "verbatim");
     }

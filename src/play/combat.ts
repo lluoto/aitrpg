@@ -9,8 +9,8 @@
 import type { ModuleData, Scene, ModuleSupport } from "../module/types";
 import type { WorldState } from "../world/state";
 import { CoCEngine, SUCCESS_LEVEL_LABELS } from "../rules/coc-engine";
-import { say, sayMech } from "./narration";
-import { sanCheck, check, applyDamage } from "./checks";
+import { say, sayMech, emit } from "./narration";
+import { sanCheck, check, applyDamage, woundPenaltyOf } from "./checks";
 import { rollDice } from "./trap-util";
 import { isDowned } from "./run-state";
 import type { Cast } from "./run-state";
@@ -65,6 +65,7 @@ if (migoEncounter) {
   say(`\n${"═".repeat(48)}`);
   say(`  ⚔ ${enemyName}战斗轮 ⚔`);
   say(`${"═".repeat(48)}`);
+  emit({ type: "combat-start", enemy: enemyName });
   for (const line of migoEncounter.encounterLines) say(fmt(line), "verbatim");
   say("");
 
@@ -153,8 +154,31 @@ if (migoEncounter) {
     const effectiveSkill = Math.max(5, (usingGun ? gunVal : fightVal) - f.skillPenalty);
 
     say(`${name}${fmt(actionText)}`);
-    const r = CoCEngine.skillCheck(effectiveSkill, "hard", 0, f.penaltyDice);
-    sayMech(`➜ ${name} 【${skillLabel}】 ${effectiveSkill}%${f.skillPenalty > 0 ? `(-${f.skillPenalty}疲劳)` : ""}${f.penaltyDice > 0 ? ` [惩罚骰×${f.penaltyDice}]` : ""} → d100=${r.roll} → ${SUCCESS_LEVEL_LABELS[r.successLevel]}`);
+
+    // ── 伤势惩罚骰 ──
+    //
+    // 这条路径原先直接调 `CoCEngine.skillCheck`，**绕过 `checks.ts` 的 `check()`**，
+    // 于是身上的伤势在战斗攻击上一点作用都没有 —— 而「让伤势/惩罚骰那套机制
+    // 在战斗里跑起来」正是敌人还手那次改动的目的。缺口是
+    // `tools/_diag-wounds.ts` 把惩罚骰按来源分账之后露出来的：
+    // 「真被伤势罚到的检定」始终远少于「记下的伤势」。
+    //
+    // 不直接改用 `check()`：那会丢掉疲劳那一段播报（`(-10疲劳)` / `[惩罚骰×N]`），
+    // 而疲劳与伤势是两个独立来源，合并显示就再也分不开了。
+    // 所以只把伤势那一份取过来，两者分别标注，上限仍是 CoC 7e 的 2 颗。
+    const woundDice = woundPenaltyOf(name);
+    const totalPenalty = Math.min(2, f.penaltyDice + woundDice);
+    const r = CoCEngine.skillCheck(effectiveSkill, "hard", 0, totalPenalty);
+    const penaltyNote = totalPenalty > 0
+      ? ` [惩罚骰×${totalPenalty}${f.penaltyDice > 0 && woundDice > 0 ? "·疲劳+伤势" : woundDice > 0 ? "·伤势" : "·疲劳"}]`
+      : "";
+    sayMech(`➜ ${name} 【${skillLabel}】 ${effectiveSkill}%${f.skillPenalty > 0 ? `(-${f.skillPenalty}疲劳)` : ""}${penaltyNote} → d100=${r.roll} → ${SUCCESS_LEVEL_LABELS[r.successLevel]}`);
+    emit({
+      type: "check", actor: name, actorKind: "pc", skill: skillLabel,
+      skillValue: effectiveSkill, envPenalty: f.penaltyDice, woundPenalty: woundDice,
+      totalPenalty, ignoreWound: false, woundAware: true,
+      roll: r.roll, success: r.isSuccess, level: r.successLevel,
+    });
 
     if (r.isSuccess) {
       // 伤害：格斗 1d6，射击 1d8 + 暴击加成
@@ -164,10 +188,12 @@ if (migoEncounter) {
       else if (r.successLevel === "extreme") dmg += Math.floor(dieMax / 2);
       const dmgTier = dmg >= 7 ? "heavy" : dmg >= 4 ? "medium" : dmg >= 2 ? "light" : "graze";
       say(`  ${fmt(pick(dmgFlavors[dmgTier]))}（${dmg}点伤害）`);
+      emit({ type: "pc-attack", actor: name, skill: skillLabel, success: true, damage: dmg });
       return dmg;
     } else {
       const missPool = r.successLevel === "fumble" ? missTexts.fumble : missTexts.normal;
       say(`  ${name}${fmt(pick(missPool))}`);
+      emit({ type: "pc-attack", actor: name, skill: skillLabel, success: false, damage: 0 });
       return 0;
     }
   }
@@ -186,9 +212,13 @@ if (migoEncounter) {
     if (pc.hp <= 0) return; // 已经倒下的不再挨打
 
     say(`\n${enemyName}${pick(enemyAttackFlavors)}`);
-    const atk = check(enemyStats.skill, enemyName, "格斗", "regular");
+    // actorKind="enemy"：播报出来是「➜ 米戈 【格斗】」，与玩家的
+    // 「➜ 李默 【格斗(肉搏)】」只差技能名。把攻击者身份写进事件，
+    // 判据就不必再从技能名反推——敌人技能改叫「触手」也不会漏。
+    const atk = check(enemyStats.skill, enemyName, "格斗", "regular", 0, false, "enemy");
     if (!atk.isSuccess) {
       say(`  ${name}堪堪避开了。`);
+      emit({ type: "enemy-attack", enemy: enemyName, target: name, outcome: "miss", damage: 0 });
       return;
     }
 
@@ -198,10 +228,12 @@ if (migoEncounter) {
     const dodge = check(dodgeVal, name, "闪避", "regular");
     if (dodge.isSuccess && dodge.successLevel <= atk.successLevel) {
       say(`  ${name}向侧面一滚，避了开去。`);
+      emit({ type: "enemy-attack", enemy: enemyName, target: name, outcome: "dodged", damage: 0 });
       return;
     }
 
     const dmg = rollDice(enemyStats.damage);
+    emit({ type: "enemy-attack", enemy: enemyName, target: name, outcome: "hit", damage: dmg });
     const severity = applyDamage(pc, name, dmg);
 
     // 重伤要掷体质，跟陷阱那边同一套规则
@@ -209,6 +241,7 @@ if (migoEncounter) {
       const con = check(pc.attributes.constitution, name, "体质（重伤）", "regular", 0, true);
       if (!con.isSuccess) {
         say(`${name}因伤势过重昏迷过去！`);
+        if (pc.hp > 0) emit({ type: "downed", who: name, cause: "major-wound-con" });
         pc.hp = 0;
       }
     }
@@ -220,6 +253,7 @@ if (migoEncounter) {
 
   while (migoHp > 0 && round < MAX_ROUNDS && !miGoFled) {
     round++;
+    emit({ type: "combat-round", enemy: enemyName, round });
     if (round > 1) say(`\n── 第 ${round} 回合 ──`);
 
     // 调查员攻击 —— 倒下的人不出手（CoC 7e：0 HP 即失去意识）
@@ -282,6 +316,10 @@ if (migoEncounter) {
 
   // ── 结局判定 ──
   say("");
+  emit({
+    type: "combat-end", enemy: enemyName,
+    result: migoHp <= 0 ? "defeated" : miGoFled && migoHp < migoMaxHp * 0.4 ? "fled" : "lost",
+  });
   if (migoHp <= 0) {
     // 击败：Mi-Go 重伤逃走，没带走大脑
     if (migoEncounter.victoryClueId) world.discoverClue(migoEncounter.victoryClueId);

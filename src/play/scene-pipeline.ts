@@ -20,7 +20,7 @@ import {
 } from "../llm/npc-dialogue-prompts";
 import type { SceneContext } from "../llm/npc-dialogue-prompts";
 import { checkDialogueText } from "../world/world-constraint";
-import { say, sayMech, runCtx } from "./narration";
+import { say, sayMech, runCtx, emit } from "./narration";
 import { buildWorldContext } from "./llm-context";
 import { runSceneTraps } from "./traps";
 import { runCombatEncounter } from "./combat";
@@ -83,9 +83,6 @@ export function maybeRecognitionBeat(ctx: SceneCtx, w: WorldState): boolean {
   return true;
 }
 
-/** 每人已经开口过几次 —— 供 askerScore 做"别包场"的惩罚项 */
-const askCounts = new Map<string, number>();
-
 /**
  * 这一轮谁开口。
  *
@@ -100,13 +97,16 @@ const askCounts = new Map<string, number>();
  * `agents[0]` 对 `cast.c1`，`agents[1]` 对 `cast.c2`。
  */
 export function pickAsker(ctx: SceneCtx, topic: string): PlayerAgent | null {
-  const { cast, agents: [pl1, pl2] } = ctx;
+  const { cast, dedup, agents: [pl1, pl2] } = ctx;
   const alive = [
     { agent: pl1, pc: cast.c1 },
     { agent: pl2, pc: cast.c2 },
   ].filter(x => !isDowned(x.pc));
   if (alive.length === 0) return null;
 
+  // 开口计数按**本局**算（`dedup.askCounts`）。原先挂在模块级 Map 上，
+  // 第二局会继承第一局的计数 —— 见 run-state.ts 里那段说明。
+  const askCounts = dedup.askCounts;
   const scored = alive.map(({ agent }) => ({
     p: agent,
     // 微小抖动：分数持平时不至于每次都选同一个
@@ -329,6 +329,7 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
   const prevVisits = cursor.visitCount.get(scene.id) ?? 0;
   const isRevisit = prevVisits > 0;
   say(`\n${isRevisit ? "\u2501 \u518d\u6b21\u6765\u5230" : "\u2501"} ${scene.name}`);
+  emit({ type: "scene-enter", sceneId: scene.id, sceneName: scene.name, revisit: isRevisit });
 
   // ── Phase 1: Scene entry - KP roleplay narration ──
   // On revisit, skip full description for immersion; use a short restatement
@@ -657,9 +658,11 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
     ].filter(Boolean).join("\n");
 
     const decider = runCtx.getStore()?.decide;
+    const options = [...labels, leaveLabel];
     const decision = decider
-      ? await decider(ctx, [...labels, leaveLabel])
+      ? await decider(ctx, options)
       : await pl1.decideViaLLM(ctx, labels, [leaveLabel]);
+    emit({ type: "decision", options: options.length, chosen: decision.action });
 
     // 先看他有没有点名某条线索。名字是专有名词，出现即命中。
     // 放在 intent 前面是有意的：**不能只信 intent**。
@@ -801,6 +804,7 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
   const decision = decider
     ? await decider(plContext, moveLabels)
     : await pl1.decideViaLLM(plContext, stillInvestigable, moveLabels);
+  emit({ type: "decision", options: moveLabels.length, chosen: decision.action });
 
   // 匹配逻辑见 chooseConnection（本文件顶部）—— 挪出闭包是为了能单测
   const picked = chooseConnection(decision, unlocked as SceneConnection[], {

@@ -7,6 +7,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { PlayerDecision } from "../agent/player-agent";
 import type { WoundSeverity } from "../combat/wound-effects";
+import type { PlayEvent } from "./events";
 
 /**
  * 播报行的来源。语音层据此分预制/实时/不念 —— 判据是「经没经过 LLM」，
@@ -39,6 +40,11 @@ export interface RunContext {
   /** 与 lines 逐项对应，同进同出 */
   origins: LineOrigin[];
   onLine?: (line: string, origin: LineOrigin) => void;
+  /**
+   * 结构化事件订阅（见 `play/events.ts`）。只有诊断/测试会订阅，
+   * 剧本逻辑一行都不读它 —— 它是**观察口**，不是控制口。
+   */
+  onEvent?: (event: PlayEvent) => void;
   decide?: Decider;
   /**
    * 角色名 → 尚未处理的最重伤势。`check()` 据此自动加惩罚骰。
@@ -64,6 +70,16 @@ export function say(m: string, origin: LineOrigin = "llm") {
 
 /** Output game-mechanics text (rolls, damage, rules) — visually distinct from story narration */
 export function sayMech(m: string) { say(`  [检定] ${m}`, "mech"); }
+
+/**
+ * 发一条结构化事件。没有订阅者时什么也不做。
+ *
+ * 与 `say()` 并列而不是从 `say()` 里派生：播报文本是给人读的，
+ * 事件是给判据读的。让后者依赖前者的措辞，正是诊断脚本反复出错的根源。
+ */
+export function emit(event: PlayEvent): void {
+  runCtx.getStore()?.onEvent?.(event);
+}
 
 export function divider(t?: string) {
   say("", "mech");

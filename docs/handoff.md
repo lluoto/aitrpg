@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-22 02:37  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-22 04:39  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：60da428 docs: external review request for diagnostic criteria  ·  **测试**：1341 条 / 66 文件，全绿
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：b10eafc docs: handoff guide for taking over the work  ·  **测试**：1557 条 / 77 文件，全绿（基线 1557，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -42,21 +42,52 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
   自己 `Bun.write` 落盘。**曾因此得出「12 局 0 次触发」的假结论**
 - `git checkout <sha> -- <file>` 会**同时改索引**。变异检验后用 `Copy-Item` 还原即可，
   多跑一句 `git checkout HEAD --` 会把未提交的改动冲掉（踩过）
-- 测试**只有条数是可靠回归信号**。已知两条偶发假红：
+- 测试**只有条数是可靠回归信号**，基线在 `docs/test-baseline.json`；
+  `expect()` 计数会被无种子的随机测试搅动。已知两条偶发假红：
   `coc-engine.test.ts:131`、`npc-reaction.test.ts` 的「高稳定性减少负面情绪」
+- `typescript@7.0.2` 是 native preview，`require("typescript")` **没有** `createSourceFile`。
+  要解析 TS 就用 `Bun.Transpiler`（`scanImports()` 是真解析器）
 
 ## 验证手段（离线，不用 API key）
 
-| 脚本 | 量什么 |
-|---|---|
-| `tools/_diag-fuzz.ts` | 随机玩法通关率、有无死循环 |
-| `tools/_diag-wounds.ts` | 伤势分级／重伤检定／惩罚骰 |
-| `tools/_diag-combat.ts` | Boss 还手、玩家掉血 |
-| `tools/_diag-downed.ts` | 昏迷的人有没有还在行动 |
-| `tools/_diag-phrasing.ts` | 玩家说法能否匹配到场景 |
+| 脚本 | 量什么 | 判据在哪 | 校准测试 |
+|---|---|---|---|
+| `tools/_diag-fuzz.ts` | 通关率（= 正常返回**且**有正式结局）、死循环 | `src/diagnostics/fuzz.ts` | `diag-fuzz.test.ts` |
+| `tools/_diag-wounds.ts` | 伤势分级／重伤检定／惩罚骰 | `src/diagnostics/wounds.ts` | `diag-wounds.test.ts` |
+| `tools/_diag-combat.ts` | Boss 还手（按攻击者身份，不按技能名）、玩家掉血 | `src/diagnostics/combat.ts` | `diag-combat.test.ts` |
+| `tools/_diag-downed.ts` | 昏迷期间本人是否还在**掷骰** | `src/diagnostics/downed.ts` | `diag-downed.test.ts` |
+| `tools/_diag-phrasing.ts` | 玩家说法能否匹配到场景 | `src/diagnostics/phrasing.ts` | `diag-phrasing.test.ts` |
+| `tools/_audit-backup.ts` | 哪些数据丢了不可再生 | `src/diagnostics/backup-classify.ts` | `diag-backup-classify.test.ts` |
 
-⚠ **这些判据本身出过六次错**（详见 `docs/review-request.md`）。
-用它们之前先确认能区分对错两种情形，别信「全绿」。
+⚠ **这些判据本身出过六次错**（详见 `docs/review-request.md`）。已做的返工：
+
+1. **判据与脚本分开**。判断逻辑抽成纯函数放 `src/diagnostics/`（入库、可测），
+   `tools/*` 只负责跑局和排版。`tools/` 是 .gitignore 的，判据留在那里等于没人守。
+2. **每条判据三种输入都有测试**：行为正确 → 通过；目标行为错误 → 失败；
+   文本相似但合法 → 不误报。少了第二种就是「永远通过」，少了第三种就是「永远报警」。
+3. **不再猜自然语言**。诊断读 `src/play/events.ts` 的结构化事件流，
+   因为有些事实**文本里根本不存在**：重伤体质检定失败导致的昏迷没有 `HP n → 0` 那行，
+   `➜ 米戈 【格斗】` 看不出攻击者是敌是我。补正则只会补出下一个假阳性。
+4. **seed 现在控制整局**（`src/diagnostics/run-harness.ts` 接管 `Math.random`）。
+   实测：同 seed 的事件流与播报文本**都可复现**，可作确定性回归依据。
+   `_diag-fuzz.ts` 每次都把这条自检的结果打出来 —— 它是量出来的，不是声称的。
+
+用它们之前仍然先确认能区分对错两种情形，别信「全绿」。
+判据自己会说明三种「不算通过」的情形：
+样本数为 0（没有可判的样本）、身份不可分辨（两名调查员重名）、以及本轮有异常局。
+
+**这套判据上线后立刻报出四个真缺陷，都已修**（各带正/反/干扰三侧测试 + 变异检验）：
+
+| 缺陷 | 谁报出来的 | 旧判据为什么看不见 |
+|---|---|---|
+| `askCounts` 模块级 Map 跨局残留 | fuzz 的复现自检 | 旧脚本没有复现自检 |
+| 昏迷者还在掷「挣脱陷阱」 | downed | 那条昏迷路径没有 `HP n → 0` 播报 |
+| 昏迷的同伴还在掷急救 | downed | 同上（且两人重名时无法归属） |
+| 战斗攻击不读伤势惩罚 | wounds 的惩罚骰分账 | 旧判据数 `/惩罚骰/` 行数，疲劳的照样计数 |
+| 两名调查员可能重名 | downed 的身份不可分辨检测 | 名字是日志里唯一的身份标记 |
+
+用法：跑局类脚本都收 `[局数] [起始局号]`，
+`bun tools/_diag-downed.ts 3 4` = 第 4~6 局，便于分批跑而不重叠。
 
 ## 手上还挂着的（3）
 
@@ -69,6 +100,7 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 
 ## 最近做了什么
 
+- b10eafc docs: handoff guide for taking over the work
 - 60da428 docs: external review request for diagnostic criteria
 - c8776e7 fix: tell the player when the engine picks the destination
 - 06d796c chore: backup tiering shows only 500mb is irreplaceable
@@ -80,7 +112,6 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 - 32d578e feat: unconscious investigators cannot act, first aid revives
 - 511c575 merge: boss actually fights back
 - 105a6c3 docs: boss fights back, and the downed-but-acting gap it exposed
-- f8d2133 fix: boss actually fights back
 
 ## 代码地图
 

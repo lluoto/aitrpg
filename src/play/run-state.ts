@@ -80,10 +80,22 @@ export interface Dedup {
   lastRevealBridge: string;
   /** 上一次同伴说过的话 */
   lastPartnerRemark: string;
+  /**
+   * 每人已经开口过几次 —— `askerScore` 的「别包场」惩罚项。
+   *
+   * ⚠ 原先是 `scene-pipeline.ts` 的**模块级 Map**，跨局不重置。两个后果：
+   *   1. 同一进程里跑第二局时，第一局的开口计数还压着，
+   *      「这一轮谁开口」于是取决于**之前跑过几局**。诊断脚本实测：
+   *      同 seed 连跑两局，事件流完全一致而播报文本不一致，差异全在提问者名字上。
+   *   2. 接进服务端后多局并发，两局共享同一份计数 —— 与当初把输出从
+   *      模块级数组挪进 `RunContext` 要解决的是同一个问题。
+   * 名字可能撞车（两局各有一个「亨利」），那就更该按局隔离。
+   */
+  askCounts: Map<string, number>;
 }
 
 export function newDedup(): Dedup {
-  return { lastAskBridge: "", lastRevealBridge: "", lastPartnerRemark: "" };
+  return { lastAskBridge: "", lastRevealBridge: "", lastPartnerRemark: "", askCounts: new Map() };
 }
 
 /**

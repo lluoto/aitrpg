@@ -12,7 +12,7 @@ import type { PlayerAgent } from "../agent/player-agent";
 import type { LLMClient } from "../llm/client";
 import { resolveCheckValue } from "../character/coc-character";
 import { generateClueRevelation, generateFailRescue } from "../llm/npc-dialogue-prompts";
-import { say } from "./narration";
+import { say, emit } from "./narration";
 import { check, sanCheck, discoveryFlavor, failFlavor, healWound } from "./checks";
 import { isDowned, standing } from "./run-state";
 import { buildWorldContext } from "./llm-context";
@@ -73,6 +73,9 @@ export function tryReviveDowned(ctx: ClueCtx): void {
       pc.hp = 1;
       healWound(name); // 处理过的伤口不再压着惩罚骰
       say(`${name}猛地咳嗽起来，睁开了眼睛。`);
+      // 掷骰的是**施救者**，苏醒的是**伤者**。两个名字分开写进事件 ——
+      // 靠文本猜的话，「谁在掷急救」会被算到躺着的那个人头上。
+      emit({ type: "revived", who: name, by: mateName });
     } else {
       say(`${name}没有反应，只能先拖到安全的地方。`);
     }

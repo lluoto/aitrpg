@@ -1,0 +1,326 @@
+// 判据校准：「玩家这句话能不能对到他想去的地方」。
+//
+// 这份测试测的**不是引擎**，是判据。每条判据都要求三件事同时成立：
+//   1. 行为正确的输入 → 判据通过
+//   2. 目标行为错误的输入 → 判据失败
+//   3. 文本相似但行为合法的干扰输入 → 判据不误报
+// 少了第 2 条就是「永远通过」，少了第 3 条就是「永远报警」，
+// 两种都等于没测（review-request 里六次错，全是这两种之一）。
+
+import { describe, test, expect } from "bun:test";
+import {
+  judgePhrase, addPhraseResult, newPhraseReport, pct,
+  type PhraseCase, type PhraseOutcome,
+} from "../diagnostics/phrasing";
+import { chooseConnection, matchKeys, type MoveWorldView } from "../play/move-util";
+import type { SceneConnection } from "../module/types";
+
+// ── 判据层：只喂构造出来的结果，不碰引擎 ───────────────────────────
+
+const positive: PhraseCase = {
+  id: "say-name", kind: "positive", desc: "只说地名",
+  said: "去维森酒吧", wantSceneId: "weisen_bar",
+};
+const negative: PhraseCase = {
+  id: "negate", kind: "negative", desc: "否定一个目标同时指定另一个",
+  said: "别去警察局，去维森酒吧", wantSceneId: "weisen_bar", forbidSceneId: "police_station",
+};
+const ambiguous: PhraseCase = {
+  id: "pronoun", kind: "ambiguous", desc: "代词指代，没有唯一目标",
+  said: "去那边", wantSceneId: null,
+};
+
+describe("judgePhrase — 正例", () => {
+  test("正确：选中目标且不是替选 → 通过", () => {
+    const o: PhraseOutcome = { chosenSceneId: "weisen_bar", forced: false };
+    expect(judgePhrase(positive, o).verdict).toBe("pass");
+  });
+
+  test("错误：选中了别的地方 → 失败", () => {
+    const o: PhraseOutcome = { chosenSceneId: "police_station", forced: true };
+    const j = judgePhrase(positive, o);
+    expect(j.verdict).toBe("fail");
+    expect(j.why).toContain("police_station");
+  });
+
+  test("错误：目标碰巧对了但标成替选 → 仍失败（蒙对不算听懂）", () => {
+    // 这条是「假绿」的入口：只比对 targetSceneId 的话，引擎按分数蒙中
+    // 也算命中率，指标会虚高。
+    const o: PhraseOutcome = { chosenSceneId: "weisen_bar", forced: true };
+    expect(judgePhrase(positive, o).verdict).toBe("fail");
+  });
+
+  test("正例计入命中率分母", () => {
+    expect(judgePhrase(positive, { chosenSceneId: "weisen_bar", forced: false }).countsTowardHitRate).toBe(true);
+  });
+});
+
+describe("judgePhrase — 反例（否定式）", () => {
+  test("正确：避开被否定的目标、去了指定的地方 → 通过", () => {
+    expect(judgePhrase(negative, { chosenSceneId: "weisen_bar", forced: false }).verdict).toBe("pass");
+  });
+
+  test("错误：选中了话里明确排除的那个 → 失败", () => {
+    const j = judgePhrase(negative, { chosenSceneId: "police_station", forced: false });
+    expect(j.verdict).toBe("fail");
+    expect(j.why).toContain("排除");
+  });
+
+  test("错误：避开了警察局但也没去维森酒吧 → 失败", () => {
+    expect(judgePhrase(negative, { chosenSceneId: "hospital", forced: true }).verdict).toBe("fail");
+  });
+
+  test("错误：去对了地方却标成替选 → 失败（是碰上的不是认出来的）", () => {
+    expect(judgePhrase(negative, { chosenSceneId: "weisen_bar", forced: true }).verdict).toBe("fail");
+  });
+
+  test("反例不计入目标命中率", () => {
+    expect(judgePhrase(negative, { chosenSceneId: "weisen_bar", forced: false }).countsTowardHitRate).toBe(false);
+  });
+});
+
+describe("judgePhrase — 歧义输入", () => {
+  test("正确：引擎承认自己替玩家挑的 → 通过（去了哪儿都不算错）", () => {
+    expect(judgePhrase(ambiguous, { chosenSceneId: "newsstand", forced: true }).verdict).toBe("pass");
+    expect(judgePhrase(ambiguous, { chosenSceneId: "hospital", forced: true }).verdict).toBe("pass");
+  });
+
+  test("错误：把替选伪装成玩家自己的选择 → 失败", () => {
+    // 「去那边」不可能唯一确定目标。此时 forced=false 就是在撒谎。
+    const j = judgePhrase(ambiguous, { chosenSceneId: "newsstand", forced: false });
+    expect(j.verdict).toBe("fail");
+    expect(j.why).toContain("forced=false");
+  });
+
+  test("歧义输入**不进**目标命中率 —— 这是上一版指标失真的根因之一", () => {
+    const a = judgePhrase(ambiguous, { chosenSceneId: "newsstand", forced: true });
+    const b = judgePhrase(ambiguous, { chosenSceneId: "newsstand", forced: false });
+    expect(a.countsTowardHitRate).toBe(false);
+    expect(b.countsTowardHitRate).toBe(false);
+  });
+});
+
+describe("PhraseReport — 三类分开统计", () => {
+  test("命中率分母只含正例", () => {
+    const r = newPhraseReport();
+    addPhraseResult(r, positive, { chosenSceneId: "weisen_bar", forced: false });
+    addPhraseResult(r, negative, { chosenSceneId: "weisen_bar", forced: false });
+    addPhraseResult(r, ambiguous, { chosenSceneId: "hospital", forced: true });
+    expect(r.hitRate).toEqual({ hit: 1, total: 1 });
+    expect(r.negative).toEqual({ hit: 1, total: 1 });
+    expect(r.ambiguous).toEqual({ hit: 1, total: 1 });
+    expect(pct(r.hitRate)).toBe("100.0%");
+  });
+
+  test("歧义输入判失败也不会污染命中率", () => {
+    const r = newPhraseReport();
+    addPhraseResult(r, ambiguous, { chosenSceneId: "hospital", forced: false });
+    expect(r.hitRate).toEqual({ hit: 0, total: 0 });
+    expect(r.ambiguous).toEqual({ hit: 0, total: 1 });
+    expect(r.failures.length).toBe(1);
+  });
+});
+
+// ── 端到端：真的过一遍 chooseConnection ────────────────────────────
+//
+// 固定的连接夹具，不用真模组 —— 真模组的连接顺序会变，
+// 而「反例会不会因为连接顺序而选错」正是要钉住的东西。
+
+const SCENES: Record<string, string> = {
+  police_station: "警察局",
+  weisen_bar: "维森酒吧",
+  hospital: "霍姆斯医院",
+  adrian_farm: "艾德里安的农场",
+  farm_periphery: "农场外围（陷阱区）",
+  farm_villa: "农场主别墅",
+  newsstand: "报亭",
+};
+
+function view(): MoveWorldView {
+  return namedView(SCENES);
+}
+
+/** 换一套场景名的 view —— 用来测「condition 与场景真名不同」那条路径 */
+function namedView(names: Record<string, string>): MoveWorldView {
+  return {
+    isSceneVisited: () => false,
+    visitCount: () => 0,
+    sceneExists: (id) => id in names,
+    sceneName: (id) => names[id] ?? "",
+  };
+}
+
+const conn = (targetSceneId: string, condition: string): SceneConnection =>
+  ({ targetSceneId, condition }) as SceneConnection;
+
+function run(said: string, conns: SceneConnection[]): PhraseOutcome {
+  const r = chooseConnection({ action: said }, conns, view());
+  return { chosenSceneId: r.conn?.targetSceneId ?? null, forced: r.forced };
+}
+
+describe("端到端 — 唯一简称与唯一别名", () => {
+  const conns = [
+    conn("police_station", "前往警察局"),
+    conn("weisen_bar", "前往维森酒吧"),
+    conn("hospital", "前往霍姆斯医院"),
+  ];
+
+  test("说全名「维森酒吧」→ 命中（正例通过）", () => {
+    const c: PhraseCase = { id: "full", kind: "positive", desc: "全名", said: "先去维森酒吧坐坐", wantSceneId: "weisen_bar" };
+    expect(judgePhrase(c, run(c.said, conns)).verdict).toBe("pass");
+  });
+
+  test("**唯一简称「维森」认不出** —— 判据必须报失败", () => {
+    // 引擎现状：匹配是子串包含，键是完整地名，所以「维森」这种唯一简称对不上。
+    // 上一版的 12 条用例里 8 条都含完整地名，正是这类会掉的用例被系统性排除掉了。
+    const c: PhraseCase = { id: "short", kind: "positive", desc: "唯一简称", said: "先去维森那边坐坐", wantSceneId: "weisen_bar" };
+    const o = run(c.said, conns);
+    expect(o.forced).toBe(true); // 引擎自己承认没听懂
+    expect(judgePhrase(c, o).verdict).toBe("fail");
+  });
+
+  test("同一条用例，若引擎真认出了简称 → 判据必须通过（判据不是一味报警）", () => {
+    const c: PhraseCase = { id: "short", kind: "positive", desc: "唯一简称", said: "先去维森那边坐坐", wantSceneId: "weisen_bar" };
+    expect(judgePhrase(c, { chosenSceneId: "weisen_bar", forced: false }).verdict).toBe("pass");
+  });
+
+  test("唯一别名「医院」认不出（场景真名是「霍姆斯医院」）", () => {
+    const c: PhraseCase = { id: "alias", kind: "positive", desc: "唯一别名", said: "我们去医院看看", wantSceneId: "hospital" };
+    expect(judgePhrase(c, run(c.said, conns)).verdict).toBe("fail");
+  });
+
+  test("干扰项：句子里出现别的地名，但要去的是自己点名的那个", () => {
+    // 「警察局那边我们已经去过了，现在去报亭」—— 文本里有「警察局」三个字，
+    // 判据不能因为它出现过就算命中警察局。
+    const c: PhraseCase = {
+      id: "mentioned-not-target", kind: "negative", desc: "提到但不是目标",
+      said: "警察局那边我们已经去过了，现在去报亭",
+      wantSceneId: "newsstand", forbidSceneId: "police_station",
+    };
+    const withNews = [...conns, conn("newsstand", "前往报亭")];
+    const j = judgePhrase(c, run(c.said, withNews));
+    // 引擎按顺序匹配，警察局排在报亭前面 → 会被选中。判据必须**报出来**。
+    expect(j.verdict).toBe("fail");
+    expect(j.why).toContain("排除");
+  });
+
+  test("同一句话把报亭排到前面 → 判据通过（说明它测的是行为不是顺序噪声）", () => {
+    const c: PhraseCase = {
+      id: "mentioned-not-target", kind: "negative", desc: "提到但不是目标",
+      said: "警察局那边我们已经去过了，现在去报亭",
+      wantSceneId: "newsstand", forbidSceneId: "police_station",
+    };
+    const reordered = [conn("newsstand", "前往报亭"), ...conns];
+    expect(judgePhrase(c, run(c.said, reordered)).verdict).toBe("pass");
+  });
+});
+
+describe("端到端 — 否定式反例与连接顺序无关", () => {
+  const said = "别去警察局，去维森酒吧";
+
+  test("维森酒吧排在前面时，看着是对的", () => {
+    const c: PhraseCase = { id: "negate", kind: "negative", desc: "否定", said, wantSceneId: "weisen_bar", forbidSceneId: "police_station" };
+    const ordered = [conn("weisen_bar", "前往维森酒吧"), conn("police_station", "前往警察局")];
+    expect(judgePhrase(c, run(said, ordered)).verdict).toBe("pass");
+  });
+
+  test("**警察局排在前面时就会选错** —— 判据必须报失败，而不是随顺序飘绿", () => {
+    // 这就是「用例干扰项恰好在目标之后」那类错（review-request 第 3 条）。
+    // 判据如果只跑一种顺序，实现改错也全绿。
+    const c: PhraseCase = { id: "negate", kind: "negative", desc: "否定", said, wantSceneId: "weisen_bar", forbidSceneId: "police_station" };
+    const ordered = [conn("police_station", "前往警察局"), conn("weisen_bar", "前往维森酒吧")];
+    const o = run(said, ordered);
+    expect(o.chosenSceneId).toBe("police_station"); // 引擎现状：不处理否定
+    expect(judgePhrase(c, o).verdict).toBe("fail");
+  });
+});
+
+describe("端到端 — 重叠地名", () => {
+  const conns = [
+    conn("adrian_farm", "前往艾德里安的农场"),
+    conn("farm_periphery", "进入农场外围（陷阱区）"),
+    conn("farm_villa", "前往农场主别墅"),
+  ];
+
+  test("说全名「农场主别墅」应当唯一命中（正例通过）", () => {
+    const c: PhraseCase = { id: "overlap-full", kind: "positive", desc: "重叠地名说全名", said: "去农场主别墅", wantSceneId: "farm_villa" };
+    expect(judgePhrase(c, run(c.said, conns)).verdict).toBe("pass");
+  });
+
+  test("只说共同前缀「农场」是歧义 → 引擎承认替选，判据通过且不进命中率", () => {
+    const c: PhraseCase = { id: "overlap-bare", kind: "ambiguous", desc: "重叠地名只说共同前缀", said: "去农场", wantSceneId: null };
+    const o = run(c.said, conns);
+    expect(o.forced).toBe(true);
+    const j = judgePhrase(c, o);
+    expect(j.verdict).toBe("pass");
+    expect(j.countsTowardHitRate).toBe(false);
+  });
+
+  test("**真正的重叠陷阱：短地名是长说法的子串** —— 判据必须报失败", () => {
+    // 「镇上」是 town_premier 的匹配键，而玩家要去的是「镇内住宅」。
+    // 一句「回镇上那处住宅看看」里同时含「镇上」，子串匹配先撞上 town_premier。
+    // 这与连接顺序无关：只要 town_premier 在列表里靠前就会中。
+    const overlapping = [
+      conn("town_premier", "返回镇上"),
+      conn("adrian_town_house", "前往镇内住宅"),
+    ];
+    const c: PhraseCase = {
+      id: "overlap-substring", kind: "negative", desc: "短地名是长说法的子串",
+      said: "回镇上那处住宅看看", wantSceneId: "adrian_town_house", forbidSceneId: "town_premier",
+    };
+    const o = run(c.said, overlapping);
+    expect(o.chosenSceneId).toBe("town_premier");
+    expect(judgePhrase(c, o).verdict).toBe("fail");
+  });
+});
+
+describe("端到端 — 歧义输入必须 forced=true", () => {
+  const conns = [conn("police_station", "前往警察局"), conn("weisen_bar", "前往维森酒吧")];
+
+  test("「换个地方看看」→ 引擎承认替选（判据通过，且不进命中率）", () => {
+    const c: PhraseCase = { id: "rewrite", kind: "ambiguous", desc: "同义改写", said: "换个地方看看", wantSceneId: null };
+    const o = run(c.said, conns);
+    expect(o.forced).toBe(true);
+    const j = judgePhrase(c, o);
+    expect(j.verdict).toBe("pass");
+    expect(j.countsTowardHitRate).toBe(false);
+  });
+
+  test("「去那边」同上", () => {
+    const c: PhraseCase = { id: "pronoun", kind: "ambiguous", desc: "代词", said: "去那边", wantSceneId: null };
+    expect(judgePhrase(c, run(c.said, conns)).verdict).toBe("pass");
+  });
+});
+
+describe("变异检验 — 判据能不能抓住实现改坏", () => {
+  test("把 forced 恒设为 false（假装总是听懂了）→ 歧义类判据必须变红", () => {
+    const c: PhraseCase = { id: "pronoun", kind: "ambiguous", desc: "代词", said: "去那边", wantSceneId: null };
+    const mutated: PhraseOutcome = { chosenSceneId: "police_station", forced: false };
+    expect(judgePhrase(c, mutated).verdict).toBe("fail");
+  });
+
+  test("**接真实现**：`matchKeys` 必须含「场景真名」这一支", () => {
+    // 定向变异：把 matchKeys 的 `sceneName` 去掉，这条立刻红。
+    // 上面那些用构造结果喂判据的测试抓不到它 —— 判据再准，不接实现就守不住。
+    const keys = matchKeys(conn("town_premier", "返回镇上"), namedView({ town_premier: "普瑞米尔" }));
+    expect(keys).toContain("普瑞米尔");
+  });
+
+  test("**接真实现**：condition 与场景真名不同时，说真名也要能对上", () => {
+    // 「返回镇上」→ 场景叫「普瑞米尔」。丢掉真名那一支之后，
+    // 玩家说「去普瑞米尔」就只能靠打分替选。
+    const conns = [conn("town_premier", "返回镇上"), conn("hospital", "前往霍姆斯医院")];
+    const w = namedView({ town_premier: "普瑞米尔", hospital: "霍姆斯医院" });
+    const r = chooseConnection({ action: "去普瑞米尔" }, conns, w);
+    const c: PhraseCase = { id: "real-name", kind: "positive", desc: "说场景真名", said: "去普瑞米尔", wantSceneId: "town_premier" };
+    expect(judgePhrase(c, { chosenSceneId: r.conn?.targetSceneId ?? null, forced: r.forced }).verdict).toBe("pass");
+  });
+
+  test("对照：场景名取不到时（那一支失效）判据必须报失败", () => {
+    const conns = [conn("town_premier", "返回镇上"), conn("hospital", "前往霍姆斯医院")];
+    const degraded: MoveWorldView = { ...namedView({ town_premier: "普瑞米尔" }), sceneName: () => "" };
+    const r = chooseConnection({ action: "去普瑞米尔" }, conns, degraded);
+    const c: PhraseCase = { id: "real-name", kind: "positive", desc: "说场景真名", said: "去普瑞米尔", wantSceneId: "town_premier" };
+    expect(judgePhrase(c, { chosenSceneId: r.conn?.targetSceneId ?? null, forced: r.forced }).verdict).toBe("fail");
+  });
+});
