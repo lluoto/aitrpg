@@ -123,4 +123,3 @@ export function chooseConnection(
   scored.sort((a, b) => b.score - a.score);
   return { conn: scored[0]!.conn, forced: true };
 }
-    // NPC 对话生成已抽到 src/play/npc-dialogue.ts（纯搬运，见该文件头部说明）

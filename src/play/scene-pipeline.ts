@@ -815,8 +815,23 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
   // 主循环的「访问≥6次强制改道」要看它 —— 玩家明确要去的地方不能把人弹走。
   cursor.arrivedByPlayerChoice = !picked.forced;
 
-  // 只报地名的那种就别说了 —— 下一行的场景标题会把同一件事再讲一遍
   const dest = module.scenes.find(s => s.id === chosenConn.targetSceneId);
+
+  // 没对上玩家说的话 → **明说**，别静默替他挑。
+  //
+  // `chooseConnection` 本来就诚实标了 `forced`，但这个标记原先只喂给
+  // 「访问≥6次强制改道」，玩家那边一个字都看不到 ——
+  // 他说「去那边」，引擎按分数把他送到别处，日志上只有目的地的名字。
+  // 记录里那句「比菜单更糟：菜单至少还承认玩家做了选择」说的就是这个。
+  //
+  // 实测（tools/_diag-phrasing.ts，456 组）：只要话里含完整地名就 100% 命中；
+  // 不含完整地名则几乎全灭 —— 只说前两字 3%，同义改写/代词/描述特征 0%。
+  // 匹配本质是子串比对，换个说法就掉。修不了匹配，至少别瞒着。
+  if (picked.forced) {
+    say(`\n（没听清要去哪，两人商量了一下，决定先去${dest?.name ?? "别处"}。）`, "verbatim");
+  }
+
+  // 只报地名的那种就别说了 —— 下一行的场景标题会把同一件事再讲一遍
   if (!isRedundantMoveLine(chosenConn.condition, dest?.name ?? "")) {
     say(`\n${chosenConn.condition}。`, "verbatim");
   }

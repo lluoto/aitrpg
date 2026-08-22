@@ -1,22 +1,23 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-08-22 01:37
+> 生成于 2026-08-22 02:14
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | ea62ae0 docs: workdir audit confirms archival is complete, flags backup risk |
+| HEAD | 06d796c chore: backup tiering shows only 500mb is irreplaceable |
 | 测试 | （本次未跑） |
-| 工作树 | **4 个文件未提交** |
+| 工作树 | **5 个文件未提交** |
 
 未提交：
-- `M docs/index-world-model.md`
+- `M docs/notes/engine.md`
 - `M docs/notes/index.json`
-- `M docs/todo.json`
-- `?? scripts/backup-critical.ts`
+- `M src/play/move-util.ts`
+- `M src/play/scene-pipeline.ts`
+- `?? src/__tests__/forced-move-disclosure.test.ts`
 
 ## 开工前
 
@@ -30,7 +31,7 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - ️ 「引擎别再替玩家挪窝」这一步单独做不成立（2026-08-20）
   `docs/notes/engine.md:514`
 - ️ 引擎的移动是「给选项 + 不选就替你选」（2026-08-20）
-  `docs/notes/engine.md:560`
+  `docs/notes/engine.md:590`
 - ️ 一直在报的那个数不衡量目标：可运行性是 1/27（2026-08-20）
   `docs/notes/ingest.md:743`
 
@@ -52,6 +53,7 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 06d796c chore: backup tiering shows only 500mb is irreplaceable
 - ea62ae0 docs: workdir audit confirms archival is complete, flags backup risk
 - 307fbae docs: mark stale conclusions in the player-agency notes
 - 8c82675 fix: pass remaining investigable clues to move decision
@@ -59,7 +61,6 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 38f83b1 merge: coc 7e unconscious rules
 - 32d578e feat: unconscious investigators cannot act, first aid revives
 - 511c575 merge: boss actually fights back
-- 105a6c3 docs: boss fights back, and the downed-but-acting gap it exposed
 
 ## 找东西
 
