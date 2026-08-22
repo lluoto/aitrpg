@@ -1,21 +1,22 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-08-21 14:09
+> 生成于 2026-08-22 01:37
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 307fbae docs: mark stale conclusions in the player-agency notes |
-| 测试 | 1336 条 / 65 文件  全绿 |
-| 工作树 | **3 个文件未提交** |
+| HEAD | ea62ae0 docs: workdir audit confirms archival is complete, flags backup risk |
+| 测试 | （本次未跑） |
+| 工作树 | **4 个文件未提交** |
 
 未提交：
 - `M docs/index-world-model.md`
-- `M docs/now.md`
+- `M docs/notes/index.json`
 - `M docs/todo.json`
+- `?? scripts/backup-critical.ts`
 
 ## 开工前
 
@@ -38,7 +39,7 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 改动前后各跑一次 `bun scripts/preflight.ts`。它把反复犯的几类错做成了机器判据：切割截断语义单元、搬运残渣、循环依赖、语法错。别靠记性。
 - 同一类失误连着犯到第 3 次就停手，换一双眼睛（另一个模型 review diff）。本轮机械切割边界连错 5 次才自己发现——失效模式相同的人查不出自己的系统性错误。
 - **判据没验过就不算数**。写完诊断脚本先确认它能区分对错两种情形：第一版「切割截断」判据出了 174 个假阳性，第一版「倒下仍行动」判据永远报警。判据本身要做变异检验。
-- C:\aitrpg 下只有 poc/ 在版本控制里，且是唯一有远端（github.com/lluoto/aitrpg）的。世界模型/（3.6GB / 99453 文件）、消弭/、MikuFan-普瑞米尔的谷仓/、以及 18 个顶层散落文件全部无版本控制、无远端备份。其中 世界模型/v18_outpu
+- C:\aitrpg 下只有 poc/ 有版本控制和远端，其余 3.7GB 裸奔。**已分层，不必全备**：不可再生的只有 5239 个文件 / 500MB（源材料 474MB + 脚本 13MB + 手写设计 12MB），其余 3.2GB 是能重跑的抽取产物。执行 `bun scripts/back
 - `src/__tests__/coc-engine.test.ts:131`「失败时损失 = sanCost 后半部分」：用 `new SanityEngine(1)` 凑「几乎必失败」，但 `coc-engine.ts:669` 的 `regularD100()` 没有种子，判定是 `roll <
 - **先例存在、本轮不修**：它早于摄取管线，属规则引擎，修它要改 d100 的注入方式，是另一轮的活。
 - 但它现在比以前更碍事：摄取这条线的产物是**一个数**（17/20），下一轮要重新测量， 而「`bun test` 全绿」是那个数唯一的背书。一个 1% 说谎的套件会把每一次这样的背书都打个折。
@@ -51,6 +52,7 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- ea62ae0 docs: workdir audit confirms archival is complete, flags backup risk
 - 307fbae docs: mark stale conclusions in the player-agency notes
 - 8c82675 fix: pass remaining investigable clues to move decision
 - 9960c14 chore: preflight checks, session state file, working rules
@@ -58,7 +60,6 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 32d578e feat: unconscious investigators cannot act, first aid revives
 - 511c575 merge: boss actually fights back
 - 105a6c3 docs: boss fights back, and the downed-but-acting gap it exposed
-- f8d2133 fix: boss actually fights back
 
 ## 找东西
 

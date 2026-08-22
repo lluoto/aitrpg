@@ -25,7 +25,7 @@
       "id": "risk-01",
       "category": "工作目录",
       "severity": "warn",
-      "text": "C:\\aitrpg 下只有 poc/ 在版本控制里，且是唯一有远端（github.com/lluoto/aitrpg）的。世界模型/（3.6GB / 99453 文件）、消弭/、MikuFan-普瑞米尔的谷仓/、以及 18 个顶层散落文件全部无版本控制、无远端备份。其中 世界模型/v18_output/v18_all_master.jsonl（229MB）是**唯一一份**，运行时默认就读它——丢了整个世界模型层就没了。归档记录是全的（docs/index-world-model.md），但记录不等于备份。"
+      "text": "C:\\aitrpg 下只有 poc/ 有版本控制和远端，其余 3.7GB 裸奔。**已分层，不必全备**：不可再生的只有 5239 个文件 / 500MB（源材料 474MB + 脚本 13MB + 手写设计 12MB），其余 3.2GB 是能重跑的抽取产物。执行 `bun scripts/backup-critical.ts --out <目标盘>`（先 --dry 看清单）。**待办：选一个目标盘跑一次。** 分层依据见 docs/index-world-model.md「备份分层」。"
     },
     {
       "id": "todo-01",
