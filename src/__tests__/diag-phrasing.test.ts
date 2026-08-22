@@ -204,10 +204,17 @@ describe("端到端 — 唯一简称与唯一别名", () => {
     expect(judgePhrase(c, { chosenSceneId: "police_station", forced: false }).verdict).toBe("fail");
   });
 
-  test("**后缀式别名仍认不出**：「医院」不是「霍姆斯医院」的前缀", () => {
-    // 简称只认**前缀**，因为前缀的唯一性能算得准。后缀/中缀要模糊匹配，
-    // 那是另一件事 —— 判据把它留在 no-key 里，不假装解决了。
+  test("后缀式别名也认得出：「医院」之于「霍姆斯医院」", () => {
+    // 中文地名的中心词在后面，玩家最常省掉的正是前面的专名。
+    // 只做前缀时这一类实跑 2/74 = 2.7%。
     const c: PhraseCase = { id: "alias", kind: "positive", desc: "后缀别名", said: "我们去医院看看", wantSceneId: "hospital" };
+    expect(judgePhrase(c, run(c.said, conns)).verdict).toBe("pass");
+  });
+
+  test("**中缀仍认不出**：「姆斯」这种碎片不给 —— 唯一但不是词", () => {
+    // 只认前缀与后缀，因为它们是中文地名的自然切分点。
+    // 任意子串都算唯一简称的话，「会面」「筑内」这类碎片会撞上不相干的句子。
+    const c: PhraseCase = { id: "infix", kind: "positive", desc: "中缀", said: "我们去姆斯那边", wantSceneId: "hospital" };
     expect(judgePhrase(c, run(c.said, conns)).verdict).toBe("fail");
   });
 
@@ -464,8 +471,16 @@ describe("hasMoveIntent — 前面紧挨着移动动词吗", () => {
 });
 
 describe("uniqueAbbrevs — 唯一简称，构造上不可能有歧义", () => {
-  test("**正确**：能唯一区分时给出最短前缀", () => {
-    expect(uniqueAbbrevs(["维森酒吧"], ["警察局", "霍姆斯医院"])).toEqual(["维森"]);
+  test("**正确**：能唯一区分时，前缀与后缀都给", () => {
+    // 中文地名的中心词在后面，玩家最常省掉的正是前面的专名。
+    // 只做前缀时 `p11-唯一后缀` 实跑 2/74 = 2.7%。
+    const a = uniqueAbbrevs(["维森酒吧"], ["警察局", "霍姆斯医院"]);
+    expect(a).toContain("维森");
+    expect(a).toContain("酒吧");
+  });
+
+  test("**正确**：后缀能认出「医院」之于「霍姆斯医院」", () => {
+    expect(uniqueAbbrevs(["霍姆斯医院"], ["警察局", "维森酒吧"])).toContain("医院");
   });
 
   test("**错误行为的红线**：区分不开时一个都不给", () => {
@@ -476,13 +491,45 @@ describe("uniqueAbbrevs — 唯一简称，构造上不可能有歧义", () => {
     expect(uniqueAbbrevs(["农场"], ["农场主别墅"])).toEqual([]);
   });
 
-  test("**干扰**：不给出完整键本身（那已经被完整匹配覆盖）", () => {
-    expect(uniqueAbbrevs(["报亭"], ["警察局"])).toEqual([]); // 长度 2，没有更短的真前缀
+  test("**错误行为的红线**：后缀撞车时也不给", () => {
+    // 「医院」同时是两处的中心词 → 谁都不给
+    expect(uniqueAbbrevs(["霍姆斯医院"], ["圣玛丽医院"])).not.toContain("医院");
   });
 
-  test("**干扰**：短于 2 字的前缀不给 —— 单个字满大街都是", () => {
-    expect(uniqueAbbrevs(["中控室"], ["谷仓大厅"])).toEqual(["中控"]);
+  test("**干扰**：括号补充先剥掉 —— 后缀不该是「陷阱区）」", () => {
+    const a = uniqueAbbrevs(["农场外围（陷阱区）"], ["谷仓形建筑"]);
+    expect(a.every((x) => !x.includes("）") && !x.includes("("))).toBe(true);
+  });
+
+  test("**干扰**：不给出完整键本身（那已经被完整匹配覆盖）", () => {
+    expect(uniqueAbbrevs(["报亭"], ["警察局"])).toEqual([]); // 长度 2，没有更短的真前后缀
+  });
+
+  test("**干扰**：短于 2 字的片段不给 —— 单个字满大街都是", () => {
     expect(uniqueAbbrevs(["中控室"], ["谷仓大厅"]).every((a) => a.length >= 2)).toBe(true);
+  });
+});
+
+describe("简称必须紧跟移动动词 —— 光提一嘴不算要去", () => {
+  const conns = [conn("police_station", "前往警察局"), conn("weisen_bar", "前往维森酒吧")];
+
+  test("**正确**：「我们去酒吧看看」认得出", () => {
+    const o = run("我们去酒吧看看", conns);
+    expect(o.forced).toBe(false);
+    expect(o.chosenSceneId).toBe("weisen_bar");
+  });
+
+  test("**错误行为的红线**：「他在酒吧工作过」不该被当成要去酒吧", () => {
+    // 一个光秃秃的中心词出现在句子里，多半是在提一件事。
+    // 完整地名不设这道门槛 —— 说全名本身就足够表明是在点地方。
+    const o = run("他在酒吧工作过，问问看", conns);
+    expect(o.forced).toBe(true);
+  });
+
+  test("**干扰**：说全名时不需要动词也算数", () => {
+    const o = run("维森酒吧那边应该有线索", conns);
+    expect(o.forced).toBe(false);
+    expect(o.chosenSceneId).toBe("weisen_bar");
   });
 });
 

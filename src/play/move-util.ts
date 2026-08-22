@@ -186,27 +186,41 @@ export function mentionScore(said: string, key: string): number {
 }
 
 /**
- * 这条连接的**唯一简称**：能把它和同场景的其它出口区分开的最短前缀。
+ * 这条连接的**唯一简称**：能把它和同场景其它出口区分开的最短前缀与最短后缀。
  *
- * 玩家不会照念全名。「先去维森那边」里的「维森」指的就是维森酒吧 ——
- * 实跑 70 条 `no-key` 失败全是这一类，占改进后剩余失败的 100%。
+ * 玩家不会照念全名，而且省法有两种：
+ *   掐后面 —— 「先去**维森**那边」（维森酒吧）
+ *   掐前面 —— 「我们去**医院**看看」（霍姆斯医院）
+ * 中文地名的中心词在后面，所以后缀那一支不是可有可无：
+ * 实跑 `p11-唯一后缀` 在只有前缀时是 **2/74 = 2.7%**。
  *
  * ⚠ 唯一性是**按当前这组出口**算的，不是全模组：
- *   - 在「警察局 / 维森酒吧 / 霍姆斯医院」之间，「维森」唯一 → 认
+ *   - 在「警察局 / 维森酒吧 / 霍姆斯医院」之间，「维森」「医院」都唯一 → 认
  *   - 在「艾德里安的农场 / 农场外围 / 农场主别墅」之间，「农场」谁都沾 → 不认
- * 这样简称永远不可能造出歧义，是构造上保证的，不靠调阈值。
- * 认不出来的那些仍旧走 `forced=true`，引擎照旧承认自己是替玩家挑的。
+ * 歧义是**构造上**排除的，不靠调阈值。认不出来的仍旧走 `forced=true`，
+ * 引擎照旧承认自己是替玩家挑的。
  *
- * 只取**最短**的那个唯一前缀：更长的前缀已经被完整键覆盖，多留只是噪音。
+ * 只取最短的那个：更长的已经被完整键覆盖，多留只是噪音。
+ * 括号补充先剥掉 —— 「农场外围（陷阱区）」的后缀不该是「陷阱区）」。
  */
 export function uniqueAbbrevs(keys: string[], rivalKeys: string[], minLen = 2): string[] {
+  const strip = (s: string) => s.replace(/[（(][^）)]*[）)]/g, "").trim();
+  const rivals = rivalKeys.map(strip).filter(Boolean).concat(rivalKeys);
+  const unique = (frag: string) => !rivals.some(r => r.includes(frag));
   const out: string[] = [];
-  for (const key of keys) {
+  for (const raw of keys) {
+    const key = strip(raw);
     for (let len = minLen; len < key.length; len++) {
       const prefix = key.slice(0, len);
-      if (rivalKeys.some(r => r.includes(prefix))) continue;
+      if (!unique(prefix)) continue;
       out.push(prefix);
-      break; // 最短的就够了
+      break;
+    }
+    for (let len = minLen; len < key.length; len++) {
+      const suffix = key.slice(key.length - len);
+      if (!unique(suffix)) continue;
+      out.push(suffix);
+      break;
     }
   }
   return [...new Set(out)];
@@ -248,7 +262,11 @@ export function chooseConnection(
     trace.candidates.push({ targetSceneId: c.targetSceneId, keys: [...keys, ...abbrevs] });
     const hit = [
       ...keys.filter(k => said.includes(k)).map(k => ({ key: k, penalty: 0 })),
-      ...abbrevs.filter(k => said.includes(k)).map(k => ({ key: k, penalty: 60 })),
+      // 简称**必须**紧跟移动动词才算数。一个光秃秃的「医院」「酒吧」
+      // 出现在句子里，多半是在提一件事而不是要去那儿
+      // （「他在酒吧工作过」）。完整地名不设这道门槛 —— 说全名本身
+      // 就足够表明是在点地方。
+      ...abbrevs.filter(k => said.includes(k) && hasMoveIntent(said, k)).map(k => ({ key: k, penalty: 60 })),
     ]
       .map(({ key, penalty }) => ({
         key,
