@@ -12,7 +12,10 @@ import {
   judgePhrase, addPhraseResult, newPhraseReport, pct, classifyFailure,
   type PhraseCase, type PhraseOutcome,
 } from "../diagnostics/phrasing";
-import { chooseConnection, matchKeys, type MoveWorldView } from "../play/move-util";
+import {
+  chooseConnection, matchKeys, isRejectedMention, hasMoveIntent, uniqueAbbrevs,
+  type MoveWorldView,
+} from "../play/move-util";
 import type { SceneConnection } from "../module/types";
 
 // ── 判据层：只喂构造出来的结果，不碰引擎 ───────────────────────────
@@ -187,22 +190,24 @@ describe("端到端 — 唯一简称与唯一别名", () => {
     expect(judgePhrase(c, run(c.said, conns)).verdict).toBe("pass");
   });
 
-  test("**唯一简称「维森」认不出** —— 判据必须报失败", () => {
-    // 引擎现状：匹配是子串包含，键是完整地名，所以「维森」这种唯一简称对不上。
-    // 上一版的 12 条用例里 8 条都含完整地名，正是这类会掉的用例被系统性排除掉了。
+  test("唯一简称「维森」认得出（上一版这里是 0/70）", () => {
+    // 上一版的 12 条用例里 8 条都含完整地名，跑出 100%；补进会掉的用例后
+    // 这一类是 0/70。判据把成因指成 `no-key`（匹配方式太窄），据此加了唯一简称。
     const c: PhraseCase = { id: "short", kind: "positive", desc: "唯一简称", said: "先去维森那边坐坐", wantSceneId: "weisen_bar" };
     const o = run(c.said, conns);
-    expect(o.forced).toBe(true); // 引擎自己承认没听懂
-    expect(judgePhrase(c, o).verdict).toBe("fail");
+    expect(o.forced).toBe(false);
+    expect(judgePhrase(c, o).verdict).toBe("pass");
   });
 
-  test("同一条用例，若引擎真认出了简称 → 判据必须通过（判据不是一味报警）", () => {
+  test("**判据不是一味放行**：目标不对时照样失败", () => {
     const c: PhraseCase = { id: "short", kind: "positive", desc: "唯一简称", said: "先去维森那边坐坐", wantSceneId: "weisen_bar" };
-    expect(judgePhrase(c, { chosenSceneId: "weisen_bar", forced: false }).verdict).toBe("pass");
+    expect(judgePhrase(c, { chosenSceneId: "police_station", forced: false }).verdict).toBe("fail");
   });
 
-  test("唯一别名「医院」认不出（场景真名是「霍姆斯医院」）", () => {
-    const c: PhraseCase = { id: "alias", kind: "positive", desc: "唯一别名", said: "我们去医院看看", wantSceneId: "hospital" };
+  test("**后缀式别名仍认不出**：「医院」不是「霍姆斯医院」的前缀", () => {
+    // 简称只认**前缀**，因为前缀的唯一性能算得准。后缀/中缀要模糊匹配，
+    // 那是另一件事 —— 判据把它留在 no-key 里，不假装解决了。
+    const c: PhraseCase = { id: "alias", kind: "positive", desc: "后缀别名", said: "我们去医院看看", wantSceneId: "hospital" };
     expect(judgePhrase(c, run(c.said, conns)).verdict).toBe("fail");
   });
 
@@ -215,19 +220,18 @@ describe("端到端 — 唯一简称与唯一别名", () => {
       wantSceneId: "newsstand", forbidSceneId: "police_station",
     };
     const withNews = [...conns, conn("newsstand", "前往报亭")];
-    const j = judgePhrase(c, run(c.said, withNews));
-    // 引擎按顺序匹配，警察局排在报亭前面 → 会被选中。判据必须**报出来**。
-    expect(j.verdict).toBe("fail");
-    expect(j.why).toContain("排除");
+    expect(judgePhrase(c, run(c.said, withNews)).verdict).toBe("pass");
   });
 
-  test("同一句话把报亭排到前面 → 判据通过（说明它测的是行为不是顺序噪声）", () => {
+  test("**换个连接顺序，结论必须一样** —— 顺序无关是这次改动的核心", () => {
     const c: PhraseCase = {
       id: "mentioned-not-target", kind: "negative", desc: "提到但不是目标",
       said: "警察局那边我们已经去过了，现在去报亭",
       wantSceneId: "newsstand", forbidSceneId: "police_station",
     };
     const reordered = [conn("newsstand", "前往报亭"), ...conns];
+    const withNews = [...conns, conn("newsstand", "前往报亭")];
+    expect(run(c.said, reordered).chosenSceneId).toBe(run(c.said, withNews).chosenSceneId);
     expect(judgePhrase(c, run(c.said, reordered)).verdict).toBe("pass");
   });
 });
@@ -241,14 +245,28 @@ describe("端到端 — 否定式反例与连接顺序无关", () => {
     expect(judgePhrase(c, run(said, ordered)).verdict).toBe("pass");
   });
 
-  test("**警察局排在前面时就会选错** —— 判据必须报失败，而不是随顺序飘绿", () => {
-    // 这就是「用例干扰项恰好在目标之后」那类错（review-request 第 3 条）。
-    // 判据如果只跑一种顺序，实现改错也全绿。
+  test("**警察局排在前面时也不能选错** —— 这就是「干扰项恰好在目标之后」那类错", () => {
+    // review-request 第 3 条：用例只跑一种顺序，实现改错也全绿。
     const c: PhraseCase = { id: "negate", kind: "negative", desc: "否定", said, wantSceneId: "weisen_bar", forbidSceneId: "police_station" };
     const ordered = [conn("police_station", "前往警察局"), conn("weisen_bar", "前往维森酒吧")];
-    const o = run(said, ordered);
-    expect(o.chosenSceneId).toBe("police_station"); // 引擎现状：不处理否定
-    expect(judgePhrase(c, o).verdict).toBe("fail");
+    expect(judgePhrase(c, run(said, ordered)).verdict).toBe("pass");
+  });
+
+  test("**否定必须压过键长** —— 被否定的地名更长时同样要避开", () => {
+    // 第一版否定正则写成 `(别|不去|…)$`，「别去X」根本匹配不上（紧邻两字是「别去」）。
+    // 当时能过测试纯粹是因为被否定的地名恰好更短，靠键长比赢的。
+    // 换成更长的被否定地名立刻现形 —— 实跑 26 条全灭。
+    const c: PhraseCase = {
+      id: "negate-long", kind: "negative", desc: "否定一个更长的地名",
+      said: "别去艾德里安在镇子内的住宅，去报亭",
+      wantSceneId: "newsstand", forbidSceneId: "adrian_town_house",
+    };
+    const ordered = [
+      conn("adrian_town_house", "前往艾德里安在镇子内的住宅"),
+      conn("newsstand", "前往报亭"),
+    ];
+    expect(judgePhrase(c, run(c.said, ordered)).verdict).toBe("pass");
+    expect(judgePhrase(c, run(c.said, [...ordered].reverse())).verdict).toBe("pass");
   });
 });
 
@@ -344,47 +362,33 @@ describe("classifyFailure — 说得出为什么没对上", () => {
     expect(classifyFailure(want, { chosenSceneId: null, forced: true })).toBe("other");
   });
 
-  test("端到端：「别去警察局，去维森酒吧」在两种顺序下成因不同", () => {
-    const c: PhraseCase = {
-      id: "negate", kind: "negative", desc: "否定", said: "别去警察局，去维森酒吧",
-      wantSceneId: "weisen_bar", forbidSceneId: "police_station",
-    };
-    // 两条键都出现在句子里 → 这是歧义，不是「没听懂」
-    const o = run(c.said, [conn("police_station", "前往警察局"), conn("weisen_bar", "前往维森酒吧")]);
-    expect(judgePhrase(c, o).verdict).toBe("fail");
-    expect(classifyFailure(c, o)).toBe("ambiguous");
-  });
-
-  test("端到端：「先去维森那边」是 no-key，不是认错人", () => {
-    const c: PhraseCase = { id: "short", kind: "positive", desc: "唯一简称", said: "先去维森那边", wantSceneId: "weisen_bar" };
-    const o = run(c.said, [conn("police_station", "前往警察局"), conn("weisen_bar", "前往维森酒吧")]);
-    expect(classifyFailure(c, o)).toBe("no-key");
-  });
-
-  test("端到端：「回镇上那处住宅看看」是 rival-only", () => {
+  test("端到端：「回镇上那处住宅看看」是 rival-only（只命中了别处的键）", () => {
+    // 目标的键是「镇内住宅」，句子里没有；只有「镇上」中了。
+    // 这类要靠模糊匹配才修得了，不是消歧能解决的 —— 判据得说得出这个区别。
     const c: PhraseCase = {
       id: "overlap", kind: "negative", desc: "短地名是长说法的子串",
       said: "回镇上那处住宅看看", wantSceneId: "adrian_town_house", forbidSceneId: "town_premier",
     };
     const o = run(c.said, [conn("town_premier", "返回镇上"), conn("adrian_town_house", "前往镇内住宅")]);
+    expect(judgePhrase(c, o).verdict).toBe("fail");
     expect(classifyFailure(c, o)).toBe("rival-only");
   });
 });
 
-describe("MoveMatchTrace — 记录不改行为", () => {
+describe("MoveMatchTrace — 匹配过程留痕", () => {
   const conns = [conn("police_station", "前往警察局"), conn("weisen_bar", "前往维森酒吧")];
 
-  test("多条命中时，胜出的仍是下标最小的那条（行为不变）", () => {
+  test("多条命中都留痕，即使其中一条被否定掉了", () => {
     const r = chooseConnection({ action: "别去警察局，去维森酒吧" }, conns, view());
-    expect(r.conn?.targetSceneId).toBe("police_station");
-    expect(r.trace.winnerIndex).toBe(0);
     expect(r.trace.matched.length).toBe(2);
+    expect(r.conn?.targetSceneId).toBe("weisen_bar");
   });
 
-  test("**干扰**：换个顺序，胜出的跟着变 —— 判据据此认出「靠顺序赢的」", () => {
-    const r = chooseConnection({ action: "别去警察局，去维森酒吧" }, [...conns].reverse(), view());
-    expect(r.conn?.targetSceneId).toBe("weisen_bar");
-    expect(r.trace.matched.length).toBe(2);
+  test("**换个顺序，结论不变** —— 这是消歧生效的直接判据", () => {
+    const a = chooseConnection({ action: "别去警察局，去维森酒吧" }, conns, view());
+    const b = chooseConnection({ action: "别去警察局，去维森酒吧" }, [...conns].reverse(), view());
+    expect(a.conn?.targetSceneId).toBe(b.conn?.targetSceneId);
+    expect(a.forced).toBe(b.forced);
   });
 
   test("没命中时留下打分表，且 winnerIndex 为 -1", () => {
@@ -404,6 +408,121 @@ describe("MoveMatchTrace — 记录不改行为", () => {
     const r = chooseConnection({ action: "去哪儿" }, [], view());
     expect(r.conn).toBeNull();
     expect(r.trace.candidates).toEqual([]);
+  });
+});
+
+// ── 消歧的三块砖 ─────────────────────────────────────────────
+
+describe("isRejectedMention — 这地方是被排除掉的吗", () => {
+  test("**应报**：否定", () => {
+    expect(isRejectedMention("别去警察局，去维森酒吧", "警察局")).toBe(true);
+    expect(isRejectedMention("不要去警察局", "警察局")).toBe(true);
+    expect(isRejectedMention("先不去警察局了", "警察局")).toBe(true);
+    expect(isRejectedMention("我们不去警察局", "警察局")).toBe(true);
+  });
+
+  test("**应报**：已经去过了", () => {
+    expect(isRejectedMention("警察局那边已经去过了，现在去报亭", "警察局")).toBe(true);
+    expect(isRejectedMention("警察局看过了", "警察局")).toBe(true);
+  });
+
+  test("**不应报**：正常提到", () => {
+    expect(isRejectedMention("去警察局", "警察局")).toBe(false);
+    expect(isRejectedMention("我们去警察局问问", "警察局")).toBe(false);
+  });
+
+  test("**不应报**：句子里有「不」但不是修饰这个地名的", () => {
+    // 整句见「不」就排除，会把这句也毙掉。判据只看紧挨着的那几个字。
+    expect(isRejectedMention("不管怎样先去警察局", "警察局")).toBe(false);
+    expect(isRejectedMention("说不定该去警察局", "警察局")).toBe(false);
+  });
+
+  test("**干扰**：提了两次，一次被否定一次没有 → 不算排除", () => {
+    expect(isRejectedMention("别去警察局……算了还是去警察局吧", "警察局")).toBe(false);
+  });
+
+  test("干扰：地名压根不在句子里 → 视作排除（没提过就不该选它）", () => {
+    expect(isRejectedMention("去报亭", "警察局")).toBe(true);
+  });
+});
+
+describe("hasMoveIntent — 前面紧挨着移动动词吗", () => {
+  test("应报", () => {
+    expect(hasMoveIntent("现在去报亭", "报亭")).toBe(true);
+    expect(hasMoveIntent("前往报亭", "报亭")).toBe(true);
+    expect(hasMoveIntent("返回报亭", "报亭")).toBe(true);
+  });
+
+  test("不应报：只是提了一嘴", () => {
+    expect(hasMoveIntent("报亭那边已经看过了", "报亭")).toBe(false);
+    expect(hasMoveIntent("听说报亭有消息", "报亭")).toBe(false);
+  });
+
+  test("干扰：提两次，有一次带动词就算", () => {
+    expect(hasMoveIntent("报亭那边看过了，还是去报亭吧", "报亭")).toBe(true);
+  });
+});
+
+describe("uniqueAbbrevs — 唯一简称，构造上不可能有歧义", () => {
+  test("**正确**：能唯一区分时给出最短前缀", () => {
+    expect(uniqueAbbrevs(["维森酒吧"], ["警察局", "霍姆斯医院"])).toEqual(["维森"]);
+  });
+
+  test("**错误行为的红线**：区分不开时一个都不给", () => {
+    // 「农场」谁都沾 —— 给了就等于制造歧义。
+    const keys = ["农场外围（陷阱区）", "农场外围"];
+    const rivals = ["艾德里安的农场", "农场主别墅"];
+    expect(uniqueAbbrevs(keys, rivals).every((a) => !rivals.some((r) => r.includes(a)))).toBe(true);
+    expect(uniqueAbbrevs(["农场"], ["农场主别墅"])).toEqual([]);
+  });
+
+  test("**干扰**：不给出完整键本身（那已经被完整匹配覆盖）", () => {
+    expect(uniqueAbbrevs(["报亭"], ["警察局"])).toEqual([]); // 长度 2，没有更短的真前缀
+  });
+
+  test("**干扰**：短于 2 字的前缀不给 —— 单个字满大街都是", () => {
+    expect(uniqueAbbrevs(["中控室"], ["谷仓大厅"])).toEqual(["中控"]);
+    expect(uniqueAbbrevs(["中控室"], ["谷仓大厅"]).every((a) => a.length >= 2)).toBe(true);
+  });
+});
+
+describe("端到端 — 唯一简称认得出，不唯一的仍旧 forced", () => {
+  test("「先去维森那边」认得出（正例）", () => {
+    const conns = [conn("police_station", "前往警察局"), conn("weisen_bar", "前往维森酒吧")];
+    const c: PhraseCase = { id: "abbr", kind: "positive", desc: "唯一简称", said: "先去维森那边", wantSceneId: "weisen_bar" };
+    expect(judgePhrase(c, run(c.said, conns)).verdict).toBe("pass");
+  });
+
+  test("**「去农场」仍旧 forced** —— 三个目标都沾，简称不能凭空造出确定性", () => {
+    const conns = [
+      conn("adrian_farm", "前往艾德里安的农场"),
+      conn("farm_periphery", "进入农场外围（陷阱区）"),
+      conn("farm_villa", "前往农场主别墅"),
+    ];
+    const o = run("去农场", conns);
+    expect(o.forced).toBe(true);
+    const c: PhraseCase = { id: "amb", kind: "ambiguous", desc: "共同前缀", said: "去农场", wantSceneId: null };
+    expect(judgePhrase(c, o).verdict).toBe("pass");
+  });
+
+  test("**完整键永远压得过简称** —— 简称扣分不是随便设的", () => {
+    // 「去维森酒吧那边，别去警察」：完整键 维森酒吧 vs 简称 警察（若唯一）
+    const conns = [conn("police_station", "前往警察局"), conn("weisen_bar", "前往维森酒吧")];
+    expect(run("我想去警察局，顺路看看维森", conns).chosenSceneId).toBe("police_station");
+  });
+
+  test("干扰：同义改写/代词仍旧 forced（简称不该把它们也吞了）", () => {
+    const conns = [conn("police_station", "前往警察局"), conn("weisen_bar", "前往维森酒吧")];
+    expect(run("换个地方看看", conns).forced).toBe(true);
+    expect(run("去那边", conns).forced).toBe(true);
+    expect(run("去那个有灯光的房间", conns).forced).toBe(true);
+  });
+
+  test("干扰：两条连接通向同一个场景时，简称不算歧义（去哪儿一点不含糊）", () => {
+    const conns = [conn("sewer", "返回下水道"), conn("sewer", "通过奇怪管道（下水道深处）")];
+    const o = run("去下水", conns);
+    expect(o.forced).toBe(false);
+    expect(o.chosenSceneId).toBe("sewer");
   });
 });
 

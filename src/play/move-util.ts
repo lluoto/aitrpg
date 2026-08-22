@@ -112,14 +112,119 @@ export function matchKeys(c: SceneConnection, world: MoveWorldView): string[] {
   return [noVerb, noParen, sceneName].filter(k => k.length >= 2);
 }
 
+// ── 提及的性质 ──
+//
+// 一个地名出现在句子里，不等于玩家要去那儿。
+// `tools/_diag-phrasing.ts` 把失败按成因分开之后，142 条里有 **72 条**是
+// 「自己和别处都命中，靠候选顺序抢先」—— 同一句话换个连接顺序结论就变。
+// 那不是「没听懂」，是**听懂了但选错了人**。
+
 /**
- * 把玩家的一句话对到一条连接上。**纯函数，没有行为改动** ——
- * 原样搬自 `processScene`，只是从闭包里挪出来好让它可测。
+ * 否定：这地方玩家明说了不去。
  *
- * 为什么值得挪：这个仓库已经栽过一次 —— 见
+ * ⚠ 动词那一节必须是可选组，不能把「不去」写成一个整体。
+ * 第一版写的是 `(别|不要|不去|…)$`，于是「**别去**加比的拖车房」根本匹配不上
+ * —— 紧挨着地名的两个字是「别去」，而模式里只有「别」（要求结尾）和「不去」。
+ * 那一版看着能过测试，纯粹是因为用例里被否定的那个地名恰好更短，
+ * 靠键长比赢的，不是靠否定。换个更长的地名立刻现形（实跑
+ * 「别去加比的拖车房，去普瑞米尔」26 条全灭）。
+ */
+const NEGATION = /(别|不要|不用|甭|先不|暂时不|没必要|无需|不)(去|前往|到|进|进入|回|返回|走)?$/;
+/** 已完成：去过了、看过了 —— 提它是为了排除它 */
+const DONE_AFTER = /^(那边|这边|那儿|那里)?(已经|都)?(去过|来过|看过|查过|搜过)/;
+/** 移动意图：紧挨在地名前面的动词 */
+const MOVE_VERB = /(去|前往|到|进|进入|回|返回|走向|奔向)$/;
+
+/**
+ * 这句话里提到这个地名，是不是**被排除掉**了。
+ *
+ * 两种排除：
+ *   否定 —— 「**别去**警察局，去维森酒吧」
+ *   已完成 —— 「警察局那边**已经去过了**，现在去报亭」
+ *
+ * 判据看的是紧挨着地名的那一小段，不是整句 —— 整句里出现「不」就一律排除
+ * 会把「不管怎样先去警察局」也毙掉。窗口取 4 个字，够覆盖「先不」「没必要」
+ * 这类前缀，又不至于跨到上一个分句。
+ */
+export function isRejectedMention(said: string, key: string): boolean {
+  let from = 0;
+  for (;;) {
+    const at = said.indexOf(key, from);
+    if (at < 0) return true;         // 每一处提及都被排除了
+    const before = said.slice(Math.max(0, at - 4), at);
+    const after = said.slice(at + key.length, at + key.length + 8);
+    if (!NEGATION.test(before) && !DONE_AFTER.test(after)) return false; // 有一处是干净的
+    from = at + key.length;
+  }
+}
+
+/** 这个地名前面紧挨着移动动词吗 —— 「现在**去**报亭」比单纯提一嘴更像是要去 */
+export function hasMoveIntent(said: string, key: string): boolean {
+  let from = 0;
+  for (;;) {
+    const at = said.indexOf(key, from);
+    if (at < 0) return false;
+    if (MOVE_VERB.test(said.slice(Math.max(0, at - 2), at))) return true;
+    from = at + key.length;
+  }
+}
+
+/**
+ * 一条命中有多可信。分数只在**命中之间**比较，不与 forced 打分表混用。
+ *
+ * 三档，按重要性：
+ *   +100 前面紧挨移动动词（「现在去报亭」）
+ *   + 键长 —— 更长的键更具体，「农场主别墅」比「农场」说明的东西多
+ *   + 出现位置 —— 越靠后越可能是最终决定（「A 去过了，现在去 B」）
+ *
+ * ⚠ 不能只用键长：「别去维森酒吧，去警察局」里维森酒吧更长，
+ *   光比长度会选错。否定必须先过滤掉，长度只做次要区分。
+ */
+export function mentionScore(said: string, key: string): number {
+  const at = said.lastIndexOf(key);
+  return (hasMoveIntent(said, key) ? 100 : 0) + key.length * 2 + (at < 0 ? 0 : at * 0.1);
+}
+
+/**
+ * 这条连接的**唯一简称**：能把它和同场景的其它出口区分开的最短前缀。
+ *
+ * 玩家不会照念全名。「先去维森那边」里的「维森」指的就是维森酒吧 ——
+ * 实跑 70 条 `no-key` 失败全是这一类，占改进后剩余失败的 100%。
+ *
+ * ⚠ 唯一性是**按当前这组出口**算的，不是全模组：
+ *   - 在「警察局 / 维森酒吧 / 霍姆斯医院」之间，「维森」唯一 → 认
+ *   - 在「艾德里安的农场 / 农场外围 / 农场主别墅」之间，「农场」谁都沾 → 不认
+ * 这样简称永远不可能造出歧义，是构造上保证的，不靠调阈值。
+ * 认不出来的那些仍旧走 `forced=true`，引擎照旧承认自己是替玩家挑的。
+ *
+ * 只取**最短**的那个唯一前缀：更长的前缀已经被完整键覆盖，多留只是噪音。
+ */
+export function uniqueAbbrevs(keys: string[], rivalKeys: string[], minLen = 2): string[] {
+  const out: string[] = [];
+  for (const key of keys) {
+    for (let len = minLen; len < key.length; len++) {
+      const prefix = key.slice(0, len);
+      if (rivalKeys.some(r => r.includes(prefix))) continue;
+      out.push(prefix);
+      break; // 最短的就够了
+    }
+  }
+  return [...new Set(out)];
+}
+
+/**
+ * 把玩家的一句话对到一条连接上。
+ *
+ * 为什么值得从闭包里挪出来：这个仓库已经栽过一次 —— 见
  * `src/__tests__/narrative-entity-recognition.test.ts:55`，
  * 「这道门原先长在 runModuleInner 的闭包里，测不到 —— 于是四局实跑一次都没演」。
- * 主循环至今没有任何测试覆盖，改它之前先让它能被测。
+ *
+ * 匹配分三步：
+ *   1. 收集所有命中（不是撞上第一个就走）
+ *   2. 去掉被否定/已完成的提及
+ *   3. 剩下的按可信度排序，取最高
+ * 第 2、3 步是 `_diag-phrasing.ts` 把 142 条失败按成因拆开之后加的：
+ * 其中 72 条是「好几条都命中、靠列表顺序抢先」，换个顺序结论就变。
  */
 export function chooseConnection(
   decision: { action: string },
@@ -129,18 +234,41 @@ export function chooseConnection(
   const trace: MoveMatchTrace = { candidates: [], matched: [], winnerIndex: -1, scores: [] };
   if (unlocked.length === 0) return { conn: null, forced: false, trace };
 
-  // 先把**所有**命中都记下来再决定，而不是撞上第一个就 return。
-  // 行为不变（胜出的仍是下标最小的那条），但「其实有好几条都命中」
-  // 这件事从此看得见 —— 「重叠地名」和「否定」两类失败正是这么产生的。
+  const said = decision.action;
+  const allKeys = unlocked.map(c => matchKeys(c, world));
+
+  // 1. 收集所有命中。同一条连接可能有多个键命中，取最可信的那个。
+  //    完整键之外再加**唯一简称** —— 只有在本组出口里能唯一定位时才算，
+  //    所以简称构造上不可能造出歧义。简称扣分，任何完整键都压得过它。
+  const hits: { index: number; key: string; score: number; rejected: boolean }[] = [];
   unlocked.forEach((c, i) => {
-    const keys = matchKeys(c, world);
-    trace.candidates.push({ targetSceneId: c.targetSceneId, keys });
-    const key = keys.find(k => decision.action.includes(k));
-    if (key === undefined) return;
-    trace.matched.push({ targetSceneId: c.targetSceneId, key });
-    if (trace.winnerIndex < 0) trace.winnerIndex = i;
+    const keys = allKeys[i]!;
+    const rivals = allKeys.filter((_, j) => j !== i && unlocked[j]!.targetSceneId !== c.targetSceneId).flat();
+    const abbrevs = uniqueAbbrevs(keys, rivals);
+    trace.candidates.push({ targetSceneId: c.targetSceneId, keys: [...keys, ...abbrevs] });
+    const hit = [
+      ...keys.filter(k => said.includes(k)).map(k => ({ key: k, penalty: 0 })),
+      ...abbrevs.filter(k => said.includes(k)).map(k => ({ key: k, penalty: 60 })),
+    ]
+      .map(({ key, penalty }) => ({
+        key,
+        score: mentionScore(said, key) - penalty,
+        rejected: isRejectedMention(said, key),
+      }))
+      .sort((a, b) => Number(a.rejected) - Number(b.rejected) || b.score - a.score)[0];
+    if (!hit) return;
+    trace.matched.push({ targetSceneId: c.targetSceneId, key: hit.key });
+    hits.push({ index: i, ...hit });
   });
-  if (trace.winnerIndex >= 0) {
+
+  // 2. 去掉被否定 / 已去过的。全被排除时才回落到打分替选 ——
+  //    「别去警察局」不该被理解成「那就去警察局」。
+  const alive = hits.filter(h => !h.rejected);
+  if (alive.length > 0) {
+    // 3. 按可信度取最高；完全打平才回落到列表顺序。
+    //    平局用下标而不是随机：同样的话每次得到同样的结果。
+    alive.sort((a, b) => b.score - a.score || a.index - b.index);
+    trace.winnerIndex = alive[0]!.index;
     return { conn: unlocked[trace.winnerIndex]!, forced: false, trace };
   }
 
