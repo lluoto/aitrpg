@@ -28,8 +28,19 @@ export class FinanceSystem {
     this.registerCurrency({ id: "spirit_stone", name: "灵石", type: "commodity", issuer: "common", supply: 5000, stability: 70 });
     this.registerCurrency({ id: "spirit_voucher", name: "灵石券", type: "credit", issuer: "common", supply: 20000, stability: 50 });
 
-    this.setExchangeRate("gold_coin", "spirit_voucher", 10);
-    this.setExchangeRate("spirit_stone", "spirit_voucher", 50);
+    // 返回值必须看。`setExchangeRate` 在任一货币没注册时返回 false 而**不设汇率**，
+    // 丢掉返回值的后果是「默认汇率悄悄不存在」：`convert()` 后面查不到汇率，
+    // 兑换按别的路径算，而没有任何一处会报错。
+    // 这三种货币就在上面两行刚注册过，所以失败只可能是**代码写错了**（id 拼错、
+    // 顺序被人调换），该当场炸掉，不该带着错汇率继续跑。
+    for (const [from, to, rate] of [
+      ["gold_coin", "spirit_voucher", 10],
+      ["spirit_stone", "spirit_voucher", 50],
+    ] as const) {
+      if (!this.setExchangeRate(from, to, rate)) {
+        throw new Error(`默认汇率没能设上：${from} → ${to}（货币未注册？检查上面的 registerCurrency）`);
+      }
+    }
   }
 
   // 注册货币 / Register a new currency

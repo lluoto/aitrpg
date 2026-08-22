@@ -983,8 +983,10 @@ export class GameSession {
    */
   setScene(sceneId: string): boolean {
     if (!this.world.getScene(sceneId)) return false;
-    this.world.setActiveScene(sceneId);
-    return true;
+    // 转发 setActiveScene 的**回读结果**，不是「我调用过了」。
+    // 那两句 UPDATE 会先清空全部 is_active，目标不存在时world 里
+    // 一个活动场景都不剩 —— 光靠「没抛异常」判断成功正是 §八 两次事故的形状。
+    return this.world.setActiveScene(sceneId);
   }
   /** 当前会话映射到 applyAction 所需的只读状态快照。 */
   getGateState(): GateState {
@@ -1529,7 +1531,14 @@ export class GameSession {
     if (!this.world.getScene(sceneId)) {
       this.world.registerScene(sceneId, target, `${target}的场景`);
     }
-    this.setScene(sceneId);
+    // ⚠ 这里原先是 `this.setScene(sceneId);` —— **返回值丢掉**，
+    // 然后不管成没成都往下走，最后照样 `msg("你移动到了场景: X")` 并 `return true`。
+    // 注册若因任何原因没生效，玩家会被告知「你移动到了 X」而实际没动，
+    // 后端还回 success —— 与 §八 记的两次事故同一形状（「后端却仍返回 success: true」）。
+    if (!this.setScene(sceneId)) {
+      msg(`那地方现在去不了（场景「${target}」没能激活）。`);
+      return false; // 交回上层，走 LLM 叙事兜底，别谎报成功
+    }
     // 更新玩家位置
     const state = this.world.getCurrentState();
     const player = state.entities["player"];
@@ -2017,7 +2026,13 @@ export class GameSession {
     if (story.scenes.length > 0) {
       // 上面的循环刚 registerScene 过全部场景，这里统一经 setScene() 收口，
       // 保持「场景激活只有一条写入路径」这个不变量可被 grep 验证。
-      this.setScene(story.scenes[0].id);
+      //
+      // 返回值必须看：激活失败时 `setActiveScene` 会让世界**没有任何活动场景**，
+      // 而这里是新故事的入口 —— 静默失败等于开局就没有当前场景，
+      // 后面每一次「你在哪」都会答错，却没有任何一处会报错。
+      if (!this.setScene(story.scenes[0].id)) {
+        msg(`⚠ 新故事的首个场景「${story.scenes[0].name}」没能激活，当前场景可能为空。`);
+      }
     }
 
     const sceneNames = story.scenes.map(s => s.name).join(", ");

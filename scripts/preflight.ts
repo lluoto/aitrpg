@@ -4,8 +4,9 @@
 //   bun scripts/preflight.ts            全查
 //   bun scripts/preflight.ts --quick    只查快的（跳过测试）
 //
-// 七项检查：切割残渣 / 占位注释 / 反向 import / PowerShell 读中文 /
-//           文档引用的脚本是否入库 / typecheck / 测试条数基线
+// 八项检查：切割残渣 / 占位注释 / 反向 import / PowerShell 读中文 /
+//           丢掉的成功与否返回值 / 文档引用的脚本是否入库 /
+//           typecheck / 测试条数基线
 //
 // ⚠ 这份脚本自己返工过一次。上一版六项检查里，**五项能被同一段坏代码骗过**：
 //   1. 切割残渣：只认 `return|await|赋值` 四种起手式 → 函数头被删后留下
@@ -30,6 +31,7 @@ import {
   findTruncatedBlocks, findPlaceholderResidue, findReverseImports, findShellRisks,
   judgeProcess, parseTestOutput, judgeTestCount,
   referencedScripts, judgeScriptRefs, generatedDocs,
+  boolReturningNames, findDroppedReturns,
   type Finding, type TestBaseline,
 } from "../src/diagnostics/source-scan";
 
@@ -94,6 +96,25 @@ const scriptFiles = [
   ...walk("frontend", scriptExts),
 ];
 for (const f of scriptFiles) push(findShellRisks(f, read(f)));
+
+// ── 8. 「成功与否」的返回值被丢掉 ──
+//
+// 「静默失败」在这个仓库有前科，docs/kp-tool-surface-assessment.md §八 记了两次，
+// 原话是「类型检查与 710 个测试全绿，只有真实跑团暴露了它」。
+// 这条检查第一次跑就逮到 `this.setScene(sceneId);` 两处 ——
+// 而 `setActiveScene` 失败时会先清空全部 is_active，把世界弄成
+// **一个活动场景都不剩**，比什么都没做更糟。
+//
+// 现在仓库里是 0 处，所以**不设豁免名单**：新增一处就红，
+// 要么接住返回值，要么显式 `void`，要么说明白为什么可以不管。
+{
+  const scanned = [...srcFiles, ...walk("scripts", [".ts"])]
+    .filter((p) => !p.includes(join("src", "__tests__")));
+  const boolNames = new Set<string>();
+  for (const f of scanned) for (const n of boolReturningNames(read(f))) boolNames.add(n);
+  for (const f of scanned) push(findDroppedReturns(f, read(f), boolNames));
+  notes.push(`返回 boolean 的实现 ${boolNames.size} 个，返回值被丢掉 0 处（超过 0 就会变成上面的问题）`);
+}
 
 // ── 7. 生成的文档叫人跑的脚本，仓库里得真有 ──
 //

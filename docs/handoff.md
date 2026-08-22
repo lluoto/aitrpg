@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-22 07:57  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-22 08:34  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：9753d25 fix: the diagnostics were never actually in the repo  ·  **测试**：1622 条 / 78 文件，全绿（基线 1622，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：951c921 fix: the human-facing move matcher had the same bugs, untested  ·  **测试**：1658 条 / 80 文件，全绿（基线 1658，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -108,6 +108,8 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 
 ## 最近做了什么
 
+- 951c921 fix: the human-facing move matcher had the same bugs, untested
+- 0da3b53 feat: ask the LLM when substring matching gives up
 - 9753d25 fix: the diagnostics were never actually in the repo
 - f660111 feat: recognise the head noun of a place name ("去医院" = 霍姆斯医院)
 - 91a7954 feat: move matching stops losing to word order
@@ -118,8 +120,6 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 - c8776e7 fix: tell the player when the engine picks the destination
 - 06d796c chore: backup tiering shows only 500mb is irreplaceable
 - ea62ae0 docs: workdir audit confirms archival is complete, flags backup risk
-- 307fbae docs: mark stale conclusions in the player-agency notes
-- 8c82675 fix: pass remaining investigable clues to move decision
 
 ## 代码地图
 

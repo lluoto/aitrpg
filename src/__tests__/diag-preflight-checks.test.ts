@@ -10,6 +10,7 @@ import {
   scanImports, importPointsTo, findReverseImports,
   findShellRisks, judgeProcess, parseTestOutput, judgeTestCount,
   referencedScripts, judgeScriptRefs, generatedDocs,
+  boolReturningNames, findDroppedReturns,
 } from "../diagnostics/source-scan";
 
 // ── 底座：词法遮罩 ─────────────────────────────────────────────
@@ -392,6 +393,80 @@ describe("检查 7 · 文档叫人跑的脚本", () => {
 
   test("干扰：非脚本扩展名不算（`bun test` / `bun install`）", () => {
     expect(referencedScripts("```\nbun test\nbun install\nbun run typecheck\n```")).toEqual([]);
+  });
+});
+
+// ── 检查 8：「成功与否」的返回值被丢掉 ────────────────────────
+
+describe("检查 8 · 丢掉的 boolean 返回值", () => {
+  const src = [
+    "class S {",
+    "  setScene(id: string): boolean { return true; }",
+    "  private ok(): boolean { return false; }",
+    "  run() {",
+    "    this.setScene('a');",        // 应报
+    "    const r = this.setScene('b');", // 不应报：接了
+    "    if (!this.setScene('c')) return;", // 不应报：判了
+    "    return this.ok();",           // 不应报：返回了
+    "  }",
+    "}",
+  ].join("\n");
+
+  test("认得出返回 boolean 的**实现**", () => {
+    expect(boolReturningNames(src).sort()).toEqual(["ok", "setScene"]);
+  });
+
+  test("**不应报**：接口成员声明不是实现", () => {
+    // `isSceneVisited(id: string): boolean;` 长得跟调用很像 ——
+    // 第一版扫出来两个假阳性就是它。判据看后面跟 `{` 还是 `;`。
+    const iface = [
+      "export interface MoveWorldView {",
+      "  isSceneVisited(sceneId: string): boolean;",
+      "  sceneExists(sceneId: string): boolean;",
+      "}",
+    ].join("\n");
+    expect(boolReturningNames(iface)).toEqual([]);
+  });
+
+  test("**应报**：整行就是一次调用，返回值没人接", () => {
+    const f = findDroppedReturns("s.ts", src, new Set(boolReturningNames(src)));
+    expect(f.length).toBe(1);
+    expect(f[0]!.rule).toBe("dropped-boolean-return");
+    expect(f[0]!.message).toContain("setScene");
+  });
+
+  test("**不应报**：接了 / 判了 / 返回了", () => {
+    const f = findDroppedReturns("s.ts", src, new Set(boolReturningNames(src)));
+    expect(f.some((x) => x.message.includes("const r"))).toBe(false);
+    expect(f.some((x) => x.message.includes("if ("))).toBe(false);
+    expect(f.some((x) => x.message.includes("return this.ok"))).toBe(false);
+  });
+
+  test("**干扰**：注释与字符串里的同名调用不算", () => {
+    const noisy = [
+      "class S { setScene(id: string): boolean { return true; } }",
+      "// this.setScene('x');",
+      "const tip = \"this.setScene('y');\";",
+    ].join("\n");
+    expect(findDroppedReturns("s.ts", noisy, new Set(["setScene"]))).toEqual([]);
+  });
+
+  test("**干扰**：不返回 boolean 的方法不在范围内", () => {
+    const other = "class S { log(m: string): void {} run() { this.log('x'); } }";
+    expect(findDroppedReturns("s.ts", other, new Set(boolReturningNames(other)))).toEqual([]);
+  });
+
+  test("**干扰**：接口成员签名不是调用（真实假阳性，实跑逮到过）", () => {
+    // `move-util.ts` 的 `MoveWorldView` 里有 `isSceneVisited(id: string): boolean;`，
+    // 而 `world/state.ts` 真的实现了同名方法 —— 于是名字在集合里，
+    // 那行签名就被报成「调用了但丢了返回值」。区别只在 `): X;` 这个返回类型标注。
+    const iface = [
+      "export interface MoveWorldView {",
+      "  isSceneVisited(sceneId: string): boolean;",
+      "  sceneExists(sceneId: string): boolean;",
+      "}",
+    ].join("\n");
+    expect(findDroppedReturns("move-util.ts", iface, new Set(["isSceneVisited", "sceneExists"]))).toEqual([]);
   });
 });
 

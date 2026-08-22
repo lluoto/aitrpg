@@ -497,6 +497,64 @@ export function judgeScriptRefs(refs: readonly ScriptRefVerdict[], doc: string):
 }
 
 // ============================================================
+// 检查 8：「成功与否」的返回值被丢掉
+// ============================================================
+
+/**
+ * 找出返回 `boolean` 的方法/函数名。
+ *
+ * ⚠ 要排掉**接口成员声明** —— `isSceneVisited(id: string): boolean;` 长得跟
+ * 调用很像（标识符 + 括号 + 分号结尾），第一版扫出来两个假阳性就是它。
+ * 判据：声明后面跟 `{`（有函数体）才算实现；跟 `;` 的是签名。
+ */
+const BOOL_IMPL = /\b([A-Za-z_$][\w$]*)\s*\([^()]*\)\s*:\s*boolean\s*\{/g;
+
+export function boolReturningNames(source: string): string[] {
+  const out = new Set<string>();
+  for (const m of maskSource(source).masked.matchAll(BOOL_IMPL)) {
+    const n = m[1]!;
+    if (["if", "while", "for", "switch", "catch", "function"].includes(n)) continue;
+    out.add(n);
+  }
+  return [...out];
+}
+
+/**
+ * 找出「整行就是一次调用、返回值没人接」的语句。
+ *
+ * 这类**不一定都是 bug** —— 有些调用方确实不关心结果。但每一条都该有人看，
+ * 因为「静默失败」在这个仓库有前科：`setActiveScene` 静默失效、
+ * `getCurrentState().scene` 赋值落在临时对象上，两次都是
+ * 「类型检查与 710 个测试全绿，只有真实跑团暴露了它」。
+ *
+ * 实跑第一次就逮到 `this.setScene(sceneId);` 两处 —— 而 `setActiveScene`
+ * 失败时会把世界弄成**一个活动场景都不剩**，比什么都没做更糟。
+ */
+export function findDroppedReturns(file: string, src: string, boolNames: ReadonlySet<string>): Finding[] {
+  const out: Finding[] = [];
+  const masked = maskSource(src).masked.split("\n");
+  const raw = src.split("\n");
+  masked.forEach((line, i) => {
+    const t = line.trim();
+    if (!t.endsWith(";")) return;
+    // 接口/类型里的**成员签名**长得跟调用一样（标识符+括号+分号），
+    // 区别是签名带返回类型标注：`isSceneVisited(id: string): boolean;`。
+    // 真正的调用不会有 `): X;`。少这一条就会把接口声明报成「丢了返回值」。
+    if (/\)\s*:\s*[\w<>[\]|&. ]+;$/.test(t)) return;
+    const m = t.match(/^(?:await\s+)?(?:this\.)?([A-Za-z_$][\w$]*)\s*\(/);
+    if (!m) return;
+    if (/^(return|if|while|for|switch|throw|new)\b/.test(t)) return;
+    const name = m[1]!;
+    if (!boolNames.has(name)) return;
+    out.push({
+      file, line: i + 1, rule: "dropped-boolean-return",
+      message: `\`${(raw[i] ?? "").trim().slice(0, 60)}\` —— ${name}() 返回成功与否，这里把它丢了`,
+    });
+  });
+  return out;
+}
+
+// ============================================================
 // 检查 5/6：外部进程的退出状态
 // ============================================================
 

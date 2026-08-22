@@ -402,9 +402,25 @@ export class WorldStateManager {
   // 场景 / 关系
   // ==========================================================
 
-  setActiveScene(sceneId: string) {
+  /**
+   * 把某个场景设为活动场景。返回是否真的切过去了。
+   *
+   * ⚠ 原实现是无条件的两句：先 `UPDATE scenes SET is_active = 0` 清掉全部，
+   * 再 `UPDATE ... WHERE id = ?` 打开目标。目标不存在时第二句匹配不到行，
+   * 于是**世界里一个活动场景都不剩** —— 比「什么都没做」更糟，
+   * 而调用方拿不到任何信号（原来连返回值都没有）。
+   *
+   * docs/kp-tool-surface-assessment.md §八 记过两次同类事故：
+   * 「类型检查与 710 个测试全绿，只有真实跑团暴露了它」。
+   * 所以这里先校验存在、再动，并且**回读确认**，不只信「我执行了 UPDATE」。
+   */
+  setActiveScene(sceneId: string): boolean {
+    const exists = this.db.query("SELECT id FROM scenes WHERE id = ?").get(sceneId);
+    if (!exists) return false;
     this.db.run("UPDATE scenes SET is_active = 0");
     this.db.run("UPDATE scenes SET is_active = 1 WHERE id = ?", [sceneId]);
+    const active: any = this.db.query("SELECT id FROM scenes WHERE is_active = 1 LIMIT 1").get();
+    return active?.id === sceneId;
   }
 
   /** 读取场景（含模组原文描写与出口）。不存在返回 null。 */
