@@ -4,7 +4,7 @@
 // bun run src/play-module.ts
 
 import { createCoCCharacter, getCoCArchetypes, resolveCheckValue, type CoCGeneratedCharacter, type BackgroundProfile } from "./character/coc-character";
-import { randomCoCName, buildBaseBackgroundProfile, composeBackstory, pickDistinctArchetypes, randomPersonAnchors, type PersonAnchors } from "./character/background-profile";
+import { randomCoCName, buildBaseBackgroundProfile, composeBackstory, pickDistinctArchetypes, randomPersonAnchors, pronounOf, type PersonAnchors, type Gender } from "./character/background-profile";
 import { CoCEngine, SanityEngine, SUCCESS_LEVEL_LABELS, sanOutcomeLabel, type CoCCheckResult } from "./rules/coc-engine";
 import { BARN_OF_PREMIER, BARN_SUPPORT, renderPrologue, renderPartySetup, evaluateEpilogues } from "./module/barn-of-premier";
 import { WorldState } from "./world/state";
@@ -244,9 +244,9 @@ async function writeBackstory(
 export function pickDistinctName(
   archetypeId: string,
   used: string[],
-  roll: (id: string) => { full: string; short: string } = randomCoCName,
+  roll: (id: string) => { full: string; short: string; gender?: Gender } = randomCoCName,
   maxTries = 12,
-): { full: string; short: string } {
+): { full: string; short: string; gender?: Gender } {
   let last = roll(archetypeId);
   for (let i = 0; i < maxTries; i++) {
     if (!used.includes(last.short)) return last;
@@ -275,7 +275,7 @@ async function createRandomPlayerSetup(
   // 「亨利半跪下来，检查亨利的伤势」，诊断也只能把两人的行动算到一个人头上
   // （实测 seed 95028 就是这样，`_diag-downed.ts` 因此报了 2 次假违规）。
   // 重抽有限次，抽不开就加个后缀 —— 名字池不大，不能死循环。
-  const { full, short } = pickDistinctName(archetype.id, usedShortNames);
+  const { full, short, gender } = pickDistinctName(archetype.id, usedShortNames);
   const pc = await createPC(full, archetype.id, archetype);
   const anchors = randomPersonAnchors();
   const profile = await enhanceBackgroundProfile(pc.backgroundProfile ?? buildBaseBackgroundProfile(archetype), {
@@ -287,6 +287,9 @@ async function createRandomPlayerSetup(
     p0: {
       name: full,
       shortName: short,
+      // 性别一路带下去 —— 开场 hook 的 `{pronoun}` 要用它。
+      // 没有它的时候模板只能写死「他」，见 background-profile.ts 顶部。
+      gender,
       archetypeId: archetype.id,
       occupation: archetype.label,
       personality: profile.traits,
@@ -480,10 +483,17 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
     a: PlayerAgent, b: PlayerAgent,
   ): Promise<string[]> {
     const hooks = module.partySetup?.hooks ?? [];
-    const hookText = (i: number, name: string, occupation: string) =>
+    // `{pronoun}` 是这次补的槽位。原先没有，模板只能写死「他」，
+    // 于是随机车出女性角色时开场就是「玛丽·布朗……**他**见过太多案子」。
+    // 性别现在由 `randomCoCName` 给出（见 background-profile.ts）。
+    const hookText = (i: number, p: { name: string; occupation: string; gender?: Gender }) =>
       (hooks[i] ?? "")
-        .replace(/\{name\}/g, name)
-        .replace(/\{occupation\}/g, occupation);
+        .replace(/\{name\}/g, p.name)
+        .replace(/\{occupation\}/g, p.occupation)
+        .replace(/\{pronoun\}/g, pronounOf(p.gender));
+    /** 把 agent 与它对应的车卡配置对上 —— 性别在后者身上 */
+    const hookArg = (agent: PlayerAgent, setup: { gender?: Gender }) =>
+      ({ name: agent.name, occupation: agent.pc.occupation, gender: setup.gender });
     // 案件起点场景：首个场景的名称与描述——开场地点必须据此，禁止凭想象改写
     const startScene = module.scenes?.[0];
     const prompt = [
@@ -496,7 +506,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       `职业: ${a.pc.occupation}`,
       `性格: ${a.pc.personality}`,
       `背景: ${a.pc.backstory}`,
-      ...(hookText(0, a.name, a.pc.occupation) ? [`卷入方式: ${hookText(0, a.name, a.pc.occupation)}`] : []),
+      ...(hookText(0, hookArg(a, p0)) ? [`卷入方式: ${hookText(0, hookArg(a, p0))}`] : []),
       `目标: ${a.motive}`,
       ``,
       `【调查员 2】`,
@@ -504,7 +514,7 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
       `职业: ${b.pc.occupation}`,
       `性格: ${b.pc.personality}`,
       `背景: ${b.pc.backstory}`,
-      ...(hookText(1, b.name, b.pc.occupation) ? [`卷入方式: ${hookText(1, b.name, b.pc.occupation)}`] : []),
+      ...(hookText(1, hookArg(b, p1)) ? [`卷入方式: ${hookText(1, hookArg(b, p1))}`] : []),
       `目标: ${b.motive}`,
       ``,
       `【案件】`,

@@ -11,13 +11,30 @@ import type { BackgroundProfile } from "./coc-character";
 // 随机人名池（1920s 美式音译名 + 姓氏）
 // ============================================================
 
-const FIRST_NAMES = [
+/**
+ * 名字池**按性别分开**。
+ *
+ * 原先是一个混排数组（前 24 个男名、后 16 个女名），而 `randomCoCName`
+ * 只返回 `{ full, short }` —— **引擎无从知道这个角色是男是女**。
+ * 后果直接落在开场叙述上：`barn-of-premier` 的两条 hook 都写死「他」，
+ * 于是「玛丽·布朗……作为飞行员，**他**见过太多案子」。
+ * 那不是模板写得糙，是**数据里根本没有可依据的东西**，
+ * 模板作者除了写死没有别的选择。
+ *
+ * 分开之后代词有据可依，模板才谈得上写对。
+ */
+export const MALE_FIRST_NAMES = [
   "亨利", "约翰", "威廉", "詹姆斯", "查尔斯", "乔治", "托马斯", "罗伯特",
   "爱德华", "亚瑟", "弗雷德", "沃尔特", "哈罗德", "雷蒙德", "欧内斯特", "塞缪尔",
   "霍华德", "克拉伦斯", "艾伯特", "路易斯", "埃德温", "伦纳德", "维克托", "斯坦利",
+];
+
+export const FEMALE_FIRST_NAMES = [
   "玛丽", "玛格丽特", "伊丽莎白", "海伦", "艾丽丝", "露丝", "克拉拉", "弗洛伦斯",
   "埃塞尔", "莉莲", "格蕾丝", "艾达", "贝西", "多萝西", "米尔德丽德", "艾格尼丝",
 ];
+
+const FIRST_NAMES = [...MALE_FIRST_NAMES, ...FEMALE_FIRST_NAMES];
 
 const LAST_NAMES = [
   "摩根", "卡特", "史密斯", "约翰逊", "威廉姆斯", "布朗", "琼斯", "米勒",
@@ -49,14 +66,33 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-/** 随机人名：{ full: "亨利·摩根", short: "亨利" } */
-export function randomCoCName(archetypeId?: string): { full: string; short: string } {
+export type Gender = "male" | "female";
+
+/** 这个名字是男名还是女名。认不出时返回 undefined —— 不猜 */
+export function genderOfFirstName(first: string): Gender | undefined {
+  if (MALE_FIRST_NAMES.includes(first)) return "male";
+  if (FEMALE_FIRST_NAMES.includes(first)) return "female";
+  return undefined;
+}
+
+/** 第三人称代词。认不出性别时用「他」的中性写法，别瞎猜 */
+export function pronounOf(gender: Gender | undefined): string {
+  return gender === "female" ? "她" : "他";
+}
+
+/**
+ * 随机人名：`{ full: "亨利·摩根", short: "亨利", gender: "male" }`
+ *
+ * `gender` 是这次补上的。原先只返回名字，叙述模板想写对代词也无从写起，
+ * 只能一律「他」——「玛丽·布朗……**他**见过太多案子」就是这么来的。
+ */
+export function randomCoCName(archetypeId?: string): { full: string; short: string; gender: Gender | undefined } {
   const pool = archetypeId && OCCUPATION_FIRST_NAMES[archetypeId]
     ? OCCUPATION_FIRST_NAMES[archetypeId]
     : FIRST_NAMES;
   const first = pick(pool);
   const last = pick(LAST_NAMES);
-  return { full: `${first}·${last}`, short: first };
+  return { full: `${first}·${last}`, short: first, gender: genderOfFirstName(first) };
 }
 
 // ============================================================
