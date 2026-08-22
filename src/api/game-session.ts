@@ -304,7 +304,7 @@ export class GameSession {
         });
         // 创建角色卡档案（独立目录"
         const careerDir = `data/careers/${this.id}`;
-        try { rmSync(careerDir, { recursive: true }); } catch {}
+        try { rmSync(careerDir, { recursive: true }); } catch { /* 清理临时目录：不存在或被占用都无所谓，失败不影响正确性 */ }
         this.careerStore = new CareerFileStore(careerDir);
         this.careerStore.saveSnapshot({
           characterName: char.name,
@@ -1841,7 +1841,7 @@ export class GameSession {
       // 创建 career store（独立目录，清理旧数据）
       if (!this.careerStore) {
         const careerDir = `data/careers/${this.id}`;
-        try { rmSync(careerDir, { recursive: true }); } catch {}
+        try { rmSync(careerDir, { recursive: true }); } catch { /* 清理临时目录：不存在或被占用都无所谓，失败不影响正确性 */ }
         this.careerStore = new CareerFileStore(careerDir);
       }
       this.careerStore.saveSnapshot({
@@ -1922,7 +1922,7 @@ export class GameSession {
       }
       if (!this.careerStore) {
         const careerDir = `data/careers/${this.id}`;
-        try { rmSync(careerDir, { recursive: true }); } catch {}
+        try { rmSync(careerDir, { recursive: true }); } catch { /* 清理临时目录：不存在或被占用都无所谓，失败不影响正确性 */ }
         this.careerStore = new CareerFileStore(careerDir);
       }
       const c = this.activeCharacter;
@@ -1942,7 +1942,7 @@ export class GameSession {
     if (input.includes("传承列表") || input.includes("读档")) {
       if (!this.careerStore) {
         const dir = `data/careers/${this.id}`;
-        try { rmSync(dir, { recursive: true }); } catch {}
+        try { rmSync(dir, { recursive: true }); } catch { /* 清理临时目录：不存在或被占用都无所谓，失败不影响正确性 */ }
         this.careerStore = new CareerFileStore(dir);
       }
       if (input.includes("读档")) {
@@ -2229,7 +2229,14 @@ export class GameSession {
             rewardIds: [],
             narrative: "模组结算完成",
           });
-        } catch {}
+        } catch (e) {
+          // 原先是 `catch {}`。这一条写的是**跑完一整个模组**的结算记录：
+          // SAN 变化、技能成长、结局。写不进去就等于这局白跑了，
+          // 而玩家会以为已经记上 —— 静默丢数据比报错糟得多。
+          const why = e instanceof Error ? e.message : String(e);
+          growthResults.push(`⚠️ ${char.name} 的模组结算没能写进履历（${why}），这次的成长记录可能丢失。`);
+          log.warn("career", `addEntry 失败（${char.name} / ${this.registeredModules[0]?.id ?? "unknown"}）：${why}`);
+        }
       }
     }
 

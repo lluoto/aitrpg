@@ -6,26 +6,20 @@ import { createSchema } from "./schema";
 import type { GameEvent } from "./event-types";
 import type { WorldEntity, WorldState, Effect, CombatResult, PlayerRuntimeState } from "../types";
 import type { SanityState } from "../rules/coc-engine";
+import { log } from "../log";
+// 读写两层共用的**唯一一份** exits 解析。别再各写一份 —— 见该文件顶部。
+import { parseExits, type ExitRecord } from "./scene-exits";
+export type { SightedEntity } from "./scene-exits";
 
 /**
- * 站在出发场景就望得见的叙事实体（ModuleData.narrative.entities）。
- * 由 module-loader 在导入时挂到对应出口上：从这儿望得见它，也正好能走过去。
+ * 场景出口。模组写入的是对象（目标场景 + 展示用描述），不是裸字符串。
+ *
+ * 形状与解析都在 `state/scene-exits.ts`，读写两层共用 ——
+ * 这里只做只读别名，免得同一个概念在两个文件里各声明一次然后慢慢分叉。
+ * `SightedEntity`（站在出发场景就望得见的叙事实体，由 module-loader 挂到出口上）
+ * 同样从那边转出。
  */
-export interface SightedEntity {
-  readonly entityId: string;
-  readonly name: string;
-  readonly mentionKeywords: readonly string[];
-  readonly noticedBy: readonly string[];
-  readonly recognition: string;
-}
-
-/** 场景出口。模组写入的是对象（目标场景 + 展示用描述），不是裸字符串。 */
-export interface SceneExit {
-  readonly target: string;
-  readonly desc: string;
-  /** 该出口同时是一件望得见的叙事实体时携带；模组未声明则为 undefined。 */
-  readonly sighted?: SightedEntity;
-}
+export type SceneExit = Readonly<ExitRecord>;
 
 /** 一条场景记录。scenes 表的对外形状，getScene() 与 listScenes() 共用。 */
 export interface SceneRecord {
@@ -504,60 +498,23 @@ export class WorldStateManager {
   }
 
   /**
-   * exits 列的真实内容是 `{target, desc}[]` —— mythos-module 的三处写入点
-   * （L465 / L480 / L492）都 JSON.stringify 对象数组。此前 getScene() 把返回类型
-   * 声明成 `string[]`，而 JSON.parse 返回 any，类型检查因此全程沉默；
-   * 第一个真正消费 exits 的调用方会拿到对象却以为是字符串。
+   * 读 exits 列。**解析本体在 `state/scene-exits.ts`，读写两层共用同一份。**
    *
-   * 这里归一成单一形状，并容忍历史上可能存在的纯字符串写法与损坏数据。
+   * 原先这里自己写了一份宽容的解析，`mythos-module` 写回时又另写了一份严格的，
+   * 两份对「数据坏了」的处理还相反：这边 `catch { return [] }`（当没出口），
+   * 那边空着继续往下走然后**把空的写回去**（抹掉原出口）。
+   * 一份数据两套解析，漂的那一刻不会有任何测试变红。
+   *
+   * 这一层的立场是「尽力显示」，所以照旧返回解析得出来的部分；
+   * 但**不再把「坏了」和「本来就没有」混为一谈** —— 坏了要出声。
    */
-  private parseExits(raw: unknown): SceneExit[] {
-    if (typeof raw !== "string" || raw.length === 0) return [];
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return [];
+  private parseExits(raw: unknown, sceneId?: string): SceneExit[] {
+    const r = parseExits(raw);
+    if (!r.ok) {
+      // 出声而不是静默返回 []。§八 那两次事故的共同点就是「降级得太安静」。
+      log.warn("world", `场景${sceneId ? `「${sceneId}」` : ""}的 exits 读不干净：${r.reason}`);
     }
-    if (!Array.isArray(parsed)) return [];
-    const exits: SceneExit[] = [];
-    for (const item of parsed) {
-      if (typeof item === "string") {
-        exits.push({ target: item, desc: item });
-        continue;
-      }
-      if (item && typeof item === "object" && typeof (item as { target?: unknown }).target === "string") {
-        const target = (item as { target: string }).target;
-        const desc = (item as { desc?: unknown }).desc;
-        const sighted = this.parseSighted((item as { sighted?: unknown }).sighted);
-        exits.push({
-          target,
-          desc: typeof desc === "string" ? desc : target,
-          ...(sighted ? { sighted } : {}),
-        });
-      }
-    }
-    return exits;
-  }
-
-  /**
-   * 出口上的叙事实体。字段不全就整个丢掉而不是补默认值 ——
-   * 这段数据是拿来播识别桥段的，半截的识别文本比没有更糟。
-   */
-  private parseSighted(raw: unknown): SightedEntity | undefined {
-    if (!raw || typeof raw !== "object") return undefined;
-    const o = raw as Record<string, unknown>;
-    if (typeof o.entityId !== "string" || typeof o.name !== "string") return undefined;
-    if (typeof o.recognition !== "string" || o.recognition.length === 0) return undefined;
-    const strList = (v: unknown): string[] =>
-      Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-    return {
-      entityId: o.entityId,
-      name: o.name,
-      mentionKeywords: strList(o.mentionKeywords),
-      noticedBy: strList(o.noticedBy),
-      recognition: o.recognition,
-    };
+    return r.exits;
   }
 
   setRelation(a: string, b: string, relation: string, attitude: number = 0) {

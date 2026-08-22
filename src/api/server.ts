@@ -199,13 +199,15 @@ async function handleRequest(req: Request): Promise<Response> {
     let ruleset: RulesetId = "cosmic-horror";
     let archetypeId: string | undefined;
     let characterName: string | undefined;
-    try {
-      const body = await readJsonBody(req);
-      const requestedRuleset = bodyString(body, "ruleset");
-      if (requestedRuleset === "dnd5e" || requestedRuleset === "grail") ruleset = requestedRuleset;
-      archetypeId = bodyString(body, "archetype") ?? archetypeId;
-      characterName = bodyString(body, "characterName") ?? characterName;
-    } catch {}
+    // 这里原本包着 `try { … } catch {}`，但 `readJsonBody` 自己就
+    // `.catch(() => null)` 了、非法 JSON 退化成空对象，`bodyString` 是纯函数 ——
+    // **那个 catch 永远不可能触发**。留着它更糟：它让下一个读代码的人以为
+    // 这段有已知的失败路径、吞掉是正常的。没有失败路径就别装有。
+    const body = await readJsonBody(req);
+    const requestedRuleset = bodyString(body, "ruleset");
+    if (requestedRuleset === "dnd5e" || requestedRuleset === "grail") ruleset = requestedRuleset;
+    archetypeId = bodyString(body, "archetype") ?? archetypeId;
+    characterName = bodyString(body, "characterName") ?? characterName;
 
     const id = generateId();
     const session = new GameSession(id, ruleset, undefined, archetypeId, characterName);

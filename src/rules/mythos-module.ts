@@ -26,6 +26,8 @@ import type { Database } from "bun:sqlite";
 import type { MessageType, NPCMood } from "../agent/types";
 import type { MythosCreature, MythosTome, MythosSpellDef } from "./mythos-expansion";
 import { MYTHOS_CREATURES } from "./mythos-expansion";
+// 与 WorldStateManager 读 exits 用的是**同一份**解析（见该文件顶部说明）
+import { parseExits, mergeExits } from "../state/scene-exits";
 
 // ============================================================
 // 模组类型定义
@@ -472,11 +474,20 @@ export class MythosModuleLoader {
         let exitCount = 0;
         for (const [sceneId, exitList] of Object.entries(module.exits)) {
           const currentRow: any = db.query("SELECT exits FROM scenes WHERE id = ?").get(sceneId);
-          const existing: { target: string; desc: string }[] = [];
-          if (currentRow) try { existing.push(...JSON.parse(currentRow.exits ?? "[]")); } catch {}
-          const merged = [...existing, ...exitList.map(e => ({ target: e.target, desc: e.desc ?? e.target }))];
-          const seen = new Set<string>();
-          const deduped = merged.filter(o => { const k = o.target; if (seen.has(k)) return false; seen.add(k); return true; });
+          // ⚠ 原写法是 `try { existing.push(...JSON.parse(row.exits ?? "[]")) } catch {}`，
+          // 解析失败时 `existing` 保持空、**接着照样把 merged 写回去** ——
+          // 这个场景原有的出口就被静默抹掉了，catch 里一个字都没有。
+          // §八 记的正是这类：「模组场景出口整段失效」而测试全绿。
+          // 现在读不出来就**放弃覆盖**，保住原数据，并把这件事说出来。
+          const parsed = parseExits(currentRow?.exits);
+          if (!parsed.ok) {
+            lines.push(`⚠️ 场景「${sceneId}」原有出口读不出来（${parsed.reason}），已跳过合并以免覆盖`);
+            continue;
+          }
+          const deduped = mergeExits(
+            parsed.exits,
+            exitList.map(e => ({ target: e.target, desc: e.desc ?? e.target })),
+          );
           db.run("UPDATE scenes SET exits = ? WHERE id = ?", [JSON.stringify(deduped), sceneId]);
           exitCount += exitList.length;
         }
@@ -499,12 +510,15 @@ export class MythosModuleLoader {
           const entryScene: string | undefined = activeRow?.id;
           if (entryScene && entryScene !== "unknown" && !sceneArr.includes(entryScene)) {
             const existingRow: any = db.query("SELECT exits FROM scenes WHERE id = ?").get(entryScene);
-            let existingExits: { target: string; desc: string }[] = [];
-            try { existingExits = JSON.parse(existingRow?.exits ?? "[]"); } catch {}
-            const merged = [...existingExits, ...exitObjs];
-            const seen = new Set<string>();
-            const deduped = merged.filter(o => { const k = o.target; if (seen.has(k)) return false; seen.add(k); return true; });
-            db.run("UPDATE scenes SET exits = ? WHERE id = ?", [JSON.stringify(deduped), entryScene]);
+            // 与上面同一个道理：读不干净就别覆盖。入口场景的出口被抹掉，
+            // 后果是开局那一步无路可走，而没有任何一处会报错。
+            const parsed = parseExits(existingRow?.exits);
+            if (!parsed.ok) {
+              lines.push(`⚠️ 入口场景「${entryScene}」原有出口读不出来（${parsed.reason}），已跳过合并以免覆盖`);
+            } else {
+              const deduped = mergeExits(parsed.exits, exitObjs);
+              db.run("UPDATE scenes SET exits = ? WHERE id = ?", [JSON.stringify(deduped), entryScene]);
+            }
           }
           lines.push(`构建 ${sceneArr.length} 个模组场景出口`);
         }

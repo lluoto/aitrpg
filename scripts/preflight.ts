@@ -4,9 +4,9 @@
 //   bun scripts/preflight.ts            全查
 //   bun scripts/preflight.ts --quick    只查快的（跳过测试）
 //
-// 八项检查：切割残渣 / 占位注释 / 反向 import / PowerShell 读中文 /
-//           丢掉的成功与否返回值 / 文档引用的脚本是否入库 /
-//           typecheck / 测试条数基线
+// 九项检查：切割残渣 / 占位注释 / 反向 import / PowerShell 读中文 /
+//           丢掉的成功与否返回值 / 无声吞错的 catch /
+//           文档引用的脚本是否入库 / typecheck / 测试条数基线
 //
 // ⚠ 这份脚本自己返工过一次。上一版六项检查里，**五项能被同一段坏代码骗过**：
 //   1. 切割残渣：只认 `return|await|赋值` 四种起手式 → 函数头被删后留下
@@ -31,7 +31,7 @@ import {
   findTruncatedBlocks, findPlaceholderResidue, findReverseImports, findShellRisks,
   judgeProcess, parseTestOutput, judgeTestCount,
   referencedScripts, judgeScriptRefs, generatedDocs,
-  boolReturningNames, findDroppedReturns,
+  boolReturningNames, findDroppedReturns, findSilentCatches,
   type Finding, type TestBaseline,
 } from "../src/diagnostics/source-scan";
 
@@ -114,6 +114,16 @@ for (const f of scriptFiles) push(findShellRisks(f, read(f)));
   for (const f of scanned) for (const n of boolReturningNames(read(f))) boolNames.add(n);
   for (const f of scanned) push(findDroppedReturns(f, read(f), boolNames));
   notes.push(`返回 boolean 的实现 ${boolNames.size} 个，返回值被丢掉 0 处（超过 0 就会变成上面的问题）`);
+}
+
+// ── 9. 无声吞掉错误的 catch ──
+//
+// 空 catch 不是罪，**吞掉了却不说为什么**才是。
+// 实跑第一次逮到 `mythos-module` 两处：`JSON.parse(exits)` 失败后照样
+// 把空数组写回数据库，场景出口被静默抹掉 —— 正是 §八 记的那种事故。
+// 修完是 0 处，同样不设豁免名单：写一行理由就能过，这个成本该付。
+for (const f of [...srcFiles, ...walk("scripts", [".ts"])]) {
+  push(findSilentCatches(f, read(f)));
 }
 
 // ── 7. 生成的文档叫人跑的脚本，仓库里得真有 ──

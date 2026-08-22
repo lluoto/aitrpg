@@ -10,7 +10,7 @@ import {
   scanImports, importPointsTo, findReverseImports,
   findShellRisks, judgeProcess, parseTestOutput, judgeTestCount,
   referencedScripts, judgeScriptRefs, generatedDocs,
-  boolReturningNames, findDroppedReturns,
+  boolReturningNames, findDroppedReturns, findSilentCatches,
 } from "../diagnostics/source-scan";
 
 // ── 底座：词法遮罩 ─────────────────────────────────────────────
@@ -467,6 +467,45 @@ describe("检查 8 · 丢掉的 boolean 返回值", () => {
       "}",
     ].join("\n");
     expect(findDroppedReturns("move-util.ts", iface, new Set(["isSceneVisited", "sceneExists"]))).toEqual([]);
+  });
+});
+
+// ── 检查 9：无声吞掉错误的 catch ──────────────────────────────
+
+describe("检查 9 · 无声吞错的 catch", () => {
+  test("**应报**：空 catch 且一个字都没有", () => {
+    const f = findSilentCatches("a.ts", "try { risky(); } catch {}");
+    expect(f.length).toBe(1);
+    expect(f[0]!.rule).toBe("silent-catch");
+  });
+
+  test("**应报**：带参数的空 catch 同样算", () => {
+    expect(findSilentCatches("a.ts", "try { risky(); } catch (e) {}").length).toBe(1);
+  });
+
+  test("**不应报**：空体但写了理由 —— 判据问的是「说没说为什么」", () => {
+    // `try { mkdirSync(d) } catch { /* 目录已存在 */ }` 完全合理。
+    // 没有这一条，检查就变成「禁止空 catch」，那是另一回事，也没人会遵守。
+    expect(findSilentCatches("a.ts", "try { mkdirSync(d); } catch { /* 目录已存在 */ }")).toEqual([]);
+    expect(findSilentCatches("a.ts", "try { x(); } catch {\n  // 读不到就算了，下游有兜底\n}")).toEqual([]);
+  });
+
+  test("**不应报**：catch 里有语句（留了痕）", () => {
+    expect(findSilentCatches("a.ts", "try { x(); } catch (e) { log.warn(e); }")).toEqual([]);
+    expect(findSilentCatches("a.ts", "try { x(); } catch { return null; }")).toEqual([]);
+  });
+
+  test("**干扰**：字符串里出现 `catch {}` 不算", () => {
+    expect(findSilentCatches("a.ts", 'const tip = "别写 catch {} 这种东西";')).toEqual([]);
+  });
+
+  test("**干扰**：注释里出现 `catch {}` 不算", () => {
+    expect(findSilentCatches("a.ts", "// 反例：catch {}\nconst x = 1;")).toEqual([]);
+  });
+
+  test("嵌套 catch 各自独立判定", () => {
+    const src = "try { try { a(); } catch {} } catch { /* 外层说明过了 */ }";
+    expect(findSilentCatches("a.ts", src).length).toBe(1);
   });
 });
 

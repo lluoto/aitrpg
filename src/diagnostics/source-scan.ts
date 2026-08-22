@@ -555,6 +555,49 @@ export function findDroppedReturns(file: string, src: string, boolNames: Readonl
 }
 
 // ============================================================
+// 检查 9：无声吞掉错误的 catch
+// ============================================================
+
+/**
+ * 找**空 catch 且一个字都没写**的地方。
+ *
+ * ⚠ 判据必须有区分力：空 catch 本身不是罪。
+ *   `try { mkdirSync(d) } catch { /* 目录已存在 *∕ }` 完全合理。
+ * 有区分力的问法是「吞掉了却不说为什么」，所以三档：
+ *   catch 体里有语句（日志/上报/兜底赋值）→ 放过，至少留了痕
+ *   空体但**有注释**                        → 放过，作者想过
+ *   空体且一个字都没有                      → 报
+ *
+ * 这个仓库有先例（docs/kp-tool-surface-assessment.md §八）：
+ * 「被 catch 降级成一行警告，模组场景出口整段失效」
+ * 「类型检查与 710 个测试全绿，只有真实跑团暴露了它」。
+ * 实跑第一次就逮到两处 —— `mythos-module` 里 `JSON.parse(exits)` 失败后
+ * **照样把空数组写回数据库**，原有场景出口被静默抹掉。
+ */
+export function findSilentCatches(file: string, src: string): Finding[] {
+  const m = maskSource(src);
+  const masked = m.masked;
+  const out: Finding[] = [];
+  for (const hit of masked.matchAll(/\bcatch\s*(\([^)]*\))?\s*\{/g)) {
+    const open = hit.index! + hit[0].length - 1;
+    let depth = 0;
+    let end = open;
+    for (let i = open; i < masked.length; i++) {
+      if (masked[i] === "{") depth++;
+      else if (masked[i] === "}") { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (masked.slice(open + 1, end).trim().length > 0) continue; // 有语句
+    const rawBody = src.slice(open + 1, end);
+    if (/\/\/|\/\*/.test(rawBody)) continue;                     // 有注释说明
+    out.push({
+      file, line: lineOf(src, hit.index!), rule: "silent-catch",
+      message: "catch 里一个字都没有 —— 吞掉了什么、为什么可以吞，都得写出来",
+    });
+  }
+  return out;
+}
+
+// ============================================================
 // 检查 5/6：外部进程的退出状态
 // ============================================================
 

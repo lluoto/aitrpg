@@ -735,7 +735,7 @@ function createSessionWithChar(id: string, charName: string, archetype: string =
  */
 function createTestStore(label: string): { store: CareerFileStore; dir: string } {
   const dir = path.join(import.meta.dir, `../../_test_career_${label}`);
-  try { fs.rmSync(dir, { recursive: true }); } catch {}
+  try { fs.rmSync(dir, { recursive: true }); } catch { /* 清理临时目录：不存在或被占用都无所谓，失败不影响正确性 */ }
   fs.mkdirSync(dir, { recursive: true });
   return { store: new CareerFileStore(dir), dir };
 }
@@ -794,7 +794,7 @@ describe("角色卡传承集成", () => {
     const completeEvent = res.events.find(e => e.content.includes("模组完成"));
     expect(completeEvent).toBeDefined();
 
-    try { fs.rmSync(dir, { recursive: true }); } catch {}
+    try { fs.rmSync(dir, { recursive: true }); } catch { /* 清理临时目录：不存在或被占用都无所谓，失败不影响正确性 */ }
   });
 
   it("loadCareer 正确反映跨模组累积", async () => {
@@ -849,7 +849,7 @@ describe("角色卡传承集成", () => {
     expect(career!.currentSkills["侦查"]).toBe(65);
     expect(career!.currentSkills["潜行"]).toBe(43);
 
-    try { fs.rmSync(dir, { recursive: true }); } catch {}
+    try { fs.rmSync(dir, { recursive: true }); } catch { /* 清理临时目录：不存在或被占用都无所谓，失败不影响正确性 */ }
   });
 
   it("不存在 careerStore 时模组结算不报错（向后兼容）", async () => {

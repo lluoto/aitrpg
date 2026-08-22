@@ -1,6 +1,6 @@
 {
-  "tests": 1658,
-  "files": 80,
+  "tests": 1683,
+  "files": 81,
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
     {
@@ -52,6 +52,11 @@
       "tests": 1658,
       "files": 80,
       "when": "扫出并修掉「成功与否返回值被丢掉」：setActiveScene 失败会清空全部活动场景；preflight 增第 8 项"
+    },
+    {
+      "tests": 1683,
+      "files": 81,
+      "when": "exits 读写两层合成一份解析；无声吞错的 catch 清零；preflight 增第 9 项"
     }
   ]
 }
