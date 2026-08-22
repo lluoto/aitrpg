@@ -103,6 +103,14 @@ ${rules.map((r: any, i: number) => `${i + 1}. ${r.text}`).join("\n\n")}
 | \`scripts/diag/diag-downed.ts\` | 昏迷期间本人是否还在**掷骰** | \`src/diagnostics/downed.ts\` | \`diag-downed.test.ts\` |
 | \`scripts/diag/diag-phrasing.ts\` | 玩家说法能否匹配到场景 | \`src/diagnostics/phrasing.ts\` | \`diag-phrasing.test.ts\` |
 | \`scripts/diag/audit-backup.ts\` | 哪些数据丢了不可再生 | \`src/diagnostics/backup-classify.ts\` | \`diag-backup-classify.test.ts\` |
+| \`scripts/diag/probe-llm.ts\` | LLM 通不通（**实际发一次请求**） | — | — |
+| \`scripts/diag/probe-llm-move.ts\` | LLM 消歧值不值得接（重点是它肯不肯说「说不准」） | — | — |
+
+⚠ 上面五个跑局脚本都写死 \`LLM_DISABLED=true\` —— **它们量的是离线行为**。
+这不是缺陷（要可复现），但别把结论当成「整个引擎都这样」。
+判断 LLM 通不通**必须实际发一次请求**：\`bun scripts/diag/probe-llm.ts\`。
+\`bun test\` 输出里那句 \`[config] No LLM_API_KEY set\` 是**测试在验证无 key 的降级路径**，
+跟真实可用性无关，最容易被当成证据。
 
 ⚠ **这些判据本身出过六次错**（详见 \`docs/review-request.md\`）。已做的返工：
 

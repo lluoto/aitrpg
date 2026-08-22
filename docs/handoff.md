@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-22 07:42  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-22 07:57  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：f660111 feat: recognise the head noun of a place name ("去医院" = 霍姆斯医院)  ·  **测试**：1615 条 / 78 文件，全绿（基线 1615，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：9753d25 fix: the diagnostics were never actually in the repo  ·  **测试**：1622 条 / 78 文件，全绿（基线 1622，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -58,6 +58,14 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 | `scripts/diag/diag-downed.ts` | 昏迷期间本人是否还在**掷骰** | `src/diagnostics/downed.ts` | `diag-downed.test.ts` |
 | `scripts/diag/diag-phrasing.ts` | 玩家说法能否匹配到场景 | `src/diagnostics/phrasing.ts` | `diag-phrasing.test.ts` |
 | `scripts/diag/audit-backup.ts` | 哪些数据丢了不可再生 | `src/diagnostics/backup-classify.ts` | `diag-backup-classify.test.ts` |
+| `scripts/diag/probe-llm.ts` | LLM 通不通（**实际发一次请求**） | — | — |
+| `scripts/diag/probe-llm-move.ts` | LLM 消歧值不值得接（重点是它肯不肯说「说不准」） | — | — |
+
+⚠ 上面五个跑局脚本都写死 `LLM_DISABLED=true` —— **它们量的是离线行为**。
+这不是缺陷（要可复现），但别把结论当成「整个引擎都这样」。
+判断 LLM 通不通**必须实际发一次请求**：`bun scripts/diag/probe-llm.ts`。
+`bun test` 输出里那句 `[config] No LLM_API_KEY set` 是**测试在验证无 key 的降级路径**，
+跟真实可用性无关，最容易被当成证据。
 
 ⚠ **这些判据本身出过六次错**（详见 `docs/review-request.md`）。已做的返工：
 
@@ -100,6 +108,7 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 
 ## 最近做了什么
 
+- 9753d25 fix: the diagnostics were never actually in the repo
 - f660111 feat: recognise the head noun of a place name ("去医院" = 霍姆斯医院)
 - 91a7954 feat: move matching stops losing to word order
 - 7e80bc4 fix: one rule for the major wound check, and let phrasing say why it missed
@@ -111,7 +120,6 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 - ea62ae0 docs: workdir audit confirms archival is complete, flags backup risk
 - 307fbae docs: mark stale conclusions in the player-agency notes
 - 8c82675 fix: pass remaining investigable clues to move decision
-- 9960c14 chore: preflight checks, session state file, working rules
 
 ## 代码地图
 

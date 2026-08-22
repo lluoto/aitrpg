@@ -14,7 +14,7 @@ import {
 } from "../diagnostics/phrasing";
 import {
   chooseConnection, matchKeys, isRejectedMention, hasMoveIntent, uniqueAbbrevs,
-  type MoveWorldView,
+  parseMoveHint, type MoveWorldView,
 } from "../play/move-util";
 import type { SceneConnection } from "../module/types";
 
@@ -570,6 +570,52 @@ describe("端到端 — 唯一简称认得出，不唯一的仍旧 forced", () =
     const o = run("去下水", conns);
     expect(o.forced).toBe(false);
     expect(o.chosenSceneId).toBe("sewer");
+  });
+});
+
+// ── LLM 消歧的回答怎么收 ─────────────────────────────────────
+//
+// 子串匹配到头之后（同义改写／代词／描述特征）才会问 LLM。
+// 实测它肯说「说不准」（`scripts/diag/probe-llm-move.ts`：唯一解 3/3、
+// 该 unknown 时老实 3/3、硬猜 0/3），所以敢接。
+// 但**收回答这一步**必须自己守住，不能指望模型每次都规矩。
+
+describe("parseMoveHint — 只接受候选集合里真实存在的 id", () => {
+  const allowed = ["weisen_bar", "police_station", "hospital"];
+
+  test("**正确**：给了合法 id → 采纳", () => {
+    expect(parseMoveHint('{"target":"weisen_bar"}', allowed)).toBe("weisen_bar");
+  });
+
+  test("**正确**：答 unknown → null（照旧走替选并明说）", () => {
+    expect(parseMoveHint('{"target":"unknown"}', allowed)).toBeNull();
+  });
+
+  test("**错误行为的红线**：模型编了一个不存在的 id → 必须当没答", () => {
+    // 一次幻觉就能把玩家送到不存在的地方，而日志上只有目的地的名字。
+    expect(parseMoveHint('{"target":"secret_lab"}', allowed)).toBeNull();
+  });
+
+  test("**干扰**：夹在闲话里的合法 JSON 仍然取得到", () => {
+    expect(parseMoveHint('好的。\n{"target":"hospital"}\n', allowed)).toBe("hospital");
+  });
+
+  test("**干扰**：空 / 乱码 / 解析不了 → null，不抛", () => {
+    expect(parseMoveHint("", allowed)).toBeNull();
+    expect(parseMoveHint("我觉得应该去医院", allowed)).toBeNull();
+    expect(parseMoveHint('{"target":""}', allowed)).toBeNull();
+    expect(parseMoveHint("{target: weisen_bar}", allowed)).toBeNull();
+  });
+
+  test("**干扰**：候选集合为空时一律 null", () => {
+    expect(parseMoveHint('{"target":"weisen_bar"}', [])).toBeNull();
+  });
+
+  test("任何失败路径的代价都是「退回今天的行为」", () => {
+    // 这是敢把网络调用接进移动决策的前提：坏掉不会更差，只会不变。
+    for (const raw of ["", "unknown", '{"target":"unknown"}', '{"target":"编的"}', "超时"]) {
+      expect(parseMoveHint(raw, allowed)).toBeNull();
+    }
   });
 });
 

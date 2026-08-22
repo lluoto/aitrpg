@@ -1,5 +1,5 @@
 {
-  "tests": 1615,
+  "tests": 1622,
   "files": 78,
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
@@ -9,6 +9,7 @@
     { "tests": 1581, "files": 78, "when": "重伤体质检定口径统一（needsMajorWoundCheck）；匹配过程留痕，phrasing 说得出失败成因" },
     { "tests": 1598, "files": 78, "when": "按 phrasing 指出的成因改移动匹配：否定/已去过过滤 + 移动意图 + 唯一简称" },
     { "tests": 1605, "files": 78, "when": "唯一简称补上后缀（中文地名的中心词在后面）；简称必须紧跟移动动词" },
-    { "tests": 1615, "files": 78, "when": "诊断脚本从 gitignore 的 tools/ 搬进 scripts/diag/；preflight 增第 7 项：生成文档引用的脚本必须入库" }
+    { "tests": 1615, "files": 78, "when": "诊断脚本从 gitignore 的 tools/ 搬进 scripts/diag/；preflight 增第 7 项：生成文档引用的脚本必须入库" },
+    { "tests": 1622, "files": 78, "when": "LLM 可用性探针 + 子串匹配放弃时问一次 LLM（答不出照旧走替选并明说）" }
   ]
 }

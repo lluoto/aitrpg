@@ -227,6 +227,25 @@ export function uniqueAbbrevs(keys: string[], rivalKeys: string[], minLen = 2): 
 }
 
 /**
+ * 解析 LLM 消歧的回答。
+ *
+ * 纯函数、不碰网络，因为要守的规矩全在这儿：
+ *   1. 只接受**候选集合里真实存在**的 id。模型编一个出来必须当作 unknown ——
+ *      不然一次幻觉就把玩家送到不存在的地方。
+ *   2. `unknown` / 空 / 解析不了 → null，调用方回落到原来的替选并**明说**。
+ *
+ * 返回 null 就是「照旧 forced」。这条映射是整件事的关键：
+ * 把一次**公开的替选**换成一次**隐蔽的猜测**是退步不是进步 ——
+ * 记录里那句「比菜单更糟：菜单至少还承认玩家做了选择」说的就是这个。
+ */
+export function parseMoveHint(raw: string, allowed: readonly string[]): string | null {
+  const m = raw.match(/"target"\s*:\s*"([^"]*)"/);
+  const id = (m?.[1] ?? "").trim();
+  if (!id || id === "unknown") return null;
+  return allowed.includes(id) ? id : null;
+}
+
+/**
  * 把玩家的一句话对到一条连接上。
  *
  * 为什么值得从闭包里挪出来：这个仓库已经栽过一次 —— 见

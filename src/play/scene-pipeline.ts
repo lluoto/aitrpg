@@ -40,7 +40,7 @@ import {
   isPassiveClue, MAX_SCENE_ACTIONS, tryReviveDowned, type ClueCtx,
 } from "./clue-check";
 // 从 move-util 取而不是从 play-module —— 后者会成环
-import { chooseConnection, isRedundantMoveLine, noticesEntity } from "./move-util";
+import { chooseConnection, isRedundantMoveLine, noticesEntity, parseMoveHint } from "./move-util";
 import { isDowned, standing } from "./run-state";
 import type { Cast, Cursor, Dedup, WorldModelCtx } from "./run-state";
 
@@ -299,6 +299,60 @@ export function fallbackQuestion(ctx: SceneCtx, topic?: string): string {
     "关于这个案子，你们还知道些什么吗？",
     "能再说说你们知道的情况吗？",
   ][Math.floor(Math.random() * 2)];
+}
+
+/**
+ * 子串匹配放弃之后，问一次 LLM「他到底要去哪」。
+ *
+ * 三条纪律，缺一条这步就变成净损失：
+ *   1. **只在放弃时问**。正常路径一次网络都不打，离线跑法完全不受影响。
+ *   2. **短超时**。移动决策卡在网络上比认错地方更糟；超时就当没问过。
+ *   3. **答不出就照旧**。`parseMoveHint` 只接受候选集合里真实存在的 id，
+ *      `unknown`/幻觉/报错一律回 null，调用方回落到替选并**明说没听清**。
+ *
+ * 任何一步出问题的代价都是「退回今天的行为」，不会更差 —— 这是敢接的前提。
+ */
+async function askMoveTarget(
+  llm: LLMClient,
+  said: string,
+  sceneName: string,
+  unlocked: SceneConnection[],
+  module: ModuleData,
+): Promise<string | null> {
+  const exits = unlocked.map(c => ({
+    id: c.targetSceneId,
+    name: module.scenes.find(s => s.id === c.targetSceneId)?.name ?? c.targetSceneId,
+  }));
+  try {
+    const raw = await llm.chat(
+      [
+        {
+          role: "system",
+          content: [
+            "你在帮一个跑团引擎判断：玩家这句话指的是下面哪个出口。",
+            '只输出 JSON，形如 {"target":"<出口 id>"} 或 {"target":"unknown"}。',
+            "**只有当这句话唯一确定了一个出口时才给 id。**",
+            "话里没指定去哪、或者同时说得通好几个出口，一律回 unknown ——",
+            "猜错比承认不知道更糟，引擎会明确告诉玩家「没听清」。",
+          ].join("\n"),
+        },
+        {
+          role: "user",
+          content: [
+            `当前所在：${sceneName}`,
+            "可选出口：",
+            ...exits.map(e => `  ${e.id} = ${e.name}`),
+            "",
+            `玩家说：「${said}」`,
+          ].join("\n"),
+        },
+      ],
+      { maxTokens: 64, temperature: 0, jsonMode: true, timeout: 8_000 },
+    );
+    return parseMoveHint(raw, exits.map(e => e.id));
+  } catch {
+    return null; // 网络/超时/限流 —— 当没问过，回落到替选
+  }
 }
 
 // ── Scene processor: entry → exploration → analysis → advance ──
@@ -813,13 +867,11 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
     sceneExists: (id) => module.scenes.some(s => s.id === id),
     sceneName: (id) => module.scenes.find(s => s.id === id)?.name ?? "",
   });
-  const chosenConn = picked.conn;
+  let chosenConn = picked.conn;
   if (!chosenConn) return null;
   // 记下"接下来这一步是玩家自己选的还是引擎替他挑的"。
   // 主循环的「访问≥6次强制改道」要看它 —— 玩家明确要去的地方不能把人弹走。
   cursor.arrivedByPlayerChoice = !picked.forced;
-
-  const dest = module.scenes.find(s => s.id === chosenConn.targetSceneId);
 
   // 没对上玩家说的话 → **明说**，别静默替他挑。
   //
@@ -835,15 +887,35 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
   // 这个数是判据先能区分对错之后才有意义的 —— 上一版也跑出 100%，
   // 但那只是因为 12 条用例里 8 条都含完整地名。
   //
-  // 剩下认不出的仍旧走这条路：同义改写、代词、描述目的地特征 ——
-  // 这几类要语义理解，离线做不了，判据也只要求引擎**老实承认是替选**。
-  // **没听清就说出来**，别静默替他挑。
-  if (picked.forced) {
-    say(`\n（没听清要去哪，两人商量了一下，决定先去${dest?.name ?? "别处"}。）`, "verbatim");
+  // 剩下认不出的是同义改写、代词、描述目的地特征 —— 这几类要语义理解，
+  // 子串匹配到头了。**这不是「没有 API」**（`scripts/diag/probe-llm.ts` 实测可用），
+  // 是 `chooseConnection` 从不问 LLM：它是纯函数，得可复现、可单测、能离线跑。
+  //
+  // 所以问 LLM 这一步放在这里，而不是塞进匹配器：
+  //   · 只在匹配器已经放弃（forced）时才发一次请求，正常路径零开销
+  //   · 拿到的 id 必须在候选集合里，编出来的一律当没答（见 parseMoveHint）
+  //   · 答 unknown / 超时 / 报错 → 原样回落到替选，并照旧**明说**
+  // 实测（`scripts/diag/probe-llm-move.ts`）：有唯一解时挑对 3/3，
+  // 本无唯一解时老实回 unknown 3/3，硬猜 0/3 —— 它肯说「说不准」，这才敢接。
+  let forced = picked.forced;
+  if (forced && llmClient) {
+    const ids = (unlocked as SceneConnection[]).map(c => c.targetSceneId);
+    const hint = await askMoveTarget(llmClient, decision.action, scene.name, unlocked as SceneConnection[], module);
+    const picked2 = hint ? (unlocked as SceneConnection[]).find(c => c.targetSceneId === hint) : undefined;
+    if (picked2 && ids.includes(picked2.targetSceneId)) {
+      chosenConn = picked2;
+      forced = false;
+      cursor.arrivedByPlayerChoice = true;
+    }
+  }
+
+  const finalDest = module.scenes.find(s => s.id === chosenConn.targetSceneId);
+  if (forced) {
+    say(`\n（没听清要去哪，两人商量了一下，决定先去${finalDest?.name ?? "别处"}。）`, "verbatim");
   }
 
   // 只报地名的那种就别说了 —— 下一行的场景标题会把同一件事再讲一遍
-  if (!isRedundantMoveLine(chosenConn.condition, dest?.name ?? "")) {
+  if (!isRedundantMoveLine(chosenConn.condition, finalDest?.name ?? "")) {
     say(`\n${chosenConn.condition}。`, "verbatim");
   }
   return chosenConn;
