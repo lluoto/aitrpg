@@ -112,6 +112,26 @@ export function woundPenaltyDice(severity: WoundSeverity): number {
   }
 }
 
+/**
+ * 这一次伤害要不要掷「重伤体质检定」。
+ *
+ * 两个条件缺一不可：
+ *   1. 伤势够重（deep / grievous，即 CoC 7e 的 Major Wound）
+ *   2. **人还有意识**（hpAfter > 0）
+ *
+ * 第 2 条原先没有统一。四个调用点里两个带 `pc.hp > 0`、两个不带：
+ *   traps 主伤害路径、combat 敌人命中 —— 不带，HP 已经归零还会补掷一次
+ *   traps 挣脱大失败、traps 持续伤害   —— 带
+ * 结果是同一条规则在同一局里有两种口径，`tools/_diag-wounds.ts` 只能把
+ * 「重伤但当场昏迷」那些单列出来不下结论。
+ *
+ * 规则本身很清楚：这一掷决定的是「会不会昏过去」，人已经躺下了就没什么可决定的。
+ * 抽成一个函数而不是四处各写一遍，是因为口径漂移正是这么来的。
+ */
+export function needsMajorWoundCheck(severity: WoundSeverity, hpAfter: number): boolean {
+  return (severity === "deep" || severity === "grievous") && hpAfter > 0;
+}
+
 // ============================================================
 // 致残映射（仅 grievous ≥75%）
 // ============================================================

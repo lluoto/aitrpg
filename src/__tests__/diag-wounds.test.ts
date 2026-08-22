@@ -79,12 +79,29 @@ describe("W1 — deep/grievous 之后恰有一次重伤体质检定", () => {
     expect(r.breaches).toEqual([]);
   });
 
-  test("干扰输入：重伤但当场昏迷（to=0）→ 单列不断言，不报破例", () => {
-    // 引擎在陷阱主路径上会补掷，在挣脱/持续伤害路径上不掷，口径本身不一致。
-    // 判据在这里**不下结论**，但必须把数量报出来，不能当没看见。
+  test("**正确输入**：重伤但当场昏迷（to=0）→ 不掷体质检定", () => {
+    // 那一掷决定的是「会不会昏过去」，人已经躺下就没什么可决定的。
     const r = reduceWounds([scene(), dmg("李默", 6, 0, "grievous")]);
     expect(r.majorWoundsWhileDown).toBe(1);
     expect(r.majorWoundsStanding).toBe(0);
+    expect(r.breaches).toEqual([]);
+  });
+
+  test("**错误输入**：人已经昏迷了还补掷一次 → 报 con-while-down", () => {
+    // 这是口径漂移：四个调用点原先两个带 `pc.hp > 0`、两个不带。
+    const r = reduceWounds([
+      scene(), dmg("李默", 6, 0, "grievous"), conCheck("李默"),
+    ]);
+    expect(r.breaches.map((b) => b.kind)).toContain("con-while-down");
+  });
+
+  test("**干扰输入**：换场景之后的结算检定不再算到上一次昏迷头上", () => {
+    const r = reduceWounds([
+      scene(), dmg("李默", 6, 0, "grievous"),
+      scene("sewer"),
+      dmg("李默", 12, 5, "deep"), wound("李默", "deep", 1), conCheck("李默"),
+      chk("李默", "侦查", { woundPenalty: 1, totalPenalty: 1 }),
+    ]);
     expect(r.breaches).toEqual([]);
   });
 });

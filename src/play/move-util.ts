@@ -53,6 +53,30 @@ export interface MoveWorldView {
   sceneName(sceneId: string): string;
 }
 
+/**
+ * 一次匹配的过程记录。**只供诊断与测试读，剧本逻辑不看它。**
+ *
+ * 为什么要留痕：`tools/_diag-phrasing.ts` 只拿得到 `conn + forced`，
+ * 于是它能说「没对上」，说不出**为什么**没对上 ——
+ * 是一个键都没命中，还是命中了别人的键，还是好几条都命中、
+ * 靠列表顺序抢先。这三种是完全不同的毛病：
+ *   第一种要加同义词，第二种要处理否定，第三种要处理歧义。
+ * 混在一个「命中率 90.3%」里，等于知道有病但不知道病在哪。
+ */
+export interface MoveMatchTrace {
+  /** 每条连接考虑过哪些键 */
+  candidates: { targetSceneId: string; keys: string[] }[];
+  /** 哪些连接的键出现在这句话里，按 `unlocked` 的顺序 */
+  matched: { targetSceneId: string; key: string }[];
+  /**
+   * 命中项在 `unlocked` 里的下标；-1 表示没命中。
+   * 有多条命中时，胜出的永远是下标最小的那条 —— 也就是**靠顺序赢的**。
+   */
+  winnerIndex: number;
+  /** forced 时的打分结果，按降序 */
+  scores: { targetSceneId: string; score: number }[];
+}
+
 export interface MoveChoice {
   conn: SceneConnection | null;
   /**
@@ -63,6 +87,8 @@ export interface MoveChoice {
    * 外面无从分辨，也就没人能发现玩家的话被丢掉了。
    */
   forced: boolean;
+  /** 匹配过程留痕，见 `MoveMatchTrace`。行为与它无关 */
+  trace: MoveMatchTrace;
 }
 
 /**
@@ -100,12 +126,22 @@ export function chooseConnection(
   unlocked: SceneConnection[],
   world: MoveWorldView,
 ): MoveChoice {
-  if (unlocked.length === 0) return { conn: null, forced: false };
+  const trace: MoveMatchTrace = { candidates: [], matched: [], winnerIndex: -1, scores: [] };
+  if (unlocked.length === 0) return { conn: null, forced: false, trace };
 
-  for (const c of unlocked) {
-    if (matchKeys(c, world).some(k => decision.action.includes(k))) {
-      return { conn: c, forced: false };
-    }
+  // 先把**所有**命中都记下来再决定，而不是撞上第一个就 return。
+  // 行为不变（胜出的仍是下标最小的那条），但「其实有好几条都命中」
+  // 这件事从此看得见 —— 「重叠地名」和「否定」两类失败正是这么产生的。
+  unlocked.forEach((c, i) => {
+    const keys = matchKeys(c, world);
+    trace.candidates.push({ targetSceneId: c.targetSceneId, keys });
+    const key = keys.find(k => decision.action.includes(k));
+    if (key === undefined) return;
+    trace.matched.push({ targetSceneId: c.targetSceneId, key });
+    if (trace.winnerIndex < 0) trace.winnerIndex = i;
+  });
+  if (trace.winnerIndex >= 0) {
+    return { conn: unlocked[trace.winnerIndex]!, forced: false, trace };
   }
 
   // 没对上 —— 按"哪个更值得去"排个序替他挑一个。
@@ -121,5 +157,6 @@ export function chooseConnection(
     return { conn: c, score };
   });
   scored.sort((a, b) => b.score - a.score);
-  return { conn: scored[0]!.conn, forced: true };
+  trace.scores = scored.map(s => ({ targetSceneId: s.conn.targetSceneId, score: s.score }));
+  return { conn: scored[0]!.conn, forced: true, trace };
 }

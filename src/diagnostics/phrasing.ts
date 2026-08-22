@@ -35,12 +35,41 @@ export interface PhraseCase {
   forbidSceneId?: string | null;
 }
 
-/** 引擎对一句话的处理结果，只取判据要用的两件事 */
+/** 引擎对一句话的处理结果 */
 export interface PhraseOutcome {
   /** 引擎最终选中的目标场景 id；null = 没有可走的连接 */
   chosenSceneId: string | null;
   /** 引擎是否承认「没听清，我替你挑的」 */
   forced: boolean;
+  /**
+   * 哪些连接的匹配键出现在这句话里（按候选顺序）。
+   * 没有这一项，判据只能说「没对上」，说不出**为什么**。
+   */
+  matched?: { targetSceneId: string; key: string }[];
+}
+
+/**
+ * 一条用例没通过，是**哪一类**没通过。
+ *
+ * 三类的修法完全不同，混在一个「命中率」里等于知道有病不知道病在哪：
+ *   no-key      一个键都没命中 → 缺同义词/简称，匹配方式本身太窄
+ *   rival-only  只命中了别人的键 → 子串比对认错了人（重叠地名、否定）
+ *   ambiguous   自己和别人都命中 → 靠列表顺序抢先，换个顺序就翻车
+ *   forced-hit  目标对了但引擎自己标了替选 → 是蒙对的，不是听懂的
+ */
+export type PhraseFailKind = "no-key" | "rival-only" | "ambiguous" | "forced-hit" | "other";
+
+export function classifyFailure(c: PhraseCase, o: PhraseOutcome): PhraseFailKind {
+  const matched = o.matched;
+  if (!matched) return "other";
+  const want = c.wantSceneId;
+  const hitSelf = want !== null && matched.some((m) => m.targetSceneId === want);
+  const hitRival = matched.some((m) => m.targetSceneId !== want);
+  if (matched.length === 0) return "no-key";
+  if (hitSelf && hitRival) return "ambiguous";
+  if (!hitSelf && hitRival) return "rival-only";
+  if (hitSelf && o.forced) return "forced-hit";
+  return "other";
 }
 
 export type PhraseVerdict = "pass" | "fail";
@@ -74,6 +103,17 @@ export function judgePhrase(c: PhraseCase, o: PhraseOutcome): PhraseJudgement {
   }
 
   if (c.kind === "negative") {
+    // 用例自身先要成立：被排除的和要去的不能是同一个地方。
+    // 实际造出过「别去下水道，去下水道」—— 同一个场景挂了两条连接，
+    // 干扰项按「别的连接」取就撞上了自己。这种用例判不出任何东西，
+    // 必须**当成用例坏了**报出来，不能混进「反例通过率」当作引擎的失败。
+    if (c.forbidSceneId && c.forbidSceneId === c.wantSceneId) {
+      return {
+        verdict: "fail",
+        why: `用例本身不成立：被排除的和要去的是同一个场景「${c.wantSceneId}」`,
+        countsTowardHitRate: false,
+      };
+    }
     if (c.forbidSceneId && o.chosenSceneId === c.forbidSceneId) {
       return {
         verdict: "fail",
@@ -130,6 +170,8 @@ export interface PhraseReport {
   negative: PhraseTally;
   /** ambiguous 的「老实承认率」单列 */
   ambiguous: PhraseTally;
+  /** 失败按成因分类 —— 三类的修法完全不同 */
+  failKinds: Map<PhraseFailKind, number>;
   failures: string[];
 }
 
@@ -139,6 +181,7 @@ export function newPhraseReport(): PhraseReport {
     hitRate: { hit: 0, total: 0 },
     negative: { hit: 0, total: 0 },
     ambiguous: { hit: 0, total: 0 },
+    failKinds: new Map(),
     failures: [],
   };
 }
@@ -162,7 +205,9 @@ export function addPhraseResult(
   if (j.verdict === "pass") bucket.hit++;
 
   if (j.verdict === "fail") {
-    report.failures.push(`[${c.kind}/${c.id}]${context ? " " + context : ""} 「${c.said}」→ ${j.why}`);
+    const kind = c.kind === "ambiguous" ? "other" : classifyFailure(c, o);
+    report.failKinds.set(kind, (report.failKinds.get(kind) ?? 0) + 1);
+    report.failures.push(`[${c.kind}/${c.id}·${kind}]${context ? " " + context : ""} 「${c.said}」→ ${j.why}`);
   }
   return j;
 }

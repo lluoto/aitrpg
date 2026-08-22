@@ -14,7 +14,7 @@ import type { Cast, Cursor } from "./run-state";
 import { say, sayMech, emit } from "./narration";
 import { check, sanCheck, applyDamage, healWound } from "./checks";
 import { rollDice, trapsInScene, attributeValue } from "./trap-util";
-import type { WoundSeverity } from "../combat/wound-effects";
+import { needsMajorWoundCheck, type WoundSeverity } from "../combat/wound-effects";
 
 /**
  * 一次进场的陷阱结算。
@@ -110,8 +110,10 @@ for (const trapItem of trapsInScene(module.items, scene.id)) {
   }
 
   // ── 重伤体质检定（CoC 7e Major Wound）──
-  // deep（50-74%）或 grievous（≥75%）需要 CON 检定，失败则昏迷
-  if (severity === "deep" || severity === "grievous") {
+  // 判据统一走 needsMajorWoundCheck：够重 **且** 人还有意识。
+  // 这里原先不看 HP，于是被打到 0 之后还会补掷一次，而下面挣脱与持续伤害
+  // 那两处是看的 —— 同一条规则三种写法。
+  if (needsMajorWoundCheck(severity, pc.hp)) {
     // ignoreWound：这一掷结算的就是这处伤，不能被它自己罚
     const conCheck = check(pc.attributes.constitution, vName, "体质（重伤）", "regular", 0, true);
     if (!conCheck.isSuccess) {
@@ -143,7 +145,7 @@ for (const trapItem of trapsInScene(module.items, scene.id)) {
       const extraSev = applyDamage(pc, vName, extra);
       total += extra;
       // 额外伤害也可能触发重伤
-      if ((extraSev === "deep" || extraSev === "grievous") && pc.hp > 0) {
+      if (needsMajorWoundCheck(extraSev, pc.hp)) {
         const conCheck2 = check(pc.attributes.constitution, vName, "体质（重伤）", "regular", 0, true);
         if (!conCheck2.isSuccess) {
           say(`${vName}因伤势过重昏迷过去！`);
@@ -209,7 +211,7 @@ for (const trapItem of trapsInScene(module.items, scene.id)) {
     }
 
     // 持续伤害也可能触发重伤
-    if ((tickSev === "deep" || tickSev === "grievous") && pc.hp > 0) {
+    if (needsMajorWoundCheck(tickSev, pc.hp)) {
       const conCheck3 = check(pc.attributes.constitution, vName, "体质（重伤）", "regular", 0, true);
       if (!conCheck3.isSuccess) {
         say(`${vName}因伤势过重昏迷过去！`);

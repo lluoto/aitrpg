@@ -11,6 +11,7 @@ import type { WorldState } from "../world/state";
 import { CoCEngine, SUCCESS_LEVEL_LABELS } from "../rules/coc-engine";
 import { say, sayMech, emit } from "./narration";
 import { sanCheck, check, applyDamage, woundPenaltyOf } from "./checks";
+import { needsMajorWoundCheck } from "../combat/wound-effects";
 import { rollDice } from "./trap-util";
 import { isDowned } from "./run-state";
 import type { Cast } from "./run-state";
@@ -236,8 +237,8 @@ if (migoEncounter) {
     emit({ type: "enemy-attack", enemy: enemyName, target: name, outcome: "hit", damage: dmg });
     const severity = applyDamage(pc, name, dmg);
 
-    // 重伤要掷体质，跟陷阱那边同一套规则
-    if (severity === "deep" || severity === "grievous") {
+    // 重伤要掷体质，跟陷阱那边同一套规则 —— 现在是字面意义上的同一个判据
+    if (needsMajorWoundCheck(severity, pc.hp)) {
       const con = check(pc.attributes.constitution, name, "体质（重伤）", "regular", 0, true);
       if (!con.isSuccess) {
         say(`${name}因伤势过重昏迷过去！`);

@@ -9,7 +9,7 @@
 
 import { describe, test, expect } from "bun:test";
 import {
-  judgePhrase, addPhraseResult, newPhraseReport, pct,
+  judgePhrase, addPhraseResult, newPhraseReport, pct, classifyFailure,
   type PhraseCase, type PhraseOutcome,
 } from "../diagnostics/phrasing";
 import { chooseConnection, matchKeys, type MoveWorldView } from "../play/move-util";
@@ -76,6 +76,23 @@ describe("judgePhrase — 反例（否定式）", () => {
 
   test("反例不计入目标命中率", () => {
     expect(judgePhrase(negative, { chosenSceneId: "weisen_bar", forced: false }).countsTowardHitRate).toBe(false);
+  });
+
+  test("**用例本身不成立**：被排除的和要去的是同一个场景 → 报用例坏了", () => {
+    // 实际造出过「别去下水道，去下水道」：`maintenance_room` 有两条连接
+    // 都通向 `sewer`，干扰项按「别的连接」取就撞上了自己。
+    // 这种用例判不出任何东西，不能混进「反例通过率」当成引擎的失败。
+    const broken: PhraseCase = {
+      id: "self", kind: "negative", desc: "自己排除自己",
+      said: "别去下水道，去下水道", wantSceneId: "sewer", forbidSceneId: "sewer",
+    };
+    const j = judgePhrase(broken, { chosenSceneId: "sewer", forced: false });
+    expect(j.verdict).toBe("fail");
+    expect(j.why).toContain("用例本身不成立");
+  });
+
+  test("**干扰**：forbid 与 want 不同则正常判定，不被上面那条误伤", () => {
+    expect(judgePhrase(negative, { chosenSceneId: "weisen_bar", forced: false }).verdict).toBe("pass");
   });
 });
 
@@ -155,7 +172,7 @@ const conn = (targetSceneId: string, condition: string): SceneConnection =>
 
 function run(said: string, conns: SceneConnection[]): PhraseOutcome {
   const r = chooseConnection({ action: said }, conns, view());
-  return { chosenSceneId: r.conn?.targetSceneId ?? null, forced: r.forced };
+  return { chosenSceneId: r.conn?.targetSceneId ?? null, forced: r.forced, matched: r.trace.matched };
 }
 
 describe("端到端 — 唯一简称与唯一别名", () => {
@@ -289,6 +306,104 @@ describe("端到端 — 歧义输入必须 forced=true", () => {
   test("「去那边」同上", () => {
     const c: PhraseCase = { id: "pronoun", kind: "ambiguous", desc: "代词", said: "去那边", wantSceneId: null };
     expect(judgePhrase(c, run(c.said, conns)).verdict).toBe("pass");
+  });
+});
+
+// ── 失败成因分类 ─────────────────────────────────────────────
+//
+// 「命中率 90.3%」说明不了要改什么。三类失败的修法完全不同：
+// 缺同义词 / 认错了人 / 靠顺序抢先。判据要说得出是哪一类。
+
+describe("classifyFailure — 说得出为什么没对上", () => {
+  const want: PhraseCase = { id: "x", kind: "positive", desc: "", said: "", wantSceneId: "weisen_bar" };
+
+  test("一个键都没命中 → no-key（该加简称/别名）", () => {
+    expect(classifyFailure(want, { chosenSceneId: "police_station", forced: true, matched: [] })).toBe("no-key");
+  });
+
+  test("只命中了别处的键 → rival-only（子串比对认错了人）", () => {
+    const o: PhraseOutcome = {
+      chosenSceneId: "police_station", forced: false,
+      matched: [{ targetSceneId: "police_station", key: "警察局" }],
+    };
+    expect(classifyFailure(want, o)).toBe("rival-only");
+  });
+
+  test("自己和别处都命中 → ambiguous（靠候选顺序抢先）", () => {
+    const o: PhraseOutcome = {
+      chosenSceneId: "police_station", forced: false,
+      matched: [
+        { targetSceneId: "police_station", key: "警察局" },
+        { targetSceneId: "weisen_bar", key: "维森酒吧" },
+      ],
+    };
+    expect(classifyFailure(want, o)).toBe("ambiguous");
+  });
+
+  test("**干扰**：没有 trace 时老实说不知道，不瞎归类", () => {
+    expect(classifyFailure(want, { chosenSceneId: null, forced: true })).toBe("other");
+  });
+
+  test("端到端：「别去警察局，去维森酒吧」在两种顺序下成因不同", () => {
+    const c: PhraseCase = {
+      id: "negate", kind: "negative", desc: "否定", said: "别去警察局，去维森酒吧",
+      wantSceneId: "weisen_bar", forbidSceneId: "police_station",
+    };
+    // 两条键都出现在句子里 → 这是歧义，不是「没听懂」
+    const o = run(c.said, [conn("police_station", "前往警察局"), conn("weisen_bar", "前往维森酒吧")]);
+    expect(judgePhrase(c, o).verdict).toBe("fail");
+    expect(classifyFailure(c, o)).toBe("ambiguous");
+  });
+
+  test("端到端：「先去维森那边」是 no-key，不是认错人", () => {
+    const c: PhraseCase = { id: "short", kind: "positive", desc: "唯一简称", said: "先去维森那边", wantSceneId: "weisen_bar" };
+    const o = run(c.said, [conn("police_station", "前往警察局"), conn("weisen_bar", "前往维森酒吧")]);
+    expect(classifyFailure(c, o)).toBe("no-key");
+  });
+
+  test("端到端：「回镇上那处住宅看看」是 rival-only", () => {
+    const c: PhraseCase = {
+      id: "overlap", kind: "negative", desc: "短地名是长说法的子串",
+      said: "回镇上那处住宅看看", wantSceneId: "adrian_town_house", forbidSceneId: "town_premier",
+    };
+    const o = run(c.said, [conn("town_premier", "返回镇上"), conn("adrian_town_house", "前往镇内住宅")]);
+    expect(classifyFailure(c, o)).toBe("rival-only");
+  });
+});
+
+describe("MoveMatchTrace — 记录不改行为", () => {
+  const conns = [conn("police_station", "前往警察局"), conn("weisen_bar", "前往维森酒吧")];
+
+  test("多条命中时，胜出的仍是下标最小的那条（行为不变）", () => {
+    const r = chooseConnection({ action: "别去警察局，去维森酒吧" }, conns, view());
+    expect(r.conn?.targetSceneId).toBe("police_station");
+    expect(r.trace.winnerIndex).toBe(0);
+    expect(r.trace.matched.length).toBe(2);
+  });
+
+  test("**干扰**：换个顺序，胜出的跟着变 —— 判据据此认出「靠顺序赢的」", () => {
+    const r = chooseConnection({ action: "别去警察局，去维森酒吧" }, [...conns].reverse(), view());
+    expect(r.conn?.targetSceneId).toBe("weisen_bar");
+    expect(r.trace.matched.length).toBe(2);
+  });
+
+  test("没命中时留下打分表，且 winnerIndex 为 -1", () => {
+    const r = chooseConnection({ action: "换个地方看看" }, conns, view());
+    expect(r.forced).toBe(true);
+    expect(r.trace.winnerIndex).toBe(-1);
+    expect(r.trace.scores.length).toBe(2);
+  });
+
+  test("候选键全部留痕（判据要能看到匹配方式有多窄）", () => {
+    const r = chooseConnection({ action: "去维森酒吧" }, conns, view());
+    expect(r.trace.candidates.map((x) => x.targetSceneId)).toEqual(["police_station", "weisen_bar"]);
+    expect(r.trace.candidates[1]!.keys).toContain("维森酒吧");
+  });
+
+  test("空连接表不炸", () => {
+    const r = chooseConnection({ action: "去哪儿" }, [], view());
+    expect(r.conn).toBeNull();
+    expect(r.trace.candidates).toEqual([]);
   });
 });
 

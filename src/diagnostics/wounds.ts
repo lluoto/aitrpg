@@ -35,6 +35,8 @@ export type WoundBreach =
   | { kind: "wound-penalty-missing"; who: string; skill: string; at: number }
   /** 伤势已处理，却还在扣伤势惩罚骰 */
   | { kind: "penalty-after-heal"; who: string; skill: string; at: number }
+  /** 人已经昏迷了还在补掷重伤体质检定（口径漂移） */
+  | { kind: "con-while-down"; who: string; at: number }
   /**
    * deep/grievous 且人还站着，却没有把伤势记下来。
    * **这条专抓 `recordWound()` 被删** —— 上一版靠数「惩罚骰」字样，
@@ -49,7 +51,11 @@ export interface WoundReport {
   damages: number;
   /** deep/grievous 且当时人还站着的次数 —— W1 的分母 */
   majorWoundsStanding: number;
-  /** deep/grievous 但当场就昏迷了：CoC 的重伤检定对已倒下者不适用，单列 */
+  /**
+   * deep/grievous 但当场就昏迷了。规则是**不该**掷重伤体质检定 ——
+   * 那一掷决定的是「会不会昏过去」，人已经躺下就没什么可决定的。
+   * 曾经四个调用点两种口径，判据只能单列不下结论；口径统一之后这里可以断言了。
+   */
   majorWoundsWhileDown: number;
   /** 重伤体质检定次数 */
   conChecks: number;
@@ -77,10 +83,15 @@ interface ActorState {
   conSeen: number;
   /** 本次等待期间有没有把伤势记进去 */
   woundSeen: boolean;
+  /**
+   * 反向窗口：这次重伤把人打昏了，接下来**不该**出现结算检定。
+   * 值是那次伤害的事件序号；null 表示窗口关着。
+   */
+  forbidCon: number | null;
 }
 
 function emptyState(): ActorState {
-  return { wound: null, woundDice: 0, awaitingCon: null, conSeen: 0, woundSeen: false };
+  return { wound: null, woundDice: 0, awaitingCon: null, conSeen: 0, woundSeen: false, forbidCon: null };
 }
 
 /** 重伤结算检定的识别：靠 `ignoreWound`，不靠技能名 —— 名字改了判据不该瞎 */
@@ -132,6 +143,7 @@ export function reduceWounds(events: readonly PlayEvent[]): WoundReport {
       case "damage": {
         const s = st(e.who);
         closeAwait(e.who, i); // 上一处伤的等待窗口在下一次受伤时结束
+        s.forbidCon = null;
         r.damages++;
         // ⚠ 用事件里的 severity，不看播报标签：HP 归零时标签是「昏迷/濒死」，
         // 据文本分档必然把最重的那一档漏掉。
@@ -144,10 +156,11 @@ export function reduceWounds(events: readonly PlayEvent[]): WoundReport {
             s.conSeen = 0;
             s.woundSeen = false;
           } else {
-            // 已经被打昏了。引擎在陷阱主路径上仍会补一次体质检定，
-            // 在挣脱/持续伤害那两条路径上则不会 —— 口径不一致，
-            // 这里不作断言，只计数并在报告里点名。
+            // 已经被打昏了 → **不该**再掷重伤体质检定。
+            // 开一个反向窗口：接下来到下一次伤害/换场景之间，
+            // 这个人身上出现结算检定就是口径漂移。
             r.majorWoundsWhileDown++;
+            s.forbidCon = i;
           }
         }
         break;
@@ -173,6 +186,10 @@ export function reduceWounds(events: readonly PlayEvent[]): WoundReport {
         if (isSettlementCheck(e)) {
           r.conChecks++;
           if (s.awaitingCon) s.conSeen++;
+          else if (s.forbidCon !== null) {
+            r.breaches.push({ kind: "con-while-down", who: e.actor, at: i });
+            s.forbidCon = null;
+          }
           // W2：结算这处伤的那一掷不能被这处伤罚
           if (e.woundPenalty > 0) {
             r.breaches.push({ kind: "con-self-penalized", who: e.actor, woundPenalty: e.woundPenalty, at: i });
@@ -201,8 +218,11 @@ export function reduceWounds(events: readonly PlayEvent[]): WoundReport {
         break;
       }
       case "scene-enter": {
-        // 换场景就别再等这次的体质检定了
-        for (const who of states.keys()) closeAwait(who, i);
+        // 换场景就别再等这次的体质检定了，反向窗口同样关掉
+        for (const who of states.keys()) {
+          closeAwait(who, i);
+          st(who).forbidCon = null;
+        }
         break;
       }
       default:
