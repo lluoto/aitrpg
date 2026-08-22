@@ -123,9 +123,21 @@ export function llmEnabled(): boolean {
   return true;
 }
 
-/** 一次 LLM 对话（不可用/失败 → 返回空串，由调用方回退） */
-async function llmOnce(system: string, user: string, maxTokens = 500): Promise<string> {
-  if (!llmEnabled()) return "";
+/**
+ * 一次 LLM 对话（不可用/失败 → 返回空串，由调用方回退）。
+ *
+ * ⚠ 每条失败路径都会**发事件**（`llm-call`），不再无声回退。
+ * 原因：车卡的八项背景与小传本来就是 LLM 写的，模板只是兜底；
+ * 而兜底池每个职业每项只有 3 句 —— 一旦悄悄回落，同职业两个角色必然撞句，
+ * 读起来就是「像直接抄那几个词条」，却没有任何地方能告诉你 LLM 挂了。
+ * 「LLM 没跑起来」和「LLM 写得平淡」必须分得开。
+ */
+async function llmOnce(system: string, user: string, maxTokens = 500, purpose = "unknown"): Promise<string> {
+  const t0 = Date.now();
+  const done = (ok: boolean, reason: string) =>
+    emit({ type: "llm-call", purpose, ok, reason, ms: Date.now() - t0 });
+
+  if (!llmEnabled()) { done(false, "llmEnabled() 为 false（无 key 或被 LLM_DISABLED 关掉）"); return ""; }
   const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
   try {
     const baseUrl = process.env.LLM_BASE_URL || "https://api.openai.com/v1";
@@ -144,10 +156,17 @@ async function llmOnce(system: string, user: string, maxTokens = 500): Promise<s
       }),
       signal: AbortSignal.timeout(25000),
     });
-    if (!resp.ok) return "";
+    if (!resp.ok) {
+      done(false, `HTTP ${resp.status} ${resp.statusText}`);
+      return "";
+    }
     const data = await resp.json();
-    return extractMessageContent(data).trim();
-  } catch {
+    const text = extractMessageContent(data).trim();
+    if (!text) { done(false, "响应里没有正文"); return ""; }
+    done(true, "");
+    return text;
+  } catch (e) {
+    done(false, e instanceof Error ? `${e.name}: ${e.message}` : String(e));
     return "";
   }
 }
@@ -162,11 +181,12 @@ async function llmOnce(system: string, user: string, maxTokens = 500): Promise<s
  */
 async function enhanceBackgroundProfile(
   base: BackgroundProfile,
-  ctx: { name: string; occupation: string; era: string; anchors: PersonAnchors },
-): Promise<BackgroundProfile> {
+  ctx: { name: string; occupation: string; era: string; anchors: PersonAnchors; gender?: Gender; avoidNames?: string[] },
+): Promise<{ profile: BackgroundProfile; name?: string }> {
+  const genderWord = ctx.gender === "female" ? "女性" : ctx.gender === "male" ? "男性" : "";
   const prompt = [
     `为以下 CoC 7e 调查员塑造"背景故事八项"。`,
-    `名字: ${ctx.name}  职业: ${ctx.occupation}  时代: ${ctx.era}年  年龄: ${ctx.anchors.age}岁`,
+    `职业: ${ctx.occupation}  时代: ${ctx.era}年  年龄: ${ctx.anchors.age}岁${genderWord ? `  性别: ${genderWord}` : ""}`,
     `家庭状况: ${ctx.anchors.household}`,
     `出身来历: ${ctx.anchors.provenance}`,
     ``,
@@ -176,28 +196,62 @@ async function enhanceBackgroundProfile(
     `3. 每项 1-2 句话、不超过 80 字`,
     `4. 贴合 ${ctx.era} 年（1920s 美国小镇）的生活质感：物件、场所、称谓都要符合那个年代`,
     ``,
+    // 顺带把名字也要了 —— **不额外多打一次网络**。
+    // 这次调用已经知道职业、年代、年龄、家庭、出身、性别，正是起名要的全部信息；
+    // 而模板名字池按职业收窄之后只剩五六个（侦探永远是亨利/约翰/沃尔特…），
+    // 重复感很明显。给不出合格名字时照旧用模板名（见 pickName）。
+    ...(ctx.avoidNames?.length ? [`避免与这些名字重复：${ctx.avoidNames.join("、")}`] : []),
+    `另外为这个人起一个中文音译名，须符合 1920 年代美国小镇的用名习惯${genderWord ? `、且是${genderWord}名` : ""}，`,
+    `形如「亨利·摩根」（名·姓），不要用生僻字，不要与上面提到的名字重复。`,
+    ``,
     `严格按以下 JSON 输出（不要 markdown 代码块、不要其他文字）：`,
-    `{"appearance":"…","beliefs":"…","significantPeople":"…","meaningfulPlace":"…","treasuredPossession":"…","traits":"…","woundsAndScars":"…","phobiasAndManias":"…"}`,
+    `{"name":"…","appearance":"…","beliefs":"…","significantPeople":"…","meaningfulPlace":"…","treasuredPossession":"…","traits":"…","woundsAndScars":"…","phobiasAndManias":"…"}`,
   ].join("\n");
-  const raw = await llmOnce("你是 CoC 7e 车卡系统，输出严格 JSON。", prompt, 600);
-  if (!raw) return base;
+  const raw = await llmOnce("你是 CoC 7e 车卡系统，输出严格 JSON。", prompt, 700, "background");
+  if (!raw) return { profile: base };
   try {
     const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) return base;
+    if (!m) return { profile: base };
     const parsed = JSON.parse(m[0]);
     return {
-      appearance: parsed.appearance || base.appearance,
-      beliefs: parsed.beliefs || base.beliefs,
-      significantPeople: parsed.significantPeople || base.significantPeople,
-      meaningfulPlace: parsed.meaningfulPlace || base.meaningfulPlace,
-      treasuredPossession: parsed.treasuredPossession || base.treasuredPossession,
-      traits: parsed.traits || base.traits,
-      woundsAndScars: parsed.woundsAndScars || base.woundsAndScars,
-      phobiasAndManias: parsed.phobiasAndManias || base.phobiasAndManias,
+      name: acceptGeneratedName(parsed.name, ctx.avoidNames ?? []),
+      profile: {
+        appearance: parsed.appearance || base.appearance,
+        beliefs: parsed.beliefs || base.beliefs,
+        significantPeople: parsed.significantPeople || base.significantPeople,
+        meaningfulPlace: parsed.meaningfulPlace || base.meaningfulPlace,
+        treasuredPossession: parsed.treasuredPossession || base.treasuredPossession,
+        traits: parsed.traits || base.traits,
+        woundsAndScars: parsed.woundsAndScars || base.woundsAndScars,
+        phobiasAndManias: parsed.phobiasAndManias || base.phobiasAndManias,
+      },
     };
   } catch {
-    return base;
+    return { profile: base };
   }
+}
+
+/**
+ * LLM 起的名字收不收。
+ *
+ * 名字是**整局叙述里唯一的身份标记**（日志、判据、玩家全靠它），
+ * 所以这一关比八项严得多：形状不对宁可退回模板名，也不能让一个
+ * 「调查员A」或者半截句子进到正文里。
+ *
+ * 不合格一律返回 undefined，调用方用模板名 —— 与八项同一套「失败就兜底」纪律。
+ */
+export function acceptGeneratedName(raw: unknown, avoid: readonly string[]): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const name = raw.trim().replace(/^[「"'`]|[」"'`]$/g, "");
+  if (!name.includes("·")) return undefined;                 // 必须是「名·姓」
+  const [first, last, ...rest] = name.split("·");
+  if (rest.length > 0) return undefined;                     // 只允许一个分隔符
+  if (!first || !last) return undefined;
+  if (name.length < 3 || name.length > 12) return undefined;
+  if (!/^[\u4e00-\u9fa5·]+$/.test(name)) return undefined;   // 纯中文，别混进拉丁字母
+  if (/调查员|角色|某人|姓名|名字/.test(name)) return undefined; // 占位词
+  if (avoid.some((a) => a === name || a.split("·")[0] === first)) return undefined; // 与同伴撞名
+  return name;
 }
 
 /**
@@ -230,7 +284,7 @@ async function writeBackstory(
     `伤口和疤痕: ${profile.woundsAndScars}`,
     `恐惧症和躁狂症: ${profile.phobiasAndManias}`,
   ].join("\n");
-  const raw = await llmOnce("你是 CoC 跑团主持人，擅长撰写调查员背景故事。用中文输出，简洁克制。", prompt, 400);
+  const raw = await llmOnce("你是 CoC 跑团主持人，擅长撰写调查员背景故事。用中文输出，简洁克制。", prompt, 400, "backstory");
   return raw && raw.length >= 20 ? raw : fallback;
 }
 
@@ -275,12 +329,25 @@ async function createRandomPlayerSetup(
   // 「亨利半跪下来，检查亨利的伤势」，诊断也只能把两人的行动算到一个人头上
   // （实测 seed 95028 就是这样，`_diag-downed.ts` 因此报了 2 次假违规）。
   // 重抽有限次，抽不开就加个后缀 —— 名字池不大，不能死循环。
-  const { full, short, gender } = pickDistinctName(archetype.id, usedShortNames);
-  const pc = await createPC(full, archetype.id, archetype);
+  const drawn = pickDistinctName(archetype.id, usedShortNames);
+  const { short: fallbackShort, gender } = drawn;
+  const pc = await createPC(drawn.full, archetype.id, archetype);
   const anchors = randomPersonAnchors();
-  const profile = await enhanceBackgroundProfile(pc.backgroundProfile ?? buildBaseBackgroundProfile(archetype), {
-    name: full, occupation: archetype.label, era: module.era, anchors,
-  });
+  // 名字跟着八项一起要 —— 同一次调用，不额外打网络。
+  // 模板名字池按职业收窄后只剩五六个（侦探永远是亨利/约翰/沃尔特…），重复感明显；
+  // LLM 手上正好有职业/年代/年龄/家庭/出身/性别，起名要的信息一样不缺。
+  const { profile, name: llmName } = await enhanceBackgroundProfile(
+    pc.backgroundProfile ?? buildBaseBackgroundProfile(archetype),
+    {
+      name: drawn.full, occupation: archetype.label, era: module.era, anchors, gender,
+      avoidNames: usedShortNames,
+    },
+  );
+  // LLM 给不出合格名字就用模板名（`acceptGeneratedName` 把关）——
+  // 与八项同一套「失败就兜底」纪律，且离线跑法完全不受影响。
+  const full = llmName ?? drawn.full;
+  const short = llmName ? llmName.split("·")[0]! : fallbackShort;
+  pc.name = full;
   pc.backgroundProfile = profile;
   pc.backstory = await writeBackstory(profile, { name: full, occupation: archetype.label, era: module.era });
   return {

@@ -114,7 +114,27 @@ export type PlayEvent =
   /** 正式结局。**没有这条就是没有结局**，「进过终局场景」不算 */
   | { type: "ending"; id: string; label: string }
   /** 本局没走到结局就收场（目前只有全员倒下一种） */
-  | { type: "aborted"; reason: "all-down" };
+  | { type: "aborted"; reason: "all-down" }
+  /**
+   * 一次 LLM 调用的结果。
+   *
+   * 为什么要有：车卡阶段的八项背景与小传**本来就是 LLM 写的**，
+   * 模板只是失败兜底。而 `llmOnce` 过去把每条失败路径都咽了
+   * （`if (!resp.ok) return ""`、`catch { return "" }`），
+   * 调用方再 `if (!raw) return base` 悄悄退回模板 ——
+   * 于是「LLM 挂了」和「LLM 写得平淡」在产物上长得一模一样。
+   * 兜底池每个职业每项只有 3 句，一旦回落，同职业两个角色必然撞句，
+   * 读起来就是「像直接抄那几个词条」。
+   */
+  | {
+      type: "llm-call";
+      /** 干什么用的：`background` / `backstory` / `prologue` … */
+      purpose: string;
+      ok: boolean;
+      /** 失败原因；成功时为空串 */
+      reason: string;
+      ms: number;
+    };
 
 export type PlayEventType = PlayEvent["type"];
 

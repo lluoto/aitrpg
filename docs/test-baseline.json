@@ -1,5 +1,5 @@
 {
-  "tests": 1714,
+  "tests": 1723,
   "files": 83,
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
@@ -62,6 +62,11 @@
       "tests": 1714,
       "files": 83,
       "when": "开场叙述：名字池带性别、hook 不再写死「他」也不编侦探履历、开场氛围不提前点名"
+    },
+    {
+      "tests": 1723,
+      "files": 83,
+      "when": "人名改由 LLM 与八项同一次调用给出（不额外打网络），acceptGeneratedName 把关；llmOnce 失败不再静默"
     }
   ]
 }

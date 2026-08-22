@@ -13,7 +13,7 @@
 import { BARN_OF_PREMIER, BARN_SUPPORT } from "../../src/module/barn-of-premier";
 import { runModule } from "../../src/play-module";
 import { writeReport } from "../../src/diagnostics/report";
-import { FEMALE_FIRST_NAMES } from "../../src/character/background-profile";
+
 
 
 const N = Number(process.argv[2] ?? 2);
@@ -106,20 +106,26 @@ for (let i = 1; i <= N; i++) {
   if (/见过太多案子|办过.*案子/.test(text)) {
     notes.push("⚠ 出现「见过太多案子」这类侦探履历 —— 随机职业未必成立");
   }
-  // 名字后紧跟错性别代词：只能粗查，作为人工复核的线索
-  for (const f of FEMALE_FIRST_NAMES) {
-    if (text.includes(f) && new RegExp(`${f}[^。！？]{0,24}他[^们]`).test(text)) {
-      notes.push(`⚠ 「${f}」附近出现「他」—— 疑似代词与性别不符`);
-      break;
-    }
-  }
+  // ⚠ 这里**曾经**有一条「女名附近出现『他』」的粗查，已删。
+  //
+  // 它在实跑里报的是假阳性：那一局的调查员是艾琳与沃尔特，代词完全正确，
+  // 而「艾达」出现在别处（另一份角色卡里），24 字内的「他」根本不指它。
+  // 要判对必须做**指代消解** —— 知道每个「他/她」指谁。这条判据做不到，
+  // 做不到就别留着出噪音：一个只会误报的检查会让人学会忽略所有检查。
+  //
+  // 代词正确性改由**确定性单测**守：`prologue-hooks.test.ts` 直接渲染模板，
+  // 按男/女/未知三种性别各验一遍。那里输入封闭、结果可判。
   if (notes.length) { flagged++; out.push(...notes.map((n) => `- ${n}`), ""); }
   else out.push("- 机器判据无异常（措辞是否自然仍需人读）", "");
 }
 
 out.push("## 说明");
 out.push("");
-out.push("机器在这里只判得动三类：**全名**是否提前出现、有没有编侦探履历、代词是否明显不符。");
+out.push("机器在这里只判得动两类：**全名**是否提前出现、有没有编侦探履历。");
+out.push("");
+out.push("**代词是否与性别相符判不了** —— 那要指代消解（知道每个「他/她」指谁）。");
+out.push("粗查「女名附近出现他」实测就是误报。这一项改由确定性单测守：");
+out.push("`prologue-hooks.test.ts` 直接渲染模板，按男/女/未知三种性别各验一遍。");
 out.push("");
 out.push("**只用名或只用姓的泄漏运行时判不了。** 中文短名的子串匹配在开放文本上不可靠 ——");
 out.push("同一条判据先后把「米尔德丽德·罗德里格斯」（调查员）和《普瑞米尔的谷仓》（模组标题）");
