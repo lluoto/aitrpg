@@ -35,6 +35,7 @@ import { MythosModuleLoader, type MythosModuleHost } from "../rules/mythos-modul
 import { PoliticoEconomyEngine } from "../economy/politic-economy-engine";
 import { PREMIERS_BARN_MODULE, ARKHAM_LIBRARY_MODULE, INNSMOUTH_MODULE } from "../rules/mythos-module";
 import { getModule as getCustomModule } from "../rules/custom-modules/index";
+import { resolveSceneTarget, type SceneRow } from "../play/scene-resolve";
 import { saveSessionMeta, deleteSessionFile } from "./session-store";
 import type { CombatResult, WorldEntity, ActionIntent, CoCWeaponDef, CombatPersonalityTraits } from "../types";
 import type { NPCPersonality, AgentMessage, MessageType, NPCMood, TurnRecord } from "../agent/types";
@@ -1285,14 +1286,14 @@ export class GameSession {
       case "move":
         // 模块模式：先解析目标场景名（匹配模组已注册场景并更新玩家位置），再回落 LLM 叙事
         if (this.registeredModules.length > 0) {
-          this.tryResolveModuleScene(intent.target ?? input);
+          this.tryResolveModuleScene(intent.target ?? input, msg);
           return false;
         }
         return this.handleMove(intent, msg);
       case "look":
         // 模块模式：同样先尝试解析目标场景名，再回落 LLM 叙事
         if (this.registeredModules.length > 0) {
-          this.tryResolveModuleScene(intent.target ?? input);
+          this.tryResolveModuleScene(intent.target ?? input, msg);
           return false;
         }
         msg("你环顾四周，观察着周围的环境…"); this.lastNarrative = "你仔细观察了周围的环境"; return true;
@@ -1454,51 +1455,36 @@ export class GameSession {
 
   /**
    * 模块模式：将移动/查看目标解析为已注册的模组场景并更新玩家位置。
-   * 匹配顺序：sceneDisplayNames/sceneAliases → scenes 表 name/id 精确 → 模糊包含。
    * 匹配不到时不创建垃圾场景，返回 false（由调用方回落 LLM 叙事）。
+   *
+   * `msg` 用来在**没认准**时明说。原先没有这一路：认准了静默移动、
+   * 没认准也静默移动，玩家一个字都看不到 ——「比菜单更糟」说的就是这个。
    */
-  private tryResolveModuleScene(targetOrInput: string): boolean {
-    const t = (targetOrInput ?? "").trim();
-    if (!t) return false;
-    // 1. sceneDisplayNames / sceneAliases 精确匹配
-    for (const [id, name] of Object.entries(this.sceneDisplayNames)) {
-      if (name === t || id === t) return this.movePlayerToScene(id);
-    }
-    for (const [id, aliases] of Object.entries(this.sceneAliases)) {
-      if (aliases.includes(t)) return this.movePlayerToScene(id);
-    }
-    // 2. scenes 表 name/id 精确 + 包含匹配
+  private tryResolveModuleScene(targetOrInput: string, msg?: (s: string) => void): boolean {
+    // 解析逻辑抽到了 `play/scene-resolve.ts` —— 原先它埋在这个 private 方法里，
+    // 返回值在两个调用点都被丢掉，全仓只有一条 happy-path 测试。
+    // 也就是说**真人那条路的移动匹配几乎没有判据**，而剧本杀那条路的
+    // 同类毛病（否定、顺序依赖、静默替选）已经查出来一串。
+    let rows: SceneRow[] = [];
     try {
-      const rows = this.world.listScenes();
-      // 2a. 精确
-      for (const r of rows) {
-        if (r.id === t || r.name === t) return this.movePlayerToScene(r.id);
-      }
-      // 2b. 包含：目标包含场景名（"警察局了解案情" → 警察局）或场景名包含目标（"谷仓" → 谷仓内部）
-      let best: SceneRecord | null = null;
-      for (const r of rows) {
-        const name = r.name;
-        if (!name || name === "unknown") continue;
-        if (t.includes(name)) { if (!best || name.length > best.name.length) best = r; }
-        else if (name.includes(t) && t.length >= 2) { if (!best || name.length < best.name.length) best = r; }
-      }
-      if (best) return this.movePlayerToScene(best.id);
-      // 2c. bigram 公共子串：处理非子串但语义相同（"艾德里安的住宅调查" → "艾德里安在镇子内的住宅"，公共 gram=5）
-      // 阈值 1：让"进入谷仓调查"也能匹配"谷仓形建筑"（公共 gram=谷仓）
-      const grams = new Set<string>();
-      for (let i = 0; i < t.length - 1; i++) grams.add(t.slice(i, i + 2));
-      let bestGram: SceneRecord | null = null;
-      let bestGramScore = 0;
-      for (const r of rows) {
-        const name = r.name;
-        if (!name || name === "unknown") continue;
-        let score = 0;
-        for (let i = 0; i < name.length - 1; i++) if (grams.has(name.slice(i, i + 2))) score++;
-        if (score >= 1 && score > bestGramScore) { bestGramScore = score; bestGram = r; }
-      }
-      if (bestGram) return this.movePlayerToScene(bestGram.id);
+      rows = this.world.listScenes().map((r) => ({ id: r.id, name: r.name }));
     } catch { /* 忽略 DB 错误 */ }
-    return false;
+
+    const hit = resolveSceneTarget({
+      said: targetOrInput ?? "",
+      displayNames: this.sceneDisplayNames,
+      aliases: this.sceneAliases,
+      rows,
+    });
+    if (!hit.sceneId) return false;
+    const moved = this.movePlayerToScene(hit.sceneId);
+    // 没认准就说出来。玩家有权知道「这一步是我选的，还是引擎猜的」——
+    // 剧本杀那条路早有这句（「没听清要去哪……」），真人这条路一直没有。
+    if (moved && hit.forced) {
+      const name = this.sceneDisplayNames[hit.sceneId] ?? hit.sceneId;
+      msg?.(`（没太确定你要去哪，先按最接近的理解带你到了「${name}」。说个更完整的地名可以纠正。）`);
+    }
+    return moved;
   }
 
   /**
