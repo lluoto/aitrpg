@@ -56,7 +56,7 @@ export interface MoveWorldView {
 /**
  * 一次匹配的过程记录。**只供诊断与测试读，剧本逻辑不看它。**
  *
- * 为什么要留痕：`tools/_diag-phrasing.ts` 只拿得到 `conn + forced`，
+ * 为什么要留痕：`scripts/diag/diag-phrasing.ts` 只拿得到 `conn + forced`，
  * 于是它能说「没对上」，说不出**为什么**没对上 ——
  * 是一个键都没命中，还是命中了别人的键，还是好几条都命中、
  * 靠列表顺序抢先。这三种是完全不同的毛病：
@@ -115,7 +115,7 @@ export function matchKeys(c: SceneConnection, world: MoveWorldView): string[] {
 // ── 提及的性质 ──
 //
 // 一个地名出现在句子里，不等于玩家要去那儿。
-// `tools/_diag-phrasing.ts` 把失败按成因分开之后，142 条里有 **72 条**是
+// `scripts/diag/diag-phrasing.ts` 把失败按成因分开之后，142 条里有 **72 条**是
 // 「自己和别处都命中，靠候选顺序抢先」—— 同一句话换个连接顺序结论就变。
 // 那不是「没听懂」，是**听懂了但选错了人**。
 

@@ -77,7 +77,7 @@ const OPAQUE_EXT = new Set([".db", ".sqlite", ".sqlite3", ".wal", ".shm"]);
  * 如果先撞上扩展名规则，就会分别被算成手写设计 / 脚本 / 源材料，
  * 「备份残留」那一档永远是空的，看着像很干净。
  *
- * ⚠ 反向要求同样重要：`scripts/backup-critical.ts` 和 `tools/audit-backup.md`
+ * ⚠ 反向要求同样重要：`scripts/backup-critical.ts` 和 `analysis/diag/audit-backup.md`
  * 名字里都有 `backup`，但它们是**正经文件**。判据认的是 `.bak` / `_bak` /
  * `_before_` / `.orig` / `~` 这些**后缀形态**，不是「名字里有 backup」。
  */

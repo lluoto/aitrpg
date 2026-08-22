@@ -828,7 +828,7 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
   // 他说「去那边」，引擎按分数把他送到别处，日志上只有目的地的名字。
   // 记录里那句「比菜单更糟：菜单至少还承认玩家做了选择」说的就是这个。
   //
-  // 实测（tools/_diag-phrasing.ts，1178 组 = 每个多出口场景 × 每个出口 ×
+  // 实测（scripts/diag/diag-phrasing.ts，1178 组 = 每个多出口场景 × 每个出口 ×
   // 18 种说法 × 原序/逆序两遍）：
   //   正例命中 800/800、反例（否定与「已经去过了」）144/144、
   //   歧义输入老实承认替选 234/234，且**原序与逆序结果完全一致**。

@@ -380,7 +380,7 @@ function qArch(kw?: string) {
     for (const l of s.prose) console.log(l);
     for (const t of s.tables) {
       for (const r of t.rows) {
-        if (kw && !r.some((c) => re.test(c)) && !re.test(s.title)) continue;
+        if (kw && !r.some((c: string) => re.test(c)) && !re.test(s.title)) continue;
         console.log("  " + r.join("  |  "));
       }
     }

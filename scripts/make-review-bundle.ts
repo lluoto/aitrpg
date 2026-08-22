@@ -9,12 +9,12 @@ import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 
 const TARGETS = [
-  "tools/_diag-phrasing.ts",
-  "tools/_diag-downed.ts",
-  "tools/_diag-wounds.ts",
-  "tools/_diag-combat.ts",
-  "tools/_diag-fuzz.ts",
-  "tools/_audit-backup.ts",
+  "scripts/diag/diag-phrasing.ts",
+  "scripts/diag/diag-downed.ts",
+  "scripts/diag/diag-wounds.ts",
+  "scripts/diag/diag-combat.ts",
+  "scripts/diag/diag-fuzz.ts",
+  "scripts/diag/audit-backup.ts",
   "scripts/preflight.ts",
 ];
 
@@ -44,11 +44,11 @@ out.push("# 附：最近一次产物（供对照）");
 out.push("=".repeat(70));
 out.push("");
 const ARTIFACTS = [
-  "tools/diag-phrasing.md",
-  "tools/diag-downed.txt",
-  "tools/diag-wounds.txt",
-  "tools/diag-combat.txt",
-  "tools/audit-backup.md",
+  "analysis/diag/diag-phrasing.md",
+  "analysis/diag/diag-downed.txt",
+  "analysis/diag/diag-wounds.txt",
+  "analysis/diag/diag-combat.txt",
+  "analysis/diag/audit-backup.md",
 ];
 for (const a of ARTIFACTS) {
   if (!existsSync(a)) continue;

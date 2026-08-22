@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-22 04:39  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-22 07:42  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：b10eafc docs: handoff guide for taking over the work  ·  **测试**：1557 条 / 77 文件，全绿（基线 1557，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：f660111 feat: recognise the head noun of a place name ("去医院" = 霍姆斯医院)  ·  **测试**：1615 条 / 78 文件，全绿（基线 1615，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -52,12 +52,12 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 
 | 脚本 | 量什么 | 判据在哪 | 校准测试 |
 |---|---|---|---|
-| `tools/_diag-fuzz.ts` | 通关率（= 正常返回**且**有正式结局）、死循环 | `src/diagnostics/fuzz.ts` | `diag-fuzz.test.ts` |
-| `tools/_diag-wounds.ts` | 伤势分级／重伤检定／惩罚骰 | `src/diagnostics/wounds.ts` | `diag-wounds.test.ts` |
-| `tools/_diag-combat.ts` | Boss 还手（按攻击者身份，不按技能名）、玩家掉血 | `src/diagnostics/combat.ts` | `diag-combat.test.ts` |
-| `tools/_diag-downed.ts` | 昏迷期间本人是否还在**掷骰** | `src/diagnostics/downed.ts` | `diag-downed.test.ts` |
-| `tools/_diag-phrasing.ts` | 玩家说法能否匹配到场景 | `src/diagnostics/phrasing.ts` | `diag-phrasing.test.ts` |
-| `tools/_audit-backup.ts` | 哪些数据丢了不可再生 | `src/diagnostics/backup-classify.ts` | `diag-backup-classify.test.ts` |
+| `scripts/diag/diag-fuzz.ts` | 通关率（= 正常返回**且**有正式结局）、死循环 | `src/diagnostics/fuzz.ts` | `diag-fuzz.test.ts` |
+| `scripts/diag/diag-wounds.ts` | 伤势分级／重伤检定／惩罚骰 | `src/diagnostics/wounds.ts` | `diag-wounds.test.ts` |
+| `scripts/diag/diag-combat.ts` | Boss 还手（按攻击者身份，不按技能名）、玩家掉血 | `src/diagnostics/combat.ts` | `diag-combat.test.ts` |
+| `scripts/diag/diag-downed.ts` | 昏迷期间本人是否还在**掷骰** | `src/diagnostics/downed.ts` | `diag-downed.test.ts` |
+| `scripts/diag/diag-phrasing.ts` | 玩家说法能否匹配到场景 | `src/diagnostics/phrasing.ts` | `diag-phrasing.test.ts` |
+| `scripts/diag/audit-backup.ts` | 哪些数据丢了不可再生 | `src/diagnostics/backup-classify.ts` | `diag-backup-classify.test.ts` |
 
 ⚠ **这些判据本身出过六次错**（详见 `docs/review-request.md`）。已做的返工：
 
@@ -87,7 +87,7 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 | 两名调查员可能重名 | downed 的身份不可分辨检测 | 名字是日志里唯一的身份标记 |
 
 用法：跑局类脚本都收 `[局数] [起始局号]`，
-`bun tools/_diag-downed.ts 3 4` = 第 4~6 局，便于分批跑而不重叠。
+`bun scripts/diag/diag-downed.ts 3 4` = 第 4~6 局，便于分批跑而不重叠。
 
 ## 手上还挂着的（3）
 
@@ -100,6 +100,10 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 
 ## 最近做了什么
 
+- f660111 feat: recognise the head noun of a place name ("去医院" = 霍姆斯医院)
+- 91a7954 feat: move matching stops losing to word order
+- 7e80bc4 fix: one rule for the major wound check, and let phrasing say why it missed
+- 25564db fix: make the diagnostic criteria able to tell right from wrong
 - b10eafc docs: handoff guide for taking over the work
 - 60da428 docs: external review request for diagnostic criteria
 - c8776e7 fix: tell the player when the engine picks the destination
@@ -108,10 +112,6 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 - 307fbae docs: mark stale conclusions in the player-agency notes
 - 8c82675 fix: pass remaining investigable clues to move decision
 - 9960c14 chore: preflight checks, session state file, working rules
-- 38f83b1 merge: coc 7e unconscious rules
-- 32d578e feat: unconscious investigators cannot act, first aid revives
-- 511c575 merge: boss actually fights back
-- 105a6c3 docs: boss fights back, and the downed-but-acting gap it exposed
 
 ## 代码地图
 

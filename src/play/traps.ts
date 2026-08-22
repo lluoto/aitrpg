@@ -130,7 +130,7 @@ for (const trapItem of trapsInScene(module.items, scene.id)) {
   // ⚠ 昏迷的人不挣扎 —— CoC 7e：HP 归零即失去意识。
   // 这一条原先没有，于是「重伤体质检定失败 → 昏迷」之后紧接着就是
   // 「➜ 欧内斯特 【力量（挣脱捕兽夹）】」：躺着的人在用力掰铁齿。
-  // 是 `tools/_diag-downed.ts` 改用结构化事件之后报出来的（12 局 2 次），
+  // 是 `scripts/diag/diag-downed.ts` 改用结构化事件之后报出来的（12 局 2 次），
   // 旧判据只认 `HP n → 0` 那一行，而这条路径**根本没有那一行**，所以看不见。
   let escaped = false;
   if (mech.escape && !isDowned(pc)) {
@@ -171,7 +171,7 @@ for (const trapItem of trapsInScene(module.items, scene.id)) {
     //
     // ⚠ 施救的是**同伴**，同伴自己躺着就没人能救 —— 与 `tryReviveDowned`
     // 里那条 `if (isDowned(mate)) continue` 是同一条规则，这里原先漏了。
-    // `tools/_diag-downed.ts` 报出来的另外 2 次违规就是它：
+    // `scripts/diag/diag-downed.ts` 报出来的另外 2 次违规就是它：
     // 「➜ 亨利 【化学（判断急救方式）】」「➜ 亨利 【急救】」，而亨利此刻 HP 为 0。
     const partner = pc === c1 ? c2 : c1;
     if (mech.firstAid && !isDowned(partner)) {

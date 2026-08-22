@@ -4,6 +4,9 @@
 //   bun scripts/preflight.ts            全查
 //   bun scripts/preflight.ts --quick    只查快的（跳过测试）
 //
+// 七项检查：切割残渣 / 占位注释 / 反向 import / PowerShell 读中文 /
+//           文档引用的脚本是否入库 / typecheck / 测试条数基线
+//
 // ⚠ 这份脚本自己返工过一次。上一版六项检查里，**五项能被同一段坏代码骗过**：
 //   1. 切割残渣：只认 `return|await|赋值` 四种起手式 → 函数头被删后留下
 //      `register()` / `if` / `for` 一个都不报；同时不看花括号深度 →
@@ -26,6 +29,7 @@ import { spawnSync } from "child_process";
 import {
   findTruncatedBlocks, findPlaceholderResidue, findReverseImports, findShellRisks,
   judgeProcess, parseTestOutput, judgeTestCount,
+  referencedScripts, judgeScriptRefs, generatedDocs,
   type Finding, type TestBaseline,
 } from "../src/diagnostics/source-scan";
 
@@ -90,6 +94,38 @@ const scriptFiles = [
   ...walk("frontend", scriptExts),
 ];
 for (const f of scriptFiles) push(findShellRisks(f, read(f)));
+
+// ── 7. 生成的文档叫人跑的脚本，仓库里得真有 ──
+//
+// `docs/handoff.md` 曾经整整一张表指着 `tools/_diag-*.ts`，而 `tools/`
+// 在 .gitignore 里 —— 新克隆一个都没有。判据入了库、测试也齐了，
+// 可跑它们的入口不在仓库里。这跟「判据看着在检查、其实什么也没量」
+// 是同一类错，只是换了层皮，所以做成检查项。
+//
+// **只查脚本生成的那几份文档**：它们每次都会被重写，里面的每一句都必须
+// 当下为真。`docs/notes/*.md` 是 append-only 的工作记录，
+// 「当时用某个一次性脚本数出 4 处」是历史事实，那脚本后来删了不算缺陷。
+// 不收窄的话第一次跑就是 43 个报告，其中 42 个来自 notes —— 又一次假阳性淹没真问题。
+{
+  const tracked = spawnSync("git", ["ls-files"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const trackedSet = new Set(
+    (tracked.stdout ?? "").split("\n").map((l) => l.trim()).filter(Boolean),
+  );
+  const gitOk = !tracked.error && tracked.status === 0;
+  const generated = generatedDocs(walk("scripts", [".ts"]).map(read));
+  for (const doc of generated) {
+    if (!existsSync(doc)) continue; // 还没生成过，不是这条检查的事
+    const refs = referencedScripts(read(doc)).map((p) => ({
+      path: p,
+      exists: existsSync(p),
+      // git 拿不到时不冤枉人：只查存在性，并在 notes 里说清楚
+      tracked: gitOk ? trackedSet.has(p) : true,
+    }));
+    push(judgeScriptRefs(refs, doc));
+  }
+  notes.push(`文档引用校验覆盖 ${generated.length} 份生成文档：${generated.join("、") || "(无)"}`);
+  if (!gitOk) notes.push("git ls-files 不可用 —— 只校验了文档引用脚本是否存在，没校验是否入库");
+}
 
 // ── 5. typecheck ──
 // 先看退出状态（error / signal / status），再看输出。

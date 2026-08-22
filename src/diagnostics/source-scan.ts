@@ -416,6 +416,87 @@ export function findShellRisks(file: string, src: string): Finding[] {
 }
 
 // ============================================================
+// 检查 7：文档里叫人跑的脚本，仓库里得真有
+// ============================================================
+
+/**
+ * 从文档正文里挑出「叫人跑的命令」所引用的脚本路径。
+ *
+ * 起因：`docs/handoff.md` 是入库的，里面整整一张表叫接手的人去跑
+ * `tools/_diag-*.ts`，而 `tools/` 在 `.gitignore` 里 —— **新克隆里
+ * 一个都没有**。判据本身入了库、测试也齐了，可跑它们的入口不在仓库里。
+ * 这跟「判据看着很像在检查、其实什么也没量」是同一类错，只是换了层皮。
+ *
+ * 两种形态都要认：
+ *   命令行     ```bun scripts/diag/diag-fuzz.ts 3```
+ *   反引号路径 | `scripts/diag/diag-fuzz.ts` | 通关率 |
+ *
+ * ⚠ 起初只认命令行，理由是「表格里的裸文件名常常是在说这个文件装什么，
+ *   不是叫人执行」。结果第一次做变异检验就露馅：把 `diag-fuzz.ts` 从索引里
+ *   撤掉，检查**一声不吭** —— 因为 handoff 那张表里六个脚本只有一个
+ *   以命令行形态出现过。文档指着一个不存在的路径，不管它是不是命令，
+ *   都是在给接手的人指错路。
+ *
+ * 裸文本（不带反引号、不在命令里）仍旧不算 —— 那才是真的「顺口提一句」。
+ */
+const RUN_CMD = /\bbun\s+(?:run\s+)?((?:src|scripts|tools)\/[\w./-]+\.(?:ts|mjs|cjs|js))/g;
+const CODE_PATH = /`((?:src|scripts|tools)\/[\w./-]+\.(?:ts|mjs|cjs|js))`/g;
+
+export function referencedScripts(markdown: string): string[] {
+  const out = new Set<string>();
+  for (const m of markdown.matchAll(RUN_CMD)) out.add(m[1]!);
+  for (const m of markdown.matchAll(CODE_PATH)) out.add(m[1]!);
+  return [...out];
+}
+
+/**
+ * 哪些文档是**脚本生成的**。
+ *
+ * 这条检查只对生成的文档生效，理由是可推导的而不是拍脑袋定的：
+ * 生成的文档每次都会被重写，所以里面的每一句都必须**当下为真**；
+ * 而 `docs/notes/*.md` 是**append-only 的工作记录**，
+ * 「当时用 `tools/_diag-absorb.ts` 数出 4 处」是历史事实，
+ * 那个一次性脚本后来删了也不影响记录的正确性。
+ *
+ * ⚠ 不加这层收窄的话，第一次跑就是 43 个报告，其中 42 个来自 notes ——
+ * 又一次「174 个假阳性淹掉 2 个真问题」。
+ * 收窄的判据必须是**可推导的**：谁写这份文档，就由谁负责它当下为真。
+ */
+const DOC_WRITE = /(?:writeFileSync|Bun\.write)\(\s*["'`](docs\/[\w./-]+\.md)["'`]/g;
+
+export function generatedDocs(scriptSources: readonly string[]): string[] {
+  const out = new Set<string>();
+  for (const src of scriptSources) {
+    for (const m of src.matchAll(DOC_WRITE)) out.add(m[1]!);
+  }
+  return [...out];
+}
+
+export interface ScriptRefVerdict {
+  path: string;
+  exists: boolean;
+  tracked: boolean;
+}
+
+/**
+ * 文档引用的脚本必须**既存在、又入库**。
+ *
+ * 只查存在是不够的：本机跑得动不代表别人克隆下来跑得动，
+ * 而这份文档的唯一读者就是「别人」。
+ */
+export function judgeScriptRefs(refs: readonly ScriptRefVerdict[], doc: string): Finding[] {
+  const out: Finding[] = [];
+  for (const r of refs) {
+    if (!r.exists) {
+      out.push({ file: doc, line: 1, rule: "doc-script-missing", message: `文档叫人跑 \`${r.path}\`，但这个文件不存在` });
+    } else if (!r.tracked) {
+      out.push({ file: doc, line: 1, rule: "doc-script-untracked", message: `文档叫人跑 \`${r.path}\`，但它没入库（新克隆拿不到）` });
+    }
+  }
+  return out;
+}
+
+// ============================================================
 // 检查 5/6：外部进程的退出状态
 // ============================================================
 

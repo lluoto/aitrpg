@@ -97,12 +97,12 @@ ${rules.map((r: any, i: number) => `${i + 1}. ${r.text}`).join("\n\n")}
 
 | 脚本 | 量什么 | 判据在哪 | 校准测试 |
 |---|---|---|---|
-| \`tools/_diag-fuzz.ts\` | 通关率（= 正常返回**且**有正式结局）、死循环 | \`src/diagnostics/fuzz.ts\` | \`diag-fuzz.test.ts\` |
-| \`tools/_diag-wounds.ts\` | 伤势分级／重伤检定／惩罚骰 | \`src/diagnostics/wounds.ts\` | \`diag-wounds.test.ts\` |
-| \`tools/_diag-combat.ts\` | Boss 还手（按攻击者身份，不按技能名）、玩家掉血 | \`src/diagnostics/combat.ts\` | \`diag-combat.test.ts\` |
-| \`tools/_diag-downed.ts\` | 昏迷期间本人是否还在**掷骰** | \`src/diagnostics/downed.ts\` | \`diag-downed.test.ts\` |
-| \`tools/_diag-phrasing.ts\` | 玩家说法能否匹配到场景 | \`src/diagnostics/phrasing.ts\` | \`diag-phrasing.test.ts\` |
-| \`tools/_audit-backup.ts\` | 哪些数据丢了不可再生 | \`src/diagnostics/backup-classify.ts\` | \`diag-backup-classify.test.ts\` |
+| \`scripts/diag/diag-fuzz.ts\` | 通关率（= 正常返回**且**有正式结局）、死循环 | \`src/diagnostics/fuzz.ts\` | \`diag-fuzz.test.ts\` |
+| \`scripts/diag/diag-wounds.ts\` | 伤势分级／重伤检定／惩罚骰 | \`src/diagnostics/wounds.ts\` | \`diag-wounds.test.ts\` |
+| \`scripts/diag/diag-combat.ts\` | Boss 还手（按攻击者身份，不按技能名）、玩家掉血 | \`src/diagnostics/combat.ts\` | \`diag-combat.test.ts\` |
+| \`scripts/diag/diag-downed.ts\` | 昏迷期间本人是否还在**掷骰** | \`src/diagnostics/downed.ts\` | \`diag-downed.test.ts\` |
+| \`scripts/diag/diag-phrasing.ts\` | 玩家说法能否匹配到场景 | \`src/diagnostics/phrasing.ts\` | \`diag-phrasing.test.ts\` |
+| \`scripts/diag/audit-backup.ts\` | 哪些数据丢了不可再生 | \`src/diagnostics/backup-classify.ts\` | \`diag-backup-classify.test.ts\` |
 
 ⚠ **这些判据本身出过六次错**（详见 \`docs/review-request.md\`）。已做的返工：
 
@@ -132,7 +132,7 @@ ${rules.map((r: any, i: number) => `${i + 1}. ${r.text}`).join("\n\n")}
 | 两名调查员可能重名 | downed 的身份不可分辨检测 | 名字是日志里唯一的身份标记 |
 
 用法：跑局类脚本都收 \`[局数] [起始局号]\`，
-\`bun tools/_diag-downed.ts 3 4\` = 第 4~6 局，便于分批跑而不重叠。
+\`bun scripts/diag/diag-downed.ts 3 4\` = 第 4~6 局，便于分批跑而不重叠。
 
 ## 手上还挂着的（${openItems.length}）
 

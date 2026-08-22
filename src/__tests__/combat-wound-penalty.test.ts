@@ -1,6 +1,6 @@
 // 战斗攻击掷骰必须读角色身上的伤势。
 //
-// 缺口是 `tools/_diag-wounds.ts` 把惩罚骰**按来源分账**之后露出来的：
+// 缺口是 `scripts/diag/diag-wounds.ts` 把惩罚骰**按来源分账**之后露出来的：
 // 「记下的伤势」有好几处，「真被伤势罚到的检定」却几乎为零。
 // 原因是 `combat.ts` 的 `pcAttack` 直接调 `CoCEngine.skillCheck`，
 // 绕过了 `checks.ts` 的 `check()` —— 而「让伤势/惩罚骰在战斗里生效」

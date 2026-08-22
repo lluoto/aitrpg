@@ -9,6 +9,7 @@ import {
   maskSource, findTruncatedBlocks, findPlaceholderResidue,
   scanImports, importPointsTo, findReverseImports,
   findShellRisks, judgeProcess, parseTestOutput, judgeTestCount,
+  referencedScripts, judgeScriptRefs, generatedDocs,
 } from "../diagnostics/source-scan";
 
 // ── 底座：词法遮罩 ─────────────────────────────────────────────
@@ -316,6 +317,81 @@ describe("检查 4 · PowerShell 读中文 — 不应报", () => {
       'execSync("Get-Content src\\\\a.ts | Select-String foo");',
     ].join("\n");
     expect(findShellRisks("handoff.ts", src).length).toBe(1);
+  });
+});
+
+// ── 检查 7：文档引用的脚本必须存在且入库 ──────────────────────
+
+describe("检查 7 · 文档叫人跑的脚本", () => {
+  const doc = [
+    "# 接手说明",
+    "",
+    "```",
+    "bun scripts/preflight.ts             跑一次，确认接手时是干净的",
+    "bun run scripts/diag/diag-fuzz.ts 3  随机玩法通关率",
+    "```",
+    "",
+    "| 脚本 | 量什么 |",
+    "|---|---|",
+    "| `src/diagnostics/fuzz.ts` | 判据在这儿 |",
+  ].join("\n");
+
+  test("认得出 `bun x.ts` 与 `bun run x.ts` 两种写法", () => {
+    expect(referencedScripts(doc)).toContain("scripts/preflight.ts");
+    expect(referencedScripts(doc)).toContain("scripts/diag/diag-fuzz.ts");
+  });
+
+  test("**也要认表格里的反引号路径** —— 变异检验才逼出来的", () => {
+    // 起初只认命令行，理由是「表格里的裸文件名是在说这个文件装什么」。
+    // 第一次做变异检验就露馅：把 `diag-fuzz.ts` 从索引里撤掉，检查一声不吭 ——
+    // handoff 那张表里六个脚本只有一个以命令行形态出现过。
+    expect(referencedScripts(doc)).toContain("src/diagnostics/fuzz.ts");
+  });
+
+  test("**不应报**：不带反引号的裸文本才是「顺口提一句」", () => {
+    expect(referencedScripts("正文里提到 scripts/nonexistent.ts 但没有强调也没叫人跑")).toEqual([]);
+  });
+
+  test("**应报**：文件不存在", () => {
+    const f = judgeScriptRefs([{ path: "tools/_diag-fuzz.ts", exists: false, tracked: false }], "docs/handoff.md");
+    expect(f.length).toBe(1);
+    expect(f[0]!.rule).toBe("doc-script-missing");
+  });
+
+  test("**应报**：文件在但没入库 —— 新克隆拿不到", () => {
+    // 这就是真事：`docs/handoff.md` 入了库，指着一整张表的 `tools/_diag-*.ts`，
+    // 而整个 `tools/` 在 .gitignore 里。本机跑得动，别人克隆下来一个都没有。
+    const f = judgeScriptRefs([{ path: "tools/_diag-fuzz.ts", exists: true, tracked: false }], "docs/handoff.md");
+    expect(f.length).toBe(1);
+    expect(f[0]!.rule).toBe("doc-script-untracked");
+  });
+
+  test("**不应报**：既存在又入库", () => {
+    expect(judgeScriptRefs([{ path: "scripts/preflight.ts", exists: true, tracked: true }], "docs/x.md")).toEqual([]);
+  });
+
+  test("**范围收窄可推导**：只查脚本生成的文档", () => {
+    // 不收窄的话第一次跑就是 43 个报告，其中 42 个来自 `docs/notes/*.md` ——
+    // 又一次「假阳性淹掉真问题」。收窄的判据必须是可推导的：
+    // 谁写这份文档，就由谁负责它当下为真。
+    const scripts = [
+      'writeFileSync("docs/handoff.md", md, "utf8");',
+      'await Bun.write("docs/now.md", body);',
+      'const notes = readFileSync("docs/notes/engine.md", "utf8");', // 只读不写 → 不算
+    ];
+    expect(generatedDocs(scripts).sort()).toEqual(["docs/handoff.md", "docs/now.md"]);
+  });
+
+  test("干扰：没有任何脚本写文档时返回空 —— 这条检查就自动不生效", () => {
+    expect(generatedDocs(['console.log("docs/handoff.md")'])).toEqual([]);
+  });
+
+  test("干扰：文档里没有任何命令也没有反引号路径时不报", () => {
+    expect(referencedScripts("# 标题\n\n一段正文，提到了 scripts/preflight.ts 但没强调。")).toEqual([]);
+  });
+
+  test("干扰：非脚本扩展名不算（`bun test` / `bun install`）", () => {
+    expect(referencedScripts("```\nbun test\nbun install\nbun run typecheck\n```")).toEqual([]);
   });
 });
 

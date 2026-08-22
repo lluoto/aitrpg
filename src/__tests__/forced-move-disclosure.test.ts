@@ -5,7 +5,7 @@
 // 玩家那边一个字都看不到 —— 他说「去那边」，引擎把他送到别处，
 // 日志上只有目的地的名字。
 //
-// 匹配本身修不了（子串比对，见 tools/_diag-phrasing.ts：不含完整地名时
+// 匹配本身修不了（子串比对，见 scripts/diag/diag-phrasing.ts：不含完整地名时
 // 命中率 0~3%），但「不告诉玩家」是可以修的。
 
 import { describe, test, expect } from "bun:test";
