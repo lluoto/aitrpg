@@ -12,78 +12,11 @@
 // 所以名字比对必须看**边界**，而且这一份要被测试与探针共用，
 // 各写一份迟早会漂。
 
-// ⚠ 边界不能靠「两侧是不是汉字」判。中文没有词边界：
-// 「只见**米尔**抱着球」里 `见` 也是汉字，按那条规则会被判成「不算点名」。
-// 第一版就是这么写的，当场把真阳性也否掉了。
-//
-// 精确的问法是：**这次出现是不是被某个更长的已知名字盖住了**。
-// 「米尔德丽德·罗德里格斯」里的「米尔」是被盖住的；
-// 「只见米尔抱着球」里的不是。已知名单调用方给得出来（模组 NPC + 本局调查员），
-// 所以不必猜。
-
-/**
- * 名字里可用来指认的片段：全名，以及「·」分出来的各截。
- * 括号补充（「食尸鬼（可选）」）先剥掉。
- */
-export function nameParts(name: string): string[] {
-  const bare = name.replace(/[（(].*?[）)]/g, "").trim();
-  const parts = [bare, ...bare.split("·")].map((s) => s.trim());
-  return [...new Set(parts)].filter((s) => s.length >= 2);
-}
-
-/**
- * `text` 里有没有真的**点到**这个名字。
- *
- * 关键是边界：片段两侧若还连着汉字，那就是**另一个名字**。
- *   「米尔德丽德·罗德里格斯」里的「米尔」不是「米尔·特里坎」
- *   「特里坎家」里的「特里坎」是地名不是人名 —— 但这条留给调用方判，
- *   本函数只负责「这几个字是不是被更长的名字包着」。
- *
- * 全名（含「·」）不做边界检查：它本身已经足够长、足够独特。
- */
-export function mentionsName(
-  text: string,
-  part: string,
-  /** 别的已知名字（本局调查员、其它 NPC）。用来排除「被更长的名字盖住」的误认 */
-  longerNames: readonly string[] = [],
-): boolean {
-  if (!part || part.length < 2) return false;
-
-  // 先算出「被别的名字占用」的区间
-  const covered: [number, number][] = [];
-  for (const other of longerNames) {
-    if (other === part || !other.includes(part)) continue;
-    let f = 0;
-    for (;;) {
-      const at = text.indexOf(other, f);
-      if (at < 0) break;
-      covered.push([at, at + other.length]);
-      f = at + other.length;
-    }
-  }
-
-  let from = 0;
-  for (;;) {
-    const at = text.indexOf(part, from);
-    if (at < 0) return false;
-    const inside = covered.some(([s, e]) => at >= s && at + part.length <= e);
-    if (!inside) return true; // 有一处是干净的提及
-    from = at + part.length;
-  }
-}
-
-/**
- * 把一组名字摊成所有可指认的写法。
- *
- * ⚠ 排除名单**必须摊开**：叙述里用的常常是短名。
- * 实跑踩到过 —— 调查员是「米尔德丽德·罗德里格斯」，而序章写的是
- * 「**米尔德丽德**下意识地攥紧了……」（不带姓）。
- * 排除名单只放全名时，这一处匹配不上，于是 NPC「米尔·特里坎」的「米尔」
- * 被判成提前泄漏 —— 判据又一次认错人。
- */
-export function knownNameVariants(names: readonly string[]): string[] {
-  return [...new Set(names.flatMap(nameParts))];
-}
+// 名字比对的实现挪到了 `play/names.ts` —— **生产代码也要用**：
+// 车卡生成的 PC 背景不能撞上模组 NPC 的名字。
+// 一份数据两套解析是这轮反复在修的病，名字比对不能重蹈覆辙。
+export { nameParts, mentionsName, knownNameVariants } from "../play/names";
+import { nameParts, mentionsName, knownNameVariants } from "../play/names";
 
 export interface NameLeak {
   sceneId: string;

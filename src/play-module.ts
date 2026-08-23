@@ -5,6 +5,7 @@
 
 import { createCoCCharacter, getCoCArchetypes, resolveCheckValue, type CoCGeneratedCharacter, type BackgroundProfile } from "./character/coc-character";
 import { randomCoCName, buildBaseBackgroundProfile, composeBackstory, pickDistinctArchetypes, randomPersonAnchors, pronounOf, type PersonAnchors, type Gender } from "./character/background-profile";
+import { nameParts, mentionsName, knownNameVariants } from "./play/names";
 import { CoCEngine, SanityEngine, SUCCESS_LEVEL_LABELS, sanOutcomeLabel, type CoCCheckResult } from "./rules/coc-engine";
 import { BARN_OF_PREMIER, BARN_SUPPORT, renderPrologue, renderPartySetup, evaluateEpilogues } from "./module/barn-of-premier";
 import { WorldState } from "./world/state";
@@ -232,6 +233,39 @@ async function enhanceBackgroundProfile(
 }
 
 /**
+ * 车卡生成的文本有没有借用模组里 NPC 的名字。
+ *
+ * 实跑读出来的（`tools/_probe-read-backstory.ts`）：一个叫亚瑟的调查员，
+ * 小传里写着「**克拉拉**去世后……更加严苛地要求自己和女儿**艾米丽**」，
+ * 还给他安了个「旧谷仓里的实验室」——
+ * 艾米丽是模组里的关键 NPC（缸中脑），谷仓实验室是反派艾德里安的设定。
+ *
+ * 提示词已经明说了不喂案件背景，所以这不是「把案情泄给了模型」，
+ * 是模型自己填人名时**撞上了**。后果一样糟：玩家读到「女儿艾米丽」，
+ * 之后在谷仓里见到缸中脑艾米丽，会以为这是伏笔 —— 而它什么都不是。
+ *
+ * 判据与诊断共用 `play/names.ts` 的比对规则（名单封闭，判得准）。
+ */
+export function collidesWithModuleNames(text: string, npcNames: readonly string[]): string | undefined {
+  if (!text) return undefined;
+  const roster = knownNameVariants(npcNames);
+  for (const npc of npcNames) {
+    const bare = npc.replace(/[（(].*?[）)]/g, "").trim();
+    // 只查**给定名**（「艾米丽」），不查姓。
+    // 姓太容易撞常用词与地名 —— 「特里坎」既是姓也是镇名（范·特里坎镇），
+    // 拿它当禁用词会把正常叙述毙掉。没有「·」的（「警员」「流浪汉」）
+    // 本来就不是人名，跳过。
+    if (!bare.includes("·")) continue;
+    const given = bare.split("·")[0]!.trim();
+    if (given.length < 2) continue;
+    const own = new Set(nameParts(npc));
+    const longer = roster.filter((n) => !own.has(n));
+    if (mentionsName(text, given, longer)) return given;
+  }
+  return undefined;
+}
+
+/**
  * LLM 起的名字收不收。
  *
  * 名字是**整局叙述里唯一的身份标记**（日志、判据、玩家全靠它），
@@ -264,7 +298,7 @@ export function acceptGeneratedName(raw: unknown, avoid: readonly string[]): str
  */
 async function writeBackstory(
   profile: BackgroundProfile,
-  ctx: { name: string; occupation: string; era: string },
+  ctx: { name: string; occupation: string; era: string; forbiddenNames?: string[] },
 ): Promise<string> {
   const fallback = composeBackstory(profile, { name: ctx.name, occupation: ctx.occupation, era: ctx.era });
   const prompt = [
@@ -280,6 +314,11 @@ async function writeBackstory(
     `3. 第三人称自然叙事，不要出现"形象描述：""思想与信念："这类标签。`,
     `4. 用事实与细节说话，禁止形容词堆砌与比喻堆叠（"眼神如停尸房般冷冽"是反面教材）。`,
     `5. 只写这个人自己：不提任何案件、失踪者或调查，结尾不留悬念、不作命运暗示。`,
+    // 撞名是实跑读出来的：一个叫亚瑟的调查员，小传里有「女儿艾米丽」，
+    // 而艾米丽是模组里的关键 NPC。玩家读到会以为是伏笔，其实什么都不是。
+    ...(ctx.forbiddenNames?.length
+      ? [`6. 出现的配角**不得**叫这些名字（另有其人，撞名会造成误导）：${ctx.forbiddenNames.join("、")}`]
+      : []),
     ``,
     `名字: ${ctx.name}  职业: ${ctx.occupation}  时代: ${ctx.era}年`,
     ``,
@@ -296,7 +335,18 @@ async function writeBackstory(
   // token 上限跟着放开：原先 400，模型写到一半会被截断，而截断的小传
   // 与「写得短」在产物上分不出来。
   const raw = await llmOnce("你是 CoC 跑团主持人，擅长撰写调查员背景故事。用中文输出，克制而具体。", prompt, 900, "backstory");
-  return raw && raw.length >= 20 ? raw : fallback;
+  if (!raw || raw.length < 20) return fallback;
+  // 提示词说了不许撞名，但说了不等于做到 —— 收回来再验一遍。
+  // 撞了就重写一次；再撞就用兜底（兜底是模板拼的，不会凭空冒出人名）。
+  const clash = collidesWithModuleNames(raw, ctx.forbiddenNames ?? []);
+  if (!clash) return raw;
+  const retry = await llmOnce(
+    "你是 CoC 跑团主持人，擅长撰写调查员背景故事。用中文输出，克制而具体。",
+    `${prompt}\n\n注意：上一稿里出现了「${clash}」这个名字，与另一个人重名。请换掉，其余保持同样质量。`,
+    900, "backstory-retry",
+  );
+  if (retry && retry.length >= 20 && !collidesWithModuleNames(retry, ctx.forbiddenNames ?? [])) return retry;
+  return fallback;
 }
 
 /**
@@ -360,7 +410,12 @@ async function createRandomPlayerSetup(
   const short = llmName ? llmName.split("·")[0]! : fallbackShort;
   pc.name = full;
   pc.backgroundProfile = profile;
-  pc.backstory = await writeBackstory(profile, { name: full, occupation: archetype.label, era: module.era });
+  // 模组 NPC 的名字是禁用词：PC 背景里冒出「女儿艾米丽」，玩家之后在谷仓
+  // 见到缸中脑艾米丽会以为是伏笔，而它什么都不是。
+  const forbiddenNames = module.npcs.map((n) => n.name);
+  pc.backstory = await writeBackstory(profile, {
+    name: full, occupation: archetype.label, era: module.era, forbiddenNames,
+  });
   return {
     p0: {
       name: full,
