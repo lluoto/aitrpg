@@ -118,12 +118,23 @@ export class CompanionManager {
    * 士气变更（0-10，归零触发 morale_cower 离队）
    * 返回 changed = true 表示有变化
    */
-  adjustMorale(id: string, delta: number): { morale: number; triggered: boolean } {
+  adjustMorale(id: string, delta: number): { morale: number; triggered: boolean; resolve?: ResolveResult } {
     const state = this.companions.get(id);
     if (!state || !state.active) return { morale: 0, triggered: false };
 
+    const before = state.morale;
     state.morale = Math.max(0, Math.min(10, state.morale + delta));
-    return { morale: state.morale, triggered: state.morale <= 0 };
+
+    // ⚠ `checkResolve()` 的文档注释写着触发条件是「大伤害、低士气阈值、队友阵亡」，
+    //   但**没有任何地方触发它** —— 整套决心系统写完就没接上。
+    //   士气掉进阈值是三条里唯一在这个方法管得到的，接在这里。
+    //   掉得越狠难度越高：这也是 `difficulty` 参数第一次真的被用上。
+    let resolve: ResolveResult | undefined;
+    const RESOLVE_THRESHOLD = 4;
+    if (delta < 0 && before > RESOLVE_THRESHOLD && state.morale <= RESOLVE_THRESHOLD) {
+      resolve = this.checkResolve(state.config.id, 50 + Math.abs(delta) * 5);
+    }
+    return { morale: state.morale, triggered: state.morale <= 0, resolve };
   }
 
   /**
@@ -278,6 +289,11 @@ export class CompanionManager {
    */
   newRound(): void {
     this.actedThisRound.clear();
+    // ⚠ `tickResolve()` 原先**从没有被调用过** —— 恐慌/疯狂一旦进去就永远出不来。
+    //   不过这不影响什么，因为写入这些状态的 `checkResolve()` 同样没人调用，
+    //   整套决心系统在依赖图上是死的（三个方法各自只出现一次，都是自己的定义）。
+    //   现在把递减接到回合边界上。
+    this.tickResolve();
   }
 
   // ==========================================================
@@ -405,11 +421,35 @@ export class CompanionManager {
     const entity = world.getEntity(state.entityId);
     if (!entity || entity.hp <= 0) return false;
 
+    // ⚠ `getCommandObeyState()` 原先也从没被调用过：恐慌的队友照样乖乖听令，
+    //   「陷入疯狂，完全失控！」那句话谁也读不到。命令执行前先问一句。
+    const obey = this.getCommandObeyState(id);
+    if (!obey.obey) {
+      this.lastRefusal = obey.reason;
+      // 拒绝也算行动过 —— 否则同一轮里可以反复下令直到它答应
+      this.markActed(id);
+      return false;
+    }
+    this.lastRefusal = "";
+
     // 标记本轮已行动，防止后续 processTurn 重复行动
     this.markActed(id);
 
     await executeAction(entity, intent);
     return true;
+  }
+
+  /**
+   * 上一次命令被拒的原因；没有被拒时是空串。
+   *
+   * `command()` 返回 boolean，说不出「为什么不行」。而恐慌与疯狂的区别
+   * 恰恰全在那句话里 —— 不给出去，玩家只会看到命令莫名其妙没生效。
+   */
+  private lastRefusal = "";
+  takeLastRefusal(): string {
+    const r = this.lastRefusal;
+    this.lastRefusal = "";
+    return r;
   }
 
   /**
@@ -429,11 +469,29 @@ export class CompanionManager {
     // 检定值：勇气 > 忠诚 > 当前士气
     const courageScore = traits?.courage ?? 5;
     const loyaltyScore = traits?.loyalty ?? 5;
+    // ⚠ `difficulty` 原先**收了完全没用** —— 下面的判定全是写死的阈值，
+    //   于是「队友阵亡」和「擦破点皮」掷的是同一个难度。
+    //   参数存在却不起作用，比没有这个参数更坏：调用方以为自己调得动。
+    //   以 50 为基准，难度每高 10 点扣 5 点决心值。
     const resolvePower = courageScore * 8 + loyaltyScore * 4 + morale * 5;
+
+    // ⚠ 我第一版把 difficulty 写成 `resolvePower - (difficulty-50)*0.5`，
+    //   **那是无效的**：判定阈值是 `resolvePower >= 60 / < 45 / < 30`，
+    //   而普通队友的 resolvePower 在 120～150，离阈值远得很 ——
+    //   难度调 90 点也翻不过任何一条线，结果完全由 roll 决定。
+    //   参数「接上了」但依然不起作用，比不接更坏：看着像修好了。
+    //   （是自己写的统计判据在变异检验里闪，才把这件事逼出来的。）
+    //
+    //   改成让**差额平移阈值**：决心值高于难度越多，崩溃线越靠后。
+    //   夹在 ±20 是为了两头都留活口 —— 再稳的人也可能失手，再糟的人也可能挺住。
+    const shift = Math.max(-20, Math.min(20, (resolvePower - difficulty) / 4));
+    const steadfastAt = 15 + shift;
+    const afflictedAt = 65 + shift;
+    const berserkAt = 85 + shift;
 
     const roll = Math.random() * 100;
 
-    if (roll <= 15 && resolvePower >= 60) {
+    if (roll <= steadfastAt) {
       // 坚定
       state.resolveState = "steadfast";
       state.resolveTurnsLeft = 3;
@@ -441,7 +499,7 @@ export class CompanionManager {
         state: "steadfast", turnsLeft: 3,
         description: `${state.config.name} 眼神坚定，毫无惧色！`,
       };
-    } else if (roll >= 85 || resolvePower < 30) {
+    } else if (roll >= berserkAt) {
       // 疯狂（小概率彻底失控）
       state.resolveState = "berserk";
       state.resolveTurnsLeft = 2;
@@ -449,7 +507,7 @@ export class CompanionManager {
         state: "berserk", turnsLeft: 2,
         description: `${state.config.name} 陷入疯狂，失去控制！`,
       };
-    } else if (roll >= 65 || resolvePower < 45) {
+    } else if (roll >= afflictedAt) {
       // 恐慌
       state.resolveState = "afflicted";
       state.resolveTurnsLeft = 3;

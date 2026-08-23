@@ -1360,26 +1360,26 @@ export class GameSession {
         }
         msg("你环顾四周，观察着周围的环境…"); this.lastNarrative = "你仔细观察了周围的环境"; return true;
       case "inventory": return this.handleInventory(msg);
-      case "flee": return this.handleFlee(messages, msg);
+      case "flee": return this.handleFlee(msg);
       case "rest": return this.handleRest(messages, msg);
-      case "san_check": return this.handleSanCheck(intent, messages, msg);
-      case "skill_check": return this.handleSkillCheck(intent, messages, msg);
-      case "saving_throw": return this.handleSavingThrow(intent, messages, msg);
-      case "attack": return this.handleAttack(intent, messages, msg);
-      case "create_character": return this.handleCreateCharacter(intent, input, messages, msg);
-      case "list_occupations": return this.handleListOccupations(messages, msg);
-      case "buy": return this.handleBuy(intent, messages, msg);
-      case "sell": return this.handleSell(intent, messages, msg);
-      case "legacy": return this.handleLegacy(intent, input, messages, msg);
-      case "generate_story": return this.handleGenerateStory(messages, msg);
-      case "load_module": return this.handleLoadModule(intent, input, messages, msg);
+      case "san_check": return this.handleSanCheck(intent, msg);
+      case "skill_check": return this.handleSkillCheck(intent, msg);
+      case "saving_throw": return this.handleSavingThrow(intent, msg);
+      case "attack": return this.handleAttack(intent, msg);
+      case "create_character": return this.handleCreateCharacter(input, msg);
+      case "list_occupations": return this.handleListOccupations(msg);
+      case "buy": return this.handleBuy(intent, msg);
+      case "sell": return this.handleSell(intent, msg);
+      case "legacy": return this.handleLegacy(input, msg);
+      case "generate_story": return this.handleGenerateStory(msg);
+      case "load_module": return this.handleLoadModule(input, msg);
       case "skill_advancement": return this.handleSkillAdvancement(messages, msg);
-      case "cast": case "occult_cast": return this.handleCast(intent, input, messages, msg);
-      case "read": return this.handleRead(intent, input, messages, msg);
-      case "first_aid": return this.handleFirstAid(messages, msg);
-      case "reload": return this.handleReload(intent, messages, msg);
-      case "push": return this.handlePush(messages, msg);
-      case "chase": return this.handleChase(messages, msg);
+      case "cast": case "occult_cast": return this.handleCast(intent, msg);
+      case "read": return this.handleRead(input, msg);
+      case "first_aid": return this.handleFirstAid(msg);
+      case "reload": return this.handleReload(intent, msg);
+      case "push": return this.handlePush(msg);
+      case "chase": return this.handleChase(msg);
       case "use_item": case "pickup": msg(`你尝试${intent.action === "pickup" ? "捡起" : "使用"}物品。`); this.lastNarrative = `你${intent.action === "pickup" ? "捡起" : "使用"}物品。`; return true;
       case "talk": msg("你试图与周围的人交流…"); this.lastNarrative = "你试图与周围的人交流"; return true;
       case "spell_list": msg("当前可用法术：暂无已知法术"); this.lastNarrative = "你回忆了一下已知的法术"; return true;
@@ -1627,7 +1627,7 @@ export class GameSession {
   }
 
   // ── 逃跑 ──
-  private handleFlee(messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleFlee(msg: (s: string) => number): boolean {
     this.combatActive = false;
     this.lastNarrative = "你转身逃跑，迅速脱离了战斗";
     msg("你成功逃离了战斗！");
@@ -1704,7 +1704,7 @@ export class GameSession {
   }
 
   // ── SAN 检查──
-  private handleSanCheck(intent: ActionIntent, messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleSanCheck(intent: ActionIntent, msg: (s: string) => number): boolean {
     const sanCost = intent.sanCost ?? "1/1d6";
     const reason = intent.reason ?? "未知恐惧";
     const result = this.sanity.sanityCheck(sanCost);
@@ -1744,7 +1744,7 @@ export class GameSession {
     return this.activeCharacter?.skills?.[skill] ?? 50;
   }
 
-  private handleSkillCheck(intent: ActionIntent, messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleSkillCheck(intent: ActionIntent, msg: (s: string) => number): boolean {
     const skill = intent.skill ?? "investigation";
 
     // 调查类检定优先交给 InvestigationEngine 解析场景线索。
@@ -1814,7 +1814,7 @@ export class GameSession {
   }
 
   // ── 豁免检查──
-  private handleSavingThrow(intent: ActionIntent, messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleSavingThrow(intent: ActionIntent, msg: (s: string) => number): boolean {
     const ability = intent.ability ?? "constitution";
     const dc = intent.dc ?? 12;
     const reason = intent.reason ?? "豁免检查";
@@ -1829,7 +1829,7 @@ export class GameSession {
   }
 
   // ── 攻击 ──
-  private handleAttack(intent: ActionIntent, messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleAttack(intent: ActionIntent, msg: (s: string) => number): boolean {
     const skill = 50;
     let effectiveRoll = Math.floor(Math.random() * 100) + 1;
     let luckSpendMsg = "";
@@ -1872,7 +1872,7 @@ export class GameSession {
   }
 
   // ── 创建角色 ──
-  private handleCreateCharacter(intent: ActionIntent, input: string, messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleCreateCharacter(input: string, msg: (s: string) => number): boolean {
     // 解析 "创建角色 [archetype] [name]"
     const parts = input.replace(/^创建角色\s*/, "").trim().split(/\s+/);
     if (parts.length === 0 || parts[0] === "") {
@@ -1923,7 +1923,7 @@ export class GameSession {
   }
 
   // ── 职业列表 ──
-  private handleListOccupations(messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleListOccupations(msg: (s: string) => number): boolean {
     if (this.activeRuleset !== "cosmic-horror") {
       msg("当前不是宇宙恐怖模式");
       this.lastNarrative = "当前不是宇宙恐怖模式";
@@ -1947,7 +1947,7 @@ export class GameSession {
   }
 
   // ── 购买 ──
-  private handleBuy(intent: ActionIntent, messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleBuy(intent: ActionIntent, msg: (s: string) => number): boolean {
     const item = intent.item;
     if (!item || item.trim() === "") {
       msg("你想买什么？请指定物品名称");
@@ -1960,7 +1960,7 @@ export class GameSession {
   }
 
   // ── 出售 ──
-  private handleSell(intent: ActionIntent, messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleSell(intent: ActionIntent, msg: (s: string) => number): boolean {
     const item = intent.item;
     if (!item || item.trim() === "") {
       msg("你想卖什么？请指定物品名称");
@@ -1973,7 +1973,7 @@ export class GameSession {
   }
 
   // ── 传承 ──
-  private handleLegacy(intent: ActionIntent, input: string, messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleLegacy(input: string, msg: (s: string) => number): boolean {
     if (input.includes("保存角色")) {
       if (!this.activeCharacter) {
         msg("没有活跃角色可保存");
@@ -2048,7 +2048,7 @@ export class GameSession {
   }
 
   // ── 生成故事 ──
-  private handleGenerateStory(messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleGenerateStory(msg: (s: string) => number): boolean {
     const story = this.storyGenerator.generate();
     // 清空旧场景数"
     this.sceneDisplayNames = {};
@@ -2102,7 +2102,7 @@ export class GameSession {
   }
 
   // ── 加载模组 ──
-  private handleLoadModule(intent: ActionIntent, input: string, messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleLoadModule(input: string, msg: (s: string) => number): boolean {
     const moduleName = input.replace(/^(?:加载|装载|载入|启用|使用)\s*(?:模组|剧本|模块)\s*/, "").trim();
 
     if (!this._moduleLoader) {
@@ -2312,7 +2312,7 @@ export class GameSession {
   }
 
   // ── 施法 ──
-  private handleCast(intent: ActionIntent, input: string, messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleCast(intent: ActionIntent, msg: (s: string) => number): boolean {
     if (intent.action === "occult_cast" && this.activeRuleset !== "cosmic-horror") {
       msg("神话法术仅支持宇宙恐怖模式");
       this.lastNarrative = "神话法术仅支持宇宙恐怖模式";
@@ -2343,7 +2343,7 @@ export class GameSession {
   }
 
   // ── 阅读典籍 ──
-  private handleRead(intent: ActionIntent, input: string, messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleRead(input: string, msg: (s: string) => number): boolean {
     const tomeName = input.replace(/^(?:阅读|读|翻阅)\s*/, "").trim();
     // 典籍定义
     const tomes: Record<string, { sanCost: string; cmGain: number; spellCount: number; spells: string[] }> = {
@@ -2399,7 +2399,7 @@ export class GameSession {
   }
 
   // ── 急救 ──
-  private handleFirstAid(messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleFirstAid(msg: (s: string) => number): boolean {
     if (!this.activeCharacter) {
       msg("你还没有创建角色");
       this.lastNarrative = "你还没有创建角色";
@@ -2424,7 +2424,7 @@ export class GameSession {
   }
 
   // ── 装填 ──
-  private handleReload(intent: ActionIntent, messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleReload(intent: ActionIntent, msg: (s: string) => number): boolean {
     const weaponName = intent.weapon ?? intent.target ?? "武器";
     msg(`你重新装填了「${weaponName}」。弹药已补满。`);
     this.lastNarrative = `你装填了${weaponName}。`;
@@ -2432,7 +2432,7 @@ export class GameSession {
   }
 
   // ── 推动检查──
-  private handlePush(messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handlePush(msg: (s: string) => number): boolean {
     if (!this._lastPushedRoll) {
       msg("没有待推动的检定。先进行一次技能检定，失败后再使用推动");
       this.lastNarrative = "没有待推动的检定";
@@ -2450,7 +2450,7 @@ export class GameSession {
   }
 
   // ── 追逐 ──
-  private handleChase(messages: AgentMessage[], msg: (s: string) => number): boolean {
+  private handleChase(msg: (s: string) => number): boolean {
     const roll = Math.floor(Math.random() * 100) + 1;
     const dex = this.activeCharacter?.attributes?.dexterity ?? this.activeCharacter?.attributes?.DEX ?? 50;
     const success = roll <= dex;
