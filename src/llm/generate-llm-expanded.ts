@@ -74,32 +74,35 @@ function pickToneBridge(npc: ModuleNPC): string {
   return pick(["开口说道：", "点了点头说：", "看向你们说："]);
 }
 
-/** 根据 NPC 特征选择首次见面时对调查员的印象描述前缀 */
-function pickImpression(npc: ModuleNPC): string {
-  const traits = npc.personality.traits.map(t => t.toLowerCase());
+/**
+ * 说话时的**神态**（不带标点，由调用方决定怎么接）。
+ *
+ * ⚠ 这个函数返工过，原先叫 `pickImpression`，返回的是带逗号的**句首前缀**，
+ * 拼出来是 `${神态}${名字}${语调桥}`：
+ *
+ *     眉头紧锁，菲碧·特里坎声音发颤地说：
+ *     表情严肃，警员语气平淡地说：
+ *
+ * 一个没有主语的神态词起头，读起来是**剧本的舞台指示**，不是小说叙述。
+ * 中文自然的写法是人在前、神态在后：「菲碧·特里坎眉头紧锁，声音发颤地说：」。
+ *
+ * 另一条更糟：`isChild` 那支原先返回的是 `${年龄}孩子` —— 一个**名词标签**，
+ * 拼出来是「孩子米尔·特里坎眨巴着眼睛说：」，等于把角色分类写进了正文。
+ * 现在直接返回空：孩子这件事由语调桥（「眨巴着眼睛说」「奶声奶气地说」）
+ * 和出场描写各自交代，不需要在说话引导里贴个标签。
+ */
+function pickDemeanor(npc: ModuleNPC): string {
   const speech = npc.personality.speech;
   const a = analyseNpc(npc);
 
   if (a.isSilent) return "";
-  if (a.isChild) {
-    const ages = nlpExtractAge(npc);
-    return `${ages ?? ""}孩子`;
-  }
-  if (a.isAnxious) return pick(["神色焦虑，", "面带忧色，", "眉头紧锁，"]);
-  if (a.isFormal) return pick(["表情严肃，", "态度公事公办，"]);
-  if (a.isWarm) return pick(["面带微笑，", "态度友善，"]);
-  if (a.isHostile) return pick(["神情戒备，", "面色不善，"]);
-  if (a.isRough) return pick(["看起来不太好惹，"]);
-  if (/温和|温柔|gentle/.test(speech)) return pick(["态度温和，"]);
-  return "";
-}
-
-/** 尝试从 personality.traits 中提取年龄信息 */
-function nlpExtractAge(npc: ModuleNPC): string {
-  for (const t of npc.personality.traits) {
-    const m = t.match(/(\d+)\s*岁/);
-    if (m) return `${m[1]}岁、`;
-  }
+  if (a.isChild) return ""; // 童稚由语调桥表达，不贴「孩子」这个标签
+  if (a.isAnxious) return pick(["神色焦虑", "面带忧色", "眉头紧锁"]);
+  if (a.isFormal) return pick(["表情严肃", "态度公事公办"]);
+  if (a.isWarm) return pick(["面带微笑", "态度友善"]);
+  if (a.isHostile) return pick(["神情戒备", "面色不善"]);
+  if (a.isRough) return pick(["看起来不太好惹"]);
+  if (/温和|温柔|gentle/.test(speech)) return pick(["态度温和"]);
   return "";
 }
 
@@ -124,7 +127,7 @@ function templateFirstEncounter(npc: ModuleNPC): string {
   const a = analyseNpc(npc);
   if (a.isSilent) return "";
 
-  const impression = pickImpression(npc);
+  const demeanor = pickDemeanor(npc);
   const bridge = pickToneBridge(npc);
   const name = npc.name.replace(/[（(].*[）)]$/, "").trim();
   const knowledge = npc.knowledge;
@@ -147,7 +150,27 @@ function templateFirstEncounter(npc: ModuleNPC): string {
     line = `你们好。我就是${name}。听说你们在调查什么？`;
   }
 
-  return `${impression}${name}${bridge}${line}`;
+  // 人在前、神态在后 —— 不要用无主语的神态词起头，那是舞台指示不是叙述。
+  // 神态与语调桥同源（都从 traits 抽），会撞成同义反复：
+  //   「警员**态度公事公办**，**用公事公办的口吻**说：」
+  // 撞了就只留语调桥 —— 它挂在「说」上，信息量更大。
+  const kept = overlaps(demeanor, bridge) ? "" : demeanor;
+  return `${name}${kept ? `${kept}，` : ""}${bridge}${line}`;
+}
+
+/**
+ * 两段短语是不是在说同一件事。
+ *
+ * 判据够用就好：**共有一个 2 字以上的词**就算撞。
+ * 神态与语调桥都是短语（「态度公事公办」/「用公事公办的口吻说：」），
+ * 共有「公事」「公办」这种就足以说明重复了。
+ */
+export function overlaps(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  for (let i = 0; i + 2 <= a.length; i++) {
+    if (b.includes(a.slice(i, i + 2))) return true;
+  }
+  return false;
 }
 
 /** 生成线索揭示文本（把 NPC.knowledge 转为自然的引用形式） */
