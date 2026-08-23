@@ -6,6 +6,8 @@ import { MockLLMClient } from "../llm/mock-client";
 import { parseIntent } from "../llm/intent";
 
 import { RuleEngine } from "../engine/rule-engine";
+// 状态定义库 + 时限口径。存储仍是 `status: string[]`，这里只提供定义与推进规则。
+import { newStatus, tickStatuses } from "../rules/status-effects";
 import { RulesEngine, type RulesetId } from "../rules/rules-engine";
 import { SanityEngine, calcDamageBonus, checkMajorWound, sanOutcomeLabel } from "../rules/coc-engine";
 
@@ -1038,6 +1040,9 @@ export class GameSession {
     this.round++;
     this.gameTime = advanceTime(this.gameTime);
     this.companionManager.newRound();
+    // 限时状态（流血/中毒/燃烧…）在这里推进一回合。
+    // 这一句原先不存在 —— 状态被写上去之后再没人碰过它们。
+    this.tickStatusEffects();
     const turnMessages: AgentMessage[] = [];
     // 供模组宿主适配器把加载期产生的消息投进本回合，见 _turnMessages 的说明
     this._turnMessages = turnMessages;
@@ -1133,8 +1138,13 @@ export class GameSession {
           if (mw.isMajorWound) {
             target.status = target.status || [];
             target.status.push("重伤:" + mw.location);
-            target.status.push("流血");
-            if (mw.unconscious) target.status.push("昏迷");
+            // ⚠ 原先这里推的是裸字符串 `"流血"` / `"昏迷"`，没有时限 ——
+            //   加上 `processBleeding` 从没被调用过，这两个标签既不生效也不消失。
+            //   现在带上 status-effects 定义库里的默认时限，由
+            //   `tickStatusEffects()` 每回合推进。名字也从定义库取，
+            //   免得「流血」这个字面量在两处各写一遍。
+            target.status.push(newStatus("bleeding"));
+            if (mw.unconscious) target.status.push(newStatus("stunned"));
             // 此处原为 msg(...)，但 msg 只是另外两个方法内部的局部箭头函数，
             // 在本方法作用域里不存在——重伤一旦触发就会 ReferenceError。
             turnMessages.push({ speaker: "系统", content: "💀 " + mw.description, type: "system" });
@@ -2463,15 +2473,56 @@ export class GameSession {
     return true;
   }
 
-  private processBleeding(): void {
+  /**
+   * 把所有实体身上的限时状态推进一回合。
+   *
+   * ⚠ 这个方法原名 `processBleeding`，**从来没有被调用过**（tsc 的
+   *   noUnusedLocals 报出来的）。后果是：`checkMajorWound` 的描述写着
+   *   「正在流血，每回合失去 1 HP 直到止血」，`act()` 里也确实往
+   *   `status` 里推了「流血」—— 但那个标签**永远不掉血、也永远不消失**。
+   *   一句纯装饰。
+   *
+   *   同时 `src/rules/status-effects.ts`（中毒/流血/燃烧…的定义库，带 duration）
+   *   在依赖图上是死模块：唯一 import 它的地方五个符号一个没用。
+   *   规则在、缺陷在，两者从没接上 —— 和追逐系统是同一个故事。
+   *
+   *   现在接上：状态定义与时限口径由 status-effects 说了算，
+   *   这里只负责「扣血、播报、写回实体」这些游戏层的事。
+   *
+   * 存储形态**没有变**，还是 `status: string[]`。不给实体加第二个
+   * 结构化字段 —— 一份数据两套解析是这个仓库反复在修的病。
+   */
+  private tickStatusEffects(): void {
     const state = this.world.getCurrentState();
     for (const ent of Object.values(state.entities)) {
-      const e = ent as any;
-      if (e.status && Array.isArray(e.status) && e.status.includes("流血") && e.hp > 0) {
-        const dmg = Math.max(1, Math.floor((e.maxHp ?? 10) * 0.1));
-        e.hp = Math.max(0, e.hp - dmg);
-        this.world.upsertEntity(e);
-        this.addMessage("系统", `[重伤] ${e.name} 因失血失去 ${dmg} HP (剩余 ${e.hp}/${e.maxHp})`, "system");
+      const e = ent as { name: string; hp: number; maxHp?: number; status?: string[] };
+      if (!Array.isArray(e.status) || e.status.length === 0) continue;
+      if (e.hp <= 0) continue; // 人已经倒下，流血不再是这一轮要决定的事
+
+      const { next, expired, active } = tickStatuses(e.status);
+
+      // 每回合掉血的那几种。伤害口径放在这里而不是定义库里：
+      // 定义库是**规则数据**，扣多少血要看实体的 maxHp，那是游戏层的信息。
+      const PER_TURN_DAMAGE: Record<string, (maxHp: number) => number> = {
+        bleeding: (m) => Math.max(1, Math.floor(m * 0.1)),
+        poisoned: (m) => Math.max(1, Math.floor(m * 0.05)),
+        burning:  (m) => Math.max(1, Math.floor(m * 0.15)),
+      };
+      for (const s of active) {
+        const dmg = PER_TURN_DAMAGE[s.id]?.(e.maxHp ?? 10);
+        if (dmg === undefined) continue;
+        e.hp = Math.max(0, e.hp - dmg * s.stacks);
+        this.addMessage("系统", `[${s.name}] ${e.name} 失去 ${dmg * s.stacks} HP (剩余 ${e.hp}/${e.maxHp})`, "system");
+        if (e.hp <= 0) break;
+      }
+      for (const s of expired) {
+        this.addMessage("系统", `[状态] ${e.name} 的「${s.name}」结束了。`, "system");
+      }
+
+      const before = e.status;
+      if (next.length !== before.length || next.some((x: string, i: number) => x !== before[i]) || active.length > 0) {
+        e.status = next;
+        this.world.upsertEntity(e as never);
       }
     }
   }

@@ -1,6 +1,6 @@
 {
-  "tests": 1785,
-  "files": 90,
+  "tests": 1802,
+  "files": 92,
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
     {
@@ -107,6 +107,11 @@
       "tests": 1785,
       "files": 90,
       "when": "清掉全部未使用 import；修 5 个空心测试；scene-pipeline 两处死解构"
+    },
+    {
+      "tests": 1802,
+      "files": 92,
+      "when": "限时状态系统接上：status-effects + 每回合 tick；修一条我自己写闪的追逐测试"
     }
   ]
 }

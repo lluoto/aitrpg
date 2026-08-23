@@ -275,16 +275,37 @@ describe("resolveRound()", () => {
   //
   //   规则本身是确定的（`caught: newDistance <= 0`），没有任何理由测得含糊。
 
-  test("距离归零就是追上了", () => {
+  // ⚠ 这条我第一版写错了，而且是**闪的**（5 次红 1 次）。
+  //   原写法起始距离 -1、断言 `newDistance === 0 && caught`。但
+  //   `newDistance = max(0, distance + netChange)`，netChange 是本回合掷出来的，
+  //   净变化只要大于 1，newDistance 就是正数、caught 自然为 false。
+  //   我假设了钳位一定落在 0 —— 那不是规则，是我对随机量的一厢情愿。
+  //
+  //   改成测**不变量**：caught 与 newDistance<=0 恒等。这条与掷骰无关，
+  //   不会闪，而且比原写法更接近规则本身。
+  test("caught 恒等于「新距离归零」", () => {
+    for (let i = 0; i < 60; i++) {
+      const state = ChaseEngine.init(
+        [{ name: "A", skill: 50, vehicleType: "foot" }],
+        [{ name: "B", skill: 50, vehicleType: "foot" }],
+        "urban", 1 + (i % 40),
+      );
+      const r = ChaseEngine.resolveRound(state);
+      expect(r.caught).toBe(r.newDistance <= 0);
+      expect(r.escaped).toBe(r.newDistance >= 50);
+    }
+  });
+
+  test("**正确**：冲过头（距离为负）一定算追上", () => {
+    // 用 -50 而不是 -1：单回合净变化是个小整数，压不回 0 以上，
+    // 所以这条是确定的。边界值靠不住的地方就别踩边界。
     const state = ChaseEngine.init(
       [{ name: "A", skill: 80, vehicleType: "foot" }],
       [{ name: "B", skill: 80, vehicleType: "foot" }],
       "urban", 0,
     );
-    state.distance = -1; // 追击方冲过了头
+    state.distance = -50;
     const result = ChaseEngine.resolveRound(state);
-    // newDistance 被 max(0, …) 夹到 0 —— 夹完仍然满足 <= 0，所以照样算追上。
-    // 这正是原注释里没敢下结论的那一点。
     expect(result.newDistance).toBe(0);
     expect(result.caught).toBe(true);
     expect(result.escaped).toBe(false);
