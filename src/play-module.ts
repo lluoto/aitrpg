@@ -214,20 +214,42 @@ async function enhanceBackgroundProfile(
     const m = raw.match(/\{[\s\S]*\}/);
     if (!m) return { profile: base };
     const parsed = JSON.parse(m[0]);
-    return {
-      name: acceptGeneratedName(parsed.name, ctx.avoidNames ?? []),
-      profile: {
-        appearance: parsed.appearance || base.appearance,
-        beliefs: parsed.beliefs || base.beliefs,
-        significantPeople: parsed.significantPeople || base.significantPeople,
-        meaningfulPlace: parsed.meaningfulPlace || base.meaningfulPlace,
-        treasuredPossession: parsed.treasuredPossession || base.treasuredPossession,
-        traits: parsed.traits || base.traits,
-        woundsAndScars: parsed.woundsAndScars || base.woundsAndScars,
-        phobiasAndManias: parsed.phobiasAndManias || base.phobiasAndManias,
-      },
+    // ⚠ **逐字段兜底是会静默发生的**：LLM 少答一项，`parsed.x || base.x`
+    // 就让那一项退回候选库 —— 而候选库按职业分池之后**每项只有 3 句**，
+    // 同职业两个角色必然撞句。整次调用失败会被 `llm-call` 事件记下来，
+    // 但「8 项里有 2 项是模板」过去一个字都不会说。
+    // 所以这里把回落的字段名数出来，同样发事件。
+    const fellBack: string[] = [];
+    const take = (k: keyof BackgroundProfile): string => {
+      const v = parsed[k];
+      if (typeof v === "string" && v.trim().length > 0) return v;
+      fellBack.push(k);
+      return base[k];
     };
-  } catch {
+    const profile: BackgroundProfile = {
+      appearance: take("appearance"),
+      beliefs: take("beliefs"),
+      significantPeople: take("significantPeople"),
+      meaningfulPlace: take("meaningfulPlace"),
+      treasuredPossession: take("treasuredPossession"),
+      traits: take("traits"),
+      woundsAndScars: take("woundsAndScars"),
+      phobiasAndManias: take("phobiasAndManias"),
+    };
+    if (fellBack.length > 0) {
+      emit({
+        type: "llm-call", purpose: "background-fields", ok: false,
+        reason: `8 项里有 ${fellBack.length} 项没答，退回候选库：${fellBack.join("、")}`,
+        ms: 0,
+      });
+    }
+    return { name: acceptGeneratedName(parsed.name, ctx.avoidNames ?? []), profile };
+  } catch (e) {
+    emit({
+      type: "llm-call", purpose: "background-parse", ok: false,
+      reason: `JSON 解析失败，八项整体退回候选库：${e instanceof Error ? e.message : String(e)}`,
+      ms: 0,
+    });
     return { profile: base };
   }
 }

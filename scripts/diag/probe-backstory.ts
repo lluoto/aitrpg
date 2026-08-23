@@ -87,10 +87,17 @@ if (all.length === 0) {
   out.push("");
   const bg = byPurpose.get("background");
   const bs = byPurpose.get("backstory");
+  const fieldFallback = byPurpose.get("background-fields");
+  const parseFail = byPurpose.get("background-parse");
   const degraded = (bg?.fail ?? 0) + (bs?.fail ?? 0);
   out.push(degraded > 0
-    ? `⚠ **有 ${degraded} 次回落到了模板**。兜底池每职业每项只有 3 句 —— 这就是「像抄词条」的来源，\n  要修的是 LLM 那条路（或提示词/超时），不是去扩模板池。`
-    : "✓ 车卡阶段的 LLM 全部成功 —— 背景不是模板抄的。\n  若读起来仍单薄，那是**提示词**的问题，不是回落。");
+    ? `⚠ **有 ${degraded} 次整体回落到了候选库**。候选库每职业每项只有 3 句 ——\n  这就是「像抄词条」的来源，要修的是 LLM 那条路（或提示词/超时），不是去扩候选库。`
+    : "✓ 车卡阶段的 LLM 调用全部成功 —— 八项与小传都不是候选库抄的。");
+  out.push("");
+  // 「整次成功」不等于「八项都是 LLM 写的」：少答一项就有一项静默退回候选库。
+  out.push((fieldFallback?.fail ?? 0) > 0 || (parseFail?.fail ?? 0) > 0
+    ? `⚠ **存在逐字段回落**：${[...(fieldFallback?.reasons.keys() ?? []), ...(parseFail?.reasons.keys() ?? [])].join("；")}\n  这类回落过去一个字都不会说 —— 整次调用是「成功」的，只是有几项没答。`
+    : "✓ 八项**逐项**都是 LLM 写的，没有任何一项退回候选库。");
 }
 out.push("");
 out.push("## 小传原文（**厚度够不够只能人读**，机器判不了）");
