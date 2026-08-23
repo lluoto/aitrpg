@@ -1,6 +1,6 @@
 {
-  "tests": 1757,
-  "files": 87,
+  "tests": 1766,
+  "files": 88,
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
     {
@@ -87,6 +87,11 @@
       "tests": 1757,
       "files": 87,
       "when": "知识台词：收尾语只挂最后一条，中间条目不复读"
+    },
+    {
+      "tests": 1766,
+      "files": 88,
+      "when": "PC 追问：话题里的已知专名进问句；fallbackQuestion 不再解构未使用的 ctx"
     }
   ]
 }

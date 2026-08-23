@@ -284,21 +284,75 @@ export async function conductNpcConversation(ctx: SceneCtx, npc: ModuleNPC, w: W
 /** 无 LLM 时的追问降级 — 抽象化提问（不把 knowledge 信息内容塞进问句，避免"提问即剧透、回答即复述"的逐条打印感）。
  *  回复由 generateNpcReply 按 preferredIndex 锚定对应 reveal，问句抽象不影响答对内容。 */
 export function fallbackQuestion(ctx: SceneCtx, topic?: string): string {
-  const {
-    module, support, world, cast, cursor, dedup, wm, llmClient,
-    agents, agents: [pl1, pl2],
-  } = ctx;
+  // ⚠ 这里原先解构了 module/support/world/cast/cursor/dedup/wm/llmClient/agents
+  //   九个变量，**一个都没用**。而且 `agents: [pl1, pl2]` 会对 undefined 做数组解构，
+  //   于是一个「从池子里挑句话」的纯函数能抛 TypeError —— 诊断脚本传个空 ctx 就崩了。
+  //   要用什么现取什么，并且防着 ctx 不完整。
+  const anchor = topic ? topicAnchor(topic, ctx?.module) : "";
+  const last = ctx?.dedup?.lastAskBridge ?? "";
+  const pickOne = (xs: string[]): string => {
+    const pool = xs.filter((x) => x !== last);
+    return (pool.length ? pool : xs)[Math.floor(Math.random() * (pool.length || xs.length))]!;
+  };
+
+  // 抓到了专名 → 问到人头上。专名不是剧透：PC 本来就知道有这么个人、这么个地方。
+  if (anchor) {
+    return pickOne([
+      `关于${anchor}，您还记得什么吗？`,
+      `${anchor}的事，您还知道些什么？`,
+      `能跟我们说说${anchor}吗？`,
+      `${anchor}那边，当时是什么情况？`,
+      // 句式要经得起长全名 —— 「再问一句艾德里安·埃斯特鲁姆——」读着卡
+      `${anchor}呢？您还想得起别的吗？`,
+    ]);
+  }
+  // 没抓到专名 → 只能抽象地问。
+  //
+  // 这里**不能**把 topic 原样塞进问句：extractTopic 返回的是 knowledge 的分句
+  // 而不是名词，「关于**加比比较叛逆**，您还记得什么吗？」既不通顺，
+  // 又把答案在问句里提前说了 —— 提问即剧透、回答即复述。
   if (topic && topic.length > 1) {
-    return [
+    return pickOne([
       "这件事的具体情况，您还知道些什么吗？",
       "能跟我们细说说当时的情形吗？",
       "关于这一点，您还记得什么吗？",
-    ][Math.floor(Math.random() * 3)];
+      "那之后呢，还发生了什么？",
+      "您当时是怎么想的？",
+      "还有别人知道这件事吗？",
+    ]);
   }
-  return [
+  return pickOne([
     "关于这个案子，你们还知道些什么吗？",
     "能再说说你们知道的情况吗？",
-  ][Math.floor(Math.random() * 2)];
+    "有什么是我们该知道、但还没问到的吗？",
+    "这阵子镇上还有什么不对劲的地方？",
+  ]);
+}
+
+/**
+ * 从话题分句里取出**已知专名**，取不到就返回空。
+ *
+ * 判据的关键在「已知」两个字：只认模组里登记过的人名和地名。
+ * 不做通用中文名词抽取 —— 在开放文本上按字面切词不可靠，
+ * 切错了就会把 knowledge 正文当专名塞进问句，那正是要避免的剧透。
+ *
+ * 取最长匹配：「米尔·特里坎」优先于「米尔」，否则问句会退化成叫小名。
+ */
+export function topicAnchor(topic: string, module?: { npcs?: { name: string }[]; scenes?: { name: string }[] }): string {
+  if (!topic) return "";
+  const names = [
+    ...(module?.npcs ?? []).map((n) => n.name),
+    ...(module?.scenes ?? []).map((s) => s.name),
+  ]
+    .map((n) => n.replace(/[（(].*?[）)]/g, "").trim())
+    .filter((n) => n.length >= 2);
+  // 全名之外也认「姓」和「名」两段，玩家口语里常只说一段
+  const variants = names.flatMap((n) => (n.includes("·") ? [n, ...n.split("·")] : [n]))
+    .filter((n) => n.length >= 2);
+  const hit = variants
+    .filter((n) => topic.includes(n))
+    .sort((a, b) => b.length - a.length)[0];
+  return hit ?? "";
 }
 
 /**
