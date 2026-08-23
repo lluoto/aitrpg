@@ -20,6 +20,9 @@
 //      survival — grievous 降级为 旧伤（1 惩罚骰残留）
 
 import type { WorldEntity } from "../types";
+// 只取类型 —— 注册表（getRulesetMod）留在组合层。
+// `coc-ruleset-mod` 自己 import 了 `coc-engine`，这边再 import 值就成环。
+import type { RulesetModHooks } from "../rules/coc-ruleset-mod";
 
 // ============================================================
 // 基础类型
@@ -60,9 +63,30 @@ export interface Disability {
  *   - 50~74% → deep（CoC Major Wound）
  *   - ≥75%   → grievous（Major Wound + 致残）
  */
-export function calcSeverity(damage: number, maxHp: number): WoundSeverity {
+export function calcSeverity(
+  damage: number,
+  maxHp: number,
+  /**
+   * 规则集钩子（`coc-ruleset-mod.ts`）。不给就是标准 CoC 7e。
+   *
+   * ⚠ 这里**只收类型**、由调用方把 hooks 传进来，不 import 注册表：
+   *   `coc-ruleset-mod` 自己 import 了 `coc-engine`，反向再连一条就成环了。
+   *   注册表只在组合层（play/combat、api/game-session）出现。
+   */
+  hooks?: Pick<RulesetModHooks, "majorWoundThreshold">,
+): WoundSeverity {
   if (maxHp <= 0) return "flesh";
   const ratio = damage / maxHp;
+  // 变体规则改了重伤阈值时，deep 的门槛跟着走。
+  // 标准 CoC 下 `ceil(maxHp/2)` 与 `ratio >= 0.50` 完全等价（奇数也一样：
+  // maxHp=7 时 0.5×7=3.5 → damage≥4，ceil(7/2)=4），所以不给 hooks 时行为不变。
+  const deepAt = hooks?.majorWoundThreshold?.(maxHp);
+  if (deepAt !== undefined) {
+    if (damage >= deepAt * 1.5) return "grievous";
+    if (damage >= deepAt) return "deep";
+    if (ratio > 0.25) return "flesh";
+    return "scratch";
+  }
   // 边界取 >= 而不是 > —— CoC 7e 的 Major Wound 是「单次伤害**等于或大于**最大 HP 一半」。
   // 原先写 `> 0.50`，于是"10 点体力挨 5 点"这种最常见的一击恰好落在边界外，
   // 被判成轻伤、不掷体质、不加惩罚骰。上面注释写的一直是「50~74% → deep」，
@@ -128,7 +152,13 @@ export function woundPenaltyDice(severity: WoundSeverity): number {
  * 规则本身很清楚：这一掷决定的是「会不会昏过去」，人已经躺下了就没什么可决定的。
  * 抽成一个函数而不是四处各写一遍，是因为口径漂移正是这么来的。
  */
-export function needsMajorWoundCheck(severity: WoundSeverity, hpAfter: number): boolean {
+export function needsMajorWoundCheck(
+  severity: WoundSeverity,
+  hpAfter: number,
+  /** 规则集钩子；Pulp 之类的变体可以整个关掉重伤系统。不给就是标准 CoC 7e */
+  hooks?: Pick<RulesetModHooks, "enableMajorWound">,
+): boolean {
+  if (hooks?.enableMajorWound === false) return false;
   return (severity === "deep" || severity === "grievous") && hpAfter > 0;
 }
 

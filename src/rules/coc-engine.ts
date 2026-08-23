@@ -1239,8 +1239,19 @@ export function checkMajorWound(
   damage: number,
   maxHp: number,
   currentHp: number,
+  /**
+   * 规则集钩子（`coc-ruleset-mod.ts`）。不给就是标准 CoC 7e。
+   *
+   * ⚠ 只收类型、由调用方注入：`coc-ruleset-mod` 自己 import 了本文件，
+   *   反向再 import 值就成环。注册表只在组合层出现。
+   */
+  hooks?: { majorWoundThreshold?: (maxHP: number) => number; enableMajorWound?: boolean },
 ): MajorWoundResult {
-  const isMajor = damage >= Math.ceil(maxHp / 2) && currentHp > 0;
+  if (hooks?.enableMajorWound === false) {
+    return { isMajorWound: false, location: "", unconscious: false, bleeding: false, broken: false, description: "" };
+  }
+  const threshold = hooks?.majorWoundThreshold?.(maxHp) ?? Math.ceil(maxHp / 2);
+  const isMajor = damage >= threshold && currentHp > 0;
   if (!isMajor) return { isMajorWound: false, location: "", unconscious: false, bleeding: false, broken: false, description: "" };
 
   const location = HIT_LOCATIONS[Math.floor(Math.random() * HIT_LOCATIONS.length)];

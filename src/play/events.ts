@@ -134,6 +134,47 @@ export type PlayEvent =
       /** 失败原因；成功时为空串 */
       reason: string;
       ms: number;
+    }
+  /**
+   * 旁白提前叫出了还没见过的人的名字，那句因此被扣下没印。
+   *
+   * 场景过渡句是 LLM 生成的，而它印在 NPC 被介绍**之前** ——
+   * 一旦叫出名字，旁白就替调查员作弊了。模组里静态的
+   * `openingAtmosphere` 一直有测试守着，生成出来的这一路以前没人查。
+   *
+   * 发成事件而不是只吞掉：**扣下一句和「模型本来就没写」在播报上长得一样**，
+   * 不发事件就没人知道这道闸门到底拦没拦过东西、拦对没拦对。
+   */
+  | {
+      type: "name-leak";
+      /** 哪一路生成的：`opening-transition` / `npc-transition` */
+      where: string;
+      /** 被提前点名的 NPC id */
+      npc: string;
+      /** 命中的那一截名字 */
+      hit: string;
+      /** 被扣下的原文，供人读 */
+      text: string;
+    }
+  /** 一场追逐开场。敌人逃跑之后才会有 */
+  | {
+      type: "chase-start";
+      fugitive: string;
+      environment: string;
+      distance: number;
+    }
+  /**
+   * 追逐收场。
+   *
+   * `timeout` 是单列的：到轮数上限还没分出胜负，按跑掉处理。
+   * 不并进 `escaped` —— 「它跑掉了」和「规则没收敛」是两件事，
+   * 合成一个值就再也分不出来了。
+   */
+  | {
+      type: "chase-end";
+      fugitive: string;
+      result: "caught" | "escaped" | "timeout";
+      rounds: number;
     };
 
 export type PlayEventType = PlayEvent["type"];

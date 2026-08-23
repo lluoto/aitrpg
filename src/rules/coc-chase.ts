@@ -693,8 +693,7 @@ export class ChaseEngine {
     for (const r of results) {
       const pos = r.role === "pursuer" ? "追击方" : "逃亡方";
       const outcome = r.success ? "成功" : "失败";
-      const desc = r.success ? obstacle.def.successDesc : obstacle.def.failureDesc;
-      lines.push(`${pos}【${r.name}】${outcome}（${r.roll} vs ${obstacle.def.difficulty}）：${desc}`);
+      lines.push(`${pos}【${r.name}】${outcome}（${r.roll} vs ${obstacle.def.difficulty}）：${this.describe(obstacle, r)}`);
     }
 
     if (netChange < -2) lines.push(`距离急剧缩小！`);
@@ -702,6 +701,37 @@ export class ChaseEngine {
     else lines.push(`距离变化不大。`);
 
     return lines;
+  }
+
+  /**
+   * 这一位这一轮怎么过的障碍。
+   *
+   * ⚠ 障碍表里的 `successDesc` / `failureDesc` 是**以追击方视角**写的：
+   *   「你手脚并用地翻过市场摊位，成功缩短了距离」。
+   *   原先把同一句原样套给逃亡方，于是印出来是
+   *     `逃亡方【快怪】成功：你手脚并用地翻过市场摊位，成功缩短了距离`
+   *   两处都错：
+   *     · **方向与机制相反** —— 逃亡方成功时距离是**增大**的（见 calcNetChange
+   *       里 `role === "fugitive" ? -raw : raw`），文字却说缩短了
+   *     · **人称错** —— 逃亡方是 NPC，不该对它说「你」
+   *
+   *   这个毛病一直没被发现，因为整套追逐规则从来没在游戏里跑过 ——
+   *   它在依赖图上只有测试引用。接上的第一次实跑就印出来了。
+   *
+   *   逃亡方另写一句，而不是给 731 行的障碍表逐条补第二套文案：
+   *   两套文案会漂，而方向这件事是可以从 role 算出来的。
+   */
+  private static describe(
+    obstacle: ChaseObstacleInstance,
+    r: ChaseRoundResult["participantResults"][number],
+  ): string {
+    if (r.role === "pursuer") {
+      return r.success ? obstacle.def.successDesc : obstacle.def.failureDesc;
+    }
+    const what = obstacle.def.name;
+    return r.success
+      ? `它抢先越过${what}，把距离又拉开了一截。`
+      : `它在${what}前慢了半步，距离被缩短。`;
   }
 }
 

@@ -21,6 +21,9 @@ import {
 import type { SceneContext } from "../llm/npc-dialogue-prompts";
 import { checkDialogueText } from "../world/world-constraint";
 import { say, sayMech, runCtx, emit } from "./narration";
+// 运行时那道「旁白不许提前叫出没见过的人的名字」的闸门。
+// 判据（diagnostics/narration.ts）用的是同一个函数，不另写一份。
+import { namesPerson } from "./names";
 import { buildWorldContext } from "./llm-context";
 import { runSceneTraps } from "./traps";
 import { runCombatEncounter } from "./combat";
@@ -550,9 +553,16 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
               .map(r => r.text),
           ].filter(Boolean).join(" / ");
           const transition = await generateNpcTransition(prevNpc, npc, scene, llmClient, buildWorldContext(module, [pl1, pl2], wm, world), prevLines);
-          say(`\n${transition}`);
-          lastTransitionText = transition;
-          introShown = true;
+          // 过渡句印在 npc 被介绍**之前**。它要是叫出了还没见过的人的名字，
+          // 旁白就替调查员作弊了。宁可不印这句 —— 过渡是润色，名字穿帮是硬伤。
+          const leak = npcState.knownByPlayers ? "" : namesPerson(transition, npc.name, everyKnownName(ctx));
+          if (leak) {
+            emit({ type: "name-leak", where: "npc-transition", npc: npc.id, hit: leak, text: transition });
+          } else {
+            say(`\n${transition}`);
+            lastTransitionText = transition;
+            introShown = true;
+          }
         } catch { /* 过渡失败则直接进入下一位 NPC */ }
       }
     } else if (scene.openingAtmosphere) {
@@ -561,8 +571,15 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
       // 不设 introShown，避免首 NPC 的外貌信息缺失。
       try {
         const transition = await generateOpeningTransition(npc, scene, scene.openingAtmosphere, llmClient, buildWorldContext(module, [pl1, pl2], wm, world));
-        say(`\n${transition}`);
-        lastTransitionText = transition;
+        // 同上：首位 NPC 的承接句同样印在介绍之前。
+        // 模组里静态的 openingAtmosphere 有测试守着，这条生成出来的以前没人查。
+        const leak = npcState.knownByPlayers ? "" : namesPerson(transition, npc.name, everyKnownName(ctx));
+        if (leak) {
+          emit({ type: "name-leak", where: "opening-transition", npc: npc.id, hit: leak, text: transition });
+        } else {
+          say(`\n${transition}`);
+          lastTransitionText = transition;
+        }
       } catch { /* 承接失败则不打印，直接进入首 NPC */ }
     }
 
@@ -1051,6 +1068,20 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
     say(`\n${chosenConn.condition}。`, "verbatim");
   }
   return chosenConn;
+}
+
+/**
+ * 本局所有已知的人名 —— 全场 NPC 加两位调查员。
+ *
+ * `namesPerson` 判「这段话点没点到某人」时要靠它排除被更长名字盖住的误认：
+ * 少了调查员的名字，「米尔德丽德」就会被当成「米尔」。
+ * 这条规则是被打脸四次打出来的，见 `play/names.ts` 开头。
+ */
+export function everyKnownName(ctx: SceneCtx): string[] {
+  return [
+    ...(ctx.module?.npcs ?? []).map((n) => n.name),
+    ...(ctx.agents ?? []).map((a) => a?.name).filter((n): n is string => !!n),
+  ];
 }
 
 /** 从 knowledge 条目中提取干净的话题核心（去掉第一人称/所有格前缀，截取到句末标点或第一逗号分句） */

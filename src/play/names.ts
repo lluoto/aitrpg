@@ -69,3 +69,23 @@ export function mentionsName(
 export function knownNameVariants(names: readonly string[]): string[] {
   return [...new Set(names.flatMap(nameParts))];
 }
+
+/**
+ * 这段话有没有点到 `person` 的名字 —— 点到了就返回命中的那一截，没有返回空串。
+ *
+ * 存在的理由是**运行时**要用：LLM 生成的场景过渡句印在 NPC 被介绍**之前**，
+ * 它一旦叫出名字，旁白就替调查员作弊了（原样的毛病见本文件开头）。
+ * 静态模组数据有测试守着，生成的文本以前没人查。
+ *
+ * `otherKnownNames` 给全（全场 NPC + 本局调查员），否则「米尔德丽德」
+ * 会被当成「米尔」—— 那是这套规则被打脸的第一次。
+ */
+export function namesPerson(
+  text: string,
+  person: string,
+  otherKnownNames: readonly string[] = [],
+): string {
+  const own = new Set(nameParts(person));
+  const longer = knownNameVariants(otherKnownNames).filter((n) => !own.has(n));
+  return nameParts(person).find((p) => mentionsName(text, p, longer)) ?? "";
+}

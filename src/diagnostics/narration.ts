@@ -15,8 +15,8 @@
 // 名字比对的实现挪到了 `play/names.ts` —— **生产代码也要用**：
 // 车卡生成的 PC 背景不能撞上模组 NPC 的名字。
 // 一份数据两套解析是这轮反复在修的病，名字比对不能重蹈覆辙。
-export { nameParts, mentionsName, knownNameVariants } from "../play/names";
-import { nameParts, mentionsName, knownNameVariants } from "../play/names";
+export { nameParts, mentionsName, knownNameVariants, namesPerson } from "../play/names";
+import { namesPerson } from "../play/names";
 
 export interface NameLeak {
   sceneId: string;
@@ -44,16 +44,16 @@ export function namesLeakedInOpening(
   extraNames: readonly string[] = [],
 ): NameLeak[] {
   const out: NameLeak[] = [];
-  const allNames = knownNameVariants([...npcs.map((n) => n.name), ...extraNames]);
+  // 比对逻辑在 `play/names.ts` 的 namesPerson —— 运行时那道闸门用的是同一个函数。
+  // 判据和生产各写一份，迟早会漂到只有一边判得出来。
+  const allNames = [...npcs.map((n) => n.name), ...extraNames];
   for (const scene of scenes) {
     const opening = scene.openingAtmosphere;
     if (!opening) continue;
     for (const npcId of scene.npcIds ?? []) {
       const npc = npcs.find((n) => n.id === npcId);
       if (!npc) continue;
-      const own = new Set(nameParts(npc.name));
-      const longer = allNames.filter((n) => !own.has(n));
-      const hit = nameParts(npc.name).find((p) => mentionsName(opening, p, longer));
+      const hit = namesPerson(opening, npc.name, allNames);
       if (hit) out.push({ sceneId: scene.id, npc: npc.name, hit });
     }
   }

@@ -12,6 +12,8 @@ import { CoCEngine, SUCCESS_LEVEL_LABELS } from "../rules/coc-engine";
 import { say, sayMech, emit } from "./narration";
 import { sanCheck, check, applyDamage, woundPenaltyOf } from "./checks";
 import { needsMajorWoundCheck } from "../combat/wound-effects";
+import { activeHooks } from "./ruleset";
+import { runChase, environmentFromScene } from "./chase";
 import { rollDice } from "./trap-util";
 import { isDowned } from "./run-state";
 import type { Cast } from "./run-state";
@@ -237,8 +239,9 @@ if (migoEncounter) {
     emit({ type: "enemy-attack", enemy: enemyName, target: name, outcome: "hit", damage: dmg });
     const severity = applyDamage(pc, name, dmg);
 
-    // 重伤要掷体质，跟陷阱那边同一套规则 —— 现在是字面意义上的同一个判据
-    if (needsMajorWoundCheck(severity, pc.hp)) {
+    // 重伤要掷体质，跟陷阱那边同一套规则 —— 现在是字面意义上的同一个判据。
+    // 阈值与「开不开重伤系统」由模组声明的规则集说了算（Pulp 之类可以整个关掉）。
+    if (needsMajorWoundCheck(severity, pc.hp, activeHooks(module))) {
       const con = check(pc.attributes.constitution, name, "体质（重伤）", "regular", 0, true);
       if (!con.isSuccess) {
         say(`${name}因伤势过重昏迷过去！`);
@@ -333,10 +336,48 @@ if (migoEncounter) {
     } else {
       say("敌人发出一声不甘的嘶叫，撞破通风管道独自逃走了。", "verbatim");
     }
+    // 这一支大脑已经夺回来了，追上与否不改变线索状态 —— 但结局文案不同，
+    // 「按住了它」和「让它跑了」不该印成同一句。
+    if (chaseAfterFlight()) {
+      say("它没能跑远。你们把它按在了地上。", "verbatim");
+    }
   } else {
-    // 完全失败：Mi-Go 带着大脑逃走
+    // 完全失败：Mi-Go 带着大脑逃走 —— 但可以追。追上了就把它带走的东西夺回来。
     for (const line of migoEncounter.defeatLines) say(line, "verbatim");
+    if (miGoFled && chaseAfterFlight() && migoEncounter.victoryClueId) {
+      world.discoverClue(migoEncounter.victoryClueId);
+    }
   }
   say(`${"═".repeat(48)}`);
+
+  /**
+   * 敌人逃跑之后追不追得上。
+   *
+   * 之前这里只印一句「撞破通风管道独自逃走了」就结束 ——
+   * 而仓库里躺着 731 行写好的 CoC 追逐规则，一次都没跑过。
+   *
+   * 只有还站着的调查员能追：躺下的人显然追不了，
+   * 让他们参与会把「全员倒地」也算成一次有效追逐。
+   */
+  function chaseAfterFlight(): boolean {
+    // 名字与角色卡必须成对取 —— 散着拿最容易出的错就是错位（见 Cast 的注释）。
+    // pcCombatants 已经把这一对绑好了。
+    const able = pcCombatants.filter((x) => x.pc.hp > 0);
+    if (able.length === 0) return false;
+
+    const outcome = runChase(
+      able.map((x) => ({
+        name: x.name,
+        con: x.pc.attributes.constitution,
+        dex: x.pc.attributes.dexterity,
+      })),
+      { name: enemyName, con: enemyStats.skill, dex: enemyStats.skill },
+      environmentFromScene(scene.name, scene.description ?? ""),
+    );
+    say(outcome.caught
+      ? `\n你们在它彻底消失之前把它逼停了。`
+      : `\n它消失在视野里。追不上了。`);
+    return outcome.caught;
+  }
 }
 }

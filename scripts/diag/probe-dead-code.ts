@@ -74,16 +74,21 @@ for (const f of files) {
 const deadModules = files.filter((f) =>
   !isTest(f) && !isScript(f) && !ENTRIES.has(f) && (importedBy.get(f) ?? []).length === 0);
 
+// `src/diagnostics/*` 是**判据**，被测试和诊断脚本用就是它的本分，
+// 不该跟「写了没接上的功能模块」混在一张表里。第一版混在一起，
+// 于是 narration.ts 被标成「生产码不要了」—— 判据本来就不该有生产调用方。
+const isCriterion = (f: string) => f.startsWith("src/diagnostics/");
+
 // 只有测试在用的模块 —— 生产码里已经没人要了
 const testOnly = files.filter((f) => {
-  if (isTest(f) || isScript(f) || ENTRIES.has(f)) return false;
+  if (isTest(f) || isScript(f) || isCriterion(f) || ENTRIES.has(f)) return false;
   const users = importedBy.get(f) ?? [];
   return users.length > 0 && users.every(isTest);
 });
 
 // 只有诊断脚本在用的模块
 const scriptOnly = files.filter((f) => {
-  if (isTest(f) || isScript(f) || ENTRIES.has(f)) return false;
+  if (isTest(f) || isScript(f) || isCriterion(f) || ENTRIES.has(f)) return false;
   const users = importedBy.get(f) ?? [];
   return users.length > 0 && users.every((u) => isScript(u) || isTest(u)) && users.some(isScript);
 });
@@ -147,6 +152,8 @@ section("只有测试在 import", testOnly,
   "**生产码里已经没人要了** —— 留着的话，测试在保护一段没人跑的代码。");
 section("只有诊断脚本在 import", scriptOnly,
   "判据入库、跑局脚本入库是有意为之，这一类通常是正常的，列出来备查。");
+section("判据模块（src/diagnostics/*）", files.filter(isCriterion),
+  "**不参与上面两张表**：判据的调用方本来就是测试与诊断脚本，没有生产调用方是对的。");
 
 out.push(`## 没人用的导出（${deadExports.length}）`);
 out.push("");
