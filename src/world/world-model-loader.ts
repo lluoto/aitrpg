@@ -165,9 +165,8 @@ export class WorldModelLoader {
 
     this.loaded = true;
     this.loadTime = performance.now() - start;
-    const byNovelCount = Object.fromEntries(
-      [...this.byNovel.entries()].map(([k, v]) => [k, v.length])
-    );
+    // 每部小说的条目数原先算了但没进日志（下面两行只印总数），
+    // 是一次 O(n) 的白算。要按小说细分时再加，别留个算完就扔的值。
     console.log(`  🌐 世界模型 v18 已加载: ${this.entries.length} 条 | ${this.byNovel.size} 部小说 | ${this.byType.size} 种类型 | ${(this.loadTime / 1000).toFixed(1)}s`);
     console.log(`     D&D 规则: ${this.dndGameRules.length} | D&D 映射: ${this.dndMappings.length} | 幻觉风险: ${this.hallucinationRisky.length}`);
   }

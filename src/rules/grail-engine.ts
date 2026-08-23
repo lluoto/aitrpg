@@ -88,9 +88,15 @@ export interface TierSuppressionResult {
 
 export class GrailEngine {
   private ranks: Map<GrailRank, RankConfig> = new Map();
-  private moraleBonus: number = 0;
+  // 原先这里有个 `moraleBonus: number = 0` —— 从头到尾没被读也没被写过。
+  // 士气在 RankConfig 里是 `morale: "low" | …` 的等级，不是数值加成，
+  // 这个字段大概是早期设想的残留。
 
-  constructor(yamlPath?: string) {
+  // ⚠ `yamlPath` 收了但没用：下面的 ranks 全是构造函数里硬编码的。
+  //   参数留着会让调用方以为传个 yaml 就能换规则表 —— 传了也没用。
+  //   改名 `_yamlPath` 记着这件事，但不删签名：删了是破坏性改动，
+  //   而「能不能从 yaml 读」是另一个决定。
+  constructor(_yamlPath?: string) {
     this.ranks.set("bronze", {
       label: "青铜", tier: 1, base_attack: 2, base_defense: 10,
       hp_multiplier: 1, abilities: ["基础攻击"], morale: "low",

@@ -1,6 +1,6 @@
 {
-  "tests": 1802,
-  "files": 92,
+  "tests": 1807,
+  "files": 93,
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
     {
@@ -112,6 +112,11 @@
       "tests": 1802,
       "files": 92,
       "when": "限时状态系统接上：status-effects + 每回合 tick；修一条我自己写闪的追逐测试"
+    },
+    {
+      "tests": 1807,
+      "files": 93,
+      "when": "同伴控制命令接上真 API；补 passive 性格档；清掉一批算了就扔的值"
     }
   ]
 }

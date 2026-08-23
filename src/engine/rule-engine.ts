@@ -125,7 +125,8 @@ export class RuleEngine {
     }
 
     // Step 3: 结果判定
-    const overkill = damage - defender.hp;
+    // 过量伤害（damage - defender.hp）算过但没人读，删掉。
+    // 要用的时候再算，留着只会让人以为下面某处依赖它。
     const result = !hit ? 'miss' : (damage >= defender.hp ? 'kill' : 'wound');
     const intensity = result === 'kill' ? 0.7 : (result === 'wound' ? 0.4 : 0.1);
 

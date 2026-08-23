@@ -168,7 +168,8 @@ export class CoCEngine {
     }
 
     // 燃运：减少投骰值（不能低于 1）
-    const originalRoll = roll;
+    // 原骰值不用单独留一份：`luckAdjusted` 与 `luckSpent` 都在返回值里，
+    // 要还原原骰加回去就是。留个没人读的 `originalRoll` 只会让人以为它有用途。
     const luckAdjusted = Math.max(1, roll - luckSpend);
     roll = luckAdjusted;
 

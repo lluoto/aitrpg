@@ -399,7 +399,9 @@ export class CompanionAgent {
     // 原本读的是 curiosity，但特质表里没有这个键：t() 对未知键返回默认值 5，
     // 于是 rollCount 恒为 2，这个旋钮从来没接上过。caution 是真实存在的特质，
     // 语义也对得上注释里"看得更细"的那一半，默认值同样是 5，默认行为不变。
-    const detailBonus = t(this.config, "caution") > 6 ? 1.3 : 1;
+    // 原先这里还有个 `detailBonus = caution > 6 ? 1.3 : 1`，算了从不使用。
+    // 「谨慎高→看得更细」这半已经由下面的 rollCount 实现了，
+    // 两个旋钮拧同一件事，其中一个还是空转的。
     const rollCount = Math.ceil(t(this.config, "caution") / 3);
 
     for (let i = 0; i < rollCount && i < entities.length; i++) {
@@ -449,10 +451,14 @@ export class CompanionAgent {
     const wary = t.caution > 6;
 
     switch (actionType) {
+      // ⚠ `passive`（攻击性 < 4）原先算了却**没有任何分支** ——
+      //   六个性格档里只有它没声音，低攻击性的同伴一律落到通用 else。
+      //   是 tsc 的 noUnusedLocals 报出来的。补上它该有的那一档。
       case "see_enemy":
         if (brave && aggro) pool.push("又有猎物了。", "不堪一击的东西。", "让我来。");
         else if (cowardly) pool.push("有东西……小心。", "我们非打不可吗？");
         else if (wary) pool.push("等等，有动静。", "看清楚再动手。");
+        else if (passive) pool.push("非动手不可吗？", "先别急着上。", "能绕开就绕开吧。");
         else pool.push("有敌人！", "准备好战斗！", "来了。");
         break;
 
@@ -460,6 +466,7 @@ export class CompanionAgent {
         if (cruel) pool.push("去死吧！", "一个都不留。", "尝尝这个！");
         else if (aggro) pool.push("看招！", "别想跑！", "哈！");
         else if (brave) pool.push("为了大家！", "我不会后退的！");
+        else if (passive) pool.push("抱歉了。", "我只是不想有人受伤。", "别逼我。");
         else pool.push("呃！", "上吧！", "喝！");
         break;
 

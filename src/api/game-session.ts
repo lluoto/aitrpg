@@ -1094,16 +1094,66 @@ export class GameSession {
     const controlMatch = input.match(/^(?:控制|接管|手操)\s+(.+)/);
     const autoMatch = input.match(/^(?:自动|放手|AI)\s+(.+)/);
 
+    // ⚠ 这四条命令原先**全是门面**：只推一句话，一个都不碰 companionManager。
+    //
+    //   `自动/放手/AI X` 更彻底 —— 正则匹配出来了却连 if 都没有（`autoMatch`
+    //   是 tsc 的 noUnusedLocals 报的），玩家能接管同伴却交不回去。
+    //
+    //   而控制系统本身是**完整实现且有测试**的：`setControl` / `getControl` /
+    //   `transferControl` / `getPlayerControlled`，`companion-manager.ts:589`
+    //   还在按 `control !== "auto"` 决定同伴这一轮自不自己动。
+    //   实测这几个方法**只有测试在调用**，生产码一次都不碰 ——
+    //   跟流血、跟追逐是同一个故事：实现了、测了、没接上。
+    //
+    //   找不到人时要说出来。原先「接管 张三」无论张三在不在队里都回同一句，
+    //   打错名字与真的接管在播报上完全一样。
+    // CompanionState 身上没有 id —— id 是 Map 的键，所以按 entries 找。
+    const findCompanion = (name: string): string | undefined =>
+      [...this.companionManager.getAllStates().entries()]
+        .find(([id, c]) => c.config.name === name || id === name)?.[0];
+
     if (inviteMatch) {
-      turnMessages.push({ speaker: "系统", content: `你向 ${inviteMatch[1].trim()} 发出了邀请`, type: "system" });
+      const who = inviteMatch[1].trim();
+      const c = findCompanion(who);
+      if (!c) {
+        turnMessages.push({ speaker: "系统", content: `队伍里没有「${who}」。`, type: "system" });
+      } else {
+        this.companionManager.markInvited(c);
+        turnMessages.push({ speaker: "系统", content: `你向 ${who} 发出了邀请`, type: "system" });
+      }
       return this.buildActionResponse(turnMessages);
     }
     if (farewellMatch) {
-      turnMessages.push({ speaker: "系统", content: `${farewellMatch[1].trim()} 离开了队伍`, type: "system" });
+      const who = farewellMatch[1].trim();
+      const c = findCompanion(who);
+      if (!c) {
+        turnMessages.push({ speaker: "系统", content: `队伍里没有「${who}」。`, type: "system" });
+      } else {
+        const line = this.companionManager.handleDeparture(c, this.world, "player-farewell");
+        turnMessages.push({ speaker: "系统", content: line ?? `${who} 离开了队伍`, type: "system" });
+      }
       return this.buildActionResponse(turnMessages);
     }
     if (controlMatch) {
-      turnMessages.push({ speaker: "系统", content: `你接管了 ${controlMatch[1].trim()} 的控制权`, type: "system" });
+      const who = controlMatch[1].trim();
+      const c = findCompanion(who);
+      if (!c) {
+        turnMessages.push({ speaker: "系统", content: `队伍里没有「${who}」。`, type: "system" });
+      } else {
+        this.companionManager.setControl(c, `player:${this.activePlayerId}`);
+        turnMessages.push({ speaker: "系统", content: `你接管了 ${who} 的控制权`, type: "system" });
+      }
+      return this.buildActionResponse(turnMessages);
+    }
+    if (autoMatch) {
+      const who = autoMatch[1].trim();
+      const c = findCompanion(who);
+      if (!c) {
+        turnMessages.push({ speaker: "系统", content: `队伍里没有「${who}」。`, type: "system" });
+      } else {
+        this.companionManager.setControl(c, "auto");
+        turnMessages.push({ speaker: "系统", content: `${who} 恢复自主行动。`, type: "system" });
+      }
       return this.buildActionResponse(turnMessages);
     }
 
