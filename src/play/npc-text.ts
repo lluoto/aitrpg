@@ -56,7 +56,9 @@ export function analyseNpcData(npc: ModuleNPC): {
 
   // Age band — affects language complexity at generation time
   const isToddler = age !== undefined && age < 7;
-  const isChild = age !== undefined && age >= 7 && age < 12; // narrower: only school-age
+  // 原先这里还有个 isChild（7–11 岁）—— 引进来之后没人用，
+  // 真正在用的是下面那个 isAnyChild（<10）。两个「小孩」判据并存，
+  // 其中一个是空的，留着只会让人挑错。
   const isTeen = age !== undefined && age >= 12 && age < 18;
   // Re-derive isChild for backward compat (any age < 10)
   const isAnyChild = age !== undefined && age < 10;

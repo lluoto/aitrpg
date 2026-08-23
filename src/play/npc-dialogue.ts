@@ -703,7 +703,7 @@ export function revealNpcKnowledge(
   }
 
   if (npc.knowledge.length === 0) return;
-  const revealed = npc.knowledge.filter((k, ki) =>
+  const revealed = npc.knowledge.filter((_k, ki) =>
     !w.isClueFound(`clue_kn_${npc.id}_${ki}`)
   );
   if (revealed.length === 0) return;
@@ -721,7 +721,7 @@ export function revealNpcKnowledge(
 
 export function generateNpcDialogue(
   npc: ModuleNPC, npcState: NPCInstanceState,
-  profile: SpeechProfile, w: WorldState,
+  profile: SpeechProfile, _w: WorldState,
   isRevisit?: boolean
 ): string {
   // LLM 预生成文本优先

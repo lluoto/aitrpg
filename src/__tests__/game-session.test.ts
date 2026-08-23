@@ -81,9 +81,9 @@ describe("基础交互", () => {
   });
 
   it("每回合 ID 递增", async () => {
-    const r1 = await session.act("观察");
+    await session.act("观察");
     expect(session.round).toBe(1);
-    const r2 = await session.act("观察");
+    await session.act("观察");
     expect(session.round).toBe(2);
   });
 });
@@ -385,14 +385,24 @@ describe("CoC 技能成长", () => {
       await growthSession.act("调查书桌");
     }
     // 休息应该触发技能成长
+    // ⚠ 这条原先是**空心的**：filter 出成长消息却不看它，只断言
+    //   `res.events.length > 0`，注释写「可能有成长消息（取决于随机检定结果）」。
+    //   实测 10 次休息**一次都没有**成长消息 —— 不是随机，是**前提没建立**：
+    //   CoC 7e 的规则是「技能检定**失败**才留成长标记」（见 game-session
+    //   记录标记那一处），而这个测试休息之前从没失败过任何检定。
+    //   也就是说它断言的那件事根本不会发生，只是断言写得太松没露馅。
+    //
+    //   把前提补上：`handleRest` 在没有 activeCharacter 时会**直接早退**
+    //   （它连成长那一段都到不了），所以先建角色，再塞一个成长标记。
+    await growthSession.act("创建角色 investigator 成长测试员");
+    growthSession.skillGrowthMarks.push("spot_hidden");
     const res = await growthSession.act("休息");
-    expect(res).toBeDefined();
-    // 验证 events 中包含成长相关消息
     const growthEvents = res.events.filter(
-      e => e.content.includes("技能成长") || e.content.includes("检定 d100")
+      e => e.content.includes("技能成长") || e.content.includes("成长检查")
     );
-    // 可能有成长消息（取决于随机检定结果）
-    expect(res.events.length).toBeGreaterThan(0);
+    expect(growthEvents.length).toBeGreaterThan(0);
+    // 结算完标记要清空，否则下次休息会拿同一个标记再涨一次
+    expect(growthSession.skillGrowthMarks).toEqual([]);
   });
 });
 

@@ -154,10 +154,17 @@ registry.onEvent((name, event) => {
 });
 
 // KP 指令（从模组数据生成）
-const moduleNpcList = BARN_OF_PREMIER.npcs.map(n => `${n.name}（${n.role}）`).join("、");
+// ⚠ 这一行原先算出 NPC 名单**然后扔掉**（tsc 的 noUnusedLocals 报的）。
+//   而 `scene_elements` 的类型注释写着「场景中的关键元素（**NPC**、物品、线索等）」，
+//   代码却只塞了场景名 —— 也就是说 **KP 从头到尾不知道模组里有谁**。
+//   算好的东西就在上一行，没进去。
+const moduleNpcList = BARN_OF_PREMIER.npcs.map(n => `${n.name}（${n.role}）`);
 const kpDirective: KPDirective = {
   scene_description: BARN_OF_PREMIER.scenes[0]?.description ?? "",
-  scene_elements: BARN_OF_PREMIER.scenes.slice(0, 5).map(s => s.name),
+  scene_elements: [
+    ...BARN_OF_PREMIER.scenes.slice(0, 5).map(s => s.name),
+    ...moduleNpcList,
+  ],
   plot_nodes: [],
   current_phase: "arrival",
   style: "lovecraft",
@@ -272,9 +279,8 @@ function getPlayerHistory(): AgentMessage[] {
   return session.getActiveHistory();
 }
 
-function getActiveScene(): string {
-  return kp.getDirective().current_phase;
-}
+// 原先这里有个 `getActiveScene()`，返回 `kp.getDirective().current_phase` —— 没人调用。
+// 名字也名不副实：它返回的是剧情阶段，不是场景。留着只会误导下一个人。
 
 function getPlayerAttributes(): { name: string; id: string; proficiency: number; abilities: Record<string, number>; hasSneakAttack: boolean; cocAttrs?: Record<string, number>; getSkill?: (key: string) => number } {
   if (activeRuleset === "cosmic-horror" && cocCharacter) {
@@ -341,9 +347,9 @@ function buildSceneContext() {
 async function handlePlayerInput(input: string) {
   round++;
   const turnMessages: AgentMessage[] = [];
-  const activePlayer = session.getActive();
-  const playerName = activePlayer?.characterName ?? "调查员";
-  const playerId = activePlayer?.characterId ?? "player";
+  // 原先这里取了 playerName / playerId 两个值，一处都没用到。
+  // 下面的 logEvent 只记输入文本，谁做的这件事其实没被记下来 —— 但那是
+  // 事件模型的决定，不该顺手在这里替它改。先把死变量去掉。
 
   // 世界状态写入当前回合
   world.logEvent({
@@ -353,17 +359,15 @@ async function handlePlayerInput(input: string) {
   });
 
   // Step 1: 意图解析
-  const intent = await parseIntent(input);
-  const worldCtx = ""; // world context 参数保留签名兼容但未使用
-
+  const intent = await parseIntent(input);
   if (intent.action === "attack" && intent.target) {
-    await handleCombat(intent, turnMessages, worldCtx);
+    await handleCombat(intent, turnMessages);
   } else if (intent.action === "move") {
-    await handleMovement(intent, turnMessages, worldCtx);
+    await handleMovement(intent, turnMessages);
   } else if (intent.action === "skill_check") {
-    await handleInvestigation(input, intent, turnMessages, worldCtx);
+    await handleInvestigation(input, turnMessages);
   } else {
-    await handleFreeNarration(input, turnMessages, worldCtx);
+    await handleFreeNarration(input, turnMessages);
   }
 
   // ── NPC 战斗阶段 ──
@@ -455,7 +459,7 @@ async function handlePlayerInput(input: string) {
 // ============================================================
 
 async function handleCombat(
-  intent: any, turnMessages: AgentMessage[], worldCtx: string
+  intent: any, turnMessages: AgentMessage[]
 ) {
   const target = world.getEntityByName(intent.target);
   if (!target) {
@@ -524,7 +528,9 @@ async function handleCombat(
     activeRuleset as RulesetId,
     hasAdvantage, hasDisadvantage, weapon,
     cocSkill || undefined, cocDodge || undefined, damageDice,
-    undefined, undefined, undefined, undefined, undefined,
+    // penaltyDiceOverride / isFightBack / fightBackDamageDice 这三个不指定。
+    // 原先这里是五个 undefined —— 另外两个是那对从不生效的圣杯位阶参数。
+    undefined, undefined, undefined,
     cocCharacter?.damageBonus
   );
 
@@ -578,7 +584,7 @@ async function handleCombat(
 // ============================================================
 
 async function handleMovement(
-  intent: any, turnMessages: AgentMessage[], worldCtx: string
+  intent: any, turnMessages: AgentMessage[]
 ) {
   const msg = `向 ${intent.target || "前方"} 移动`;
   world.logEvent({ round, timestamp: Date.now(), event_type: "move", actor: "player", description: msg });
@@ -609,7 +615,7 @@ async function handleMovement(
   }
 }
 
-async function handleFreeNarration(input: string, turnMessages: AgentMessage[], worldCtx: string) {
+async function handleFreeNarration(input: string, turnMessages: AgentMessage[]) {
   const kpNarration = await kp.narrateOutcome(input, `玩家: ${input}`, getPlayerHistory());
   console.log(`  🎭 ${kpNarration}`);
   addMessage("KP", kpNarration, "narration");
@@ -648,9 +654,7 @@ async function handleFreeNarration(input: string, turnMessages: AgentMessage[], 
 
 async function handleInvestigation(
   input: string,
-  intent: any,
   turnMessages: AgentMessage[],
-  worldCtx: string
 ) {
   const activePlayer = session.getActive();
   const playerName = activePlayer?.name ?? "p1";
@@ -821,7 +825,8 @@ function handleNPCCommand(input: string, rl: any) {
     const role = parts[2];
     const personality = parts.slice(3).join(" ") || "普通路人";
     try {
-      const agent = registry.registerQuick(name, role, personality);
+      // 要的是注册这个副作用，返回的 agent 用不上 —— 不接它，免得看着像忘了用
+      registry.registerQuick(name, role, personality);
       console.log(`  ✅ Agent "${name}" [${role}] 已注册并激活`);
     } catch (err: any) {
       console.log(`  ❌ 注册失败: ${err.message}`);

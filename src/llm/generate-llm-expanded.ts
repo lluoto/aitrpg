@@ -59,7 +59,9 @@ function pick<T>(arr: T[]): T {
 
 /** 根据 NPC 特征选择第一句语调桥 */
 function pickToneBridge(npc: ModuleNPC): string {
-  const traits = npc.personality.traits.map(t => t.toLowerCase());
+  // 早年这里还手工提了一份 traits（小写化），后来判断全交给 analyseNpc 了，
+  // 那一份就没人读了 —— 删掉免得看着像还有一条并行的判断路径。
+  // speech 仍在用（下面按原文关键词兜底）。
   const speech = npc.personality.speech;
   const a = analyseNpc(npc);
 

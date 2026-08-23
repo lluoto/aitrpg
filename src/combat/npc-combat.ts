@@ -128,7 +128,7 @@ export class NPCCombatEngine {
   private shouldFlee(
     npc: WorldEntity,
     cfg: CreatureConfig,
-    state: WorldState
+    _state: WorldState
   ): boolean {
     const threshold = cfg.flee_when_hp_below ?? 0.25;
     const hpRatio = npc.hp / npc.maxHp;
@@ -221,7 +221,7 @@ export class NPCCombatEngine {
     npc: WorldEntity,
     cfg: CreatureConfig,
     target: WorldEntity,
-    state: WorldState,
+    _state: WorldState,
     config: RulesetConfig,
     ruleset: string
   ): { type: string; weapon?: string; method?: string; skill?: string } {
@@ -255,7 +255,7 @@ export class NPCCombatEngine {
 
   private actionToIntent(
     action: string,
-    cfg: CreatureConfig
+    _cfg: CreatureConfig
   ): { type: string; weapon?: string; method?: string; skill?: string } {
     switch (action) {
       case "melee_attack":
@@ -316,7 +316,7 @@ export class NPCCombatEngine {
   // 辅助
   // ==========================================================
 
-  private pickWeapon(npc: WorldEntity, ruleset: string): string {
+  private pickWeapon(_npc: WorldEntity, ruleset: string): string {
     // 简化：根据规则集和 NPC 类型选默认武器
     if (ruleset === "cosmic-horror") return "fist"; // CoC 很少自带武器——或用爪击
     return "shortsword"; // D&D 默认

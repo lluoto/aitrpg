@@ -1160,7 +1160,7 @@ export class CharacterFactory {
   }
 
   /** 检查进阶条件 */
-  static canTakePrestige(character: GeneratedCharacter, _prestigeId: string): { eligible: boolean; missing: string[] } {
+  static canTakePrestige(_character: GeneratedCharacter, _prestigeId: string): { eligible: boolean; missing: string[] } {
     return { eligible: true, missing: [] };
   }
 

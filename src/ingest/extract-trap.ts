@@ -52,7 +52,7 @@ function sentenceAround(text: string, idx: number): string {
  * 「一旁的杂物堆」这种纯叙述条目也走这个函数，它们本就不该产出机制。
  */
 export function extractTrapMechanics(
-  name: string,
+  _name: string,
   text: string,
   sourceRef?: string,
 ): TrapExtraction | null {

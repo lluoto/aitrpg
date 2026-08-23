@@ -10,7 +10,7 @@ import type { ModuleNPC } from "../module/types";
 import { analyseNpcData } from "./npc-text";
 import type { Dedup } from "./run-state";
 
-function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]!; }
+// 原先这里有个本地 pick<T>()，没人用 —— 本文件的随机挑选走的是别处的实现。
 
 /**
  * 取一条 NPC 引导桥并记住它，供下一次躲开。

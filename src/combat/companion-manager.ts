@@ -39,7 +39,7 @@ export class CompanionManager {
    * 招募入队（叙事事件，幂等）
    * 已入队则返回现有 state，不走第二遍叙事
    */
-  recruit(config: CompanionConfig, world: WorldStateManager, sceneId?: string): { state: CompanionState; firstTime: boolean } {
+  recruit(config: CompanionConfig, world: WorldStateManager, _sceneId?: string): { state: CompanionState; firstTime: boolean } {
     // 幂等：已注册 && active 则跳过
     const existing = this.companions.get(config.id);
     if (existing && existing.active) {
@@ -340,7 +340,7 @@ export class CompanionManager {
    */
   restoreSnapshot(snapshots: CompanionSnapshot[], world: WorldStateManager): void {
     // 清空现有活跃状态（保留配置注册）
-    for (const [id, state] of this.companions) {
+    for (const [_id, state] of this.companions) {
       if (state.active) {
         world.killEntity(state.entityId);
         state.active = false;
@@ -785,7 +785,7 @@ export class CompanionManager {
    * 清理所有队友
    */
   clearAll(world: WorldStateManager): void {
-    for (const [id, state] of this.companions) {
+    for (const [_id, state] of this.companions) {
       if (state.active) {
         world.killEntity(state.entityId);
       }

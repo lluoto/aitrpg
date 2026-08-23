@@ -163,12 +163,12 @@ const ACTIONS: ActionDef[] = [
   {
     id: "reposition", label: "走位换距",
     method: "melee",
-    prerequisites: (cfg, sit) => {
+    prerequisites: (_cfg, sit) => {
       // 只有不在理想位置时才考虑换位
       const idealPos = sit.hasRangedWeapon ? "ranged" : "melee_range";
       return sit.currentPosition !== idealPos;
     },
-    baseWeight: (cfg, sit) => {
+    baseWeight: (_cfg, sit) => {
       // 偏差越大越想换
       const idealPos = sit.hasRangedWeapon ? "ranged" : "melee_range";
       const distanceFromIdeal = sit.currentPosition === idealPos ? 0 : 30;
@@ -177,7 +177,7 @@ const ACTIONS: ActionDef[] = [
     biases: [
       { label: "谨慎高→常换位", cond: (cfg) => t(cfg, "caution") > 6, delta: +15 },
       { label: "有远程武器且敌近→拉开", cond: (_, sit) => sit.hasRangedWeapon && sit.enemyInMelee, delta: +30 },
-      { label: "近战但敌远→冲锋", cond: (cfg, sit) => !sit.hasRangedWeapon && sit.enemyAtRanged, delta: +25 },
+      { label: "近战但敌远→冲锋", cond: (_cfg, sit) => !sit.hasRangedWeapon && sit.enemyAtRanged, delta: +25 },
       { label: "防御模式→挡位", cond: (_, sit) => sit.isBehavior("defensive"), delta: +10 },
       { label: "残血→后撤", cond: (_, sit) => sit.hpRatio < 0.3, delta: +20 },
       { label: "攻击模式→压上", cond: (_, sit) => sit.isBehavior("aggressive"), delta: +10 },
@@ -255,7 +255,7 @@ export class CompanionAgent {
     entity: WorldEntity,
     state: WorldState,
     behavior: CompanionConfig["behavior"],
-    ruleset: string,
+    _ruleset: string,
     inventory: string[] = [],
     morale: number = 10,
   ): Promise<ActionIntent | null> {
@@ -322,7 +322,7 @@ export class CompanionAgent {
 
   private selectTargetImpl(
     entity: WorldEntity,
-    state: WorldState,
+    _state: WorldState,
     sit: Situation,
   ): WorldEntity | null {
     const enemies = sit.enemies.filter((e) => e.position === entity.position);
@@ -383,7 +383,7 @@ export class CompanionAgent {
   perceive(
     entity: WorldEntity,
     state: WorldState,
-    behavior: CompanionConfig["behavior"],
+    _behavior: CompanionConfig["behavior"],
   ): string[] {
     const findings: string[] = [];
     const skillValue = this.config.skills.spot ?? this.config.skills["侦查"] ?? 30;

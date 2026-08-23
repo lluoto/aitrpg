@@ -399,7 +399,9 @@ function worldRedirectFallback(a: ReturnType<typeof analyseNpc>): string {
 }
 
 /** 降级：NPC 主动说话 */
-function templateProactive(npc: ModuleNPC, sceneContext: string): string {
+// 模板路径按人物性格出主动搭话，用不到场景文本 —— 在开放文本上挑词不可靠，
+// 那正是这轮反复被打脸的事。签名保留是为了与 LLM 版对齐。
+function templateProactive(npc: ModuleNPC, _sceneContext: string): string {
   const a = analyseNpc(npc);
   if (a.isSilent) return "";
   const name = npc.name.replace(/[（(].*[）)]$/, "").trim();

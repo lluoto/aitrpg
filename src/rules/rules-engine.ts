@@ -3,7 +3,7 @@
 
 import { RuleEngine } from "../engine/rule-engine";
 import { CoCEngine, getCalledShotPenalty } from "./coc-engine";
-import { GrailEngine, type GrailRank, type RankSource } from "./grail-engine";
+import { GrailEngine, type RankSource } from "./grail-engine";
 import type { WorldEntity, ActionIntent, CombatResult, BonusEntry } from "../types";
 
 export type RulesetId = "dnd5e" | "cosmic-horror" | "grail";
@@ -90,9 +90,12 @@ export class RulesEngine {
     defenderDodge?: number,
     // CoC 生物伤害骰（如 "1d6+1d4"），默认 "1d6"
     damageDice?: string,
-    // 圣杯
-    attackerRank?: GrailRank,
-    defenderRank?: GrailRank,
+    // ⚠ 这里原先还有 `attackerRank?: GrailRank, defenderRank?: GrailRank` 两个参数，
+    //   **收了完全不传下去** —— `case "grail"` 那支直接
+    //   `this.adjudicateGrail(attacker, defender, "1d8")`，位阶是
+    //   `adjudicateGrail` 从 attacker（RankSource）自己推断的（见它的注释）。
+    //   参数存在却影响不了任何结果，比没有更坏：调用方以为自己指定得了位阶。
+    //   删掉之后 index.ts 的调用点少了两个 `undefined` 占位。
     // 通用: 额外惩罚骰（掩护、黑暗等）
     penaltyDiceOverride?: number,
     // CoC 反击/格挡
@@ -145,7 +148,7 @@ export class RulesEngine {
   /** CoC 7e 裁决 */
   private adjudicateCoC(
     intent: ActionIntent,
-    attacker: any,
+    _attacker: any,
     defender: WorldEntity,
     attackerSkill: number,
     defenderDodge: number,

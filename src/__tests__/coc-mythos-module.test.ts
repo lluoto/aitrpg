@@ -135,7 +135,7 @@ describe("MythosModuleLoader", () => {
     const host = createMockHost();
     const loader = new MythosModuleLoader(host);
 
-    const r1 = loader.import(ARKHAM_LIBRARY_MODULE);
+    loader.import(ARKHAM_LIBRARY_MODULE);
     const r2 = loader.import(ARKHAM_LIBRARY_MODULE);
 
     // 第二次导入后 importedModules 应只有 1 个

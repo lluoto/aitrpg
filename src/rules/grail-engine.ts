@@ -4,7 +4,7 @@
 
 import type { WorldEntity } from "../types";
 
-import { parse as parseYaml } from "yaml";
+// 原先 import 了 yaml 的 parse —— 构造函数的 ranks 全是硬编码的，从没解析过任何 yaml。
 
 // ============================================================
 // 位阶定义

@@ -199,11 +199,12 @@ describe("CoC 瞄准 + 贯穿 + 命中部位", () => {
       for (const loc of locs) {
         const eff = getHitLocationEffect(loc, 5, false, false);
         // 描述必须包含部位的关键字（有些描述使用"腿部"/"手臂"代替"右腿"/"左臂"）
-        const broadMatch = ["右腿", "左腿"].includes(loc)
-          ? expect(eff.description).toMatch(/腿/)
-          : ["右臂", "左臂"].includes(loc)
-          ? expect(eff.description).toMatch(/臂/)
-          : expect(eff.description).toContain(loc);
+        // 原先写成 `const _broadMatch = 三元表达式(每支都是 expect)`，
+        // 变量没人读。改成 if/else —— 断言不该藏在三元里，
+        // 那样既看不清哪一支跑了，也容易在重构时被整条求值掉。
+        if (["右腿", "左腿"].includes(loc)) expect(eff.description).toMatch(/腿/);
+        else if (["右臂", "左臂"].includes(loc)) expect(eff.description).toMatch(/臂/);
+        else expect(eff.description).toContain(loc);
         const impaleEff = getHitLocationEffect(loc, 8, true, false);
         expect(impaleEff.description).toContain("贯穿");
         const critEff = getHitLocationEffect(loc, 12, true, true);

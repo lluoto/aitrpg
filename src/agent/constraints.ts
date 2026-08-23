@@ -89,7 +89,7 @@ export function sanitizeSecretLeak(output: string, leakedSecrets: string[]): str
 export function checkKnowledgeBoundary(
   output: string,
   knowledge: string[],
-  npcName: string
+  _npcName: string
 ): string[] {
   // 越界信号词 — NPC 从自身知识出发不应使用的表述
   const BOUNDARY_SIGNALS = [

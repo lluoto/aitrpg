@@ -17,7 +17,8 @@
 import { type ModuleData, type ModuleSupport, type Scene, type ModuleNPC, type ModuleItem, type Clue, type EpilogueEntry, type PartySetup, type EndNarration, type EncounterNarration } from "./types";
 import { applyAllLlmExpanded } from "../llm/generate-llm-expanded";
 
-const RAW = "【原文】" as const; // 标记：内容直接来自原文
+// 原先这里有个 `RAW = "【原文】"` 标记常量，没有任何引用 —— 想标注哪些内容来自原文，
+// 得真的用上它才算数。
 
 // ─── 工具：原文引用的场景描述 ─────────────────────────────
 const S = {

@@ -892,8 +892,8 @@ export class SanityEngine {
     }
 
     result.success = true;
-    const level = this.state.indefiniteLevel || "mild";
-    const def = INDEFINITE_LEVEL_DEFS[level];
+    // 这里原先取了 indefiniteLevel 和它对应的 DEF 表项，两个都没被读过。
+    // 治疗效果目前不区分疯狂等级 —— 要区分得真的把它用起来。
 
     // 基础 SAN 恢复
     const sanRecovery = 1 + Math.floor(Math.random() * 3); // 1d3
@@ -1464,8 +1464,8 @@ export interface OpposedResult {
 export function opposedCheck(
   attackerSkill: number,
   defenderSkill: number,
-  attackerLabel?: string,
-  defenderLabel?: string,
+  _attackerLabel?: string,
+  _defenderLabel?: string,
 ): OpposedResult {
   // skillCheck 是 CoCEngine 的静态方法，模块内没有同名自由函数；
   // 原先的裸调用会让 opposedCheck 每次执行都抛 ReferenceError。

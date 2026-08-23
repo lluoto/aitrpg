@@ -159,7 +159,7 @@ describe("SanityEngine.sanityCheck()", () => {
     // 直接调用几次大损失
     e.state.currentSAN = 39; // 已累计损失 11 (>10)
     // indefiniteInsanity 只在 sanityCheck 中设置, 调用一次触发
-    const r = e.sanityCheck("0/1");
+    e.sanityCheck("0/1");
     expect(e.state.indefiniteInsanity).toBe(true);
   });
 

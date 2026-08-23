@@ -352,7 +352,6 @@ export class NPCAgent {
 
   /** 时代约束拦截时的安全话术 — 不含任何具体内容/现代科技词，保持角色感 */
   private anachronismSafeReply(): string {
-    const p = this.personality;
     const tag = this.roleTag();
     const tagPhrase = tag ? `我这个${tag}` : "我";
     const replies = [
@@ -366,7 +365,7 @@ export class NPCAgent {
   }
 
   /** LLM 不可用时的模板回应（特质+情绪+身份驱动） */
-  private templateReply(context: string): string {
+  private templateReply(_context: string): string {
     const p = this.personality;
     const combined = (p.personality + " " + p.speech_style).toLowerCase();
     const tag = this.roleTag();
@@ -461,7 +460,7 @@ export class NPCAgent {
   }
 
   /** LLM 不可用时主动发言模板（身份感知） */
-  private templateSpeakUp(trigger: string): string {
+  private templateSpeakUp(_trigger: string): string {
     const p = this.personality;
     const combined = (p.personality + " " + p.speech_style).toLowerCase();
     const tag = this.roleTag();

@@ -247,7 +247,7 @@ describe("线索生成", () => {
 
   test("有线索的场景在 clueTexts 中有对应条目", () => {
     const story = generator.generate({ subgenre: "lovecraft", length: "medium" });
-    const clueTextMap = new Map(story.clueTexts.map(c => [c.scene, c]));
+
     for (const s of story.scenes) {
       for (const clueId of s.clues) {
         const found = story.clueTexts.find(c => c.id === clueId);

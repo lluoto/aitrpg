@@ -819,7 +819,7 @@ export function createSkillAllocator(
   archetype: CharacterArchetype,
   edu: number,
   int: number,
-  dex: number = 50,
+  _dex: number = 50,
   options?: {
     /** 职业技能点倍率覆盖（默认 1） */
     occMultiplier?: number;
@@ -988,7 +988,6 @@ export function autoAllocateSkills(
   intPts: number,
 ): Record<string, number> {
   const edu = attrs.education ?? 50;
-  const int = attrs.intelligence ?? 50;
   const dex = attrs.dexterity ?? 50;
 
   // 1. 初始化所有已知技能为基础值

@@ -156,7 +156,7 @@ describe("CompanionManager", () => {
   it("selectTarget 在 aggressive 模式下选择低 HP 敌人", () => {
     manager.recruit(HILDA_CONFIG, world);
     const entity = world.getEntity("companion_hilda")!;
-    const state = world.getCurrentState();
+
     // 添加第二个敌人，一个 HP 低
     world.seedEntities([
       { id: "weak_enemy", name: "受伤的鱼人", type: "monster", hp: 3, maxHp: 12, ac: 10, status: [], position: "melee_range", faction: "monster" },

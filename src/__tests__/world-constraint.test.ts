@@ -495,7 +495,7 @@ describe("revealConditions — 可见条件", () => {
     // 所以只有没有 conditions 之外的 reveal — 但这里所有都有 conditions
     // 加一条无条件 reveal
     const extendedReveals = [...reveals, "额外信息"];
-    const visible = extendedReveals.filter((text, ki) => {
+    const visible = extendedReveals.filter((_text, ki) => {
       if (ki === 3) return true; // 无条件
       const cond = conditions.find(c => c.index === ki);
       if (!cond) return true;

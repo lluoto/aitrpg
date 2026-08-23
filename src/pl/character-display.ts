@@ -33,7 +33,7 @@ function buildReverseMap(): Record<string, string> {
 const EN2CN = buildReverseMap();
 
 /** Format a line for the character sheet */
-function fmtSkillLine(cnName: string, engKey: string, currentVal: number, baseVal: number, isOccup: boolean): string {
+function fmtSkillLine(cnName: string, _engKey: string, currentVal: number, baseVal: number, isOccup: boolean): string {
   const indicator = isOccup ? "\u25c6" : (currentVal > baseVal ? "\u25cb" : "·");
   const valStr = String(currentVal).padStart(3);
   const baseStr = String(baseVal).padStart(2);

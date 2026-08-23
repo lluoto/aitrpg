@@ -122,7 +122,7 @@ export function reduceWounds(events: readonly PlayEvent[]): WoundReport {
   };
 
   /** 结掉上一处还在等体质检定的重伤 */
-  const closeAwait = (who: string, at: number) => {
+  const closeAwait = (who: string, _at: number) => {
     const s = st(who);
     if (!s.awaitingCon) return;
     if (s.conSeen === 0) {

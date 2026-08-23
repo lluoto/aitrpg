@@ -73,7 +73,7 @@ describe("护甲数据", () => {
 // ============================================================
 describe("武器数据", () => {
   test("所有武器有完整字段", () => {
-    for (const [name, w] of Object.entries(COC_WEAPONS_FULL)) {
+    for (const [_name, w] of Object.entries(COC_WEAPONS_FULL)) {
       expect(w.damage).toBeTruthy();
       expect(typeof w.range).toBe("number");
       expect(w.range).toBeGreaterThanOrEqual(0);
@@ -225,7 +225,11 @@ describe("耐久系统", () => {
   });
 
   test("损坏后 DR 减半（向上取整）", () => {
-    const result = applyDurabilityDamage(10, 30, 5);
+    // 注释原先写着「durabilityLoss = max(1,10) = 10 → newDurability = 0 → broken」
+    // 却没有断言。写下来的推导要么验，要么别写。
+    const broken = applyDurabilityDamage(10, 30, 5);
+    expect(broken.newDurability).toBe(0);
+    expect(broken.status).toBe("broken");
     // durabilityLoss = max(1, 10) = 10 → newDurability = 0 → broken
     // Let's try to trigger damaged (not broken)
 
@@ -401,7 +405,7 @@ describe("完整装备场景", () => {
     // 总重量
     const totalWeight = vest.weight + helmet.weight + revolver.weight;
     // STR 60 + SIZ 50 → maxWeight = 220
-    const maxW = calcMaxWeight(60, 50);
+    expect(calcMaxWeight(60, 50)).toBe(220); // 注释里断言过这个数，就该真的验
     const enc = calcEncumbrance(totalWeight, 60, 50);
     expect(enc.penaltyDice).toBe(0); // 轻松携带
   });

@@ -71,7 +71,7 @@ export class MockLLMClient {
   /** 每个 NPC 的对话轮次计数器（用于模板轮替避免重复） */
   private npcConvoCount: Map<string, number> = new Map();
 
-  chat(messages: Message[], options?: ChatOptions): Promise<string> {
+  chat(messages: Message[], _options?: ChatOptions): Promise<string> {
     const lastMsg = messages[messages.length - 1]?.content ?? "";
 
     // 开场场景

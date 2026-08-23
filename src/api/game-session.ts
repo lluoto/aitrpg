@@ -89,9 +89,8 @@ export interface SessionSummary {
 // 辅助函数
 // ============================================================
 
-function generateId(): string {
-  return "sess_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-}
+// 原先这里有个 `generateId()`（`sess_` + 时间戳 + 随机后缀），没有任何调用方 ——
+// 会话 id 是构造时由外部传进来的。留着会让人以为 id 是这里生成的。
 
 /** 技能英文键 → 中文显示名（成长消息、传承记录共用） */
 const SKILL_DISPLAY_NAMES: Record<string, string> = {
@@ -195,7 +194,10 @@ export class GameSession {
   private lastRolls: Array<{skill: string; roll: number; target: number; success: boolean}> = [];
   private gameTime: GameTime = createGameTime();
   private activeDifficulty: DifficultyProfile | null = null;
-  private monstersSeen: Set<string> = new Set();
+  // 原先有个 `monstersSeen: Set<string>`：从没被读也没被写。
+  // CoC 里它该用来做「首次目击才掉 SAN」的去重，但这条路径上
+  // **根本没有对怪物的 SAN 检定**（唯一的 sanityCheck 是玩家显式命令触发的），
+  // 所以它是一个没建成的功能留下的空字段，不是漏接的去重表。
   public careerStore: CareerFileStore | null = null;
   private storyGenerator = new StoryGenerator();
   public skillGrowthMarks: string[] = [];
@@ -2438,7 +2440,10 @@ export class GameSession {
       this.lastNarrative = "没有待推动的检定";
       return true;
     }
-    const { skill, roll: prevRoll, target } = this._lastPushedRoll;
+    // 原先还取了 `roll: prevRoll`（推动前那一掷）却没用上 —— 播报里只报新骰。
+    // 「原本 73，推动后 41」比单报一个数字有信息量，但那是文案决定；
+    // 先把死绑定去掉，别让它看着像忘了拼进去。
+    const { skill, target } = this._lastPushedRoll;
     const newRoll = Math.floor(Math.random() * 100) + 1;
     const success = newRoll <= target;
     const isFumble = newRoll > 95;

@@ -115,9 +115,10 @@ for (const f of files) {
 }
 
 // ── ③ tsc 的未使用统计（只汇总，不重复实现） ──
-// ⚠ 命令行显式打开这两个开关，**不依赖 tsconfig.json**。
-//   tsconfig 里它们是关着的（开了 typecheck 就红、preflight 过不去），
-//   但那不该让这项检查跟着失明 —— 「构建不拦」和「没人量」是两回事。
+// 命令行显式打开这两个开关，**不依赖 tsconfig.json**。
+// 现在 tsconfig 里也开着（已清到 0），但探针不该假设这一点：
+// 哪天有人为了让构建变绿把开关关掉，这里仍然量得出真实数字。
+// 「构建不拦」和「没人量」是两回事。
 const tsc = Bun.spawnSync(
   ["bunx", "tsc", "--noEmit", "--noUnusedLocals", "--noUnusedParameters", "-p", "tsconfig.json"],
   { cwd: ROOT },

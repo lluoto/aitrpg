@@ -212,7 +212,7 @@ export class InvestigationEngine {
   investigate(
     clueType: string,
     playerSkills: Record<string, number>,
-    availableAllies: string[],
+    _availableAllies: string[],
     playerName: string,
     ruleEngine: RuleEngine
   ): InvestigationResult {
@@ -555,7 +555,6 @@ export class InvestigationEngine {
 
   /** 复制原始 YAML 到引擎的 rules 目录 */
   static initDefaultRules() {
-    const src = "../../investigation_system.yaml";
-    // 留给用户手动复制
+      // 留给用户手动复制
   }
 }

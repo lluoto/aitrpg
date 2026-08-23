@@ -489,7 +489,6 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
   } = ctx;
   const scene = world.currentScene!;
   world.advanceRound();
-  const round = world.round;
 
   // 进场先看有没有人倒着 —— CoC 7e：HP 归零即失去意识，得靠同伴急救唤醒。
   // 放在场景开头而不是每回合：每回合都试会变成必然成功的仪式，掷骰就没意义了。

@@ -13,18 +13,21 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
 
-    "strict": true
+    "strict": true,
 
-    // ⚠ `noUnusedLocals` / `noUnusedParameters` **有意暂不开在这里**。
+    // 打开这两个开关时实测 250 处，全部清完了（0 处），所以正式开在这里。
     //
-    // 开了实测 250 处。清掉其中全部 import 类（98 处，机械改动）之后还剩 112 处，
-    // 都是局部变量、参数、解构绑定 —— 这类**必须一处处看**：
-    // `fallbackQuestion` 那九个没用的解构就是真 bug（其中一条还让纯函数能抛异常），
-    // 无脑给参数加 `_` 前缀恰好会把这种 bug 盖住。
+    // 清的过程本身就是这轮最大的收获来源 —— 「声明了没读」几乎每一簇背后
+    // 都是一个**接了一半的功能**：
+    //   · fallbackQuestion 解构九个字段一个没用，其中一条还让纯函数能抛异常
+    //   · 同伴控制命令全是门面，setControl 只有测试在调用
+    //   · 整套决心系统三个方法各自只出现一次 —— 都是自己的定义
+    //   · 五个空心测试：算出要检查的东西然后不看它
     //
-    // 所以不在这里开（开了 typecheck 就是红的，preflight 过不去），
-    // 改由 `scripts/diag/probe-dead-code.ts` 用命令行覆盖强制测量 ——
-    // 那里报的是**真实数字**，不受本文件影响，可以照着往下清。
+    // 有意不用的**参数**以 `_` 开头（TS 只对参数认这个前缀，
+    // 局部变量加了照报不误，那类必须真删）。
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
   },
   "include": ["src/**/*.ts", "scripts/**/*.ts", "tools/**/*.ts"],
   "exclude": ["node_modules", "dist"]

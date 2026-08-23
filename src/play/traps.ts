@@ -37,7 +37,10 @@ export async function runSceneTraps(
   module: ModuleData,
   scene: Scene,
 ): Promise<void> {
-  const { p0, p1, c1, c2, san1, san2 } = cast;
+  // 原先还解构了 san1 / san2，而本文件**没有任何一处碰 SAN** ——
+  // 陷阱不掷理智检定。战斗那边是掷的（combat.ts 的 sanCheck），
+  // 陷阱致残要不要也掷是**设计决定**，不在这里顺手替它做，先把死绑定去掉。
+  const { p0, p1, c1, c2 } = cast;
   const { triggeredTraps, stepCounter } = cursor;
 
 for (const trapItem of trapsInScene(module.items, scene.id)) {

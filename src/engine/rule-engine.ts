@@ -8,14 +8,15 @@ interface WeaponDef { dice: string; damage_type: string; properties: string[]; }
 interface CreatureDef { ac: number; hp: number; passive_perception: number; cr: string; }
 
 export class RuleEngine {
-  private rules: any[];
+  // 原先有个 `rules: any[]`，构造时从 dnd5e.yaml 读进来（`config.rules`）
+  // 然后**再没被读过**。weapons 与 creatures 是真的在用的。
+  // 读进来就扔比不读更坏：看着像「规则表驱动」，其实全是代码里写死的。
   private weapons: Record<string, WeaponDef>;
   private creatures: Record<string, CreatureDef>;
 
   constructor() {
     const yamlText = readFileSync('./src/rules/dnd5e.yaml', 'utf-8');
     const config = parse(yamlText);
-    this.rules = config.rules;
     this.weapons = config.weapons;
     this.creatures = config.creatures;
   }
@@ -49,7 +50,7 @@ export class RuleEngine {
 
   /** 裁决攻击行动 */
   adjudicate(
-    intent: ActionIntent,
+    _intent: ActionIntent,
     attacker: {
       proficiency: number;
       abilities: Record<string, number>;

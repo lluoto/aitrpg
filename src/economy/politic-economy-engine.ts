@@ -222,7 +222,9 @@ export class PoliticoEconomyEngine {
     action: string,
     params: { target?: string; from?: string; amount?: number; item?: string; skill?: string; dc?: number },
   ): { narrative: string; systemMsg?: string } {
-    const { target, from, amount, item } = params;
+    // `item` 也在 params 类型里，但四个 case（factions / faction_status /
+    // market / diplomacy）没有一个用得上它 —— 不解构它。
+    const { target, from, amount } = params;
 
     switch (action) {
       // 查看势力列表

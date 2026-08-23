@@ -251,14 +251,16 @@ export async function runClueCheck(ctx: ClueCtx, clue: Clue): Promise<boolean> {
   return false;
 }
 
-/**
- * 这一次进场里已经试过的线索 —— 试过就从选项里拿掉。
- *
- * 这个 Set 原先是**只写不读**的死变量（注释说防重复调查循环，实际不起作用）。
- * 现在真的用上了：检定失败的线索必须退出选项，
- * 否则玩家会在同一个抽屉上反复失败直到用完行动次数。
- */
-const attemptedClueIds = new Set<string>();
+// ⚠ 这里原先还有一个**模块级**的 `const attemptedClueIds = new Set<string>()`，
+//   带着一段「这个 Set 原先只写不读，现在真的用上了」的注释 —— 但 tsc 报它
+//   从没被读过。真正生效的那一份在 `scene-pipeline.ts`：**按进场新建**、
+//   传进 ctx，失败时 add、给选项过滤时读（见本文件 :49 的 ctx 字段）。
+//
+//   模块级这个是 ctx 化重构之前的残留。留着有真实危险：它跨场景共享，
+//   正是本文件开头第 35 行警告的那件事（「别跨场景复用同一个 ctx」）。
+//   谁哪天顺手引用了它，上一个场景试失败的线索会在下一个场景里也消失。
+//
+//   注释描述的行为是对的，只是描述的是**另一个变量**。删掉重复品。
 
 /** 一个场景里最多让玩家行动几次。存在只为兜底：别把整局锁死在一个房间 */
 export const MAX_SCENE_ACTIONS = 6;

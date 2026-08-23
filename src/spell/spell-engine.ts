@@ -232,8 +232,9 @@ export class SpellEngine {
     mod: number,
     proficiency: number,
     ruleEngine: RuleEngine,
-    attrs: Record<string, number>,
-    archetypeId: string,
+    _attrs: Record<string, number>,
+    // 攻击法术这一支不看职业（伤害由法术本身定），但签名与 castSpell 对齐着传下来
+    _archetypeId: string,
     targetName?: string,
   ): CastResult {
     // 复用 adjudicate 的逻辑——但这里是法术攻击，需要额外的抽象

@@ -202,7 +202,24 @@ export class PlayerAgent {
   /** 底层角色数据（公开只读以支持场景描述等外部读访问） */
   readonly pc: PlayerCharacter;
   private history: { kp: string; action: string }[] = [];
+  /**
+   * 上一次决策到底走没走成 LLM。
+   *
+   * ⚠ 这个字段原先是**只写不读**的：三处赋值、零处读取（tsc 的 noUnusedLocals 报的）。
+   *   配上 304 行那句「stderr noise suppressed — fallback handles gracefully」，
+   *   后果就是这个仓库反复在修的那件事 ——
+   *   **静默降级和「模型写得平庸」在产物上长得一模一样**。
+   *   看日志的人只会觉得提示词不行，根本想不到这一路每次都没调成。
+   *
+   *   现在暴露出去，并且降级时把原因打出来（与 `[pc-question]` 那条同样的做法）。
+   */
   private isLLMAvailable = false;
+  /** 上一次降级的原因；成功时是空串 */
+  private lastDowngrade = "";
+  /** 上一次决策是不是真的用上了 LLM */
+  get llmAvailable(): boolean { return this.isLLMAvailable; }
+  /** 上一次降级的原因，没降级时为空串 */
+  get downgradeReason(): string { return this.lastDowngrade; }
   /** Round counter for cycling fallback patterns */
   private _fallbackTurn = 0;
 
@@ -277,7 +294,7 @@ export class PlayerAgent {
       const model = process.env.LLM_MODEL || "gpt-4o-mini";
 
       if (!apiKey || apiKey === "sk-placeholder" || apiKey.startsWith("${")) {
-        this.isLLMAvailable = false;
+        this.downgrade("没有可用的 API key");
         return this.fallbackDecision(kpNarration, availableActions, { availableClues });
       }
 
@@ -300,21 +317,34 @@ export class PlayerAgent {
       });
 
       if (!resp.ok) {
-        // stderr noise suppressed — fallback handles gracefully
+        // 原先这里是「stderr noise suppressed — fallback handles gracefully」——
+        // 安静是要付代价的：降级与「模型写得平庸」从此分不出来。
+        this.downgrade(`HTTP ${resp.status}`);
         return this.fallbackDecision(kpNarration, availableActions, { availableClues });
       }
 
       const content = extractMessageContent(await resp.json()).trim();
-      if (!content) return this.fallbackDecision(kpNarration, availableActions, { availableClues });
+      if (!content) {
+        this.downgrade("LLM 返回空串");
+        return this.fallbackDecision(kpNarration, availableActions, { availableClues });
+      }
 
       this.isLLMAvailable = true;
+      this.lastDowngrade = "";
       const decision = this.parseAction(content);
       this.history.push({ kp: kpNarration, action: decision.action });
       return decision;
-    } catch {
-      this.isLLMAvailable = false;
+    } catch (e) {
+      this.downgrade(e instanceof Error ? e.message : String(e));
       return this.fallbackDecision(kpNarration, availableActions, { availableClues });
     }
+  }
+
+  /** 记下这一次为什么没走成 LLM，并打出来 —— 静默降级会伪装成「模型写得平庸」 */
+  private downgrade(reason: string): void {
+    this.isLLMAvailable = false;
+    this.lastDowngrade = reason;
+    console.warn(`[player-agent] ${this.name} 决策降级为模板：${reason}`);
   }
 
   /** 无 LLM 时的模板决策 — 使用可用线索/行动生成上下文相关的描述 */
