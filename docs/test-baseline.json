@@ -1,5 +1,5 @@
 {
-  "tests": 1766,
+  "tests": 1768,
   "files": 88,
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
@@ -92,6 +92,11 @@
       "tests": 1766,
       "files": 88,
       "when": "PC 追问：话题里的已知专名进问句；fallbackQuestion 不再解构未使用的 ctx"
+    },
+    {
+      "tests": 1768,
+      "files": 88,
+      "when": "摄取入口搬进仓库；删两个零引用死模块；评分键闸门覆盖 scripts/"
     }
   ]
 }

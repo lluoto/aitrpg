@@ -19,6 +19,8 @@ import { ENTRY_SCORING_KEY, keyDistribution } from "../ingest/scoring-key";
 const SRC_ROOT = resolve(import.meta.dir, "..");
 /** tools/ 与 src/ 平级。它被 .gitignore 排除，所以 clean checkout 上不存在 —— 下面按不存在处理。 */
 const TOOLS_ROOT = resolve(SRC_ROOT, "..", "tools");
+// 入库的脚本目录 —— 和 tools/ 不同，这个在干净检出上一定存在，闸门才关得住
+const SCRIPTS_ROOT = resolve(SRC_ROOT, "..", "scripts");
 
 /** 递归收集某个目录下所有 .ts 源文件 */
 function collectSourceFiles(dir: string): string[] {
@@ -56,6 +58,8 @@ function collectSourceFiles(dir: string): string[] {
 const TOOLS_KEY_ALLOWLIST = new Set([
   "_gen-key-worksheet.ts",
   "_diag-confusion.ts",
+  // `_run-ingest.ts` 已搬进仓库，成为 `scripts/ingest/run.ts`（见 RUNNER_KEY_ALLOWLIST）。
+  // 旧名保留在这里：`tools/` 那台机器上还留着一份副本，它同样不该泄题。
   "_run-ingest.ts",
   // `_exp-clue-followup.ts` —— 检验「对 item/event 两族追问一次能否提高线索召回」的实验。
   // 它调 LLM，所以是这份白名单里风险最高的一条：同一个文件里既有 prompt 又有键。
@@ -65,6 +69,22 @@ const TOOLS_KEY_ALLOWLIST = new Set([
   // `_exp-line-attribution.ts` —— 检验「同页续句归属交给 LLM」能否把分类推到 33/33。
   // 与上一条同样的约定与同样的残余风险：**键只在全部分类返回之后才读**。
   "_exp-line-attribution.ts",
+]);
+
+/**
+ * `scripts/` 里**准许**引用评分键的脚本（按文件名，不含路径）。
+ *
+ * 为什么要新开一份：管线的真入口原先是 `tools/_run-ingest.ts`，而 `tools/` 在
+ * .gitignore 里 —— 下面那条 tools 断言因此在干净检出上**整条跳过**。
+ * 入口搬进 `scripts/ingest/run.ts` 之后，这道闸门第一次变成始终强制的。
+ *
+ *  · `run.ts` —— 端到端实跑器里**算分的那一段**。它同时也是拼 prompt 的地方，
+ *    所以残余风险与原来一样：白名单管得住「谁能 import」，管不住「往哪儿传」。
+ *    文件里的约定是 **评分键只在分类返回之后读，绝不进 toClassifyInputs /
+ *    toItemInputs 的任何参数**。这一条只有人能看住。
+ */
+const RUNNER_KEY_ALLOWLIST = new Set([
+  "run.ts",
 ]);
 
 /**
@@ -133,6 +153,27 @@ describe("评分键的用途边界", () => {
       if (text.includes("scoring-key") || text.includes("ENTRY_SCORING_KEY")) offenders.push(basename(file));
     }
     expect(offenders).toEqual([]);
+  });
+
+  test("scripts 下只有白名单里的脚本可以引用它", () => {
+    // 上面那条 tools 断言在干净检出上**整条跳过** —— 因为 tools/ 被 gitignore。
+    // 也就是说，管线真正跑起来的那个文件，在 CI 上从来没被这道闸门查过。
+    // 入口搬进 scripts/ 之后这条才是始终强制的；上面那条留着管 tools/ 的残余副本。
+    const offenders: string[] = [];
+    for (const file of collectSourceFiles(SCRIPTS_ROOT)) {
+      if (RUNNER_KEY_ALLOWLIST.has(basename(file))) continue;
+      const text = readFileSync(file, "utf-8");
+      if (text.includes("scoring-key") || text.includes("ENTRY_SCORING_KEY")) offenders.push(basename(file));
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  test("**判据自检**：scripts/ 确实扫到了文件 —— 空目录会让上一条假绿", () => {
+    // 「什么都没扫到」和「扫过了没问题」必须分开。这条判据的全部价值
+    // 就在于 scripts/ 真的存在且真的有内容。
+    const files = collectSourceFiles(SCRIPTS_ROOT);
+    expect(files.length).toBeGreaterThan(5);
+    expect(files.some((f) => basename(f) === "run.ts")).toBe(true);
   });
 });
 
