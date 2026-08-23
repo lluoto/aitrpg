@@ -22,7 +22,21 @@ import * as path from "path";
 // 数据库路径
 // ============================================================
 
-const DEFAULT_DB_PATH = path.join(import.meta.dir, "../../data/npc.db");
+/**
+ * NPC 库的落点。
+ *
+ * ⚠ 默认是 `data/npc.db` —— 一个 **gitignored 的机器本地文件**。
+ *   本机实测它攒了 19 条人格、**33309 条记忆**（都来自真实跑局，
+ *   量过：跑一次全量测试行数一行不变，所以不是测试写的）。
+ *
+ *   问题不在写，在**读**：`NPCAgent.loadMemoriesFromDB()` 会按名字把记忆取回来，
+ *   而测试里有 45 处 `new GameSession(...)`，每一处都打开这个库。
+ *   于是「我这台机器」和「干净检出」跑的不是同一份数据 ——
+ *   与摄取入口躺在 tools/ 里是同一类问题：仓库状态与本机状态分叉。
+ *
+ *   `NPC_DB_PATH` 就是为了能把这件事**量出来**：指向 `:memory:` 就等于模拟干净检出。
+ */
+const DEFAULT_DB_PATH = process.env.NPC_DB_PATH || path.join(import.meta.dir, "../../data/npc.db");
 
 // ============================================================
 // 表行形状

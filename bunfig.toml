@@ -1,0 +1,4 @@
+# bun test 的预载 —— 见 scripts/test-preload.ts 的说明：
+# 让测试与机器本地的 data/npc.db 隔开，保证「我这儿绿」等于「干净检出也绿」。
+[test]
+preload = ["./scripts/test-preload.ts"]
