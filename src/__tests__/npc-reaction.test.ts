@@ -1,7 +1,7 @@
 // NPC 性格特质 + 反应系统 + 情绪状态机 测试
 import { describe, it, expect } from "bun:test";
 import { NPCAgent } from "../agent/npc-agent";
-import type { NPCPersonality, NPCMood } from "../agent/types";
+import type { NPCPersonality } from "../agent/types";
 import {
   determineCombatReaction,
   determineSocialReaction,

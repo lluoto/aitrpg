@@ -24,7 +24,7 @@
 
 import type { Database } from "bun:sqlite";
 import type { MessageType, NPCMood } from "../agent/types";
-import type { MythosCreature, MythosTome, MythosSpellDef } from "./mythos-expansion";
+import type { MythosCreature } from "./mythos-expansion";
 import { MYTHOS_CREATURES } from "./mythos-expansion";
 // 与 WorldStateManager 读 exits 用的是**同一份**解析（见该文件顶部说明）
 import { parseExits, mergeExits } from "../state/scene-exits";

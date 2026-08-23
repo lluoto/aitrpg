@@ -1,4 +1,4 @@
-﻿// 叙事生成器 — 克苏鲁风格战斗叙事
+// 叙事生成器 — 克苏鲁风格战斗叙事
 // LLM 驱动（有 API Key） + 模板 fallback（无 API Key）
 // 根据伤害/总HP比例决定伤势描述等级
 //
@@ -11,7 +11,7 @@
 
 import type { CombatResult } from "../types";
 import type { LLMClient } from "./client";
-import { calcSeverity, type WoundSeverity } from "../combat/wound-effects";
+import { calcSeverity } from "../combat/wound-effects";
 import { checkDialogueText } from "../world/world-constraint";
 
 // ============================================================

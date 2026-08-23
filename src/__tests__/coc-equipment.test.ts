@@ -11,7 +11,7 @@ import {
   getWeaponsByTrait,
   getArmorByLocation,
 } from "../rules/coc-equipment";
-import type { CoCArmorDef } from "../rules/coc-equipment";
+
 import type { HitLocation, CombatCheckResult } from "../rules/coc-engine";
 
 // ============================================================
@@ -96,9 +96,17 @@ describe("武器数据", () => {
   });
 
   test("所有武器有合法的伤害骰格式", () => {
+    // ⚠ 原先建了这条严格式，却断言了一条宽松得多的 `/\d+d\d+/` ——
+    //   严格式一次都没用上（tsc 的 noUnusedLocals 报的 `dicePattern` 未使用）。
+    //   宽松式连 `"打1d3下"` 这种也放行，等于没测格式。
+    //   实测 22 把武器**全部**满足严格式，所以没有任何迁就的理由。
     const dicePattern = /^(\d+d\d+)(?:\/(\d+d\d+)\/(\d+d\d+))?(?:\+\d+)?(?:\+db)?$/;
+    const names = Object.keys(COC_WEAPONS_FULL);
+    expect(names.length).toBeGreaterThan(0); // 空表会让下面的循环假绿
     for (const [name, w] of Object.entries(COC_WEAPONS_FULL)) {
-      expect(w.damage).toMatch(/\d+d\d+/);
+      expect(`${name}: ${w.damage}`).toMatch(
+        new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: ${dicePattern.source.slice(1, -1)}$`),
+      );
     }
   });
 

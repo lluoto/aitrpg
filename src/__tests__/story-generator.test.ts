@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { StoryGenerator } from "../rules/story-generator";
-import type { GeneratedStory, HorrorSubgenre, SceneTheme, StoryLength } from "../rules/story-generator";
+import type { GeneratedStory, HorrorSubgenre } from "../rules/story-generator";
 
 const generator = new StoryGenerator();
 
@@ -174,14 +174,21 @@ describe("多轮生成（随机性验证）", () => {
     expect(titles.size).toBeGreaterThan(1);
   });
 
-  test("5 次生成至少 2 种不同子类型", () => {
-    const subgenresSet = new Set<string>();
+  // ⚠ 原先这条叫「5 次生成至少 2 种不同子类型」，body 里建了 subgenresSet、
+  //   跑了 5 次 generate()，然后一个都没往里放，最后 `expect(true).toBe(true)`。
+  //   注释写着「从 hook 结构推断 —— 但这不精确，跳过 / 只要不抛异常即可」。
+  //   **测试名与测试内容完全不符**，而它照样计入回归基线。
+  //
+  //   子类型推断确实不可靠（那是在开放文本上猜分类，这轮反复被打脸的同一件事），
+  //   所以不硬凑一个含糊的分类判据。改成测**它真正能测的**：
+  //   多次生成不该产出一模一样的故事。名字也改成与内容相符的。
+  test("多次生成不得每次都一样", () => {
+    const seen = new Set<string>();
     for (let i = 0; i < 5; i++) {
       const story = generator.generate();
-      // 从 hook 结构推断 —— 但这不精确，跳过
+      seen.add(JSON.stringify(story));
     }
-    // 只要不抛异常即可
-    expect(true).toBe(true);
+    expect(seen.size).toBeGreaterThan(1);
   });
 });
 

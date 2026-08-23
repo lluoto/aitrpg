@@ -12,7 +12,7 @@ import { resolveCheckValue } from "../character/coc-character";
 import { isDowned } from "./run-state";
 import type { Cast, Cursor } from "./run-state";
 import { say, sayMech, emit } from "./narration";
-import { check, sanCheck, applyDamage, healWound } from "./checks";
+import { check, applyDamage, healWound } from "./checks";
 import { rollDice, trapsInScene, attributeValue } from "./trap-util";
 import { needsMajorWoundCheck, type WoundSeverity } from "../combat/wound-effects";
 import { activeHooks } from "./ruleset";

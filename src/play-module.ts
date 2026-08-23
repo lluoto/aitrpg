@@ -3,28 +3,28 @@
 // 有 LLM 时 LLM 驱动，无 LLM 时模板驱动
 // bun run src/play-module.ts
 
-import { createCoCCharacter, getCoCArchetypes, resolveCheckValue, type CoCGeneratedCharacter, type BackgroundProfile } from "./character/coc-character";
-import { randomCoCName, buildBaseBackgroundProfile, composeBackstory, pickDistinctArchetypes, randomPersonAnchors, pronounOf, type PersonAnchors, type Gender } from "./character/background-profile";
+import { createCoCCharacter, getCoCArchetypes, type CoCGeneratedCharacter, type BackgroundProfile } from "./character/coc-character";
+import { randomCoCName, buildBaseBackgroundProfile, composeBackstory, randomPersonAnchors, pronounOf, type PersonAnchors, type Gender } from "./character/background-profile";
 import { nameParts, mentionsName, knownNameVariants } from "./play/names";
-import { CoCEngine, SanityEngine, SUCCESS_LEVEL_LABELS, sanOutcomeLabel, type CoCCheckResult } from "./rules/coc-engine";
+import { SanityEngine } from "./rules/coc-engine";
 import { BARN_OF_PREMIER, BARN_SUPPORT, renderPrologue, renderPartySetup, evaluateEpilogues } from "./module/barn-of-premier";
 import { WorldState } from "./world/state";
-import { PlayerAgent, createPlayerCharacter, occupationTagWeight } from "./agent/player-agent";
-import { displayCharacterSheet, characterSummary, getHighlightedSkills } from "./pl/character-display";
-import type { Clue, Scene, SceneConnection, ModuleNPC, ModuleData, ModuleItem, ModuleSupport, NPCInstanceState, NarrativeEntity } from "./module/types";
-import type { PlayerDecision } from "./agent/player-agent";
-import { buildNpcContext, generateNpcReply, generatePcQuestion, generateNpcTransition, generateOpeningTransition, generateFailRescue, generateClueRevelation } from "./llm/npc-dialogue-prompts";
-import type { SceneContext, WorldContext } from "./llm/npc-dialogue-prompts";
+import { PlayerAgent, createPlayerCharacter } from "./agent/player-agent";
+import { displayCharacterSheet, characterSummary } from "./pl/character-display";
+import type { ModuleData, ModuleSupport } from "./module/types";
+
+
+
 import { LLMClient, extractMessageContent } from "./llm/client";
 import { applyAllLlmExpandedWithLLM } from "./llm/generate-llm-expanded";
 import { analyzeThreats, getWeaponPolicy } from "./module/threat-analyzer";
 import { checkDialogueText } from "./world/world-constraint";
 import { sharedWorldModel, DEFAULT_CTHULHU_PATH } from "./world/world-model-loader";
-import { WorldModelIntegrator, type SceneContext as WmSceneContext } from "./world/world-model-integrator";
+import { WorldModelIntegrator } from "./world/world-model-integrator";
 
 import { writeFileSync, mkdirSync } from "fs";
-import { calcSeverity, severityLabel, woundPenaltyDice, type WoundSeverity } from "./combat/wound-effects";
-import { AsyncLocalStorage } from "node:async_hooks";
+
+
 
 /**
  * 一局的运行上下文。
@@ -41,32 +41,17 @@ export type { PlayEvent, PlayEventType, ActorKind, DownedCause } from "./play/ev
 export { ofType } from "./play/events";
 import { runCtx, say, sayMech, divider, emit } from "./play/narration";
 import type { PlayEvent } from "./play/events";
-import {
-  buildPcImpression, stripDoorOpenPrefix, stripDialogueLead, classifySpeechStyle,
-  mentalVoiceBridge, handleNonSpeakingNpc, brainwaveFlavor, buildIdentityLine,
-  buildDialogueForRel, buildFollowUp, buildToneBridge, revealNpcKnowledge,
-  generateNpcDialogue,
-} from "./play/npc-dialogue";
-import {
-  analyseNpcData, splitLeadingStageDirection, stripOuterQuotes, quoteDialogue, noteEntityMentions,
-  partnerRemark, speechLead, askerScore,
-} from "./play/npc-text";
-import {
-  check, sanCheck, applyDamage, discoveryFlavor, failFlavor,
-  recordWound, healWound, woundPenaltyOf,
-} from "./play/checks";
-import { runSceneTraps } from "./play/traps";
+
+
+
+
 import { newCursor, newDedup, standing, type Cast, type WorldModelCtx } from "./play/run-state";
-import { buildWmContext, buildWorldContext } from "./play/llm-context";
-import {
-  runClueCheck, narrateClueDiscovery, checkClueSanLoss, investigableClues,
-  isPassiveClue, sayPartnerRemark, sanitizeRevelation,
-  MAX_SCENE_ACTIONS, type ClueCtx,
-} from "./play/clue-check";
-import { nextRevealBridge } from "./play/reveal-bridge";
-import { runCombatEncounter } from "./play/combat";
+
+
+
+
 import { processScene, type SceneCtx } from "./play/scene-pipeline";
-import { rollDice, trapsInScene, attributeValue, isMajorWound } from "./play/trap-util";
+
 // 这几个测试按老路径从 play-module import，转出去别断
 export { worseWound } from "./play/checks";
 export { rollDice, trapsInScene, attributeValue, isMajorWound } from "./play/trap-util";

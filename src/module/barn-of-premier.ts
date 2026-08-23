@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // 普瑞米尔的谷仓 ver1.03 — 模组结构化数据
 // 提取自: 普瑞米尔的谷仓 ver1.03 (MikuFan) 原始 PDF 文本
 // 提取原则：只保留来自原始模块的数据，不添加衍生/游戏引擎专用字段
@@ -14,7 +14,7 @@
 // 从 PDF 到本文件这一步没有程序做过——现有内容是人/LLM 手写的。
 // ============================================================
 
-import { type ModuleData, type ModuleSupport, type Scene, type ModuleNPC, type ModuleItem, type Clue, type SceneConnection, type EpilogueEntry, type PartySetup, type EndNarration, type EncounterNarration } from "./types";
+import { type ModuleData, type ModuleSupport, type Scene, type ModuleNPC, type ModuleItem, type Clue, type EpilogueEntry, type PartySetup, type EndNarration, type EncounterNarration } from "./types";
 import { applyAllLlmExpanded } from "../llm/generate-llm-expanded";
 
 const RAW = "【原文】" as const; // 标记：内容直接来自原文

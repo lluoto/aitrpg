@@ -14,7 +14,7 @@
  */
 
 import type { MythosModule } from "../mythos-module";
-import { MODULE_PREMIERS_BARN, MODULE_REGISTRY as PREMIERS_BARN_REGISTRY } from "./premiers_barn";
+import { MODULE_REGISTRY as PREMIERS_BARN_REGISTRY } from "./premiers_barn";
 
 // ── 模组注册表 ──
 // 所有已提取的社区模组在此注册

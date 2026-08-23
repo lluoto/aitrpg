@@ -18,7 +18,7 @@ import { generateNarrative, setNarratorLLM } from "./llm/narrator";
 import { RuleEngine } from "./engine/rule-engine";
 import { RulesEngine, toCombatResult, type RulesetId } from "./rules/rules-engine";
 import { CoCEngine, SanityEngine, SUCCESS_LEVEL_LABELS, sanOutcomeLabel } from "./rules/coc-engine";
-import { NPCAgent } from "./agent/npc-agent";
+
 import { KPAgent } from "./agent/kp-agent";
 import { AgentRegistry } from "./agent/agent-registry";
 import { WorldStateManager } from "./state/world-state-manager";
@@ -42,7 +42,7 @@ CharacterFactory.registerExtra(QIANKUN_SUBCLASSES);
 CharacterFactory.registerLegendaryTemplates(getAllQiankunLegendaryTemplates());
 
 import type { NPCPersonality, AgentMessage, TurnRecord, KPDirective } from "./agent/types";
-import type { GameEvent } from "./state/event-types";
+
 import { log } from "./log";
 
 // ============================================================

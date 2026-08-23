@@ -20,7 +20,7 @@ import { loadConfig } from "../../src/config";
 import { LLMClient } from "../../src/llm/client";
 import type { ChatOptions, Message } from "../../src/llm/client";
 import { extractPages } from "../../src/ingest/pdf-source";
-import { cleanPageText, joinPages } from "../../src/ingest/clean-text";
+
 import { sourceKey } from "../../src/ingest/sectionize";
 import { prepareSections, classifyAndBuild } from "../../src/ingest/pipeline";
 import { assembleModule } from "../../src/ingest/assemble-module";

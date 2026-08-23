@@ -447,20 +447,26 @@ describe("CoC 角色创建", () => {
     expect(event).toBeDefined();
   });
 
+  // ⚠ 下面这四条原先都是**空心的**：算出了要检查的 event，然后一行不看它，
+  //   只 `expect(res).toBeDefined()` —— 一个永远为真的命题。
+  //   测试名写着「成功」「提示不支持」，实际什么都没验。
+  //
+  //   是 tsc 的 noUnusedLocals 报出来的（`'event' is declared but its value is
+  //   never read`）。它们照样计入 docs/test-baseline.json，
+  //   而**测试条数是这个仓库唯一可靠的回归信号** —— 空心测试直接污染信号。
+  //
+  //   实跑确认过：这四个行为本来就是好的，断言写实就能过，没有一条需要迁就。
+
   it("创建角色 investigator 张三 成功", async () => {
     const res = await session.act("创建角色 investigator 张三");
-    // 成功时应有角色创建完成提示
-    const event = res.events.find(e => e.content.includes("角色创建完成"));
-    // 可能因 async 失败，但不抛异常即可
-    expect(res).toBeDefined();
+    expect(res.events.some(e => e.content.includes("角色创建完成"))).toBe(true);
+    expect(res.events.some(e => e.content.includes("张三"))).toBe(true);
   });
 
   it("创建角色后状态显示自定义姓名", async () => {
     await session.act("创建角色 investigator 张三");
     const statusRes = await session.act("状态");
-    const event = statusRes.events.find(e => e.content.includes("张三"));
-    // 如果创建成功则显示，否则无角色
-    expect(statusRes).toBeDefined();
+    expect(statusRes.events.some(e => e.content.includes("张三"))).toBe(true);
   });
 
   it("D&D 模式下职业列表提示不支持", async () => {
@@ -469,16 +475,15 @@ describe("CoC 角色创建", () => {
       model: "mock", maxTokens: 1024, temperature: 0.7,
     });
     const res = await dndSession.act("职业列表");
-    const event = res.events.find(e => e.content.includes("当前不是宇宙恐怖模式"));
-    // D&D 模式可能不返回此消息，只需不崩溃
-    expect(res).toBeDefined();
+    expect(res.events.some(e => e.content.includes("当前不是宇宙恐怖模式"))).toBe(true);
   });
 
   it("创建角色时指定非法职业提示选择", async () => {
     const res = await session.act("创建角色 nonexistent_job 测试");
-    const event = res.events.find(e => e.content.includes("请指定职业") || e.content.includes("创建失败"));
-    // 不崩溃即通过
-    expect(res).toBeDefined();
+    expect(res.events.some(e =>
+      e.content.includes("请指定职业") || e.content.includes("创建失败"))).toBe(true);
+    // 失败原因要说清是哪个职业名不认识，不能只说一句「失败了」
+    expect(res.events.some(e => e.content.includes("nonexistent_job"))).toBe(true);
   });
 });
 

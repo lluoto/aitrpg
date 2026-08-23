@@ -28,9 +28,6 @@ import * as path from "path";
 import * as fs from "fs";
 import {
   computeCurrentState,
-  generateNarrative,
-  formatSkillChange,
-  generateEntryId,
   type CharacterSnapshot,
   type CareerEntry,
   type CharacterCareer,

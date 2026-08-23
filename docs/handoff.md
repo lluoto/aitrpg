@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-23 09:38  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-23 10:31  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：8ca53fa fix: the ingest subsystem's only entry point was gitignored  ·  **测试**：1784 条 / 90 文件，全绿（基线 1784，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：5d3cc2f feat: wire up the three subsystems that only tests were using  ·  **测试**：1785 条 / 90 文件，全绿（基线 1785，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -108,6 +108,7 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 
 ## 最近做了什么
 
+- 5d3cc2f feat: wire up the three subsystems that only tests were using
 - 8ca53fa fix: the ingest subsystem's only entry point was gitignored
 - 52c168d fix: fallbackQuestion took a topic and threw it away
 - d976680 fix: every knowledge reveal ended with "我知道的就这些了", including the ones that didn't
@@ -119,7 +120,6 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 - a8fbee1 fix: the opening narration asserted things it had no data for
 - 0321b72 fix: exits had two parsers that disagreed about what "broken" means
 - cd8489d fix: a failed scene switch left the world with no active scene at all
-- 951c921 fix: the human-facing move matcher had the same bugs, untested
 
 ## 代码地图
 

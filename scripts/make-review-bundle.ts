@@ -6,7 +6,6 @@
 // 用法：bun scripts/make-review-bundle.ts
 
 import { readFileSync, existsSync } from "fs";
-import { join } from "path";
 
 const TARGETS = [
   "scripts/diag/diag-phrasing.ts",

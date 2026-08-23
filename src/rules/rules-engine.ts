@@ -2,7 +2,7 @@
 // 统一接口，玩家/NPC 战斗都走这条路
 
 import { RuleEngine } from "../engine/rule-engine";
-import { CoCEngine, getCalledShotPenalty, type HitLocation } from "./coc-engine";
+import { CoCEngine, getCalledShotPenalty } from "./coc-engine";
 import { GrailEngine, type GrailRank, type RankSource } from "./grail-engine";
 import type { WorldEntity, ActionIntent, CombatResult, BonusEntry } from "../types";
 

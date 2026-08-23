@@ -3,7 +3,6 @@
 // 支持多小说路由和 D&D 5e / CoC 7e 双规则集
 
 import type { WorldModelLoader, V18Entry } from "./world-model-loader";
-import type { WorldState } from "../types";
 
 // ============================================================
 // 场景上下文

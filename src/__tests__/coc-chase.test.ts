@@ -6,7 +6,7 @@ import {
   canAttackInChase,
   getShootingDifficulty,
 } from "../rules/coc-chase";
-import type { ChaseState, ChaseRange } from "../rules/coc-chase";
+import type { ChaseState } from "../rules/coc-chase";
 
 // ============================================================
 // 射程段
@@ -265,35 +265,53 @@ describe("resolveRound()", () => {
     }
   });
 
-  test("距离为0时caught=true", () => {
+  // ⚠ 下面两条原先是**空心的**：第一条一句断言都没有，五行注释写着
+  //   「我们先直接测试 caught 逻辑 / 用极端值确保触发」—— 没写完就留下了。
+  //   第二条只断言 `state.active === true`（init 之后必然为真），
+  //   算出 result 却从不看 caught，注释里还在自问「max(0,...) 会不会把负数截断」。
+  //
+  //   是 tsc 的 noUnusedLocals 报出来的。两条都计入 docs/test-baseline.json，
+  //   而**测试条数是这个仓库唯一可靠的回归信号**。
+  //
+  //   规则本身是确定的（`caught: newDistance <= 0`），没有任何理由测得含糊。
+
+  test("距离归零就是追上了", () => {
     const state = ChaseEngine.init(
       [{ name: "A", skill: 80, vehicleType: "foot" }],
       [{ name: "B", skill: 80, vehicleType: "foot" }],
-      "urban", 1, // 起始距离极近
+      "urban", 0,
     );
+    state.distance = -1; // 追击方冲过了头
     const result = ChaseEngine.resolveRound(state);
-    // 由于双方技能相当且距离为1，有可能在第1轮就追上
-    // 至少距离不会增加太多
-    // 距离为0或负数应caught
-    // 我们先直接测试 caught 逻辑
-    // 用极端值确保触发
+    // newDistance 被 max(0, …) 夹到 0 —— 夹完仍然满足 <= 0，所以照样算追上。
+    // 这正是原注释里没敢下结论的那一点。
+    expect(result.newDistance).toBe(0);
+    expect(result.caught).toBe(true);
+    expect(result.escaped).toBe(false);
   });
 
-  test("caught 在距离≤0时触发", () => {
+  test("**错误行为的红线**：还没追上时不得报 caught", () => {
+    // 只测「归零算追上」是不够的：一个永远返回 caught=true 的实现也能过。
+    const state = ChaseEngine.init(
+      [{ name: "A", skill: 5, vehicleType: "foot" }],
+      [{ name: "B", skill: 95, vehicleType: "foot" }],
+      "urban", 45,
+    );
+    const result = ChaseEngine.resolveRound(state);
+    expect(result.newDistance).toBeGreaterThan(0);
+    expect(result.caught).toBe(false);
+  });
+
+  test("**正确**：拉开到 50 就是跑脱了", () => {
     const state = ChaseEngine.init(
       [{ name: "A", skill: 80, vehicleType: "foot" }],
       [{ name: "B", skill: 80, vehicleType: "foot" }],
-      "urban", 0, // 起始距离为0
+      "urban", 0,
     );
-    expect(state.active).toBe(true);
-    // 强制距离为负数后再解析应检测caught
-    state.distance = -1;
+    state.distance = 60;
     const result = ChaseEngine.resolveRound(state);
-    // 因为距离已经是负数，caught应为true
-    // 注意resolveRound会重新计算newDistance = max(0, ...)
-    // 所以如果追击方进入负数，caught会被标记
-    // 但max(0, ...)可能把负数截断为0
-    // 我们需要在resolveRound内部检测newDistance<=0
+    expect(result.escaped).toBe(true);
+    expect(result.caught).toBe(false);
   });
 });
 

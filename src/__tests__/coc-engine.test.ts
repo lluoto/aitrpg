@@ -5,14 +5,12 @@ import { describe, it, expect } from "bun:test";
 import {
   CoCEngine,
   SanityEngine,
-  regularD100,
   bonusDie,
   penaltyDie,
   checkMajorWound,
   rollHitLocation,
   getCalledShotPenalty,
   calcMythosGain,
-  type CoCCheckResult,
   type HitLocation,
 } from "../rules/coc-engine";
 

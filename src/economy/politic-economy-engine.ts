@@ -10,15 +10,10 @@ import { PolicySystem } from "./policy-system";
 import { FinanceSystem } from "./finance-system";
 import {
   PoliticoEconomyState,
-  Faction,
   FactionType,
-  Market,
   Policy,
-  FinancialCrisis,
-  Currency,
   EconomyEvent,
-  PolicyCategory,
-} from "./types";
+  } from "./types";
 
 export class PoliticoEconomyEngine {
   readonly factions: FactionSystem;

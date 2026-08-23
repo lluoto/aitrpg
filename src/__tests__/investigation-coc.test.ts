@@ -1,6 +1,6 @@
 // CoC 7e 调查系统 测试
 import { describe, it, expect, beforeAll } from "bun:test";
-import { InvestigationEngine, CoCClueCheckDef } from "../investigation/investigation-engine";
+import { InvestigationEngine } from "../investigation/investigation-engine";
 
 describe("InvestigationEngine — CoC 7e", () => {
   let engine: InvestigationEngine;

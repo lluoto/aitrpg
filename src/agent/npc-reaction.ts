@@ -1,7 +1,7 @@
 // NPC Reaction System — 基于性格特质/情绪/阵营的自动反应决策
 // 用于战斗、社交、事件场景下的 NPC 行为选择
 
-import type { NPCTraits, NPCMood, NPCFaction } from "./types";
+import type { NPCTraits, NPCMood } from "./types";
 import { DEFAULT_NPC_TRAITS } from "./types";
 
 // ============================================================

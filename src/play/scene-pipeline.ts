@@ -7,20 +7,19 @@
 // ⚠ 纯搬运，不改行为。判据是全量测试与主循环脚手架全绿。
 
 import type {
-  ModuleNPC, ModuleData, ModuleSupport, SceneConnection, Clue,
-} from "../module/types";
+  ModuleNPC, ModuleData, ModuleSupport, SceneConnection, } from "../module/types";
 import type { WorldState } from "../world/state";
 import type { PlayerAgent } from "../agent/player-agent";
 import type { LLMClient } from "../llm/client";
-import { extractMessageContent } from "../llm/client";
+
 import { resolveCheckValue } from "../character/coc-character";
 import {
-  buildNpcContext, generateNpcReply, generatePcQuestion,
+  generateNpcReply, generatePcQuestion,
   generateNpcTransition, generateOpeningTransition,
 } from "../llm/npc-dialogue-prompts";
 import type { SceneContext } from "../llm/npc-dialogue-prompts";
-import { checkDialogueText } from "../world/world-constraint";
-import { say, sayMech, runCtx, emit } from "./narration";
+
+import { say, runCtx, emit } from "./narration";
 // 运行时那道「旁白不许提前叫出没见过的人的名字」的闸门。
 // 判据（diagnostics/narration.ts）用的是同一个函数，不另写一份。
 import { namesPerson } from "./names";
@@ -28,8 +27,7 @@ import { buildWorldContext } from "./llm-context";
 import { runSceneTraps } from "./traps";
 import { runCombatEncounter } from "./combat";
 import {
-  buildPcImpression, handleNonSpeakingNpc, brainwaveFlavor, buildIdentityLine,
-  buildDialogueForRel, buildFollowUp, buildToneBridge, revealNpcKnowledge,
+  buildPcImpression, handleNonSpeakingNpc, brainwaveFlavor, buildToneBridge, revealNpcKnowledge,
   generateNpcDialogue, stripDoorOpenPrefix, stripDialogueLead,
   mentalVoiceBridge, classifySpeechStyle,
 } from "./npc-dialogue";
@@ -71,10 +69,11 @@ export interface SceneCtx {
   llmClient: LLMClient | null;
 }
 export function maybeRecognitionBeat(ctx: SceneCtx, w: WorldState): boolean {
-  const {
-    module, support, world, cast, cursor, dedup, wm, llmClient,
-    agents, agents: [pl1, pl2],
-  } = ctx;
+  // 原先这里连着解构了 module/support/world/cast/cursor/dedup/wm/llmClient/agents
+  // 九个名字，真正用到的只有 pl1、pl2 —— 与 `fallbackQuestion` 同一个毛病，
+  // 而且同样带着 `agents: [pl1, pl2]` 这条会对 undefined 抛异常的数组解构。
+  // 多出来的名字不是无害的装饰：读代码的人会以为这个函数依赖那八样东西。
+  const { agents: [pl1, pl2] } = ctx;
   const ent = w.getPendingRecognition();
   if (!ent) return false;
   const candidates = [pl1, pl2].filter((p) => noticesEntity(p.pc.occupation, ent));
@@ -122,10 +121,8 @@ export function pickAsker(ctx: SceneCtx, topic: string): PlayerAgent | null {
 }
 
 export async function conductNpcConversation(ctx: SceneCtx, npc: ModuleNPC, w: WorldState): Promise<void> {
-  const {
-    module, support, world, cast, cursor, dedup, wm, llmClient,
-    agents, agents: [pl1, pl2],
-  } = ctx;
+  // 同上：原先解构九个，support/world/cast/cursor/agents 五个从没被读过。
+  const { module, dedup, wm, llmClient, agents: [pl1, pl2] } = ctx;
   const displayName = npc.name.replace(/[（(].*[）)]$/, "").trim();
 
   // 识别先于提问：这一轮归它，不再叠一个提问上去（顶替本轮 Q&A）

@@ -2,7 +2,7 @@
 
 import { readFileSync } from 'fs';
 import { parse } from 'yaml';
-import type { ActionIntent, CombatResult, BonusEntry, SaveResult, WorldState } from '../types';
+import type { ActionIntent, CombatResult, BonusEntry, SaveResult } from '../types';
 
 interface WeaponDef { dice: string; damage_type: string; properties: string[]; }
 interface CreatureDef { ac: number; hp: number; passive_perception: number; cr: string; }

@@ -3,7 +3,7 @@
 // 核心机制：高位阶对低位阶的数值压制 + 士气连锁
 
 import type { WorldEntity } from "../types";
-import { readFileSync } from "fs";
+
 import { parse as parseYaml } from "yaml";
 
 // ============================================================

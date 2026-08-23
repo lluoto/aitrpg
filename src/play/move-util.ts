@@ -7,7 +7,7 @@
 // ⚠ 纯搬运，不改行为。判据是全量测试与主循环脚手架全绿。
 
 import type { SceneConnection, NarrativeEntity } from "../module/types";
-import { occupationTagWeight } from "../agent/player-agent";
+
 
 /**
  * 这个职业会不会下意识把话里的东西和眼前景物对上。

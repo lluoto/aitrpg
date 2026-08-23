@@ -14,6 +14,17 @@
     "allowSyntheticDefaultImports": true,
 
     "strict": true
+
+    // ⚠ `noUnusedLocals` / `noUnusedParameters` **有意暂不开在这里**。
+    //
+    // 开了实测 250 处。清掉其中全部 import 类（98 处，机械改动）之后还剩 112 处，
+    // 都是局部变量、参数、解构绑定 —— 这类**必须一处处看**：
+    // `fallbackQuestion` 那九个没用的解构就是真 bug（其中一条还让纯函数能抛异常），
+    // 无脑给参数加 `_` 前缀恰好会把这种 bug 盖住。
+    //
+    // 所以不在这里开（开了 typecheck 就是红的，preflight 过不去），
+    // 改由 `scripts/diag/probe-dead-code.ts` 用命令行覆盖强制测量 ——
+    // 那里报的是**真实数字**，不受本文件影响，可以照着往下清。
   },
   "include": ["src/**/*.ts", "scripts/**/*.ts", "tools/**/*.ts"],
   "exclude": ["node_modules", "dist"]

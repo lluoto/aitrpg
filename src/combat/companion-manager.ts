@@ -8,7 +8,7 @@
 // - 玩家可随时接管控制（热插拔），无指令时 AI 自主行动
 // - 离队是叙事事件：战死、士气崩溃、动机完成，不手动解散
 
-import type { WorldEntity, WorldState, ActionIntent, CompanionConfig, CompanionState, CompanionSnapshot, CombatPersonalityTraits, ResolveResult } from "../types";
+import type { WorldEntity, WorldState, ActionIntent, CompanionConfig, CompanionState, CompanionSnapshot, ResolveResult } from "../types";
 import type { WorldStateManager } from "../state/world-state-manager";
 import type { AgentMessage } from "../agent/types";
 import { CompanionAgent } from "../agent/companion-agent";

@@ -6,10 +6,10 @@
 //
 // ⚠ 纯搬运，不改行为。判据是全量测试与主循环脚手架全绿。
 
-import type { ModuleNPC, NPCInstanceState } from "../module/types";
+import type { ModuleNPC } from "../module/types";
 import { occupationTagWeight } from "../agent/player-agent";
 import type { WorldState } from "../world/state";
-import { say } from "./narration";
+
 export function noteEntityMentions(text: string, w: WorldState): void {
   if (!text) return;
   for (const ent of w.narrativeEntities) {

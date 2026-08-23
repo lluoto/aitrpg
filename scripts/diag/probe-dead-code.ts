@@ -115,7 +115,13 @@ for (const f of files) {
 }
 
 // ── ③ tsc 的未使用统计（只汇总，不重复实现） ──
-const tsc = Bun.spawnSync(["bunx", "tsc", "--noEmit", "-p", "tsconfig.json"], { cwd: ROOT });
+// ⚠ 命令行显式打开这两个开关，**不依赖 tsconfig.json**。
+//   tsconfig 里它们是关着的（开了 typecheck 就红、preflight 过不去），
+//   但那不该让这项检查跟着失明 —— 「构建不拦」和「没人量」是两回事。
+const tsc = Bun.spawnSync(
+  ["bunx", "tsc", "--noEmit", "--noUnusedLocals", "--noUnusedParameters", "-p", "tsconfig.json"],
+  { cwd: ROOT },
+);
 const tscOut = new TextDecoder().decode(tsc.stdout) + new TextDecoder().decode(tsc.stderr);
 const unusedLines = tscOut.split("\n").filter((l) => /error TS(6133|6196|6192)/.test(l));
 const byFile = new Map<string, number>();
@@ -171,8 +177,12 @@ out.push("");
 
 out.push(`## 声明了没读，按文件（${unusedLines.length}）`);
 out.push("");
+out.push("这两个开关由本探针在命令行上强制打开，与 tsconfig 无关 ——");
+out.push("tsconfig 里关着是为了让 typecheck 保持绿，不是因为这些不算问题。");
+out.push("");
 if (byFile.size === 0) {
-  out.push("⚠ **一条都没抓到** —— 先确认 tsconfig 里 `noUnusedLocals`/`noUnusedParameters` 开着，");
+  out.push("⚠ **一条都没抓到**。tsc 真的一条没报，还是根本没跑起来？");
+  out.push("先手动跑一次 `bunx tsc --noEmit --noUnusedLocals --noUnusedParameters` 确认，");
   out.push("否则这是「没量到」而不是「没问题」。");
 } else {
   out.push("| 处数 | 文件 |");

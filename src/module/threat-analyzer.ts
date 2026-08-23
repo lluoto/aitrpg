@@ -1,7 +1,7 @@
 // 模组威胁分析 & 武器许可判定
 // 从模块现有数据推断难度等级，自动决定 PC 初始武器配额
 
-import type { ModuleData, ModuleNPC, Clue, FindMethod } from "./types";
+import type { ModuleData, ModuleNPC } from "./types";
 
 // ── 产出类型 ──
 

@@ -1,9 +1,8 @@
-﻿// intent 解析器单元测试 — regex fallback 模式匹配
+// intent 解析器单元测试 — regex fallback 模式匹配
 // bun test src/__tests__/intent.test.ts
 
 import { describe, it, expect } from "bun:test";
 import { parseIntent } from "../llm/intent";
-import type { ActionIntent } from "../types";
 
 // parseIntent 优先尝试 LLM，失败时 fallback 到 regex
 // 当前环境无可用 LLM（熔断/无 key），必然走 regex 路径

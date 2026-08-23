@@ -1,7 +1,6 @@
 import {
-  Faction, FactionRelation, Treaty, Stance, TreatyType,
-  DiplomaticOffer, DiplomaticAction, EconomyEvent, EconomyEventType,
-  FactionType
+  Faction, Treaty, Stance, TreatyType,
+  DiplomaticOffer, EconomyEvent, FactionType
 } from "./types";
 
 // ── 内部扩展：带ID和条约期限的外交提议 ──

@@ -11,9 +11,6 @@ import { DEFAULT_NPC_TRAITS } from "./types";
 import {
   getNPCReactions,
   updateMood,
-  describeCombatReaction,
-  describeSocialReaction,
-  describeEventReaction,
   type MoodTrigger,
 } from "./npc-reaction";
 import { NPCStore } from "../db/index";

@@ -178,6 +178,10 @@ describe("调查: Combined Threshold 组合阈值", () => {
 
 describe("调查: Fallback 全部失败", () => {
   it("所有检定失败 → fallback_triggered", () => {
+    // ⚠ 原先 `foundFallback` 设了却从不检查（tsc 的 noUnusedLocals 报的）。
+    //   后果是：50 次里一次都没触发 fallback 时，循环跑完、**一条断言都没执行**，
+    //   测试照样绿。也就是说这个测试只在功能正常时才验东西，
+    //   功能坏掉的时候反而静默通过 —— 正好是反的。
     // 用最低技能值确保所有失败
     let foundFallback = false;
     for (let i = 0; i < 50; i++) {
@@ -191,6 +195,7 @@ describe("调查: Fallback 全部失败", () => {
         }
       }
     }
+    expect(foundFallback).toBe(true);
   });
 });
 

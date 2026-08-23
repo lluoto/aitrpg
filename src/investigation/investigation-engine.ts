@@ -11,7 +11,7 @@ import { readFileSync } from "fs";
 import { parse as parseYaml } from "yaml";
 import { CoCEngine, type CoCSuccessLevel } from "../rules/coc-engine";
 import type { RuleEngine } from "../engine/rule-engine";
-import type { WorldState, WorldEntity } from "../types";
+
 import type { DifficultyProfile } from "../rules/module-difficulty";
 import { log } from "../log";
 

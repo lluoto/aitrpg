@@ -2,7 +2,7 @@
 // d100 roll-under 系统 + SAN 检定 + 疯狂判定
 // 与 D&D RuleEngine 共享 dice 工具类，独立判定逻辑
 
-import type { WorldEntity } from "../types";
+
 
 // ============================================================
 // Dice 工具（共享）
