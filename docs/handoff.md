@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-22 10:14  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-23 02:36  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：a8fbee1 fix: the opening narration asserted things it had no data for  ·  **测试**：1723 条 / 83 文件，全绿（基线 1723，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：165c8ca feat: let the LLM name the investigators too, in the call it already makes  ·  **测试**：1731 条 / 84 文件，全绿（基线 1731，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -108,6 +108,7 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 
 ## 最近做了什么
 
+- 165c8ca feat: let the LLM name the investigators too, in the call it already makes
 - a8fbee1 fix: the opening narration asserted things it had no data for
 - 0321b72 fix: exits had two parsers that disagreed about what "broken" means
 - cd8489d fix: a failed scene switch left the world with no active scene at all
@@ -119,7 +120,6 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 - 7e80bc4 fix: one rule for the major wound check, and let phrasing say why it missed
 - 25564db fix: make the diagnostic criteria able to tell right from wrong
 - b10eafc docs: handoff guide for taking over the work
-- 60da428 docs: external review request for diagnostic criteria
 
 ## 代码地图
 

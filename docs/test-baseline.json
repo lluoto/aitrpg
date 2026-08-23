@@ -1,6 +1,6 @@
 {
-  "tests": 1723,
-  "files": 83,
+  "tests": 1731,
+  "files": 84,
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
     {
@@ -67,6 +67,11 @@
       "tests": 1723,
       "files": 83,
       "when": "人名改由 LLM 与八项同一次调用给出（不额外打网络），acceptGeneratedName 把关；llmOnce 失败不再静默"
+    },
+    {
+      "tests": 1731,
+      "files": 84,
+      "when": "小传放开到两三段（八项仍 1-2 句）；pcImpression 标回 verbatim；自报家门不再一句念六遍"
     }
   ]
 }

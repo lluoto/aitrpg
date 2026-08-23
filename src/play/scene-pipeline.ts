@@ -302,6 +302,78 @@ export function fallbackQuestion(ctx: SceneCtx, topic?: string): string {
 }
 
 /**
+ * 首次见面时，调查员怎么表明身份与来意。
+ *
+ * 原先是写死的一句，一局原样重复 6 次（`probe-narration-mix` 量到的）。
+ * 改成由**这两个人是谁**决定：
+ *   · 谁开口 —— 靠说话吃饭的职业（记者/警察/律师/医生…）更可能先开口
+ *   · 怎么说 —— 说辞跟着那个职业走，而不是所有人共用一句
+ *
+ * 仍然是模板（不打 LLM）—— 这一句紧接在敲门之后、NPC 回应之前，
+ * 是个**节拍**而不是内容，为它多打一次网络不划算。
+ * 但素材取自角色，同一局两个人不会说同一句，不同局也不会。
+ */
+const SPEAKER_TRADES = /记者|警|侦探|律师|教授|医生|护士|神职|传教|推销|演员|作家/;
+
+export function introduceParty(
+  cast: { p0: { shortName: string }; p1: { shortName: string } },
+  agents: readonly [PlayerAgent, PlayerAgent],
+): string {
+  const people = [
+    { name: cast.p0.shortName, occ: agents[0].pc.occupation ?? "" },
+    { name: cast.p1.shortName, occ: agents[1].pc.occupation ?? "" },
+  ];
+  // 靠说话吃饭的先开口；都不是就按谁在前
+  const speaker = people.find((p) => SPEAKER_TRADES.test(p.occ)) ?? people[0]!;
+  const other = people.find((p) => p !== speaker)!;
+
+  // 池子要够大。一局有 6 次首见 —— 两三句的池子必然连着撞
+  //（实测改成 2 句一档之后，仍出现同一句连出 4 次）。
+  // 这仍是模板，不打 LLM：这一句是敲门与回应之间的节拍，为它多打一次网络不划算；
+  // 真要彻底不重复，得让 LLM 写，那是另一笔账。
+  const byTrade: [RegExp, string[]][] = [
+    [/记者|作家/, [
+      `${speaker.name}报上名字，说自己在为一桩失踪案奔走，${other.name}在旁补了一句来意。`,
+      `${speaker.name}先递上名片，简短说明了来意；${other.name}站在半步之后没有插话。`,
+      `${speaker.name}把来意说得像在起一个头，留了不少余地；${other.name}没有补充。`,
+      `${speaker.name}自报家门，顺口问了句方不方便说话；${other.name}站在门边。`,
+      `${speaker.name}三言两语交代了身份和来由，笔记本还夹在腋下；${other.name}跟着点头。`,
+    ]],
+    [/警|侦探|律师/, [
+      `${speaker.name}亮明身份，把来意说得很短；${other.name}在一旁点了点头。`,
+      `${speaker.name}开口便直奔正题，报了姓名与所为何来，${other.name}没有多话。`,
+      `${speaker.name}报上名字，末了补一句「例行了解情况」；${other.name}站在后面。`,
+      `${speaker.name}说明身份时语速不快，把来意一句一句放下；${other.name}没有插话。`,
+      `${speaker.name}先说清自己是谁，再说明为什么来；${other.name}只在旁边应了一声。`,
+    ]],
+    [/医生|护士/, [
+      `${speaker.name}放缓语气自报家门，说明来意时特意避开了刺耳的字眼；${other.name}在旁边等着。`,
+      `${speaker.name}先问了句「方便说话吗」，才报上姓名与来意，${other.name}跟着点头。`,
+      `${speaker.name}把来意说得很轻，像是怕碰着什么；${other.name}在半步之后。`,
+      `${speaker.name}自报家门，先关心了一句对方的气色，才转到正题；${other.name}没作声。`,
+      `${speaker.name}说明身份时手一直没从提包上挪开，来意讲得简短；${other.name}在旁。`,
+    ]],
+    [/教授|学者|科学/, [
+      `${speaker.name}略显生硬地介绍了自己和${other.name}，把来意讲得像在陈述一件事实。`,
+      `${speaker.name}报上姓名与职衔，接着才想起补上一句此行的缘由；${other.name}替他把话收了尾。`,
+      `${speaker.name}先说了自己在哪里任职，绕了一圈才讲到来意；${other.name}把话接了过去。`,
+      `${speaker.name}的自我介绍比来意还长；${other.name}适时插了一句，把话头拉回正题。`,
+      `${speaker.name}把来意讲得条理分明，像在念一份提纲；${other.name}在旁边点头。`,
+    ]],
+  ];
+  const pool = byTrade.find(([re]) => re.test(speaker.occ))?.[1] ?? [
+    `${speaker.name}说明了两人的身份和此行的来意，${other.name}在旁边补了两句。`,
+    `${speaker.name}先开口报上姓名，${other.name}接着说清了他们为什么来。`,
+    `两人自报家门，${speaker.name}把来意讲了一遍。`,
+    `${speaker.name}把话头起了，${other.name}把来意补完整。`,
+    `${speaker.name}报上两人的名字，简短交代了为什么找上门来。`,
+    `${speaker.name}说明来意的时候没绕弯子；${other.name}在一旁听着。`,
+    `寒暄了两句，${speaker.name}才把身份和来意一并说了。`,
+  ];
+  return pick(pool);
+}
+
+/**
  * 子串匹配放弃之后，问一次 LLM「他到底要去哪」。
  *
  * 三条纪律，缺一条这步就变成净损失：
@@ -462,18 +534,24 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
         const { action: leadAction, speech: dialogueText } = splitLeadingStageDirection(rawFirst, displayName);
         noteEntityMentions(dialogueText, world);
         if (speechProfile.type === "mental_voice") {
-          if (!introShown) say(`\n${pcImpression}`);
+          if (!introShown) say(`\n${pcImpression}`, "verbatim");
           say(`\n${mentalVoiceBridge(speechProfile, displayName, "——")}`);
           say(quoteDialogue(dialogueText));
         } else if (speechProfile.type === "coma_rapid") {
-          if (!introShown) say(`\n${pcImpression}`);
+          if (!introShown) say(`\n${pcImpression}`, "verbatim");
           say(`\n${displayName}昏迷中似乎在说着什么。`, "verbatim");
           say(quoteDialogue(dialogueText));
         } else {
           if (!introShown) {
-            say(`\n${pcImpression}。`);
-            // 首次见面自报家门：调查员先表明身份与来意（承接敲门/进屋），NPC 才承接回应进入正题
-            say(`\n你们上前，向对方表明了自己的身份与来意。`, "verbatim");
+            say(`\n${pcImpression}。`, "verbatim");
+            // 首次见面自报家门：调查员先表明身份与来意（承接敲门/进屋），NPC 才承接回应进入正题。
+            //
+            // ⚠ 原先是写死的一句「你们上前，向对方表明了自己的身份与来意。」
+            // `probe-narration-mix` 量到它**一局里原样出现 6 次** ——
+            // 全局唯一一句被反复复用的引擎叙述，正是「读起来没有灵性」的来源。
+            // 现在按**这两个调查员是谁**来说：谁开口取决于职业（记者/警察这类
+            // 本来就靠说话吃饭），说辞也跟着职业走。素材来自角色，不是固定句。
+            say(`\n${introduceParty(cast, agents)}`, "verbatim");
             // 私宅场景：插入"进屋坐下"过渡，建立叙事节奏（先落座 → 再求助 → 再谈案情），
             // 避免 NPC 站在门口就把所有话倒完
             if (world.currentScene?.isHome) {
@@ -519,7 +597,7 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
           say(`\n${mentalVoiceBridge(speechProfile, displayName, "——", true)}`);
           say(quoteDialogue(dialogueText));
         } else if (speechProfile.type === "coma_rapid") {
-          if (!introShown) say(`\n${pcImpression}——依然昏迷，但嘴唇仍在翕动。`);
+          if (!introShown) say(`\n${pcImpression}——依然昏迷，但嘴唇仍在翕动。`, "verbatim");
           say(quoteDialogue(dialogueText));
         } else {
           const { lead, rest } = stripDialogueLead(dialogueText);
@@ -554,14 +632,14 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
 
       if (speechProfile.type === "none" || speechProfile.type === "coma_rapid") {
         // 出场过渡已显示（entrance）则不重复打印印象
-        if (!introShown) say(`\n就在你们面前，${pcImpression}——似乎无法与你们正常交流。`);
+        if (!introShown) say(`\n就在你们面前，${pcImpression}——似乎无法与你们正常交流。`, "verbatim");
       } else if (speechProfile.type === "brainwave") {
         // 出场过渡已显示（entrance）则不重复打印印象
-        if (!introShown) say(`\n${pcImpression}`);
+        if (!introShown) say(`\n${pcImpression}`, "verbatim");
         say(brainwaveFlavor(npc, displayName));
       } else if (speechProfile.type === "mental_voice") {
         // Telepathic encounter: full description, then direct mental communication
-        if (!introShown) say(`\n${pcImpression}`);
+        if (!introShown) say(`\n${pcImpression}`, "verbatim");
         const dialogueText = generateNpcDialogue(npc, npcState, speechProfile, world);
         say(`\n${mentalVoiceBridge(speechProfile, displayName, "：")}`);
         say(`"${dialogueText}"`);
@@ -574,7 +652,7 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
           : "";
 
         const dialogueText = generateNpcDialogue(npc, npcState, speechProfile, world);
-        if (!introShown) say(`\n${pcImpression}。`);
+        if (!introShown) say(`\n${pcImpression}。`, "verbatim");
         if (dialogueText) {
           const toneBridge = buildToneBridge(npc, speechProfile);
           const behaviorBridge = behaviorText ? `${behaviorText}，${toneBridge}` : `${displayName}${toneBridge}`;
@@ -596,7 +674,7 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
       } else if (speechProfile.type === "coma_rapid") {
         // Unconscious NPC: show impression, then reveal mumbling knowledge
         const pcImpression = buildPcImpression(npc);
-        if (!introShown) say(`\n${pcImpression}——依然处于昏迷状态，无法交流。`);
+        if (!introShown) say(`\n${pcImpression}——依然处于昏迷状态，无法交流。`, "verbatim");
         revealNpcKnowledge(npc, world, dedup, speechProfile);
       } else if (speechProfile.type === "mental_voice") {
         const dialogueText = generateNpcDialogue(npc, npcState, speechProfile, world, true);

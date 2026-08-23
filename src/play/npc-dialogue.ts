@@ -15,7 +15,19 @@ import {
 } from "./npc-text";
 import { nextRevealBridge } from "./reveal-bridge";
 import type { Dedup } from "./run-state";
-/** Generate player-facing impression from NPC data (skip stat blocks / KP notes) */
+/**
+ * Generate player-facing impression from NPC data (skip stat blocks / KP notes)
+ *
+ * ⚠ 返回值**永远不是 LLM 生成的**：每条路径要么是模组作者写的
+ * （`npc.entrance` / `npc.description`），要么是引擎按 role/age/trait 拼的模板。
+ * 所以调用方必须以 `"verbatim"` 播报。
+ *
+ * 原先用的是默认 origin（`"llm"`），两个后果：
+ *   1. 语音层把一段整局不变的文本当成实时生成，白白多合成一次
+ *   2. 「玩家读到的字有多少是写死的」量不准 —— `probe-narration-mix` 第一次
+ *      跑出 verbatim 22.9%，而报告里最长的几段之一标着 [llm]、内容却是
+ *      模组里 NPC 的 description 原文。判据被标记骗了。
+ */
 export function buildPcImpression(npc: ModuleNPC): string {
   const name = npc.name.replace(/[（(].*[）)]$/, "").trim();
   const role = (npc.role || "").replace(/[（(].*[）)]$/, "").trim();
