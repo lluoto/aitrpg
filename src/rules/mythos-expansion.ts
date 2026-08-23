@@ -65,7 +65,7 @@ export interface MythosCreature {
 }
 
 /** 神话典籍 */
-export interface MythosTome {
+interface MythosTome {
   id: string;
   name: string;
   nameEn: string;
@@ -84,7 +84,7 @@ export interface MythosTome {
 }
 
 /** 神话法术定义 — 扩展 GameSession.MythosSpell，增加 nameEn/effectType/source */
-export interface MythosSpellDef {
+interface MythosSpellDef {
   name: string;
   nameEn: string;
   /** SAN 消耗格式 "1d4" 或 "1/1d8"（检定成功/失败） */
@@ -96,19 +96,6 @@ export interface MythosSpellDef {
   /** 法术效果描述 */
   description: string;
   /** 出处 */
-  source: string;
-}
-
-/** 神话场景模板 */
-export interface MythosLocation {
-  sceneId: string;
-  name: string;
-  description: string;
-  lighting: "daylight" | "moonlight" | "dim" | "dark" | "fog" | "warm_light";
-  dangers: string[];
-  exits: Array<{ target: string; desc: string; locked: boolean }>;
-  entities: Array<{ id: string; name: string; type: "npc" | "monster"; hp?: number; maxHp?: number; faction?: string }>;
-  descriptionLong: string;
   source: string;
 }
 
@@ -1436,168 +1423,5 @@ export const MYTHOS_SPELLS: MythosSpellDef[] = [
     description:
       "借用千面之神奈亚拉托提普的一丝力量，施法者可以改变自己的外貌为任意人形形态，持续 1 小时。外观的改变非常彻底——身高、体型、面容、声音都会改变。但近距离观察者如通过 POW 检定，会感觉被施法者身上有一种「不对劲」的气质，仿佛在看一个做得太像人的蜡像。此法术不能复制某个具体人物的精确外貌（只能大致模仿），也不能改变体型类别。每次施法后，施法者会短暂地看到奈亚拉托提普的某个化身在视界边缘一闪而过。",
     source: "《奈亚拉托提普》(Nyarlathotep, H.P. Lovecraft, 1920) / 《黑暗中的低语者》衍生",
-  },
-];
-
-// ============================================================
-// 4. 神话地点场景模板
-// ============================================================
-
-export const MYTHOS_LOCATIONS: MythosLocation[] = [
-  {
-    sceneId: "arkham_miskatonic",
-    name: "密斯卡托尼克大学图书馆",
-    description:
-      "一座哥特式的古老建筑，爬满常春藤的灰石墙在阿卡姆的薄雾中若隐若现。图书馆大厅弥漫着旧书和皮革的混合气味，高大的拱形窗户让阳光在灰尘中形成光柱。",
-    lighting: "dim",
-    dangers: [],
-    exits: [
-      { target: "arkham_street", desc: "大学正门（阿卡姆街道）", locked: false },
-      { target: "arkham_library_vault", desc: "特别书库（需要借阅证）", locked: true },
-      { target: "arkham_library_basement", desc: "地下档案室（禁止进入的标示）", locked: true },
-    ],
-    entities: [
-      { id: "librarian_armitage", name: "阿米蒂奇馆长", type: "npc", faction: "学者" },
-      { id: "student_morgan", name: "摩根（学生助理）", type: "npc", faction: "友善" },
-    ],
-    descriptionLong:
-      "阿卡姆，马萨诸塞州，一个被密斯卡托尼克河环绕的古老大学城。密斯卡托尼克大学以其神秘学藏书而闻名于学术界——虽然大多数教授会强调这「只是民俗学研究」。大学的特别书库收藏着《死灵之书》拉丁文译本和《塞拉伊诺断章》翻译手稿，以及大量关于女巫审判和殖民地时期异常事件的档案。图书馆的每一个角落都隐藏着通往更深的秘密的可能性。",
-    source: "多篇洛夫克拉夫特作品中的阿卡姆设定",
-  },
-  {
-    sceneId: "arkham_asylum",
-    name: "阿卡姆疯人院",
-    description:
-      "一座阴沉的红砖建筑，周围的铁栅栏已经生锈。建筑内部充斥着消毒剂和汗水的味道。走廊尽头的软垫房间传出含混不清的喃喃声——不像人类语言。",
-    lighting: "dim",
-    dangers: ["狂暴病患×2"],
-    exits: [
-      { target: "arkham_street", desc: "疯人院大门", locked: false },
-      { target: "arkham_asylum_ward_b", desc: "B区病房（重度患者）", locked: true },
-      { target: "arkham_asylum_morgue", desc: "太平间", locked: true },
-    ],
-    entities: [
-      { id: "dr_waples", name: "维普尔斯医生", type: "npc", faction: "困惑的医生" },
-      { id: "patient_zed", name: "身份不明的病患", type: "npc", faction: "危险" },
-    ],
-    descriptionLong:
-      "阿卡姆疯人院收容了密斯卡托尼克河谷地区的精神病患——其中许多人的「精神失常」与不可名状的遭遇有关。一些患者声称能看到别人看不到的东西，画出不可能存在的几何图案，或持续用他们不可能学会的古语喃喃自语。医生们将这些归因于「集体妄想」——但他们中的一些人，在值夜班之后，开始听到同样的低语。",
-    source: "《查尔斯·德克斯特·沃德案件》(The Case of Charles Dexter Ward, 1927) 及多篇阿卡姆系列",
-  },
-  {
-    sceneId: "innsmouth_docks",
-    name: "印斯茅斯码头",
-    description:
-      "腐烂的木制栈桥伸向铅灰色的海面。空气中充满了鱼腥味和腐败的盐渍味道。海鸥不在这个地方盘旋——它们本能地避开印斯茅斯。远处礁石上，有什么东西在夕阳下发出潮湿的反光。",
-    lighting: "fog",
-    dangers: ["腐烂的栈桥（可能坍塌）"],
-    exits: [
-      { target: "innsmouth_street", desc: "水街（通往镇中心）", locked: false },
-      { target: "innsmouth_church", desc: "大衮教团教堂", locked: false },
-      { target: "innsmouth_reef", desc: "魔鬼礁（涨潮时淹没）", locked: false },
-    ],
-    entities: [
-      { id: "zadok_allen", name: "扎多克·艾伦（老酒鬼）", type: "npc", faction: "恐惧的知情者" },
-      { id: "deep_one_scout", name: "潜伏在水下的影子", type: "monster", hp: 15, maxHp: 15, faction: "深潜者" },
-    ],
-    descriptionLong:
-      "印斯茅斯是马萨诸塞州海岸线上一个被诅咒的渔港。自从1846年船长奥贝德·马什将南海的怪异宗教带回镇上之后，印斯茅斯的面貌逐渐变得诡异——镇上居民的面孔似乎越来越不像完全的人类：凸出的眼睛、扁平的鼻子、粗糙的皮肤。外乡人在镇上受到冷遇和监视。码头是镇上最危险的地方：潮水之下，有什么东西在等待。",
-    source: "《印斯茅斯的阴霾》(The Shadow Over Innsmouth, H.P. Lovecraft, 1936)",
-  },
-  {
-    sceneId: "innsmouth_church",
-    name: "大衮教团教堂",
-    description:
-      "一座看起来像是教堂但绝对不是教堂的建筑。门楣上雕刻的不是基督教的符号，而是扭曲的鱼形图案和令人不安的几何花纹。内部没有长椅，只有一片潮湿的石地板，中央是一个向下延伸的阶梯——通向大海。",
-    lighting: "dark",
-    dangers: ["邪教徒×3", "深潜者（仪式守卫）"],
-    exits: [
-      { target: "innsmouth_street", desc: "教堂正门", locked: false },
-      { target: "innsmouth_docks", desc: "秘密海岸通道", locked: false },
-      { target: "innsmouth_undersea", desc: "海中阶梯（通往水下城市伊哈斯莱）", locked: false },
-    ],
-    entities: [
-      { id: "high_priest", name: "教团大祭司", type: "npc", hp: 14, maxHp: 14, faction: "大衮教团" },
-      { id: "cultist_1", name: "蒙面信众", type: "npc", hp: 10, maxHp: 10, faction: "大衮教团" },
-      { id: "deep_one_guard", name: "深潜者守卫", type: "monster", hp: 16, maxHp: 16, faction: "深潜者" },
-    ],
-    descriptionLong:
-      "这是大衮秘密教团的礼拜场所，表面上伪装成一座废弃的教堂，但内部完全是深海崇拜的祭坛。墙壁上涂满了用鱼皮制成的怪异壁画，描绘着巨大的鱼形神祇从海中升起。空气中充满海水和血腥混合的气味。在特定的夜晚，教众从印斯茅斯的各个角落聚集于此，举行与大海深处之物交配的仪式。",
-    source: "《印斯茅斯的阴霾》衍生",
-  },
-  {
-    sceneId: "dunwich_farm",
-    name: "敦威治废弃农场",
-    description:
-      "这片位于敦威治山谷边缘的农场已经被遗弃多年。农舍的屋顶塌陷，梁柱上长满了黑色的菌类。谷仓歪斜地靠着山坡，里面的干草已经腐败成一种黏稠的黑色物质。地面似乎在轻微震动——不像是地震，更像是什么巨大的东西在地下的呼吸。",
-    lighting: "moonlight",
-    dangers: ["塌陷的屋顶", "地洞（通往地下）", "不可见之物"],
-    exits: [
-      { target: "dunwich_hills", desc: "哨兵山小径", locked: false },
-      { target: "dunwich_farm_barn", desc: "坍塌的谷仓", locked: false },
-      { target: "dunwich_underground", desc: "地面的裂缝（通往下方的洞穴）", locked: false },
-    ],
-    entities: [
-      { id: "whateley_remnant", name: "沃特雷家的残余之物", type: "monster", hp: 25, maxHp: 25, faction: "不可名状" },
-    ],
-    descriptionLong:
-      "敦威治是马萨诸塞州内陆一个破败的小村庄，被围绕在荒山和幽暗的森林之中。这里的居民大多退化、沉默、敌视外来者。废弃的沃特雷农场是敦威治最不祥的地方——老沃特雷曾在这里用禁忌的知识「召唤」了某种巨大的存在，其后果至今仍残留在山谷的空气中。当地人绕开这个地方，声称在夜晚能听到从地下传来的、不属于这个世界的低语——一种低沉、震颤的共鸣声。",
-    source: "《敦威治恐怖事件》(The Dunwich Horror, H.P. Lovecraft, 1929)",
-  },
-  {
-    sceneId: "dunwich_hills",
-    name: "敦威治荒山（哨兵山）",
-    description:
-      "哨兵山的山顶光秃秃的，只有几块风化的巨石围成一圈——但这绝对不是自然形成的。石头上刻着褪色的奇异符号，中央的地面上有一块被彻底烧焦的圆形区域。从这里可以俯瞰整个敦威治山谷，视野极好——这也是为什么这里被选为仪式场地的原因。",
-    lighting: "moonlight",
-    dangers: ["陡峭的山崖", "残留的精神污染"],
-    exits: [
-      { target: "dunwich_farm", desc: "沃特雷农场（山脚下）", locked: false },
-      { target: "dunwich_village", desc: "敦威治村", locked: false },
-    ],
-    entities: [],
-    descriptionLong:
-      "哨兵山是敦威治山谷的最高点。老沃特雷曾在这座山的顶部进行了召唤犹格·索托斯的禁忌仪式——用自己孙女的生命为代价。仪式之后，山顶的植被全部枯萎，方圆二十米的土地变成了焦土，至今寸草不生。空气在这里似乎更加稀薄，站在山顶会感到头晕和无法解释的恐惧。某些夜晚，石圈中央会发出微弱的紫色磷光。",
-    source: "《敦威治恐怖事件》",
-  },
-  {
-    sceneId: "kingsport_harbor",
-    name: "金斯波特港口",
-    description:
-      "金斯波特是一个被时间遗忘的古老渔村。港口的木制小屋挤在狭窄的鹅卵石街道两旁，窗户上的玻璃因盐雾而模糊。港口停着几艘破旧的渔船，其中一艘挂着褪色的星形旗帜。远处，一座灯塔矗立在悬崖上——但它的灯光在特定的夜晚会变成奇怪的紫色。",
-    lighting: "fog",
-    dangers: ["湿滑的码头"],
-    exits: [
-      { target: "kingsport_street", desc: "鹅卵石街道（通往村庄）", locked: false },
-      { target: "kingsport_lighthouse", desc: "灯塔小径（陡峭的悬崖路）", locked: false },
-      { target: "kingsport_church", desc: "第一浸信会教堂（废弃）", locked: false },
-    ],
-    entities: [
-      { id: "old_sailor", name: "老渔夫（沉默寡言）", type: "npc", faction: "中立" },
-      { id: "kingsport_ghost", name: "迷雾中的轮廓", type: "monster", hp: 1, maxHp: 1, faction: "幻象" },
-    ],
-    descriptionLong:
-      "金斯波特是马萨诸塞州最北端的古老渔港，离阿卡姆有一小时的车程。这里的建筑风格停留在十七世纪，许多房屋都有三百年的历史。金斯波特有一种特殊的气质：它似乎同时存在于现实与幻梦境之间，两种世界的边界在这里变得模糊。某些夜晚——尤其是万圣节——你可以在金斯波特的街道上看到早已死去的人像平常一样行走。",
-    source: "《可怕的老人》(The Terrible Old Man, 1921) / 《节日》(The Festival, 1925)",
-  },
-  {
-    sceneId: "antarctic_camp",
-    name: "南极考察站（密斯卡托尼克探险队）",
-    description:
-      "四座低矮的预制建筑蜷缩在南极腹地的冰原上，旗帜在狂风中猎猎作响。营地周围散落着雪地履带车和木箱，一切看起来很正常——除了营地东南方的冰壁上那个巨大的黑色隧道入口，它向地下延伸，深度未知。隧道的冰壁上似乎刻着什么……但绝对不是自然形成的冰纹。",
-    lighting: "daylight",
-    dangers: ["极寒暴露", "冰裂隙", "隧道中的未知存在"],
-    exits: [
-      { target: "antarctic_camp_main", desc: "主营地（取暖设备可用）", locked: false },
-      { target: "antarctic_tunnel", desc: "冰壁隧道（通往远古者城市）", locked: false },
-      { target: "antarctic_plane", desc: "备用飞机（需要飞行员）", locked: false },
-    ],
-    entities: [
-      { id: "prof_dyer", name: "戴尔教授（地质学家）", type: "npc", faction: "科学家" },
-      { id: "danforth", name: "丹佛斯（研究生、精神不稳定）", type: "npc", faction: "创伤幸存者" },
-    ],
-    descriptionLong:
-      "1930年，密斯卡托尼克大学的南极探险队在莱克教授的带领下深入南极腹地，发现了远古者的化石遗迹和一座被遗弃了数亿年的巨石城市。大部分队员在探险中失踪或死亡——官方报告声称是「暴风雪和极端气候」所致，但幸存者戴尔教授和研究生丹佛斯知道真相远不是这样。丹佛斯在回程途中精神崩溃，至今仍在阿卡姆疯人院中喃喃着关于「六重对称的疯狂山脊」和「不可名状的五维之物」。",
-    source: "《疯狂山脉》(At the Mountains of Madness, H.P. Lovecraft, 1936)",
   },
 ];

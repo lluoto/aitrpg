@@ -15,7 +15,7 @@
 //    结构那一项没有现成解析器可用，就自己做词法遮罩 + 括号深度，
 //    并且为「该报」「不该报」两侧各写测试钉住。
 
-export interface MaskedSource {
+interface MaskedSource {
   /** 与原文等长：注释与字面量内容换成空格，换行保留。可直接按偏移换算行号 */
   masked: string;
   /**
@@ -200,7 +200,7 @@ export function maskSource(src: string): MaskedSource {
 }
 
 /** 把偏移换成 1 基行号 */
-export function lineOf(src: string, index: number): number {
+function lineOf(src: string, index: number): number {
   let n = 1;
   for (let k = 0; k < index && k < src.length; k++) if (src[k] === "\n") n++;
   return n;
@@ -286,7 +286,7 @@ export function findPlaceholderResidue(
 // 检查 3：反向 import（成环）
 // ============================================================
 
-export interface ImportRef { path: string; kind: string }
+interface ImportRef { path: string; kind: string }
 
 /**
  * 取出一个文件里**真正会在运行时生效**的 import。
@@ -358,9 +358,9 @@ const RISKY_CMDLET = /(?:^|[|;&(]\s*|\bstart-process\s+)\s*(Select-String|Get-Co
 /** 真的在起一个外部进程的 API */
 const SHELL_API = /\b(execSync|execFileSync|spawnSync|exec|execFile|spawn|Bun\.spawnSync|Bun\.spawn|Bun\.\$)\s*\(|Bun\.\$\s*`|\$`/;
 
-export type ScanLang = "ts" | "js" | "powershell";
+type ScanLang = "ts" | "js" | "powershell";
 
-export function langOf(file: string): ScanLang {
+function langOf(file: string): ScanLang {
   if (/\.ps(m)?1$/i.test(file)) return "powershell";
   if (/\.(mjs|cjs|jsx?)$/i.test(file)) return "js";
   return "ts";
@@ -472,7 +472,7 @@ export function generatedDocs(scriptSources: readonly string[]): string[] {
   return [...out];
 }
 
-export interface ScriptRefVerdict {
+interface ScriptRefVerdict {
   path: string;
   exists: boolean;
   tracked: boolean;
@@ -601,7 +601,7 @@ export function findSilentCatches(file: string, src: string): Finding[] {
 // 检查 5/6：外部进程的退出状态
 // ============================================================
 
-export interface SpawnLike {
+interface SpawnLike {
   error?: Error | null;
   status?: number | null;
   signal?: string | null;
@@ -609,7 +609,7 @@ export interface SpawnLike {
   stderr?: string | null;
 }
 
-export interface ProcVerdict {
+interface ProcVerdict {
   ok: boolean;
   /** 失败原因；ok 时为空 */
   reason: string;
@@ -635,7 +635,7 @@ export function judgeProcess(label: string, r: SpawnLike): ProcVerdict {
 }
 
 export interface TestBaseline { tests: number; files: number }
-export interface TestCount { tests: number | null; files: number | null; failed: number | null }
+interface TestCount { tests: number | null; files: number | null; failed: number | null }
 
 /** 从 `bun test` 的输出里取条数。取不到就是 null —— **不许当成 0 或当成通过** */
 export function parseTestOutput(text: string): TestCount {
@@ -648,7 +648,7 @@ export function parseTestOutput(text: string): TestCount {
   };
 }
 
-export interface BaselineVerdict {
+interface BaselineVerdict {
   problems: string[];
   notes: string[];
 }

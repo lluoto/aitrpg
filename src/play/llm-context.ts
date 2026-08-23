@@ -68,7 +68,7 @@ export function buildCthulhuContext(wm: WorldModelCtx): string {
   }
 }
 /** 按当前场景构建世界模型注入块；同场景内节流复用（场景切换才重算） */
-export function buildWmContext(wm: WorldModelCtx, w: WorldState): string | undefined {
+function buildWmContext(wm: WorldModelCtx, w: WorldState): string | undefined {
   if (!wm.integrator) return undefined;
   const scene = w.currentScene;
   const sceneId = scene?.id ?? "";

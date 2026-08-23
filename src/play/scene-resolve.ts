@@ -22,7 +22,7 @@ import { isRejectedMention } from "./move-util";
 
 export interface SceneRow { id: string; name: string }
 
-export interface SceneResolveInput {
+interface SceneResolveInput {
   said: string;
   /** id → 展示名 */
   displayNames: Record<string, string>;
@@ -32,7 +32,7 @@ export interface SceneResolveInput {
   rows: readonly SceneRow[];
 }
 
-export interface SceneResolveResult {
+interface SceneResolveResult {
   sceneId: string | null;
   /**
    * true = 没认准，是引擎按相似度挑的。

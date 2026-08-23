@@ -15,14 +15,14 @@ import { voiceKey } from "../voice/speech-plan";
 import type { PlayerDecision } from "../agent/player-agent";
 
 /** 引擎停在岔口时对外暴露的东西 */
-export interface PendingChoice {
+interface PendingChoice {
   /** 当前处境：场景、在场的人、已知线索、调查进度 */
   context: string;
   /** 可选行动的文字标签，提交时原样回传 */
   options: string[];
 }
 
-export interface ScriptedSnapshot {
+interface ScriptedSnapshot {
   id: string;
   /** 自上次拉取之后新增的播报行 */
   lines: string[];

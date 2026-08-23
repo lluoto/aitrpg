@@ -382,7 +382,7 @@ async function generateViaAPI(
 }
 
 /** 尝试 LLM 生成；失败时回退模板。返回 true = 使用了 LLM 结果。 */
-export async function applyLlmExpandedWithLLM(
+async function applyLlmExpandedWithLLM(
   npc: ModuleNPC,
   client: LLMClient,
   scenes?: Array<{ id: string; name: string; description: string; openingAtmosphere?: string }>,

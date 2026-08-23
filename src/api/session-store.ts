@@ -18,7 +18,7 @@ export function saveSessionMeta(id: string, meta: Record<string, unknown>): void
 }
 
 /** 读取已持久化的 session 列表 */
-export function loadSessionIds(): string[] {
+function loadSessionIds(): string[] {
   ensureDir();
   return readdirSync(BASE_DIR)
     .filter(f => f.endsWith(".json"))
@@ -26,7 +26,7 @@ export function loadSessionIds(): string[] {
 }
 
 /** 读取某个 session 的持久化数据 */
-export function loadSessionMeta(id: string): Record<string, unknown> | null {
+function loadSessionMeta(id: string): Record<string, unknown> | null {
   const fp = join(BASE_DIR, `${id}.json`);
   if (!existsSync(fp)) return null;
   return JSON.parse(readFileSync(fp, "utf-8"));

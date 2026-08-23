@@ -14,8 +14,6 @@
  *   // PL 提问 → NPC 回应
  *   const reply = await generateNpcReply(npc, "加比平时和谁来往密切？", sceneContext, llmClient);
  *
- *   // NPC 主动开口
- *   const line = await generateNpcProactive(npc, sceneContext, llmClient);
  */
 
 import type { ModuleNPC } from "../module/types";
@@ -27,7 +25,7 @@ import { MYTHOS_CREATURES } from "../rules/mythos-expansion";
 // NPC 上下文构造 — 给 LLM 的 NPC 描述块
 // ============================================================
 
-export interface NpcContextBlock {
+interface NpcContextBlock {
   name: string;
   role: string;
   personality: string;
@@ -42,7 +40,7 @@ export interface NpcContextBlock {
 /**
  * 从 ModuleNPC 构建 NPC 上下文块（供 LLM prompt 使用）
  */
-export function buildNpcContext(npc: ModuleNPC): NpcContextBlock {
+function buildNpcContext(npc: ModuleNPC): NpcContextBlock {
   const name = npc.name.replace(/[（(].*[）)]$/, "").trim();
   const role = (npc.role || "").replace(/[（(].*[）)]$/, "").trim();
   const traits = npc.personality.traits?.join("、") || "无";
@@ -101,16 +99,8 @@ const SYSTEM_PROMPT_NPC_REPLY = `你是一个 1920 年代克苏鲁神话 TRPG �
 15. **禁止提及同场景其他 NPC 的即时行为**：不得编造其他 NPC 正在做/刚做过的事（如"XX已经带路""刚才XX说的"）——其他 NPC 是否在场、做了什么，以场景氛围为准，不得虚构超出其范围的互动
 16. **素材边界（硬性）**：回答的全部事实内容只能来自【尚未告诉过调查员的素材】或【已经告诉过调查员的】两段清单；清单之外不得编造任何具体事实（地点细节、事件经过、物品、人物关系、时间等）。可以在清单事实基础上做情绪化表达，但不得添加清单中没有的事实（如清单只说"拖车房空着"，就不得编造"我让人把里面的东西清空了"）`;
 
-const SYSTEM_PROMPT_NPC_PROACTIVE = `你是一个 1920 年代克苏鲁神话 TRPG 中的 NPC 扮演者。
-你要根据当前的场景和 NPC 的设定，让 NPC 主动开口说一句话。
-
-规则：
-1. 这句开场白必须符合 NPC 的性格（焦虑/天真/冷漠/热情等）
-2. 可以提及当前场景中的事物，或调查员明显在关注的事情
-3. 不要直接给出核心线索——自然引出即可
-4. 每次只说 1-2 句话
-5. 如果是中文 NPC，用中文；如果是英文 NPC，用英文
-6. **情绪优先于职业身份**：NPC 当前处境中的情感状态（对失踪亲人的焦虑、悲伤、恐惧、慌乱）必须主导语气；职业身份只是背景装点，绝不能把情绪化的人物演成冷静客套、公事公办的谈判对象`;
+// 原先这里还有 `SYSTEM_PROMPT_NPC_PROACTIVE` —— 主动搭话的系统提示词，
+// 随 generateNpcProactive 一起死了（它是唯一使用者）。
 
 const PROMPT_TEMPLATE_REPLY = `【NPC 设定】
 名字: {name}
@@ -142,30 +132,6 @@ const PROMPT_TEMPLATE_REPLY = `【NPC 设定】
 
 请以 NPC 的身份做出回应：`;
 
-const PROMPT_TEMPLATE_PROACTIVE = `【NPC 设定】
-名字: {name}
-身份: {role}
-性格: {personality}
-说话方式: {speakingStyle}
-【外貌】
-{appearance}
-知道的信息（素材——用叙述转述带出，不要逐条原样复述成台词）:
-{knowledge}
-隐藏的: {secrets}
-
-【对话风格参考】
-她/他此前的对话方式：
-{dialogueSamples}
-
-【当前场景】
-{sceneContext}
-
-{worldContext}
-
-【调查员当前行动/关注】
-{playerOccupations}
-
-请让 NPC 根据当前场景主动开口说一句话：`;
 
 // ============================================================
 // 降级模板 — 无 LLM 时的 fallback
@@ -348,10 +314,9 @@ function getDialogueEngine(): ConstraintEngine {
   }
   return _dialogueEngine;
 }
-
-export function setDialogueConstraintEngine(engine: ConstraintEngine): void {
-  _dialogueEngine = engine;
-}
+// 原先这里有个 `setDialogueConstraintEngine()`，供模组注入 override 约束 ——
+// 没有任何调用方。约束引擎本身照常工作（getDialogueEngine() 兜 DEFAULT_CONSTRAINTS），
+// 少的只是这个从没被用过的扩展点。
 
 interface PenetrationResult {
   action: "block" | "redirect" | "allow_with_cost" | "replace";
@@ -398,43 +363,6 @@ function worldRedirectFallback(a: ReturnType<typeof analyseNpc>): string {
   ]);
 }
 
-/** 降级：NPC 主动说话 */
-// 模板路径按人物性格出主动搭话，用不到场景文本 —— 在开放文本上挑词不可靠，
-// 那正是这轮反复被打脸的事。签名保留是为了与 LLM 版对齐。
-function templateProactive(npc: ModuleNPC, _sceneContext: string): string {
-  const a = analyseNpc(npc);
-  if (a.isSilent) return "";
-  const name = npc.name.replace(/[（(].*[）)]$/, "").trim();
-
-  const lines: string[] = [];
-  if (a.isChild) {
-    lines.push(pick([
-      "你们在找什么呀？",
-      "那边……那边我都不敢去的。",
-      "你们会带我哥哥回来吗？",
-    ]));
-  } else if (a.isAnxious) {
-    lines.push(pick([
-      "你们发现什么了吗？",
-      "一定要找到他啊……",
-      "你们有什么头绪吗？",
-    ]));
-  } else if (a.isFormal) {
-    lines.push(pick([
-      "有什么需要协助的，尽管开口。",
-      "如果需要查阅档案，我可以帮忙。",
-      "请配合我的工作。",
-    ]));
-  } else {
-    lines.push(pick([
-      "有什么问题尽管问。",
-      "你们看着面生——第一次来镇上？",
-      "你们在调查什么案子？",
-    ]));
-  }
-
-  return `${name}${pick(["开口说道：", "望向你们说：", "主动说："])}\n${lines[0]}`;
-}
 
 // ============================================================
 // 对话生成入口
@@ -488,7 +416,7 @@ export interface WorldContext {
 /**
  * 将 WorldContext 渲染为 prompt 注入块（统一格式，防剧透由调用方控制内容）
  */
-export function renderWorldContext(world: WorldContext | null | undefined): string {
+function renderWorldContext(world: WorldContext | null | undefined): string {
   if (!world) return "";
   const lines: string[] = ["【调查进度（全局，仅供承接前文，不得编造未发生之事）】"];
   if (world.visitedScenes.length > 0) {
@@ -524,57 +452,14 @@ export function renderWorldContext(world: WorldContext | null | undefined): stri
   return lines.join("\n");
 }
 
-/**
- * NPC 主动开口 — 根据当前场景生成一句 NPC 台词
- * @param npc NPC 数据
- * @param scene 当前场景上下文
- * @param llm 可选的 LLMClient（有则用 API，无则降级到模板）
- */
-export async function generateNpcProactive(
-  npc: ModuleNPC,
-  scene: SceneContext,
-  llm?: LLMClient,
-  world?: WorldContext | null,
-): Promise<string> {
-  const ctx = buildNpcContext(npc);
-
-  if (llm) {
-    try {
-      const prompt = PROMPT_TEMPLATE_PROACTIVE
-        .replace(/\{name\}/g, ctx.name)
-        .replace(/\{role\}/g, ctx.role)
-        .replace(/\{personality\}/g, ctx.personality)
-        .replace(/\{speakingStyle\}/g, ctx.speakingStyle)
-        .replace(/\{appearance\}/g, ctx.appearance ?? "普通人类")
-        .replace(/\{knowledge\}/g, ctx.knowledge.join("、") || "无")
-        .replace(/\{secrets\}/g, ctx.secrets.join("、") || "无")
-        .replace(/\{dialogueSamples\}/g, ctx.dialogueSamples.join("\n") || "无")
-        .replace(/\{worldContext\}/g, renderWorldContext(world))
-        .replace(/\{sceneContext\}/g, [
-          `场景: ${scene.sceneName}`,
-          scene.sceneDescription,
-          `在场的: ${scene.presentNpcs.join("、") || "无"}`,
-          `已发现的线索: ${scene.knownClues.join("、") || "无"}`,
-        ].join("\n"))
-        .replace(/\{playerOccupations\}/g, scene.playerOccupations?.join("、") || "无");
-
-      const raw = await llm.chat([
-        { role: "system", content: SYSTEM_PROMPT_NPC_PROACTIVE },
-        { role: "user", content: prompt },
-      ], { temperature: 0.8, maxTokens: 200, timeout: 120000 });
-
-      const t = raw.trim();
-      // 世界模型穿透过滤：LLM 原始输出同样可能含时代违禁词/ meta 词汇——命中即弃用走模板
-      const pen = worldPenetrationCheck(t);
-      if (pen && pen.action === "block") throw new Error("npc proactive contains blocked term");
-      if (t.length > 0) return t;
-    } catch {
-      // fall through to template
-    }
-  }
-
-  return templateProactive(npc, scene.sceneName);
-}
+// ⚠ 这里原先是 `generateNpcProactive()` —— NPC 主动开口的 LLM 版本，
+//   连同它的模板兜底 `templateProactive()` 和提示词 `PROMPT_TEMPLATE_PROACTIVE`，
+//   **整条链在运行时是死的**：全仓没有任何地方调用 generateNpcProactive，
+//   而它是 templateProactive 的唯一调用方。也就是说模组里的 NPC 从不主动搭话。
+//   （index.ts 里的「NPC 主动发言」走的是 agent 的 speakUp，是另一套，活着。）
+//   规则在、缺陷在，两者从没接上 —— 与追逐、流血、决心系统是同一个故事。
+//   这次选择删掉而不是接上：主动搭话要接，得先决定「什么时机触发」，
+//   那是设计问题，不该由清理死代码顺手定下来。git 历史里留着。
 
 /**
  * 调查员提问 → NPC 回应 — 根据 NPC 设定生成自然回答

@@ -29,6 +29,13 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts", "tools/**/*.ts"],
+  // ⚠ 原先这里还有 `tools/**/*.ts`，而 `tools/` 在 .gitignore 里 ——
+  //   **typecheck 的结果因此取决于仓库外的文件**：本机能过、干净检出未必，
+  //   反过来干净检出能过、本机未必。清死导出时就撞上了：
+  //   `buildWmContext` / `neutralSupport` 全仓无人 import，只有 tools/ 里
+  //   两个历史草稿在用，于是「判据说是死的、编译器说还活着」。
+  //   这和摄取入口曾经躺在 tools/ 里是同一类问题：仓库状态与本机状态分叉。
+  //   该入库的脚本已经搬进 scripts/，tools/ 只剩一次性草稿，不再纳入编译。
+  "include": ["src/**/*.ts", "scripts/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

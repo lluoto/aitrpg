@@ -19,10 +19,10 @@ export type { SightedEntity } from "./scene-exits";
  * `SightedEntity`（站在出发场景就望得见的叙事实体，由 module-loader 挂到出口上）
  * 同样从那边转出。
  */
-export type SceneExit = Readonly<ExitRecord>;
+type SceneExit = Readonly<ExitRecord>;
 
 /** 一条场景记录。scenes 表的对外形状，getScene() 与 listScenes() 共用。 */
-export interface SceneRecord {
+interface SceneRecord {
   readonly id: string;
   readonly name: string;
   readonly description: string;

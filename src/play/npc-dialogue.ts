@@ -239,17 +239,17 @@ export function brainwaveFlavor(npc: ModuleNPC, displayName: string): string {
 // "模组情况" — the module data drives the dialogue.
 
 /** Normalize role for prose — converts "/" to "、" */
-export function roleContext(role: string): string {
+function roleContext(role: string): string {
   const c = role.includes("——") ? role.split("——").pop()!.trim() : role;
   return c.replace(/\s*\/\s*/g, "、");
 }
 /** Extract short role label */
-export function roleShort(role: string): string {
+function roleShort(role: string): string {
   return role.includes("——") ? role.split("——")[0].trim() : role;
 }
 
 /** Data-driven identity/opening line — reads from NPC's actual module data */
-export function buildIdentityLine(npc: ModuleNPC, rel: number, profile?: SpeechProfile): string {
+function buildIdentityLine(npc: ModuleNPC, rel: number, profile?: SpeechProfile): string {
   if (rel < 0) return "";
   // Unconscious/mumbling NPCs: no opening line — they can't introduce themselves
   const speechText = npc.personality.speech || "";
@@ -325,7 +325,7 @@ export function buildIdentityLine(npc: ModuleNPC, rel: number, profile?: SpeechP
 }
 
 /** Data-driven dialogue per relationship level — uses NPC traits, not speech type label */
-export function buildDialogueForRel(npc: ModuleNPC, relLevel: string): string[] {
+function buildDialogueForRel(npc: ModuleNPC, relLevel: string): string[] {
   const s = analyseNpcData(npc);
   const role = npc.role || "";
   const rShort = roleShort(role);
@@ -531,7 +531,7 @@ export function buildDialogueForRel(npc: ModuleNPC, relLevel: string): string[] 
 }
 
 /** Data-driven follow-up — reads NPC data to generate contextually appropriate closing */
-export function buildFollowUp(npc: ModuleNPC, profile: SpeechProfile): string[] {
+function buildFollowUp(npc: ModuleNPC, profile: SpeechProfile): string[] {
   if (profile.type === "coma_rapid") return [pick([
     "我……我不能说太多……他们……他们还在监视……",
     "太晚了……一切都太晚了……你们不该来这里……",

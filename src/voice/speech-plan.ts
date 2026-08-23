@@ -15,9 +15,9 @@ import type { MythosModule } from "../rules/mythos-module";
  * prebaked 与 realtime 的分界不是"内容像不像固定文本"，而是**消息有没有经过 LLM**。
  * 来源是可判定的，模型行为要靠实测 —— 见 voice-readiness.md 第七节记的那次翻车。
  */
-export type SpeechRoute = "prebaked" | "realtime" | "silent";
+type SpeechRoute = "prebaked" | "realtime" | "silent";
 
-export interface SpeechPlan {
+interface SpeechPlan {
   route: SpeechRoute;
   /** 由谁来念：NPC 名 / "KP" / "守秘人" */
   speaker: string;

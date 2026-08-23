@@ -56,7 +56,7 @@ export enum ConstraintPriority {
  * - allow_with_cost: 允许但有代价（消耗资源/触发新事件）
  * - redirect: 引导回正轨，不是硬拒绝
  */
-export type ConstraintAction =
+type ConstraintAction =
   | { type: "block"; blockMessage?: string }
   | { type: "replace"; replacement: string }
   | { type: "allow_with_cost"; costDescription: string }
@@ -66,7 +66,7 @@ export type ConstraintAction =
 // 约束定义
 // ============================================================
 
-export interface WorldConstraint {
+interface WorldConstraint {
   /** 唯一 ID，用于模组 override 定位 */
   id: string;
   priority: ConstraintPriority;
@@ -92,7 +92,7 @@ export interface WorldConstraint {
 }
 
 /** 检查时传入的上下文 */
-export interface ConstraintContext {
+interface ConstraintContext {
   year?: number;
   sceneId?: string;
   /** 匹配文本（DialogueCheck 时传入） */
@@ -105,7 +105,7 @@ export interface ConstraintContext {
 // 模组 override
 // ============================================================
 
-export interface ModuleConstraintOverride {
+interface ModuleConstraintOverride {
   /**
    * 替换默认约束：若设置，用本 constraint 替换同 id 的默认约束。
    * 若未设置或默认中无此 id，则新增。
@@ -294,23 +294,6 @@ export const DEFAULT_CONSTRAINTS: WorldConstraint[] = [
     action: { type: "block", blockMessage: "NPC不应出现角色meta词汇" },
   },
 ];
-
-// ============================================================
-// 便利函数
-// ============================================================
-
-/** 快速检查文本是否应被拦截（兼容旧接口） */
-export function hasBlockedTerm(text: string): string | null {
-  const engine = new ConstraintEngine(DEFAULT_CONSTRAINTS);
-  const result = engine.checkDialogue(text);
-  if (result?.type === "block") {
-    // 返回匹配的词汇（近似：用原 blocklist 风格来定位）
-    for (const word of ["旅店","旅馆","客栈","场景","关卡","地图","线索","任务","道具","物品","装备","调查进度","剧情","调查员","PL","KP","跑团","游戏","模组","剧本","存档","读档","save","load","NPC","PC","玩家角色","非玩家角色"]) {
-      if (text.includes(word)) return word;
-    }
-  }
-  return null;
-}
 
 /**
  * 共享对话安全校验 — 供各 LLM 文本输出点（叙事/开场/对话扩展）统一使用。

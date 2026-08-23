@@ -169,4 +169,3 @@ export function fallbackSceneDescription(sceneId?: string): string {
 
 /** 超时等待时发送的状态消息 */
 export const DEGRADATION_NOTICE = "守秘人陷入了短暂的沉思……你仿佛听到远处传来翻书的声音。";
-export const DEGRADED_NARRATION_PREFIX = "[降级] ";

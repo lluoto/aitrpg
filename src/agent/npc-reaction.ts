@@ -12,7 +12,7 @@ export type CombatReaction = "fight" | "flee" | "parley" | "surrender" | "call_h
 export type SocialReaction = "open" | "guarded" | "hostile" | "bargain" | "ignore" | "defer";
 export type EventReaction = "investigate" | "ignore" | "panic" | "cautious" | "excited" | "calm";
 
-export interface NPCReactionSet {
+interface NPCReactionSet {
   combat: CombatReaction;
   social: SocialReaction;
   event: EventReaction;

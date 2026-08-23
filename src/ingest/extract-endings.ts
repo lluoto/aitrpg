@@ -17,7 +17,7 @@
 import type { Ending } from "../module/types";
 import type { ChatLike } from "./infer-connections";
 
-export interface EndingBlock {
+interface EndingBlock {
   title: string;
   body: string;
 }

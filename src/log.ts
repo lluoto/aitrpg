@@ -10,7 +10,7 @@
 //   info  — 重建时间线所需的状态迁移：启动、清理、加载完成
 //   debug — 本地复现用，默认不输出
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+type LogLevel = "debug" | "info" | "warn" | "error";
 
 const SEVERITY: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 40 };
 

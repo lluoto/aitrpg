@@ -16,7 +16,7 @@
 // 纯函数，不碰模组也不碰引擎，因此可以拿构造出来的结果做正反夹具。
 
 /** 用例的三种性质。它决定用哪条判据，也决定进不进命中率分母 */
-export type PhraseKind = "positive" | "negative" | "ambiguous";
+type PhraseKind = "positive" | "negative" | "ambiguous";
 
 export interface PhraseCase {
   /** 稳定标识，报告里按它归类 */
@@ -57,7 +57,7 @@ export interface PhraseOutcome {
  *   ambiguous   自己和别人都命中 → 靠列表顺序抢先，换个顺序就翻车
  *   forced-hit  目标对了但引擎自己标了替选 → 是蒙对的，不是听懂的
  */
-export type PhraseFailKind = "no-key" | "rival-only" | "ambiguous" | "forced-hit" | "other";
+type PhraseFailKind = "no-key" | "rival-only" | "ambiguous" | "forced-hit" | "other";
 
 export function classifyFailure(c: PhraseCase, o: PhraseOutcome): PhraseFailKind {
   const matched = o.matched;
@@ -72,9 +72,9 @@ export function classifyFailure(c: PhraseCase, o: PhraseOutcome): PhraseFailKind
   return "other";
 }
 
-export type PhraseVerdict = "pass" | "fail";
+type PhraseVerdict = "pass" | "fail";
 
-export interface PhraseJudgement {
+interface PhraseJudgement {
   verdict: PhraseVerdict;
   /** 失败原因；通过时为空串。报告直接引用，不再另行拼装 */
   why: string;
@@ -156,7 +156,7 @@ export function judgePhrase(c: PhraseCase, o: PhraseOutcome): PhraseJudgement {
   return { verdict: "pass", why: "", countsTowardHitRate: true };
 }
 
-export interface PhraseTally {
+interface PhraseTally {
   hit: number;
   total: number;
 }

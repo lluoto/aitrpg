@@ -46,19 +46,6 @@ export interface CoCWeaponDef {
   baseSkill: number;
 }
 
-/** CoC 武器运行状态 */
-export interface CoCWeaponState {
-  currentAmmo: number;
-  ammoType: string | null;
-  capacity: number | null;
-  /** 卡壳/故障中 */
-  malfunctioned?: boolean;
-  /** 当前耐久（从 maxDurability 初始化） */
-  currentDurability?: number;
-  /** 最大耐久（来自武器定义） */
-  maxDurability?: number;
-}
-
 export interface CombatResult {
   hit: boolean;
   crit: boolean;
@@ -154,14 +141,6 @@ export interface SaveResult {
   fumble: boolean;           // 自然 1
 }
 
-export interface RuleDefinition {
-  id: string;
-  trigger: string;         // "attack_action" | "skill_check" | "saving_throw"
-  conditions: string[];    // ["has_advantage", "target_in_range"]
-  resolution: string;      // "d20+modifiers vs AC"
-  priority: number;        // 冲突优先级
-}
-
 /** 战斗导向的性格特质（1-10，5=普通人基准） */
 export interface CombatPersonalityTraits {
   /** 勇气（高=悍不畏死，低=怯懦爱逃） */
@@ -177,7 +156,7 @@ export interface CombatPersonalityTraits {
 }
 
 /** 邀请入队条件（CoC 叙事友好） */
-export interface CompanionRecruit {
+interface CompanionRecruit {
   /** 招募剧情文本（在成功时展示） */
   greeting: string;
   /** 招募所需技能，如 "persuade" / "credit_rating" */
@@ -189,7 +168,7 @@ export interface CompanionRecruit {
 }
 
 /** 离队触发条件 */
-export interface CompanionDeparture {
+interface CompanionDeparture {
   /** 触发条件类型 */
   trigger: "hp_zero" | "morale_cower" | "motivation_done";
   /** 条件描述（叙事用途） */
@@ -273,25 +252,4 @@ export interface CompanionSnapshot {
   entityId: string;
   resolveState: "normal" | "steadfast" | "afflicted" | "berserk";
   resolveTurnsLeft: number;
-}
-
-/** 副本记录（类似 WoW instance save — 记录一次副本探索的队伍+状态+进度） */
-export interface InstanceRecord {
-  id: string;
-  /** 副本名称/场景 ID */
-  instanceId: string;
-  createdAt: number;
-  lastUpdatedAt: number;
-
-  /** 队伍阵容 */
-  companions: CompanionSnapshot[];
-  /** 玩家列表（userId → characterName） */
-  players: Record<string, string>;
-
-  /** 进度 */
-  round: number;
-  currentScene: string;
-  completedScenes: string[];
-  /** 故事标志位（已触发的关键事件） */
-  flags: Record<string, boolean>;
 }

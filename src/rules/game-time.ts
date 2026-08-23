@@ -2,7 +2,7 @@
 // 游戏内时间系统 — 昼夜循环 + 回合推进
 // ============================================================
 
-export type TimePeriod =
+type TimePeriod =
   | "dawn" | "morning" | "noon" | "afternoon"
   | "dusk" | "evening" | "night" | "late_night";
 
@@ -52,18 +52,10 @@ export function advanceTime(time: GameTime, ticks = 1): GameTime {
   return { day, period, ticks: t };
 }
 
-export function setTimePeriod(time: GameTime, period: TimePeriod): GameTime {
-  return { ...time, period, ticks: 0 };
-}
-
 export function formatGameTime(time: GameTime): string {
   const periodLabel = PERIOD_LABELS[time.period] ?? time.period;
   const daySuffix = time.day === 1 ? "第一天" : `第${time.day}天`;
   return `${daySuffix} · ${periodLabel}`;
-}
-
-export function getPeriodLabel(period: TimePeriod): string {
-  return PERIOD_LABELS[period] ?? period;
 }
 
 /** 根据时段返回环境描述修饰语 */

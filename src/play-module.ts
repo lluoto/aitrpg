@@ -445,7 +445,7 @@ async function createRandomPlayerSetup(
 // 引擎通用化：module 承载纯数据（场景/线索/NPC），support 承载模块专属钩子/常量
 // （SAN 映射、结局评估、战斗遭遇、枢纽/终局定位、调查员配置）。
 // 新模组接入 = 提供 ModuleData + ModuleSupport，无需改动引擎。
-export interface RunOptions {
+interface RunOptions {
   /**
    * 每产生一行播报就回调一次；CLI 传 console.log，API 会话推进消息流。
    *

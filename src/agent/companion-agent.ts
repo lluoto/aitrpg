@@ -40,7 +40,7 @@ interface BiasRule {
 }
 
 /** 决策用环境快照 */
-export interface Situation {
+interface Situation {
   currentPosition: string;
   hpRatio: number;
   enemies: WorldEntity[];

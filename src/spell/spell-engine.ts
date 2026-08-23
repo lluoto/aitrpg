@@ -11,7 +11,7 @@ import { log } from "../log";
 // YAML 类型
 // ============================================================
 
-export interface SpellDef {
+interface SpellDef {
   name: string;
   level: number;              // 0 = 戏法, 1-9
   school: string;
@@ -48,7 +48,7 @@ interface SpellsYAML {
 // 法术施放结果
 // ============================================================
 
-export interface CastResult {
+interface CastResult {
   success: boolean;
   spellName: string;
   spellLevel: number;

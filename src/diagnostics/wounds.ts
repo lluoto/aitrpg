@@ -24,7 +24,7 @@
 import type { PlayEvent } from "../play/events";
 import type { WoundSeverity } from "../combat/wound-effects";
 
-export type WoundBreach =
+type WoundBreach =
   /** deep/grievous 之后没有体质检定 */
   | { kind: "missing-con"; who: string; severity: WoundSeverity; at: number }
   /** deep/grievous 之后体质检定不止一次 */

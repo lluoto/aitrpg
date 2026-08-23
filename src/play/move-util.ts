@@ -180,7 +180,7 @@ export function hasMoveIntent(said: string, key: string): boolean {
  * ⚠ 不能只用键长：「别去维森酒吧，去警察局」里维森酒吧更长，
  *   光比长度会选错。否定必须先过滤掉，长度只做次要区分。
  */
-export function mentionScore(said: string, key: string): number {
+function mentionScore(said: string, key: string): number {
   const at = said.lastIndexOf(key);
   return (hasMoveIntent(said, key) ? 100 : 0) + key.length * 2 + (at < 0 ? 0 : at * 0.1);
 }

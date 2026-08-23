@@ -2315,7 +2315,7 @@ export const QIANKUN_SUBCLASSES: CharacterArchetype[] = [
 // ============================================================
 
 /** 《乾坤》三转传奇模板 */
-export const QIANKUN_LEGENDARY_TEMPLATES: LegendaryTemplate[] = [
+const QIANKUN_LEGENDARY_TEMPLATES: LegendaryTemplate[] = [
   // ── 神罚骑士 · 光之制裁者 ──
   {
     id: "legendary_divine_punisher",
@@ -2398,29 +2398,8 @@ export const QIANKUN_LEGENDARY_TEMPLATES: LegendaryTemplate[] = [
 ];
 
 /**
- * 获取所有《乾坤》子职业
- */
-export function getAllQiankunSubclasses(): CharacterArchetype[] {
-  return [...QIANKUN_SUBCLASSES];
-}
-
-/**
- * 按基职获取子职业
- */
-export function getQiankunSubclassesByBaseClass(baseClassId: string): CharacterArchetype[] {
-  return QIANKUN_SUBCLASSES.filter(cls => cls.baseClassId === baseClassId);
-}
-
-/**
  * 获取所有《乾坤》三转传奇模板
  */
 export function getAllQiankunLegendaryTemplates(): LegendaryTemplate[] {
   return [...QIANKUN_LEGENDARY_TEMPLATES];
-}
-
-/**
- * 按子职获取可用的传奇模板
- */
-export function getLegendaryTemplatesForSubclass(subclassId: string): LegendaryTemplate[] {
-  return QIANKUN_LEGENDARY_TEMPLATES.filter(t => t.appliesTo.includes(subclassId));
 }

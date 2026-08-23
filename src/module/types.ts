@@ -306,7 +306,7 @@ export interface Clue {
 }
 
 /** 寻找线索的方法 */
-export interface FindMethod {
+interface FindMethod {
   type: "skill" | "observation" | "npc_dialogue" | "item" | "automatic";
   /** 技能名（如果是 skill 类型） */
   skillName?: string;
@@ -328,14 +328,14 @@ export interface SceneConnection {
 }
 
 /** 建议的技能检定 */
-export interface SkillCheckHint {
+interface SkillCheckHint {
   skill: string;
   difficulty: "regular" | "hard" | "extreme";
   purpose: string;
 }
 
 /** 场景事件触发器 */
-export interface SceneEvent {
+interface SceneEvent {
   trigger: "time" | "action" | "clue_found" | "scene_entry";
   /** 触发描述 */
   description: string;
@@ -407,7 +407,7 @@ export interface ModuleNPC {
 }
 
 /** NPC 行为规则 */
-export interface NPCBehavior {
+interface NPCBehavior {
   trigger: "player_approach" | "clue_found" | "combat_start" | "time" | "specific_action";
   /** 触发详情 */
   detail?: string;
@@ -529,7 +529,7 @@ export interface ModuleSupport {
 }
 
 /** 导入叙事 — 模块作者编写的开场白，插槽填入角色信息 */
-export interface PrologueEntry {
+interface PrologueEntry {
   lines: string[];
 }
 

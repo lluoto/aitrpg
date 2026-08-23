@@ -85,7 +85,7 @@ function isCritical(result: any): boolean {
 // 模板叙事
 // ============================================================
 
-export function templateNarrative(
+function templateNarrative(
   attackerName: string,
   defenderName: string,
   weaponName: string,

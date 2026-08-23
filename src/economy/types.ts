@@ -42,7 +42,7 @@ export interface Treaty {
   active: boolean;
 }
 
-export interface FactionRelation {
+interface FactionRelation {
   targetId: string;
   stance: Stance;
   score: number;           // -100 ~ 100
@@ -208,7 +208,7 @@ export interface FinancialCrisis {
 
 // ── 外交行动 ──
 
-export type DiplomaticAction =
+type DiplomaticAction =
   | "propose_treaty"
   | "break_treaty"
   | "declare_war"
@@ -261,19 +261,3 @@ export interface PoliticoEconomyState {
   recentEvents: EconomyEvent[];
   round: number;
 }
-
-// ── ActionIntent 新增 action ──
-
-export const POLITICO_ACTIONS = [
-  "faction_status",   // 查看势力信息
-  "factions",         // 查看势力列表
-  "diplomacy",        // 外交行动
-  "market",           // 查看市场
-  "trade",            // 贸易/交易
-  "policy",           // 政策管理
-  "finance",          // 金融信息
-  "sanction",         // 制裁/禁运
-  "embargo",          // 禁运（同sanction）
-] as const;
-
-export type PoliticoAction = typeof POLITICO_ACTIONS[number];

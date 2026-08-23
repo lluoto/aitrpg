@@ -32,7 +32,7 @@ export const DEFAULT_NPC_TRAITS: NPCTraits = {
 // NPC 阵营/势力
 // ============================================================
 
-export interface NPCFaction {
+interface NPCFaction {
   /** 阵营名 */
   name: string;
   /** 对该阵营的忠诚度 1-10（决定背叛/出卖的阈值） */

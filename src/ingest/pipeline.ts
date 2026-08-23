@@ -43,7 +43,7 @@ import type { Ending, ModuleItem, Provenance } from "../module/types";
  * 只交 scenes 和 items 的话，`_run-ingest.ts` 就只能把编排再抄一遍来拿中间量 ——
  * 那正是这次要消掉的东西。
  */
-export interface IngestResult {
+interface IngestResult {
   sections: Section[];
   /** 送去块分类的输入。度量那侧拿它算「送了却没回结果的标题」 */
   classifyInputs: ReturnType<typeof toClassifyInputs>;
@@ -76,7 +76,7 @@ export interface IngestResult {
  * 不在这里直接依赖 RecordingClient：那是度量侧的东西，
  * 编排层不该知道有人在录 prompt。给个回调就够了。
  */
-export interface IngestHooks {
+interface IngestHooks {
   onStage?: (label: string) => void;
 }
 

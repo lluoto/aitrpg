@@ -13,7 +13,7 @@ import type { Scene } from "../module/types";
 import type { Section } from "./sectionize";
 import type { SectionKind } from "./classify-sections";
 
-export interface BuildScenesResult {
+interface BuildScenesResult {
   scenes: Scene[];
   /** 跳过的块、不消费的 ▶ 条目、重名标题 —— 不静默丢东西 */
   warnings: string[];

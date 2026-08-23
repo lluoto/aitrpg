@@ -17,7 +17,7 @@
 
 import type { PlayEvent } from "../play/events";
 
-export type FuzzFailure =
+type FuzzFailure =
   | "threw"
   | "timeout"
   | "decision-cap"
@@ -112,7 +112,7 @@ export function judgeFuzzRun(o: FuzzRunOutcome, th: FuzzThresholds): FuzzFailure
   return fails;
 }
 
-export interface FuzzReport {
+interface FuzzReport {
   planned: number;
   /** 通关 = 判据零失败项 */
   passed: number;

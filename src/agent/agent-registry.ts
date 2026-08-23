@@ -11,8 +11,8 @@ import type { NPCPersonality } from "./types";
 import { NPCAgent } from "./npc-agent";
 import { NPCStore } from "../db/index";
 
-export type RegistryEvent = "register" | "unregister";
-export type RegistryHook = (name: string, event: RegistryEvent) => void;
+type RegistryEvent = "register" | "unregister";
+type RegistryHook = (name: string, event: RegistryEvent) => void;
 
 export class AgentRegistry {
   private agents: Map<string, NPCAgent> = new Map();

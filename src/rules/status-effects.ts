@@ -2,7 +2,7 @@
 // 结构化状态/疾病系统
 // ============================================================
 
-export type StatusCategory =
+type StatusCategory =
   | "physical"   // 物理：中毒、流血
   | "mental"     // 精神：恐惧、魅惑
   | "combat"     // 战斗：潜行、专注
@@ -10,7 +10,7 @@ export type StatusCategory =
   | "buff"       // 增益
   | "debuff";    // 减益
 
-export interface StatusEffect {
+interface StatusEffect {
   id: string;
   name: string;
   desc: string;

@@ -29,7 +29,7 @@ const SECRET_LEAK_PATTERNS: Array<RegExp> = [
  * 检查输出是否泄露秘密
  * @returns 泄露的秘密列表（空=无泄露）
  */
-export function checkSecretLeak(
+function checkSecretLeak(
   output: string,
   secrets: string[]
 ): string[] {
@@ -62,7 +62,7 @@ export function checkSecretLeak(
 /**
  * 改写输出，移除秘密相关内容
  */
-export function sanitizeSecretLeak(output: string, leakedSecrets: string[]): string {
+function sanitizeSecretLeak(output: string, leakedSecrets: string[]): string {
   let sanitized = output;
   for (const secret of leakedSecrets) {
     if (secret === "__pattern_suspicious__") {
@@ -86,7 +86,7 @@ export function sanitizeSecretLeak(output: string, leakedSecrets: string[]): str
  * 检查输出是否超出 NPC 知识范围
  * @returns 检测到的越界声明列表
  */
-export function checkKnowledgeBoundary(
+function checkKnowledgeBoundary(
   output: string,
   knowledge: string[],
   _npcName: string
@@ -131,7 +131,7 @@ export function checkKnowledgeBoundary(
 /**
  * 检查回复基调是否与当前态度一致
  */
-export function checkAttitudeConsistency(
+function checkAttitudeConsistency(
   output: string,
   mood: NPCMood,
   relationship: number
@@ -165,7 +165,7 @@ export function checkAttitudeConsistency(
 // 综合约束检查
 // ============================================================
 
-export interface ConstraintResult {
+interface ConstraintResult {
   passed: boolean;
   sanitized: string;
   warnings: string[];

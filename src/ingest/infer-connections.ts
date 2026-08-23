@@ -22,7 +22,7 @@ export interface ChatLike {
   chat(messages: Message[], opts?: { temperature?: number }): Promise<string>;
 }
 
-export interface ConnScene {
+interface ConnScene {
   id: string;
   name: string;
   description: string;

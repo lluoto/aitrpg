@@ -359,7 +359,7 @@ export class CoCEngine {
 // SAN 系统
 // ============================================================
 
-export type IndefiniteLevel = "mild" | "moderate" | "severe" | null;
+type IndefiniteLevel = "mild" | "moderate" | "severe" | null;
 
 export interface SanityState {
   currentSAN: number;
@@ -386,7 +386,7 @@ export interface SanityState {
   mythosLog: CthulhuMythosEntry[];
 }
 
-export interface SanityCheckResult {
+interface SanityCheckResult {
   sanLoss: number;
   roll: number;
   passed: boolean;
@@ -408,7 +408,7 @@ export interface SanityCheckResult {
 /**
  * 疯狂表现结果
  */
-export interface BoutResult {
+interface BoutResult {
   type: string;                 // 疯狂类型（中文）
   symptom: string;              // 症状描述
   guidance: string;             // RP 指引
@@ -543,7 +543,7 @@ const BOUT_MATRIX: Array<{
 /**
  * 从分层表中随机选一条疯狂表现，返回丰富的 BoutResult
  */
-export function rollBoutOfMadness(): BoutResult {
+function rollBoutOfMadness(): BoutResult {
   const layer = BOUT_MATRIX[Math.floor(Math.random() * BOUT_MATRIX.length)];
   const variant = layer.variants[Math.floor(Math.random() * layer.variants.length)];
   return {
@@ -560,7 +560,7 @@ export function rollBoutOfMadness(): BoutResult {
 // ============================================================
 
 /** 三级不定疯狂定义 */
-export const INDEFINITE_LEVEL_DEFS: Record<string, {
+const INDEFINITE_LEVEL_DEFS: Record<string, {
   label: string;
   recoveryRate: number;
   nightmareChance: number;
@@ -1177,7 +1177,7 @@ export function calcDamageBonus(str: number, siz: number): { db: string; build: 
   return { db: "+8d6", build: 8 };
 }
 
-export function rollDamageBonus(db: string): number {
+function rollDamageBonus(db: string): number {
   // 骰子格式: +1d4, -1d6
   const diceMatch = db.match(/^([+-])(\d+)d(\d+)$/);
   if (diceMatch) {
@@ -1202,7 +1202,7 @@ export function rollDamageBonus(db: string): number {
  * 支持格式："+1d4"→4, "-1d6"→-6, "-2"→-2, "0"→0
  * 复合格式如 "+1d4+1d6"→10
  */
-export function maxDamageBonus(db: string): number {
+function maxDamageBonus(db: string): number {
   // 复合格式：用全局匹配分段
   const parts = db.match(/[+-]?\d+d\d+|[+-]?\d+/g);
   if (!parts) return 0;
@@ -1225,7 +1225,7 @@ export function maxDamageBonus(db: string): number {
 // CoC 7e 重伤 (Major Wound)
 // ============================================================
 
-export interface MajorWoundResult {
+interface MajorWoundResult {
   isMajorWound: boolean;
   location: string;
   unconscious: boolean;
@@ -1267,7 +1267,7 @@ export function checkMajorWound(
 // CoC 7e 克苏鲁神话技能
 // ============================================================
 
-export interface CthulhuMythosEntry {
+interface CthulhuMythosEntry {
   /** 来自哪本典籍/事件 */
   source: string;
   /** 增加的 CM 技能点数 */
@@ -1333,7 +1333,7 @@ export function getCalledShotPenalty(target: string): number {
 }
 
 /** 命中部位效果 */
-export interface HitLocationEffect {
+interface HitLocationEffect {
   location: HitLocation;
   damage: number;
   isImpale: boolean;
@@ -1440,80 +1440,6 @@ export function getHitLocationEffect(
   }
 
   return base;
-}
-
-// ============================================================
-// 对抗检定 (Opposed Roll)
-// ============================================================
-
-export interface OpposedResult {
-  winner: "attacker" | "defender" | "tie" | "double_fail";
-  attackerRoll: CoCCheckResult;
-  defenderRoll: CoCCheckResult;
-  attackerDegree: "critical" | "extreme" | "hard" | "regular" | "fail" | "fumble";
-  defenderDegree: "critical" | "extreme" | "hard" | "regular" | "fail" | "fumble";
-}
-
-/**
- * CoC 7e 对抗检定：双方各自投 d100 比拼成功度。
- * - 一方成功一方失败 → 成功者胜
- * - 双方均成功 → 成功度更高者胜（critical>extreme>hard>regular），同级则比较实际骰值（低者胜）
- * - 双方均失败 → double_fail（无结果，可凭情境判定）
- * - 一方 fumble → 对方自动胜（即使对方也失败）
- */
-export function opposedCheck(
-  attackerSkill: number,
-  defenderSkill: number,
-  _attackerLabel?: string,
-  _defenderLabel?: string,
-): OpposedResult {
-  // skillCheck 是 CoCEngine 的静态方法，模块内没有同名自由函数；
-  // 原先的裸调用会让 opposedCheck 每次执行都抛 ReferenceError。
-  const attackerRoll = CoCEngine.skillCheck(attackerSkill, "regular");
-  const defenderRoll = CoCEngine.skillCheck(defenderSkill, "regular");
-
-  // successLevel 已经就是成功度，取值与 OpposedResult 的 degree 完全一致。
-  // 原先的 getDegree 用 r.isExtreme / r.isHard 重新推导，而 CoCCheckResult 并无这两个字段：
-  // 取值恒为 undefined，导致极限成功与困难成功全部被降级成 regular，成功度比较因此失真。
-  const attackerDegree = attackerRoll.successLevel;
-  const defenderDegree = defenderRoll.successLevel;
-
-  const degreeOrder: Record<string, number> = {
-    fumble: -1,
-    fail: 0,
-    regular: 1,
-    hard: 2,
-    extreme: 3,
-    critical: 4,
-  };
-
-  const attVal = degreeOrder[attackerDegree] ?? 0;
-  const defVal = degreeOrder[defenderDegree] ?? 0;
-
-  let winner: OpposedResult["winner"];
-
-  if (attackerDegree === "fumble") {
-    winner = "defender";
-  } else if (defenderDegree === "fumble") {
-    winner = "attacker";
-  } else if (attVal > defVal) {
-    winner = "attacker";
-  } else if (defVal > attVal) {
-    winner = "defender";
-  } else if (attVal === 0 && defVal === 0) {
-    winner = "double_fail";
-  } else {
-    // 同级成功，比骰值（低者胜）
-    winner = attackerRoll.roll <= defenderRoll.roll ? "attacker" : "defender";
-  }
-
-  return {
-    winner,
-    attackerRoll,
-    defenderRoll,
-    attackerDegree,
-    defenderDegree,
-  };
 }
 
 

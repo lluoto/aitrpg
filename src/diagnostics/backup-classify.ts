@@ -40,7 +40,7 @@ export interface ClassifyInput {
   size: number;
 }
 
-export interface ClassifyResult {
+interface ClassifyResult {
   kind: BackupClass;
   /** 命中的规则 id。测试钉这个，防「分类碰巧对了但走错规则」 */
   rule: string;
@@ -184,11 +184,11 @@ export function classifyPath(input: ClassifyInput): ClassifyResult {
 // 汇总：什么时候可以给出「不可再生总量」
 // ============================================================
 
-export const IRREPLACEABLE: readonly BackupClass[] = ["源材料", "手写设计", "脚本"];
+const IRREPLACEABLE: readonly BackupClass[] = ["源材料", "手写设计", "脚本"];
 
-export interface KindTotal { count: number; size: number }
+interface KindTotal { count: number; size: number }
 
-export interface AuditSummary {
+interface AuditSummary {
   byKind: Map<BackupClass, KindTotal>;
   totalSize: number;
   /** 已确定不可再生的部分（下界） */
@@ -209,7 +209,7 @@ export interface AuditSummary {
 export interface AuditItem { rel: string; size: number; kind: BackupClass; rule: string; manualReview: boolean }
 
 /** 待确认占总量超过这个比例，就认为审计没做完 */
-export const PENDING_RATIO_LIMIT = 0.02;
+const PENDING_RATIO_LIMIT = 0.02;
 /** 或者待确认的绝对体量超过这个数（字节），同样算没做完 */
 export const PENDING_SIZE_LIMIT = 50 * 1024 * 1024;
 

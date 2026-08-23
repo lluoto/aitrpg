@@ -799,7 +799,7 @@ export class CompanionManager {
 // 位置中文标签
 // ============================================================
 
-export function positionLabel(pos: string): string {
+function positionLabel(pos: string): string {
   const labels: Record<string, string> = {
     melee_range: "近战位",
     ranged: "远程位",

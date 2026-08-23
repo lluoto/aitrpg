@@ -44,7 +44,7 @@ const ACTIVATION_TYPES = ["manual", "location_enter", "item_found", "read_tome",
 type ModuleDifficulty = (typeof MODULE_DIFFICULTIES)[number];
 type ActivationType = (typeof ACTIVATION_TYPES)[number];
 
-export type ModuleParseResult =
+type ModuleParseResult =
   | { ok: true; module: MythosModule }
   | { ok: false; error: string };
 
@@ -119,24 +119,4 @@ export function saveModuleFile(module: MythosModule): void {
 export function deleteModuleFile(id: string): void {
   const fp = join(MODULES_DIR, `${id}.json`);
   if (existsSync(fp)) unlinkSync(fp);
-}
-
-/** 创建空白模组骨架 */
-export function createBlankModule(id: string, name: string): MythosModule {
-  return {
-    id,
-    name,
-    version: "1.0",
-    description: "",
-    difficulty: "medium",
-    activation: { type: "manual", condition: "" },
-    // 这里原来铺的是 scenes / characters / creatures —— MythosModule 没有这三个字段，
-    // 它们是旧 schema 的名字。加载器只认 sceneDescriptions 和 npcs（NPC 与生物共用），
-    // 所以编辑器建出来的空白模组既带着三个会被忽略的键，又缺少真正能往里填的容器。
-    sceneDescriptions: {},
-    npcs: [],
-    clues: [],
-    items: [],
-    spells: [],
-  };
 }

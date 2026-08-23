@@ -37,7 +37,7 @@ export interface ExitRecord {
   sighted?: SightedEntity;
 }
 
-export interface ExitParse {
+interface ExitParse {
   /** 尽力解析出来的出口。即便 `ok` 为 false 也可能非空（部分可用） */
   exits: ExitRecord[];
   /** 整份数据是否完整读懂。**false 时不许拿 `exits` 去覆盖原数据** */

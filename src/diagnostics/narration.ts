@@ -18,18 +18,18 @@
 export { nameParts, mentionsName, knownNameVariants, namesPerson } from "../play/names";
 import { namesPerson } from "../play/names";
 
-export interface NameLeak {
+interface NameLeak {
   sceneId: string;
   npc: string;
   hit: string;
 }
 
-export interface LeakScene {
+interface LeakScene {
   id: string;
   npcIds?: readonly string[];
   openingAtmosphere?: string;
 }
-export interface LeakNpc { id: string; name: string }
+interface LeakNpc { id: string; name: string }
 
 /**
  * 场景的开场氛围里，提前点了哪些**本场景 NPC** 的名字。

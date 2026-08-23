@@ -12,7 +12,7 @@ import { buildBaseBackgroundProfile } from "./background-profile";
 // ============================================================
 
 /** CoC 7e 核心属性名 */
-export type CoCAttribute =
+type CoCAttribute =
   | "strength" | "constitution" | "size" | "dexterity"
   | "appearance" | "intelligence" | "power" | "education";
 
@@ -117,7 +117,7 @@ for (const [cn, en] of Object.entries(SKILL_NAME_MAP)) {
  * CoC 7e 属性（STR/CON/SIZ/DEX/APP/INT/POW/EDU/LUCK）不是技能，
  * 检定需从 attributes 或 luck 字段取值，而不是 skillValues。
  */
-export const ATTRIBUTE_NAME_MAP: Record<string, string> = {
+const ATTRIBUTE_NAME_MAP: Record<string, string> = {
   "力量": "strength", "STR": "strength", "strength": "strength",
   "体质": "constitution", "CON": "constitution", "constitution": "constitution",
   "体型": "size", "SIZ": "size", "size": "size",
@@ -156,19 +156,8 @@ export function hasSkillByKey(charSkills: string[], englishKey: string): boolean
   return false;
 }
 
-/**
- * 获取角色技能列表中指定英文 key 的技能名（中文）
- * 不存在则返回英文 key 本身（fallback）
- */
-export function getSkillName(charSkills: string[], englishKey: string): string {
-  const cnName = REVERSE_SKILL_MAP[englishKey];
-  if (cnName && charSkills.includes(cnName)) return cnName;
-  if (charSkills.includes(englishKey)) return englishKey;
-  return cnName ?? englishKey;
-}
-
 /** 创建选项 */
-export interface CoCCharacterConfig {
+interface CoCCharacterConfig {
   /** 角色名 */
   name: string;
   /** 职业模板 ID */
@@ -336,7 +325,7 @@ function pointBuyAttributes(
 // 常量消息定义（集中管理中文输出，便于统一修改）
 // ============================================================
 
-export const WARN_MSG = {
+const WARN_MSG = {
   belowMinAttr: (label: string, current: number, min: number) =>
     `${label} ${current} < 职业下限 ${min}`,
   aboveMaxAttr: (label: string, current: number, max: number) =>
@@ -357,7 +346,7 @@ export const WARN_MSG = {
 // ============================================================
 
 /** 属性名 → 中文名映射 */
-export const COC_ATTR_LABELS: Record<string, string> = {
+const COC_ATTR_LABELS: Record<string, string> = {
   strength: "力量(STR)", constitution: "体质(CON)", size: "体型(SIZ)",
   dexterity: "敏捷(DEX)", appearance: "外貌(APP)", intelligence: "智力(INT)",
   power: "意志(POW)", education: "教育(EDU)", luck: "幸运(LUCK)",
@@ -779,201 +768,6 @@ export function getBaseSkillValue(skillKey: string, dex: number = 50, edu: numbe
   if (skillKey === "dodge") return Math.floor(dex / 2);
   if (skillKey === "language_own") return edu;
   return COC_SKILL_BASES[skillKey] ?? 0;
-}
-
-// ============================================================
-// 技能点分配 — 状态 & 操作
-// ============================================================
-
-export interface SkillAllocState {
-  /** 角色技能当前值（中文名 → 百分比） */
-  values: Record<string, number>;
-  /** 职业技能剩余可分配点数 */
-  remainingOcc: number;
-  /** 个人兴趣剩余可分配点数 */
-  remainingInt: number;
-  /** 职业技能列表（中文名） */
-  occSkills: string[];
-  /** 职业技能英文 key 列表 */
-  occSkillKeys: string[];
-  /** 是否已完成职业分配 */
-  occDone: boolean;
-  /** 是否已完成兴趣分配 */
-  intDone: boolean;
-}
-
-/** CoC 7e 道奇基础值 = DEX/2 的动态函数 */
-export function calcDodgeBase(dex: number): number {
-  return Math.floor(dex / 2);
-}
-
-/**
- * 创建技能分配初始状态
- * @param archetype 职业模板
- * @param edu EDU 属性值（决定职业技能点）
- * @param int INT 属性值（决定兴趣技能点）
- * @param dex DEX 属性值（计算道奇基础）
- * @param options 可选调整
- */
-export function createSkillAllocator(
-  archetype: CharacterArchetype,
-  edu: number,
-  int: number,
-  _dex: number = 50,
-  options?: {
-    /** 职业技能点倍率覆盖（默认 1） */
-    occMultiplier?: number;
-    /** 兴趣技能点倍率覆盖（默认 2，即 INT×2） */
-    intMultiplier?: number;
-    /** 初始技能值覆盖 */
-    overrides?: Record<string, number>;
-    /** 属性表（双来源计算用） */
-    attrs?: Record<string, number>;
-  },
-): SkillAllocState {
-  const occSkills: string[] = archetype.skills ?? [];
-  const occKeys: string[] = archetype.occupationSkills ?? [];
-
-  // 支持双来源计算
-  let occPts: number;
-  if (options?.attrs) {
-    occPts = calcOccupationSkillPoints(archetype, options.attrs);
-  } else {
-    occPts = edu * (options?.occMultiplier ?? 1);
-  }
-  const intPts = int * (options?.intMultiplier ?? 2);
-
-  const values: Record<string, number> = {};
-  for (const key of occKeys) {
-    const cn = REVERSE_SKILL_MAP[key];
-    if (cn) values[cn] = options?.overrides?.[cn] ?? 0;
-  }
-
-  return {
-    values,
-    remainingOcc: occPts,
-    remainingInt: intPts,
-    occSkills,
-    occSkillKeys: occKeys,
-    occDone: false,
-    intDone: false,
-  };
-}
-
-/**
- * 分配职业技能点
- * @param state 分配状态
- * @param skillId 技能的英文 key 或中文名
- * @param points 要分配的技能点数
- * @param options.allowOverMax 是否允许超过 99（默认否）
- * @returns 分配结果
- */
-export function allocateOccSkill(
-  state: SkillAllocState,
-  skillId: string,
-  points: number,
-  options?: { allowOverMax?: boolean },
-): { success: boolean; message: string } {
-  if (state.occDone) return { success: false, message: "职业技能点已完成分配" };
-  if (points <= 0) return { success: false, message: "分配点数必须大于 0" };
-  if (points > state.remainingOcc) return { success: false, message: `剩余职业技能点不足（剩余 ${state.remainingOcc}，需要 ${points}）` };
-
-  // 解析技能名 → 中文名
-  const cnName = SKILL_NAME_MAP[skillId] ?? skillId;
-  if (!state.occSkills.includes(cnName) && !state.occSkillKeys.includes(skillId) && !state.occSkillKeys.includes(cnName)) {
-    return { success: false, message: `"${cnName}" 不属于本职业技能` };
-  }
-
-  const current = state.values[cnName] ?? 0;
-  const maxAllowed = options?.allowOverMax ? 99 : Math.min(99, current + points);
-  const actualPoints = maxAllowed - current;
-
-  if (actualPoints <= 0) return { success: false, message: `"${cnName}" 已达上限 99%` };
-  if (actualPoints < points) {
-    state.values[cnName] = 99;
-    state.remainingOcc -= actualPoints;
-    return { success: true, message: `"${cnName}" 已达上限 99%，实际消耗 ${actualPoints} 点` };
-  }
-
-  state.values[cnName] = current + points;
-  state.remainingOcc -= points;
-  return { success: true, message: `"${cnName}" +${points}%，当前 ${state.values[cnName]}%` };
-}
-
-/**
- * 分配个人兴趣技能点
- * @param state 分配状态
- * @param skillId 技能的英文 key 或中文名
- * @param points 要分配的点数
- * @param options.allowOverMax 是否允许超过 99
- * @returns 分配结果
- */
-export function allocateIntSkill(
-  state: SkillAllocState,
-  skillId: string,
-  points: number,
-  options?: { allowOverMax?: boolean },
-): { success: boolean; message: string } {
-  if (state.intDone) return { success: false, message: "个人兴趣技能点已完成分配" };
-  if (points <= 0) return { success: false, message: "分配点数必须大于 0" };
-  if (points > state.remainingInt) return { success: false, message: `剩余兴趣技能点不足（剩余 ${state.remainingInt}，需要 ${points}）` };
-
-  const cnName = SKILL_NAME_MAP[skillId] ?? skillId;
-  const current = state.values[cnName] ?? 0;
-  const maxAllowed = options?.allowOverMax ? 99 : Math.min(99, current + points);
-  const actualPoints = maxAllowed - current;
-
-  if (actualPoints <= 0) return { success: false, message: `"${cnName}" 已达上限 99%` };
-  if (actualPoints < points) {
-    state.values[cnName] = 99;
-    state.remainingInt -= actualPoints;
-    return { success: true, message: `"${cnName}" 已达上限 99%，实际消耗 ${actualPoints} 点` };
-  }
-
-  state.values[cnName] = current + points;
-  state.remainingInt -= points;
-  return { success: true, message: `"${cnName}" +${points}%，当前 ${state.values[cnName]}%` };
-}
-
-/**
- * 提交职业技能分配（锁定，不能再修改）
- */
-export function lockOccSkills(state: SkillAllocState): { success: boolean; message: string } {
-  if (state.remainingOcc > 0) {
-    return { success: false, message: `还有 ${state.remainingOcc} 点职业技能点未分配` };
-  }
-  state.occDone = true;
-  return { success: true, message: "职业技能分配已完成" };
-}
-
-/**
- * 提交个人兴趣分配（锁定）
- */
-export function lockIntSkills(state: SkillAllocState): { success: boolean; message: string } {
-  if (state.remainingInt > 0) {
-    return { success: false, message: `还有 ${state.remainingInt} 点个人兴趣技能点未分配` };
-  }
-  state.intDone = true;
-  return { success: true, message: "个人兴趣技能分配已完成" };
-}
-
-/**
- * 获取技能分配摘要（用于 UI 展示）
- */
-export function getSkillAllocSummary(state: SkillAllocState): string {
-  const lines: string[] = [];
-  lines.push(`【技能点分配】`);
-  lines.push(`职业技能：剩余 ${state.remainingOcc} 点${state.occDone ? " ✅ 已锁定" : ""}`);
-  lines.push(`个人兴趣：剩余 ${state.remainingInt} 点${state.intDone ? " ✅ 已锁定" : ""}`);
-
-  const assigned = Object.entries(state.values).filter(([, v]) => v > 0);
-  if (assigned.length > 0) {
-    lines.push(`已分配技能：`);
-    for (const [name, val] of assigned) {
-      lines.push(`  ${name}: ${val}%`);
-    }
-  }
-  return lines.join("\n");
 }
 
 /**

@@ -5,7 +5,7 @@
 import type { CoCGeneratedCharacter } from "../character/coc-character";
 import { extractMessageContent } from "../llm/client";
 
-export interface PlayerCharacter {
+interface PlayerCharacter {
   name: string;
   occupation: string;
   char: CoCGeneratedCharacter;
@@ -34,7 +34,7 @@ export interface PlayerDecision {
   targetName?: string;
 }
 
-export interface FallbackContext {
+interface FallbackContext {
   sceneDescription: string;
   availableActions: string[];
   availableClues: string[];

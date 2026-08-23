@@ -307,7 +307,7 @@ CoC 额外字段:
 只输出 JSON，不要任何额外文字。格式:
 {"action":"attack","target":"哥布林","weapon":"shortsword","method":"melee"}`;
 
-export async function parseIntentLLM(
+async function parseIntentLLM(
   input: string,
   llm: LLMClient
 ): Promise<ActionIntent> {

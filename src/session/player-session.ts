@@ -12,7 +12,7 @@ import type { AgentMessage } from "../agent/types";
 // 玩家槽位
 // ============================================================
 
-export interface PlayerSlot {
+interface PlayerSlot {
   name: string;           // 玩家名（用于 CLI 切换）
   characterName: string;   // 角色名（用于叙事中的称呼）
   characterId: string;     // 对应 WorldStateManager 中的 entity_id

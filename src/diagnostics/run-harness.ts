@@ -18,7 +18,7 @@ import type { PlayEvent } from "../play/events";
 import type { PlayerDecision } from "../agent/player-agent";
 
 /** 决策步数打满 —— 当作疑似死循环，不是正常结束 */
-export class DecisionCapError extends Error {
+class DecisionCapError extends Error {
   constructor(public readonly cap: number) {
     super(`决策步数超过上限 ${cap}，疑似死循环`);
     this.name = "DecisionCapError";
@@ -26,7 +26,7 @@ export class DecisionCapError extends Error {
 }
 
 /** 单局超时 —— 在决策点协作式中断 */
-export class RunTimeoutError extends Error {
+class RunTimeoutError extends Error {
   constructor(public readonly ms: number) {
     super(`单局超过 ${ms}ms，疑似死循环`);
     this.name = "RunTimeoutError";
@@ -63,7 +63,7 @@ export async function withSeededRandom<T>(seed: number, fn: () => Promise<T>): P
   }
 }
 
-export interface HarnessOptions {
+interface HarnessOptions {
   seed: number;
   /** 单局最长耗时（毫秒）。在决策点检查，超了就抛 RunTimeoutError */
   timeoutMs: number;
@@ -73,7 +73,7 @@ export interface HarnessOptions {
   keepLines?: boolean;
 }
 
-export interface HarnessResult {
+interface HarnessResult {
   seed: number;
   events: PlayEvent[];
   lines: string[];

@@ -1,45 +1,27 @@
-// 角色创建系统 — 职业模板 + 属性约束 + 自动补齐
-// 解决"老兵没有合理敏捷/体质"的问题
 
-
-
-// ============================================================
-// 类型定义
-// ============================================================
-
-export type ArchetypeId = string;
-
-export type ArchetypeRole =
+type ArchetypeRole =
   | "striker" | "leader" | "controller" | "defender"
   | "healer" | "face" | "skill_monkey" | "blaster";
 
-export type Skill5e =
-  | "acrobatics" | "animal_handling" | "arcana" | "athletics"
-  | "deception" | "history" | "insight" | "intimidation"
-  | "investigation" | "medicine" | "nature" | "perception"
-  | "performance" | "persuasion" | "religion" | "sleight_of_hand"
-  | "stealth" | "survival";
-
-export type SaveType5e =
+type SaveType5e =
   | "strength" | "dexterity" | "constitution"
   | "intelligence" | "wisdom" | "charisma";
 
-export type SkillSource = "class" | "background" | "feat";
+type SkillSource = "class" | "background" | "feat";
 
-export type AttackModifier = { type: "flat" | "ability" | "proficiency"; value: number; };
-export type DamageModifier = { dice: string; ability?: string; damageType?: string; };
-export type ArmorModifier = { base?: number; bonus?: number; maxDex?: number; };
-export type SaveModifier = { type: "proficiency" | "advantage" | "flat"; value: number; };
-export type AbilityBonus = { ability: string; bonus: number; };
-export type SaveAdvantage = { abilities: string[]; };
-export type SkillBonus = { skills: string[]; bonus: number; };
-export type ExtraAttack = { count: number; };
-export type CustomTag = string;
+type AttackModifier = { type: "flat" | "ability" | "proficiency"; value: number; };
+type DamageModifier = { dice: string; ability?: string; damageType?: string; };
+type ArmorModifier = { base?: number; bonus?: number; maxDex?: number; };
+type SaveModifier = { type: "proficiency" | "advantage" | "flat"; value: number; };
+type AbilityBonus = { ability: string; bonus: number; };
+type SaveAdvantage = { abilities: string[]; };
+type SkillBonus = { skills: string[]; bonus: number; };
+type ExtraAttack = { count: number; };
 
 /** 特性/专长的作用方式 */
-export type FeatureKind = "passive" | "active" | "supernatural" | "bonus_action" | "reaction";
+type FeatureKind = "passive" | "active" | "supernatural" | "bonus_action" | "reaction";
 
-export interface LevelFeature {
+interface LevelFeature {
   level: number;
   name: string;
   description: string;
@@ -55,7 +37,7 @@ export interface LevelFeature {
 }
 
 /** featChoices.options 的元素 */
-export interface FeatOption {
+interface FeatOption {
   name: string;
   description: string;
   type?: FeatureKind;
@@ -63,14 +45,14 @@ export interface FeatOption {
   usesPerDay?: string;
 }
 
-export interface FeatChoice {
+interface FeatChoice {
   level: number;
   /** 可选数量。消费方（index.ts 升级流程）读的是 pick，此前声明成 count 是错的。 */
   pick: number;
   options: FeatOption[];
 }
 
-export interface Prerequisite {
+interface Prerequisite {
   minLevel?: number;
   minBAB?: number;
   skills?: Record<string, number>;
@@ -79,7 +61,7 @@ export interface Prerequisite {
   alignment?: string[];
 }
 
-export interface SubclassChoice {
+interface SubclassChoice {
   level: number;
   options: string[];
 }
@@ -241,7 +223,7 @@ export interface GeneratedCharacter {
   legendaryResistanceUsed?: number;
 }
 
-export interface FeatureEffect {
+interface FeatureEffect {
   id: string;
   name: string;
   description: string;
@@ -999,11 +981,6 @@ export const ALL_ARCHETYPES: CharacterArchetype[] = new Proxy(BASE_ARCHETYPES, {
 /** 根据职业 ID 查找职业模板 */
 export function getArchetype(id: string): CharacterArchetype | undefined {
   return ALL_ARCHETYPES.find(a => a.id === id);
-}
-
-/** 获取指定规则集的职业 */
-export function getArchetypesByRuleset(ruleset: string): CharacterArchetype[] {
-  return ALL_ARCHETYPES.filter(a => a.rulesets.includes(ruleset));
 }
 
 // ============================================================

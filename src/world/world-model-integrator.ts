@@ -56,7 +56,7 @@ export interface SceneContext {
 // 世界模型注入结果
 // ============================================================
 
-export interface WorldModelInjection {
+interface WorldModelInjection {
   /** 当前场景的势力关系上下文 */
   factionContext: string;
   /** 当前场景中 NPC 可能触发的行为模式 */

@@ -34,7 +34,7 @@ import { parseExits, mergeExits } from "../state/scene-exits";
 // ============================================================
 
 /** 模组中需注册的法术 */
-export interface ModuleSpell {
+interface ModuleSpell {
   name: string;
   sanCost: string;
   mpCost: number;
@@ -43,7 +43,7 @@ export interface ModuleSpell {
 }
 
 /** 模组中需放置的典籍 */
-export interface ModuleTome {
+interface ModuleTome {
   name: string;
   /** 出现在哪个场景 */
   sceneId: string;
@@ -60,7 +60,7 @@ export interface ModuleTome {
 /**
  * 模组结局定义 — 游戏结束条件与触发描述
  */
-export interface ModuleEnding {
+interface ModuleEnding {
   id: string;
   /** 结局名称（如 "Normal End"、"True End"） */
   name: string;
@@ -76,7 +76,7 @@ export interface ModuleEnding {
  * 模组奖励规则 — 根据调查员行为自动结算
  * 与 endings 独立：同一个结局可能触发多条奖励规则，不同结局也可能共享规则
  */
-export interface ModuleReward {
+interface ModuleReward {
   id: string;
   description: string;
   /** 触发条件文本（供 LLM KP 判断是否满足） */

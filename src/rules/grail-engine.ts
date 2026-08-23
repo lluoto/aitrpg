@@ -51,7 +51,7 @@ export function inferGrailRank(entity: RankSource): GrailRank {
   return "bronze";
 }
 
-export interface RankConfig {
+interface RankConfig {
   label: string;
   tier: number;
   base_attack: number;
@@ -68,7 +68,7 @@ export interface RankConfig {
 // 位阶压制结果
 // ============================================================
 
-export interface TierSuppressionResult {
+interface TierSuppressionResult {
   applicable: boolean;
   attackerRank: GrailRank;
   defenderRank: GrailRank;

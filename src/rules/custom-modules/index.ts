@@ -35,13 +35,3 @@ register(PREMIERS_BARN_REGISTRY);
 export function getModule(id: string): { name: string; module: MythosModule } | undefined {
   return _moduleMap.get(id);
 }
-
-/** 列出所有可用模组 */
-export function listModules(): Array<{ id: string; name: string }> {
-  return Array.from(_moduleMap.entries()).map(([id, entry]) => ({ id, name: entry.name }));
-}
-
-/** 是否已加载指定模组 */
-export function hasModule(id: string): boolean {
-  return _moduleMap.has(id);
-}

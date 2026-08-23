@@ -293,7 +293,7 @@ export function investigableClues(ctx: ClueCtx): Clue[] {
 
 
 /** Strip game mechanic suffixes (ScX/Y, CM+X) from revelation text */
-export function sanitizeRevelation(text: string): string {
+function sanitizeRevelation(text: string): string {
   // Remove full parenthetical SAN blocks: （Sc0/1d3） (SC1d3+1/1d6+1)
   let s = text.replace(/[（(]\s*[Ss][Cc]\s*\d+(?:[dD]\d+)?(?:\s*\+\s*\d+)?(?:\s*\/\s*\d+(?:[dD]\d+)?(?:\s*\+\s*\d+)?)?\s*[）)]/g, "");
   // Remove bare Sc0/1d3 / sc1/1d3+1 / SC1d3+1/1d6+1
@@ -319,7 +319,7 @@ export function sanitizeRevelation(text: string): string {
  *
  * 不是每个发现都配一句 —— 每次都接会变成噪音，反而更假。寡言的人开口更少。
  */
-export function sayPartnerRemark(dedup: Dedup, partner: PlayerAgent, kind: "clue" | "san"): void {
+function sayPartnerRemark(dedup: Dedup, partner: PlayerAgent, kind: "clue" | "san"): void {
   const traits = partner.pc.personality || "";
   const chance = RESERVED.test(traits) && !OUTGOING.test(traits) ? 0.25 : 0.5;
   if (Math.random() > chance) return;

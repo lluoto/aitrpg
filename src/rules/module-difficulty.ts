@@ -1,18 +1,3 @@
-/**
- * 模组难度评估 + 动态难度规划
- * ==============================
- *
- * 将 MythosModule.difficulty（easy|medium|hard|nightmare）
- * 转化为具体的调查参数调整。
- *
- * 设计原则：
- *   - 每个模组加载时生成一个 DifficultyProfile
- *   - InvestigationEngine 根据 profile 调整 DC 和失败产出
- *   - 不修改底层 skillCheck 逻辑，只调整边界参数
- */
-
-import type { MythosModule } from "./mythos-module";
-import { log } from "../log";
 
 // ============================================================
 // 难度画像
@@ -95,26 +80,6 @@ const DIFFICULTY_TABLE: Record<string, DifficultyProfile> = {
     description: "噩梦难度，失败获得线索但伴随SAN损失和惩罚骰+2，推动需叙事触发。",
   },
 };
-
-// ============================================================
-// 评估函数
-// ============================================================
-
-/**
- * 根据模组生成难度画像
- */
-export function assessModuleDifficulty(module?: MythosModule | null): DifficultyProfile {
-  if (!module) {
-    // 无模组时默认 medium
-    return { ...DIFFICULTY_TABLE.medium };
-  }
-  const base = DIFFICULTY_TABLE[module.difficulty];
-  if (!base) {
-    log.warn("difficulty", `未知难度 "${module.difficulty}"，回退到 medium`);
-    return { ...DIFFICULTY_TABLE.medium };
-  }
-  return { ...base };
-}
 
 /**
  * 获取指定难度的画像（直接查表，不依赖模组对象）

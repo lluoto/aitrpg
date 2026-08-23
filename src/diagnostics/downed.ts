@@ -24,7 +24,7 @@
 
 import type { PlayEvent, DownedCause } from "../play/events";
 
-export interface DownedViolation {
+interface DownedViolation {
   actor: string;
   skill: string;
   /** 事件序号，便于回溯 */

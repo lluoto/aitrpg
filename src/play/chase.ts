@@ -13,7 +13,7 @@ import { say } from "./narration";
 import { emit } from "./narration";
 
 /** 追逐的收场 */
-export interface ChaseOutcome {
+interface ChaseOutcome {
   /** 追上了 */
   caught: boolean;
   /** 跑了 */

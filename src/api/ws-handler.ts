@@ -7,7 +7,7 @@ import type { ServerWebSocket } from "bun";
 /** 连接角色 */
 export type WsRole = "kp" | "player" | "observer";
 
-export const WS_ROLES: readonly WsRole[] = ["kp", "player", "observer"];
+const WS_ROLES: readonly WsRole[] = ["kp", "player", "observer"];
 
 export function isWsRole(value: string | null): value is WsRole {
   return value !== null && (WS_ROLES as readonly string[]).includes(value);
@@ -65,16 +65,6 @@ export function broadcastToSession(sessionId: string, event: string, data: unkno
   for (const [, c] of clients) {
     if (c.sessionId === sessionId) {
       try { c.ws.send(msg); } catch { /* ignore dead conn */ }
-    }
-  }
-}
-
-/** 发送给 session 中的 KP */
-export function sendToKp(sessionId: string, event: string, data: unknown): void {
-  const msg = JSON.stringify({ event, data, timestamp: Date.now() });
-  for (const [, c] of clients) {
-    if (c.sessionId === sessionId && c.role === "kp") {
-      try { c.ws.send(msg); } catch { /* ignore */ }
     }
   }
 }

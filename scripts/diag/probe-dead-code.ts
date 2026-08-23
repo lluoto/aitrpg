@@ -178,8 +178,9 @@ out.push("");
 
 out.push(`## 声明了没读，按文件（${unusedLines.length}）`);
 out.push("");
-out.push("这两个开关由本探针在命令行上强制打开，与 tsconfig 无关 ——");
-out.push("tsconfig 里关着是为了让 typecheck 保持绿，不是因为这些不算问题。");
+out.push("这两个开关由本探针在命令行上强制打开，**与 tsconfig 无关**。");
+out.push("现在 tsconfig 里也开着（已清到 0），但探针不该假设这一点 ——");
+out.push("哪天有人为了让构建变绿把开关关掉，这里仍然量得出真实数字。");
 out.push("");
 if (byFile.size === 0) {
   out.push("⚠ **一条都没抓到**。tsc 真的一条没报，还是根本没跑起来？");

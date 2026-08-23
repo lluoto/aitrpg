@@ -2,12 +2,12 @@
 // 随机表引擎 — 可编程随机内容生成
 // ============================================================
 
-export interface WeightedEntry {
+interface WeightedEntry {
   weight: number;
   value: string | string[];
 }
 
-export interface RandomTable {
+interface RandomTable {
   name: string;
   desc: string;
   method: "pick" | "compose";
@@ -39,12 +39,8 @@ function resolveValue(value: string | string[]): string {
 
 const registry = new Map<string, RandomTable>();
 
-export function registerTable(table: RandomTable) {
+function registerTable(table: RandomTable) {
   registry.set(table.name, table);
-}
-
-export function getTable(name: string): RandomTable | undefined {
-  return registry.get(name);
 }
 
 export function listTables(): { name: string; desc: string }[] {

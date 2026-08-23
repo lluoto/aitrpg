@@ -1,7 +1,7 @@
 import type { GateState, ScenarioSpec } from "./apply-action";
 
-export const DIFFICULTY_DOMAIN = ["easy", "medium", "hard", "nightmare"] as const;
-export type DifficultyLabel = (typeof DIFFICULTY_DOMAIN)[number];
+const DIFFICULTY_DOMAIN = ["easy", "medium", "hard", "nightmare"] as const;
+type DifficultyLabel = (typeof DIFFICULTY_DOMAIN)[number];
 
 /** Phase 3.1 的最小真实场景：会话级难度是当前唯一已接线的枚举状态。 */
 export const COC_SESSION_SCENARIO: ScenarioSpec = {

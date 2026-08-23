@@ -18,7 +18,7 @@
 
 import type { PlayEvent } from "../play/events";
 
-export interface CombatRound {
+interface CombatRound {
   round: number;
   /** 本轮敌人挥击（按目标分） */
   enemyAttacks: { target: string; outcome: "miss" | "dodged" | "hit"; damage: number }[];
@@ -26,7 +26,7 @@ export interface CombatRound {
   pcAttacks: { actor: string; skill: string; success: boolean }[];
 }
 
-export interface CombatEncounter {
+interface CombatEncounter {
   enemy: string;
   rounds: CombatRound[];
   /** 战斗中玩家被打掉的 HP 总量 */
@@ -107,7 +107,7 @@ export function reduceCombat(events: readonly PlayEvent[]): CombatReport {
   return report;
 }
 
-export interface CombatVerdict {
+interface CombatVerdict {
   /** 发生过战斗的局数（分母） */
   fights: number;
   /** 敌人一次都没挥击的战斗数 —— **这才是「不还手」的判据** */

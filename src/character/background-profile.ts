@@ -57,15 +57,6 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
 export type Gender = "male" | "female";
 
 /** 这个名字是男名还是女名。认不出时返回 undefined —— 不猜 */
@@ -220,11 +211,6 @@ export function buildBaseBackgroundProfile(archetype: CharacterArchetype): Backg
     woundsAndScars: pick(pool.woundsAndScars),
     phobiasAndManias: pick(pool.phobiasAndManias),
   };
-}
-
-/** 从职业池随机抽取 N 个不同职业 */
-export function pickDistinctArchetypes(archs: CharacterArchetype[], n: number): CharacterArchetype[] {
-  return shuffle(archs).slice(0, n);
 }
 
 // ============================================================

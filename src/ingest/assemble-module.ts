@@ -17,7 +17,7 @@ import type { Ending, ModuleData, ModuleItem, ModuleNPC, Provenance, Scene } fro
 import type { Section } from "./sectionize";
 import type { SectionKind } from "./classify-sections";
 
-export interface AssembleInput {
+interface AssembleInput {
   sections: Section[];
   /** 与 sections 平行的 id 表 */
   ids: string[];
@@ -28,13 +28,13 @@ export interface AssembleInput {
   endings?: Ending[];
 }
 
-export interface AssembleOptions {
+interface AssembleOptions {
   id: string;
   title: string;
   version?: string;
 }
 
-export interface AssembleResult {
+interface AssembleResult {
   module: ModuleData;
   /** 每一处「没抽到、留空了」都记在这儿 */
   warnings: string[];
@@ -105,30 +105,4 @@ export function assembleModule(input: AssembleInput, opts: AssembleOptions): Ass
   }
 
   return { module, warnings };
-}
-
-/**
- * 中性的 ModuleSupport。
- *
- * `runModule` 除了 ModuleData 还要一份 ModuleSupport，里面全是模组专属逻辑：
- * 恐怖线索的 SAN 代价、结局评估、遭遇战、枢纽/终局场景 id……摄取一样都没抽。
- *
- * 这里给的是一份**什么都不做**的：没有结局评估、没有遭遇战、没有终局。
- * 它让摄取出来的模组能跑起来、能走动、能看描述，但不会自己结束，也不会打起来。
- * 同样不编 —— 编一个 finaleSceneId 出来，跑到那个场景就会莫名其妙地终局。
- */
-export function neutralSupport(): import("../module/types").ModuleSupport {
-  return {
-    traumaticClues: {},
-    evaluateEnding: () => null,
-    endLabels: {},
-    encounters: [],
-    // 枢纽留空：模型认枢纽验过 5/5，但那还没接进管线。
-    // 空串的效果是不做「回镇上重分派」的移动排序，不影响能不能走。
-    hubSceneId: "",
-    finaleSceneId: "",
-    finaleClueId: "",
-    // 匹配不到任何东西 —— 摄取没有做 BOSS 识别。
-    bossNpcIdPattern: /(?!)/,
-  };
 }

@@ -9,14 +9,14 @@
 
 export type HorrorSubgenre = "lovecraft" | "slasher" | "ghost" | "cult" | "body_horror" | "cosmic";
 
-export type StoryLength = "short" | "medium" | "long";
+type StoryLength = "short" | "medium" | "long";
 
-export type SceneTheme =
+type SceneTheme =
   | "abandoned_house" | "farm" | "forest" | "asylum" | "church"
   | "laboratory" | "library" | "museum" | "warehouse" | "harbor"
   | "mansion" | "cave" | "swamp" | "underground" | "village";
 
-export interface StoryConfig {
+interface StoryConfig {
   /** 故事主题/hook */
   theme?: string;
   /** 恐怖子类型 */
@@ -31,7 +31,7 @@ export interface StoryConfig {
   requiredElements?: string[];
 }
 
-export interface SceneOutput {
+interface SceneOutput {
   id: string;
   name: string;
   description: string;
@@ -45,7 +45,7 @@ export interface SceneOutput {
   clues: string[];
 }
 
-export interface EntityOutput {
+interface EntityOutput {
   id: string;
   name: string;
   type: "npc" | "monster";

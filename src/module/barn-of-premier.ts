@@ -1234,7 +1234,7 @@ function buildEndings() {
 // 每条遭遇战数据包含触发条件和不同结果的叙事文本
 // EndNarration / EncounterNarration 类型定义见 src/module/types.ts
 
-export const END_NARRATIONS: EndNarration[] = [
+const END_NARRATIONS: EndNarration[] = [
   // ── True End: 找到真相，救了受害者 ──
   {
     id: "true",
@@ -1286,7 +1286,7 @@ export const END_NARRATIONS: EndNarration[] = [
 ];
 
 /** 评估当前世界状态，返回匹配的结局叙事 */
-export function evaluateEndNarration(
+function evaluateEndNarration(
   isClueFound: (id: string) => boolean,
   isSceneVisited: (id: string) => boolean,
 ): EndNarration | null {
@@ -1309,20 +1309,6 @@ export function evaluateEndNarration(
   // Normal End
   return END_NARRATIONS[3]; // normal
 }
-
-// ─── 额外数据：奖励（来源于原始模块结局部分） ─────────────
-// 这些数据作为补充导出，用于游戏引擎结算
-export const MODULE_REWARDS = [
-  { id: "kill_victims", description: "杀死所有受害者", sanChange: "-d6" },
-  { id: "rescue_victims", description: "解救受害者", sanChange: "解救者数量*d3" },
-  { id: "discover_truth", description: "发现缸中脑与事件真相", sanChange: "+d6", cmChange: 3 },
-  { id: "commission_done", description: "委托达成", reputationChange: 10 },
-  { id: "town_thanks", description: "小镇的感谢", reputationChange: 5 },
-  { id: "killed_migo", description: "击杀了Mi-Go", sanChange: "+d6", cmChange: 3 },
-  { id: "migo_took_emily", description: "Mi-Go带走了艾米丽", sanChange: "-d6", cmChange: 3 },
-  { id: "no_firearm", description: "没有使用火器完成模组", skillGrowth: { 斗殴: "d10" } },
-  { id: "no_trap", description: "在陷阱区没有触发任何陷阱", skillGrowth: { 侦查: "d10" } },
-] as const;
 
 // ─── NPC 统计资料（来源于原始模块附录） ────────────────────
 export const NPC_STATS: Record<string, Record<string, number | string>> = {
@@ -1375,7 +1361,7 @@ export const NPC_STATS: Record<string, Record<string, number | string>> = {
 
 // ─── 遭遇战叙事数据 ────────────────────────────────────
 // play-module.ts 读取此数据进行数据驱动战斗描述
-export const ENCOUNTER_NARRATIONS: EncounterNarration[] = [
+const ENCOUNTER_NARRATIONS: EncounterNarration[] = [
   {
     sceneId: "maintenance_room",
     requiredClue: "clue_bedroom_diary",
@@ -1509,7 +1495,7 @@ export function evaluateEpilogues(
 // 不再直接依赖本模组专属常量/逻辑。类型见 src/module/types.ts。
 
 /** 恐怖线索 → SAN 损失映射（键: 线索 ID, 值: CoC SAN 成本 "成功损失/失败损失"） */
-export const TRAUMATIC_CLUES: Record<string, string> = {
+const TRAUMATIC_CLUES: Record<string, string> = {
   "clue_barn_body": "0/1d3",
   "clue_barn_victims": "0/1d3",
   "clue_sewer_bodies": "1/1d3",
@@ -1519,7 +1505,7 @@ export const TRAUMATIC_CLUES: Record<string, string> = {
 };
 
 /** 结局显示标签（ending id → 标题） */
-export const END_LABELS: Record<string, string> = {
+const END_LABELS: Record<string, string> = {
   true: "True End", near_truth: "Near-Truth End",
   good: "Good End", bad: "Bad End", normal: "Normal End",
 };

@@ -24,29 +24,29 @@
 // 剧本声明：状态变量与允许的转移
 // ============================================================
 
-export type StateValue = string | number;
+type StateValue = string | number;
 
 /** 状态值域：枚举走显式转移图，整数走闭区间与整数性校验。 */
-export type StateDomain =
+type StateDomain =
   | { readonly kind: "enum"; readonly values: readonly string[] }
   | { readonly kind: "integer"; readonly min: number; readonly max: number };
 
 /** 一个状态变量及其取值域。取值域是封闭的——不在域内的目标值一律拒绝。 */
-export interface StateVariableSpec {
+interface StateVariableSpec {
   readonly id: string;
   readonly domain: StateDomain;
   readonly initial: StateValue;
 }
 
 /** 一次允许的状态转移：variable 从 from 中任一值变为 to。 */
-export interface TransitionSpec {
+interface TransitionSpec {
   readonly variable: string;
   readonly from: readonly StateValue[];
   readonly to: StateValue;
 }
 
 /** 具名动作。freeform 分支不需要它，但预写动作用它承载知情/一次性/奖励等约束。 */
-export interface ActionSpec {
+interface ActionSpec {
   readonly id: string;
   readonly effects: readonly ProposedEffect[];
   /** 执行前角色必须已知的信息 id。缺任意一条即拒绝。 */
@@ -78,7 +78,7 @@ export interface GateState {
   readonly closedNodes: readonly string[];
 }
 
-export interface ProposedEffect {
+interface ProposedEffect {
   readonly variable: string;
   readonly to: StateValue;
 }
@@ -105,7 +105,7 @@ export type Result<T, E> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: E };
 
-export interface VariableChange {
+interface VariableChange {
   readonly variable: string;
   readonly from: StateValue;
   readonly to: StateValue;

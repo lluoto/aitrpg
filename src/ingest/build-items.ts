@@ -10,7 +10,7 @@ import type { ModuleItem, Provenance } from "../module/types";
 import type { ItemInput, ItemKind } from "./classify-items";
 import { extractTrapMechanics } from "./extract-trap";
 
-export interface BuildItemsResult {
+interface BuildItemsResult {
   items: ModuleItem[];
   /** 陷阱抽取的改写留痕，path 已 rebase 到根 */
   provenance: Provenance[];

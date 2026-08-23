@@ -9,7 +9,7 @@
 
 import type { TrapMechanics, Provenance } from "../module/types";
 
-export interface TrapExtraction {
+interface TrapExtraction {
   mech: TrapMechanics;
   provenance: Provenance[];
 }

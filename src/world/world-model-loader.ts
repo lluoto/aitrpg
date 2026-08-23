@@ -43,7 +43,7 @@ export interface V18Entry {
 // v18 查询结果（统一包装）
 // ============================================================
 
-export interface WorldModelStats {
+interface WorldModelStats {
   total: number;
   byNovel: Record<string, number>;
   byType: Record<string, number>;
@@ -54,7 +54,7 @@ export interface WorldModelStats {
 }
 
 // 向后兼容的查询返回（集成层仍用）
-export interface ScoredEntry {
+interface ScoredEntry {
   entry: V18Entry;
   score: number;
 }

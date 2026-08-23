@@ -22,16 +22,6 @@ const ATTR_LABELS: Record<string, string> = {
 function half(v: number) { return Math.floor(v / 2); }
 function fifth(v: number) { return Math.floor(v / 5); }
 
-/** Reverse mapping: English skill key -> Chinese name */
-function buildReverseMap(): Record<string, string> {
-  const m: Record<string, string> = {};
-  for (const [cn, en] of Object.entries(SKILL_NAME_MAP)) {
-    m[en] = cn;
-  }
-  return m;
-}
-const EN2CN = buildReverseMap();
-
 /** Format a line for the character sheet */
 function fmtSkillLine(cnName: string, _engKey: string, currentVal: number, baseVal: number, isOccup: boolean): string {
   const indicator = isOccup ? "\u25c6" : (currentVal > baseVal ? "\u25cb" : "·");
@@ -150,15 +140,4 @@ export function displayCharacterSheet(char: CoCGeneratedCharacter): string {
 export function characterSummary(char: CoCGeneratedCharacter): string {
   const attr = char.attributes;
   return `${char.name}: STR${attr.strength} CON${attr.constitution} SIZ${attr.size} DEX${attr.dexterity} HP:${char.hp} DB:${char.damageBonus}`;
-}
-
-/** Top skills for prompt injection */
-export function getHighlightedSkills(char: CoCGeneratedCharacter): string[] {
-  const importantKeys = ["spot_hidden","listen","library_use","persuade","fast_talk","intimidate",
-    "fighting","firearms_pistol","first_aid","medicine","psychology","occult","stealth","dodge"];
-  return importantKeys
-    .map(k => ({ key: k, cn: EN2CN[k] || k, val: char.skillValues[k] ?? 0 }))
-    .filter(s => s.val > 10)
-    .sort((a, b) => b.val - a.val)
-    .map(s => `${s.cn}(${s.val}%)`);
 }

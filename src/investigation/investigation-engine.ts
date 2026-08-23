@@ -27,7 +27,7 @@ interface ClueCheckDef {
   effect?: string;          // 辅助检定的效果描述
 }
 
-export interface CoCClueCheckDef {
+interface CoCClueCheckDef {
   skill: string;            // CoC 标准技能名（如 occult, spot_hidden, library_use）
   regular?: string;         // 常规成功
   hard?: string;            // 困难成功
@@ -64,7 +64,7 @@ interface ClueTypesYAML {
 // 结果类型
 // ============================================================
 
-export interface CheckResult {
+interface CheckResult {
   skill: string;
   skillName: string;         // 中文技能名
   roll: number;               // 骰子结果
@@ -77,7 +77,7 @@ export interface CheckResult {
   bonus_value?: number;
 }
 
-export interface InvestigationResult {
+interface InvestigationResult {
   clue_id: string;
   clue_description: string;
   primary_result: CheckResult | null;

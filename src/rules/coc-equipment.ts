@@ -8,7 +8,7 @@ import type { HitLocation, CombatCheckResult } from "./coc-engine";
 // 护甲定义
 // ============================================================
 
-export interface CoCArmorDef {
+interface CoCArmorDef {
   name: string;
   /** 护甲类型 */
   category: "软质" | "硬质" | "结构性" | "临时";
@@ -147,7 +147,7 @@ export const COC_ARMOR: CoCArmorDef[] = [
 // 全套武器定义（扩展 CoCWeaponDef）
 // ============================================================
 
-export interface CoCWeaponFullDef {
+interface CoCWeaponFullDef {
   /** 弹药类型 */
   ammoType: string | null;
   /** 弹容量 */
@@ -213,7 +213,7 @@ export const COC_WEAPONS_FULL: Record<string, CoCWeaponFullDef> = {
 // 负重系统
 // ============================================================
 
-export interface CoCEncumbranceState {
+interface CoCEncumbranceState {
   /** 当前负重 */
   currentWeight: number;
   /** 最大负重（基于 STR+SIZ） */
@@ -263,7 +263,7 @@ export function canCarry(currentWeight: number, additionalWeight: number, str: n
 // 耐久系统
 // ============================================================
 
-export interface CoCDurabilityState {
+interface CoCDurabilityState {
   current: number;
   max: number;
   /** 状态 */
@@ -305,7 +305,7 @@ export function applyDurabilityDamage(
 // 护甲伤害减免（整合入口）
 // ============================================================
 
-export interface ArmorApplicationResult {
+interface ArmorApplicationResult {
   /** 最终伤害 */
   finalDamage: number;
   /** 被护甲减免的伤害 */

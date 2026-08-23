@@ -19,7 +19,7 @@ const MIN_CHASE_PENALTY = -2;
 // ============================================================
 
 /** 当前追逐距离区间 */
-export type ChaseRange = "melee" | "close" | "medium" | "long" | "lost";
+type ChaseRange = "melee" | "close" | "medium" | "long" | "lost";
 
 /** 追逐环境类型 */
 export type ChaseEnvironment =
@@ -31,10 +31,10 @@ export type ChaseEnvironment =
   | "water";       // 水上、水下、船坞
 
 /** 载具类型 */
-export type VehicleType = "foot" | "bicycle" | "motorcycle" | "car" | "truck" | "boat";
+type VehicleType = "foot" | "bicycle" | "motorcycle" | "car" | "truck" | "boat";
 
 /** 追逐参与者 */
-export interface ChaseParticipant {
+interface ChaseParticipant {
   name: string;
   role: "pursuer" | "fugitive";
   /** 体质值（查 CON 表） */
@@ -52,7 +52,7 @@ export interface ChaseParticipant {
 }
 
 /** 障碍物定义（查表原始数据） */
-export interface ChaseObstacleDef {
+interface ChaseObstacleDef {
   name: string;
   environment: ChaseEnvironment;
   /** 默认技能，如 "CON", "DEX", "运动", "驾驶" */
@@ -74,14 +74,14 @@ export interface ChaseObstacleDef {
 }
 
 /** 单轮障碍物实例 */
-export interface ChaseObstacleInstance {
+interface ChaseObstacleInstance {
   def: ChaseObstacleDef;
   /** 本轮的适用技能名 */
   usedSkill: string;
 }
 
 /** 单轮结果 */
-export interface ChaseRoundResult {
+interface ChaseRoundResult {
   round: number;
   obstacle: ChaseObstacleInstance;
   participantResults: Array<{

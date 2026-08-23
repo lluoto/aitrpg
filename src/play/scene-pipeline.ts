@@ -68,7 +68,7 @@ export interface SceneCtx {
   agents: [PlayerAgent, PlayerAgent];
   llmClient: LLMClient | null;
 }
-export function maybeRecognitionBeat(ctx: SceneCtx, w: WorldState): boolean {
+function maybeRecognitionBeat(ctx: SceneCtx, w: WorldState): boolean {
   // 原先这里连着解构了 module/support/world/cast/cursor/dedup/wm/llmClient/agents
   // 九个名字，真正用到的只有 pl1、pl2 —— 与 `fallbackQuestion` 同一个毛病，
   // 而且同样带着 `agents: [pl1, pl2]` 这条会对 undefined 抛异常的数组解构。
@@ -1073,7 +1073,7 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
  * 少了调查员的名字，「米尔德丽德」就会被当成「米尔」。
  * 这条规则是被打脸四次打出来的，见 `play/names.ts` 开头。
  */
-export function everyKnownName(ctx: SceneCtx): string[] {
+function everyKnownName(ctx: SceneCtx): string[] {
   return [
     ...(ctx.module?.npcs ?? []).map((n) => n.name),
     ...(ctx.agents ?? []).map((a) => a?.name).filter((n): n is string => !!n),

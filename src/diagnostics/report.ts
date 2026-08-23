@@ -16,7 +16,7 @@
 import { mkdirSync } from "fs";
 import { join } from "path";
 
-export const DIAG_OUT_DIR = "analysis/diag";
+const DIAG_OUT_DIR = "analysis/diag";
 
 /** 写一份诊断产物，返回落盘路径 */
 export async function writeReport(name: string, body: string): Promise<string> {

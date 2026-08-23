@@ -5,9 +5,9 @@ import type { ModuleData, ModuleNPC } from "./types";
 
 // ── 产出类型 ──
 
-export type DifficultyTier = "easy" | "medium" | "hard" | "deadly";
+type DifficultyTier = "easy" | "medium" | "hard" | "deadly";
 
-export interface ThreatProfile {
+interface ThreatProfile {
   tier: DifficultyTier;
   score: number;
   details: {
@@ -21,7 +21,7 @@ export interface ThreatProfile {
   };
 }
 
-export interface WeaponPolicy {
+interface WeaponPolicy {
   /** 是否允许持枪 */
   allowed: boolean;
   /** 武器类型 */
@@ -276,31 +276,4 @@ export function getWeaponPolicy(
         restrictions: ["弹药极有限", "枪声可能引来更多敌人"],
       };
   }
-}
-
-/**
- * 便利函数：分析模块 → 判定武器许可 → 返回是否配枪 + 弹药
- */
-export function evaluateWeaponPolicy(
-  module: ModuleData,
-  character: { skillValues: Record<string, number>; creditRating: number; occupation: string },
-  extra?: {
-    encounterNarrations?: { victoryLines: string[]; defeatLines: string[] }[];
-    traumaticClues?: Record<string, string>;
-  },
-): { policy: WeaponPolicy; threat: ThreatProfile; shouldAddGun: boolean; gunItem: string } {
-  const threat = analyzeThreats(module, extra);
-  // 只有手枪超过 base (20%) 才算受过射击训练
-  const hasFirearms = (character.skillValues["firearms_pistol"] ?? 20) > 20;
-  const policy = getWeaponPolicy(threat, hasFirearms, character.occupation, character.creditRating);
-
-  let shouldAddGun = false;
-  let gunItem = "";
-  if (policy.allowed) {
-    shouldAddGun = true;
-    const ammoLabel = policy.ammo > 0 ? `×${policy.ammo}发` : "";
-    gunItem = `左轮手枪${ammoLabel}`;
-  }
-
-  return { policy, threat, shouldAddGun, gunItem };
 }
