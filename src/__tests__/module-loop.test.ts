@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { llmEnabled, runModule } from "../play-module";
 import { BARN_OF_PREMIER, BARN_SUPPORT } from "../module/barn-of-premier";
 import type { PlayerDecision } from "../agent/player-agent";
+import type { PlayEvent } from "../play/events";
 
 /** 场景标题行，见 play-module.ts:1468 */
 const HEADER = /^\n?━ (?:再次来到 )?(.+)$/;
@@ -33,6 +34,31 @@ interface LoopRun {
   entries: { name: string; at: number }[];
   stops: Stop[];
   lines: string[];
+  /** 这一局的结构化事件 —— 断言失败时用来说清「为什么没通关」 */
+  events: PlayEvent[];
+}
+
+/**
+ * 一局跑完之后的收场摘要，**只在断言失败时用**。
+ *
+ * ⚠ 存在理由：「顺着引擎给的顺序走，必定通关」这条极偶发地红过一次
+ *   （全量跑约二十次里一次；单跑这个文件 29 次、直接跑 30 局都没复现）。
+ *   证据不足以定位，而一个只说 `expected true, got false` 的断言
+ *   下次红的时候同样什么都不会告诉我们 —— 于是永远查不下去。
+ *   把收场原因带进失败信息里，下次它红就是一条线索而不是一次耸肩。
+ */
+function outcomeOf(run: LoopRun): string {
+  const ab = run.events.find((e) => e.type === "aborted");
+  const downed = run.events.filter((e) => e.type === "downed").length;
+  const ending = run.events.find((e) => e.type === "ending");
+  return [
+    `进场 ${run.entries.length} 次`,
+    `岔口 ${run.stops.length} 个`,
+    ending ? `结局=${(ending as { label: string }).label}` : "无结局事件",
+    ab ? `aborted=${(ab as { reason: string }).reason}` : "未中止",
+    `倒下 ${downed} 次`,
+    `最后到过：${run.entries.slice(-3).map((e) => e.name).join(" → ") || "（无）"}`,
+  ].join("｜");
 }
 
 /** 跑一局，由 pick 决定每个岔口选哪一项 */
@@ -40,8 +66,10 @@ async function runLoop(pick: (options: string[]) => string): Promise<LoopRun> {
   const lines: string[] = [];
   const entries: { name: string; at: number }[] = [];
   const stops: Stop[] = [];
+  const events: PlayEvent[] = [];
 
   await runModule(BARN_OF_PREMIER, BARN_SUPPORT, {
+    onEvent: (e) => events.push(e),
     onLine: (line) => {
       const m = line.match(HEADER);
       if (m) entries.push({ name: m[1]!.trim(), at: lines.length });
@@ -59,7 +87,7 @@ async function runLoop(pick: (options: string[]) => string): Promise<LoopRun> {
     },
   });
 
-  return { entries, stops, lines };
+  return { entries, stops, lines, events };
 }
 
 /** 玩家选的那一项，实际把他送到了哪里 */
@@ -205,9 +233,22 @@ describe("主循环脚手架", () => {
     // 根因是 failback 兜底只对显式配了 failback 的线索生效，
     // 而模组 26 条 core 线索里配了的有 **0 条**。修掉之后
     // 实测 8/8 通关、每局固定 16 个场景 / 21 次进场，所以敢写死。
+    //
+    // ⚠ 这条**极偶发地红过一次**：全量跑约二十次里一次。
+    //   单跑这个文件 29 次、直接连跑 30 局都没能复现，所以证据不足以定位 ——
+    //   查过并否掉的假设：测试间共用 SQLite（默认是 `:memory:`，各跑各的）、
+    //   `EXTRA_ARCHETYPES` 被撑大（没有测试 import `index.ts`）、
+    //   `Math.random` 替换后没还原（所有替换处都有 finally 或 afterEach 兜底）。
+    //   还没排除的：`registerRulesetMod` 往模块级注册表里塞的测试用规则集
+    //   （id 不是 cosmic-horror，但注册表确实是跨文件累积的）。
+    //
+    //   断言维持「必定」不放松 —— 它本来就该必定。但把收场原因带进失败信息，
+    //   下次红的时候是一条线索，不是一次耸肩。
     const run = await runLoop((o) => o[0] ?? "");
     const finale = BARN_OF_PREMIER.scenes.find(s => s.id === BARN_SUPPORT.finaleSceneId);
-    expect(run.entries.some(e => e.name === finale?.name)).toBe(true);
+    const reached = run.entries.some(e => e.name === finale?.name);
+    if (!reached) throw new Error(`没走到终局场景「${finale?.name}」：${outcomeOf(run)}`);
+    expect(reached).toBe(true);
   }, 60_000);
 
   test("查不到的 core 线索不会把队伍钉在原地", async () => {

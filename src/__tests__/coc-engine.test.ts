@@ -122,13 +122,47 @@ describe("SanityEngine.sanityCheck()", () => {
     expect(foundSuccess).toBe(true);
   });
 
+  // ⚠ 这条原先是**闪的**，而且闪的原因和它测不到东西是同一个根子。
+  //
+  //   原写法 `new SanityEngine(1)`，注释写「极低 SAN，几乎必失败」——
+  //   「几乎」就是问题：d100 掷出 ≤1 的概率是 1%，于是
+  //   `expect(r.passed).toBe(false)` 每一百次红一次。实测全量跑二十次见一次。
+  //
+  //   更糟的是它**根本没在验自己的名字**：engine 里有一条
+  //   `if (sanLoss > currentSAN) sanLoss = currentSAN`，SAN=1 时
+  //   1d6 的结果一律被钳成 1，所以「1 ≤ 损失 ≤ 6」恒真 ——
+  //   把后半部分换成任何东西这条都过。
+  //
+  //   改法：钉住掷骰强制失败（不再靠概率），SAN 取高到钳位不生效，
+  //   并且用**固定的**后半部分（"1/6"），让「取的是后半不是前半」真的可判。
   it("失败时损失 = sanCost 后半部分", () => {
-    const e = new SanityEngine(1); // 极低 SAN, 几乎必失败
-    const r = e.sanityCheck("1/1d6");
-    // 1d6 范围 1-6
-    expect(r.passed).toBe(false);
-    expect(r.sanLoss).toBeGreaterThanOrEqual(1);
-    expect(r.sanLoss).toBeLessThanOrEqual(6);
+    const real = Math.random;
+    try {
+      Math.random = () => 0.999; // d100 → 100，必定大于 SAN，必定失败
+      const e = new SanityEngine(50);
+      const r = e.sanityCheck("1/6");
+      expect(r.passed).toBe(false);
+      expect(r.sanLoss).toBe(6);   // 后半部分；若取了前半会是 1
+      expect(e.state.currentSAN).toBe(44);
+    } finally {
+      Math.random = real;
+    }
+  });
+
+  it("**干扰输入**：失败损失超过剩余 SAN 时被钳到剩余量", () => {
+    // 上面那条特意避开了钳位，钳位本身要单独测 —— 否则它就成了没人看的暗角，
+    // 正是它把上面那条测试的证据吃掉的。
+    const real = Math.random;
+    try {
+      Math.random = () => 0.999;
+      const e = new SanityEngine(2);
+      const r = e.sanityCheck("1/6");
+      expect(r.passed).toBe(false);
+      expect(r.sanLoss).toBe(2);        // 不是 6
+      expect(e.state.currentSAN).toBe(0);
+    } finally {
+      Math.random = real;
+    }
   });
 
   it("SAN 不会低于 0", () => {
