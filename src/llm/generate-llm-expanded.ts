@@ -194,18 +194,43 @@ function warnFallback(npc: ModuleNPC, reason: string): void {
  */
 function templateKnowledgeReveals(npc: ModuleNPC): string[] {
   const a = analyseNpc(npc);
-  const frame = (body: string): string => {
-    if (a.isChild) return `${body}。我听大人说的。`;
+
+  // ⚠ 收尾语（「我知道的就这些了」）**只能挂在最后一条**。
+  //
+  // 原先 frame() 不看位置，给每一条都套同一个尾巴，于是焦虑型 NPC
+  // 每次开口都以「……我知道的就这些了」收场：
+  //   「加比比较叛逆，喜欢出去玩，十五岁就搬到外面拖车住了……我知道的就这些了。」
+  //   「我已经半个多月没有他的消息了……我知道的就这些了。」
+  // 两个毛病叠在一起：读起来复读机；而且**语义是错的** ——
+  // 第一条就说「就这些了」，可她明明还知道别的，说完还会继续说。
+  const closing = (body: string): string => {
+    if (a.isChild) return `${body}。我知道的就这么多啦。`;
     if (a.isAnxious) return `${body}……我知道的就这些了。`;
     if (a.isFormal) return `${body}。案卷上就是这么记的。`;
     if (a.isHostile) return `${body}。就这些，别再问了。`;
     if (a.isWarm) return `${body}。我能想起来的就这么多。`;
     return `${body}。`;
   };
-  return npc.knowledge.map(k => {
+  // 中间的条目：只染上语气，不作总结。
+  const middles: string[] = a.isChild
+    ? ["${b}。我听大人说的。", "${b}。妈妈是这么讲的。", "${b}，我记得是这样。"]
+    : a.isAnxious
+      ? ["${b}……", "${b}。你们要相信我。", "${b}，我一直在想这件事。"]
+      : a.isFormal
+        ? ["${b}。这一条记录在案。", "${b}。按流程是这样。", "${b}。"]
+        : a.isHostile
+          ? ["${b}。", "${b}，就这样。", "${b}，你自己掂量。"]
+          : a.isWarm
+            ? ["${b}。", "${b}，我记得挺清楚。", "${b}，那阵子大家都在议论。"]
+            : ["${b}。"];
+
+  const total = npc.knowledge.length;
+  return npc.knowledge.map((k, i) => {
     // 句子已自带标点时不再追加"。"，避免"。。"双句号；去掉尾部残句标点后补全
     const trimmed = k.replace(/[。！？…]+$/, "");
-    return frame(trimmed);
+    if (i === total - 1) return closing(trimmed);
+    // 轮流取而不是随机：同一个 NPC 连着说三句，随机很容易连撞两次
+    return middles[i % middles.length]!.replace("${b}", trimmed);
   });
 }
 

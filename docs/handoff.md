@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-23 04:02  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-23 04:28  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：0a8d1a7 fix: a partial LLM answer silently fell back to the 3-line candidate pool  ·  **测试**：1750 条 / 86 文件，全绿（基线 1750，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：a4fdb58 fix: dialogue leads read like stage directions, and pasted the role label in  ·  **测试**：1757 条 / 87 文件，全绿（基线 1757，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -108,6 +108,7 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 
 ## 最近做了什么
 
+- a4fdb58 fix: dialogue leads read like stage directions, and pasted the role label in
 - 0a8d1a7 fix: a partial LLM answer silently fell back to the 3-line candidate pool
 - c792523 fix: PC backstories were borrowing the module's NPC names
 - 96ebe28 fix: the backstory was being told to stay as short as the card fields
@@ -119,7 +120,6 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 - 0da3b53 feat: ask the LLM when substring matching gives up
 - 9753d25 fix: the diagnostics were never actually in the repo
 - f660111 feat: recognise the head noun of a place name ("去医院" = 霍姆斯医院)
-- 91a7954 feat: move matching stops losing to word order
 
 ## 代码地图
 

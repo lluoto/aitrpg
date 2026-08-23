@@ -68,6 +68,15 @@ const seen = new Map<string, number>();
 for (const l of leads) seen.set(l, (seen.get(l) ?? 0) + 1);
 const repeated = [...seen.entries()].filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]);
 
+// ⑤ NPC 台词的收尾语复读（「……我知道的就这些了。」连着两句）
+//    引导句是「说话前」，这条量的是「说话本身」—— 同一个人每开口一次就总结一次，
+//    既是复读机，语义也错（第一条就说「就这些了」，可他还会接着说）。
+const CLOSINGS = ["我知道的就这些了", "就这些，别再问了", "我能想起来的就这么多", "案卷上就是这么记的", "我知道的就这么多啦"];
+const spoken = all.map((l) => l.trim()).filter((l) => /^[“"].*[”"]$/.test(l) || /[“"].+[”"]/.test(l));
+const closingCount = new Map<string, number>();
+for (const l of spoken) for (const c of CLOSINGS) if (l.includes(c)) closingCount.set(c, (closingCount.get(c) ?? 0) + 1);
+const repeatedClosings = [...closingCount.entries()].filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]);
+
 const out: string[] = ["# NPC 说话前那一句引导", ""];
 out.push(`取样 ${N} 局，共 ${all.length} 行播报，其中引导句 **${leads.length}** 句。`);
 out.push("");
@@ -110,6 +119,24 @@ if (leads.length === 0) {
     for (const [l, c] of repeated.slice(0, 15)) out.push(`| ${c} | ${l} |`);
     out.push("");
   }
+  out.push(`## NPC 台词的收尾语（采到 ${spoken.length} 句台词）`);
+  out.push("");
+  const totalClosings = [...closingCount.values()].reduce((a, b) => a + b, 0);
+  if (spoken.length === 0) {
+    out.push("⚠ **一句台词都没抓到** —— 这是取样失败，不是「没问题」。");
+  } else if (totalClosings === 0) {
+    // 「没重复」和「根本没走到这条路径」必须分开报，否则判据会假绿。
+    out.push("⚠ **这一局没出现任何收尾语** —— 说明知识台词走的是 LLM 路径，");
+    out.push("模板路径（`templateKnowledgeReveals`）这一局没被触发。**这条没量到**，");
+    out.push("不等于没问题。模板路径的复读由 `src/__tests__/knowledge-reveal-shape.test.ts` 封闭校验。");
+  } else if (repeatedClosings.length === 0) {
+    out.push(`收尾语共出现 ${totalClosings} 次，无一重复。`);
+  } else {
+    out.push("| 次数 | 收尾语 |");
+    out.push("|---|---|");
+    for (const [c, n] of repeatedClosings) out.push(`| ${n} | ${c} |`);
+  }
+  out.push("");
   out.push("## 全部引导句（原样，好不好听要人读）");
   out.push("");
   for (const l of leads) out.push(`- ${l}`);
@@ -118,5 +145,6 @@ if (leads.length === 0) {
 const path = await writeReport("probe-dialogue-lead.md", out.join("\n"));
 console.log(
   `引导句 ${leads.length}｜舞台指示 ${stageDirection.length}｜标签入正文 ${labelled.length}` +
-  `｜同义反复 ${tautology.length}｜重复 ${repeated.length} 种  -> ${path}`,
+  `｜同义反复 ${tautology.length}｜重复 ${repeated.length} 种` +
+  `｜台词 ${spoken.length} 句/收尾语复读 ${repeatedClosings.length} 种  -> ${path}`,
 );
