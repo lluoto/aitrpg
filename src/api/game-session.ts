@@ -1030,7 +1030,17 @@ export class GameSession {
     // 此前这里内联了一份退化副本：label 填的是中文显示名，而权威表里 label 是判别式
     // （getPushNarration 对它做 switch），clueOnFail 还用了 "generous"/"hidden" 这两个
     // 并不存在的取值，同时丢掉了 pushAllowed / pushCostMultiplier / failureGuidance。
-    if (isDifficultyLabel(diff)) this.activeDifficulty = getDifficultyProfile(diff);
+    if (isDifficultyLabel(diff)) {
+      this.activeDifficulty = getDifficultyProfile(diff);
+      // ⚠ 这一句原先不存在：难度**设了但没人告诉调查引擎**。
+      //   `InvestigationEngine.setDifficultyProfile()` 全仓零调用方，
+      //   于是 `difficultyProfile` 恒为 null，`effectiveProfile` 一直回落到
+      //   那份写死的 medium 画像。后果是 KP 把难度调成 nightmare 之后：
+      //     · 惩罚骰仍然是 0（应该 +2）
+      //     · 线索的 SAN 倍率仍然是 1（应该 2 倍）
+      //   —— 难度按钮按下去，调查这一块**什么都没变**。
+      this.investigation.setDifficultyProfile(this.activeDifficulty);
+    }
     return result;
   }
 

@@ -1,6 +1,6 @@
 {
-  "tests": 1939,
-  "files": 109,
+  "tests": 1943,
+  "files": 110,
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
     {
@@ -197,6 +197,11 @@
       "tests": 1939,
       "files": 109,
       "when": "测试进程加了网络闸门：非本机地址一律拒绝，并写了 5 条验证闸门本身（防护不验就只是另一段没人跑过的代码）"
+    },
+    {
+      "tests": 1943,
+      "files": 110,
+      "when": "难度设了没人告诉调查引擎：setDifficultyProfile 零调用方，nightmare 的惩罚骰与 SAN 倍率一直按 medium 算"
     }
   ]
 }
