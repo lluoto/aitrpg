@@ -33,8 +33,18 @@ describe("prompt 构建", () => {
   });
 
   test("五个类别都在 prompt 里说明", () => {
+    // ⚠ 原先是 `expect(p).toContain(k)` —— **裸词匹配**。
+    //   而 prompt 正文里 scene / item 这些词在下面那段判别界线里也各出现好几次，
+    //   所以把某一类从类别表里删掉，这条照样绿。
+    //   隔壁 `ingest-classify-items.test.ts` 早就写明了这个坑
+    //   （「认『- 类别名：』这个条目形态，不认裸词」），这条没跟上。
+    //
+    //   另外标题说「五个」却不查条数：**多**出一类同样没人发现，
+    //   而多一类意味着模型会返回一种下游不认识的东西。
     const p = buildClassifyPrompt(SECS);
-    for (const k of ["scene", "npc", "structure", "rule", "item"]) expect(p).toContain(k);
+    const cats = ["scene", "npc", "structure", "rule", "item"];
+    for (const k of cats) expect(p).toContain(`- ${k}：`);
+    expect((p.match(/^- \w+：/gm) ?? []).length).toBe(cats.length);
   });
 
   // item 这一类是为「奇怪的卡片」「绑架犯的报道」这种块加的 —— 它们在原来的

@@ -71,6 +71,35 @@ function mask(src: string): string {
  */
 const MAYBE_UNDEFINED = /\.\s*(find|match|get|shift|pop|at)\s*\(|\[[^\]]*\]|\?\./;
 
+/**
+ * 标题里许诺了数量：「八个合法取值」「所有 8 个生物」「全部 5 本典籍」。
+ *
+ * 中文数字与阿拉伯数字都认。量词收得窄一点 —— 「3 次」「5 轮」说的是
+ * 重复次数不是集合大小，那类不该报。
+ */
+// ⚠ 判据第一版只认「N 个」，报出 97 条，读下来绝大多数是误报 ——
+//   「接受两个端点」「1 个惩罚骰 = 从 2 颗十位骰取劣」「同一 NPC 的两句话」
+//   里的数字说的是**输入或规则**，不是某个集合的大小，本来就没什么可数的。
+//
+//   真正该报的形状是「**总括词 + 数量**」：宣称把一整张表都覆盖了。
+//   「所有 8 个生物」「五个类别都在 prompt 里」「恰好有 7 个开关」。
+//   代价是像「八个合法取值原样返回」这种没写总括词的会漏掉 —— 认了：
+//   判据宁可漏报，也不能拿 97 条噪声把人淹了（这仓库栽过一次「174 个假阳性
+//   淹掉 2 个真问题」）。
+const COUNT_IN_TITLE = /(?:所有|全部|每一?个|恰好|共)[^，。]{0,8}(?:[0-9]+|[一二三四五六七八九十两]+)\s*(?:个|条|本|种|份|项|名|张|把|段|句|类)|(?:[0-9]+|[一二三四五六七八九十两]+)\s*(?:个|条|本|种|份|项|名|类)[^，。]{0,6}(?:都|全部|均)/;
+
+/**
+ * 块里有没有任何「查数量」的断言。有就放过 —— 断得对不对要人读，判据不越权。
+ *
+ * ⚠ 已知盲区：`expect(arr).toEqual([...])` 是**数组全等**，本身就把数量钉死了，
+ *   但这里看不出来（它不含 `.length`）。实测误报过一条
+ *   （`narrative-entity-recognition` 的「恰好这 7 个开门」，
+ *     用的正是 `expect(opens).toEqual(OPENS)`）。
+ *   要消掉得判「toEqual 的实参是不是字面量数组」，那已经接近写解析器了 ——
+ *   报出来让人读一眼更划算。**判据的边界要写出来，不能假装没有。**
+ */
+const HAS_COUNT_ASSERT = /toHaveLength\s*\(|\.\s*(?:length|size)\s*\)\s*\.\s*(?:toBe|toEqual|toBeGreaterThan|toBeGreaterThanOrEqual|toBeLessThan|toBeLessThanOrEqual)|\.\s*(?:length|size)\s*\)\s*\.\s*not/;
+
 function trivialAssertion(stmt: string, maybeUndefinedVars: ReadonlySet<string>): boolean {
   if (/expect\s*\(\s*true\s*\)\s*\.\s*toBe\s*\(\s*true\s*\)/.test(stmt)) return true;
   if (/not\s*\.\s*toThrow\s*\(\s*\)/.test(stmt)) return true;
@@ -168,6 +197,23 @@ for (const f of files) {
     }
     // 全是永真式？逐条断言看
     const stmts = bodyRaw.split(/;\s*\n/).filter((s) => /expect\s*\(/.test(s));
+    // ④ 标题许诺了数量，断言却不查数量。
+    //
+    // 手工挖出来的一档，编成判据免得下次又靠运气：
+    //   `it("所有 8 个生物均可通过中文名查到")` —— 遍历的是**测试里手写的 8 个名字**，
+    //   而真实数据有 **40 个**。数据涨了五倍，标题里的「所有」早就不成立，
+    //   新加的 32 个漏建索引也不会有人知道。
+    //
+    // 判据只看两件事：标题里有没有「N 个/条/本/种…」，块里有没有任何长度断言。
+    // 有长度断言就放过 —— 是不是断得对要人读，判据不越权。
+    // 「一个都不写进对象」「一个花括号都没有」「一个都不给」——
+    // 这是「一个都没有」，说的是**零**，不是在许诺一张表有多大。
+    const meansNone = /一\s*(?:个|条|本|字)?\s*都\s*(?:不|没)/.test(title);
+    if (!meansNone && COUNT_IN_TITLE.test(title) && !HAS_COUNT_ASSERT.test(bodyMask)) {
+      hits.push({ file: f, line: i + 1, title, why: "标题许诺了数量，块里却没有任何长度/条数断言 —— 表缩水或膨胀都不会被发现" });
+      continue;
+    }
+
     const undefinable = undefinableVars(bodyRaw);
     if (stmts.length > 0 && stmts.every((s) => trivialAssertion(s, undefinable))) {
       hits.push({ file: f, line: i + 1, title, why: "只有永真断言（toBeDefined / toBeTruthy / not.toThrow / true===true）" });

@@ -124,6 +124,14 @@ describe("留痕", () => {
     expect(paths).toContain("trap.damage");
     expect(paths).toContain("trap.sizImmunityBelow");
     expect(paths).toContain("trap.escape");
+    // 标题说「每个」。只点名三条的话，将来多抽出一个字段却忘了留痕，
+    // 这条一声不吭 —— 而「抽了什么就得留什么痕」正是它存在的理由。
+    // 所以拿**实际抽出的字段**去对，而不是拿手写的三条。
+    const extracted = Object.entries(r?.mech ?? {})
+      .filter(([, v]) => v !== undefined)
+      .map(([k]) => `trap.${k}`);
+    expect(extracted.length).toBeGreaterThan(0); // 空表会让下面这条假绿
+    for (const field of extracted) expect(paths).toContain(field);
   });
 
   test("留痕带原文片段与出处，且标明是规则抽取而非 LLM", () => {
