@@ -1184,27 +1184,9 @@ export class GameSession {
         let dmg = 0;
         if (success) {
           dmg = isCrit ? Math.floor(Math.random() * 12) + 6 : Math.floor(Math.random() * 6) + 1;
-          target.hp = Math.max(0, target.hp - dmg);
-          // Major Wound 检查
-          const mw = checkMajorWound(dmg, target.maxHp ?? 10, target.hp);
-          if (mw.isMajorWound) {
-            target.status = target.status || [];
-            target.status.push("重伤:" + mw.location);
-            // ⚠ 原先这里推的是裸字符串 `"流血"` / `"昏迷"`，没有时限 ——
-            //   加上 `processBleeding` 从没被调用过，这两个标签既不生效也不消失。
-            //   现在带上 status-effects 定义库里的默认时限，由
-            //   `tickStatusEffects()` 每回合推进。名字也从定义库取，
-            //   免得「流血」这个字面量在两处各写一遍。
-            // 跟着 `checkMajorWound` 的判断走 —— 它现在只在这一击把人打昏时
-            // 才算流血（CoC 7e：重伤本身只掷 CON，持续掉血属于濒死）。
-            // 原先这里无条件推「流血」，等于把引擎的判断作废了。
-            if (mw.bleeding) target.status.push(newStatus("bleeding"));
-            if (mw.unconscious) target.status.push(newStatus("stunned"));
-            // 此处原为 msg(...)，但 msg 只是另外两个方法内部的局部箭头函数，
-            // 在本方法作用域里不存在——重伤一旦触发就会 ReferenceError。
-            turnMessages.push({ speaker: "系统", content: "💀 " + mw.description, type: "system" });
-          }
-          this.world.upsertEntity(target);
+          // 重伤/流血/昏迷的结算与 `handleAttack` 共用一份 —— 见 `resolveHit`。
+          // 这两条路各写一份的时候，功能全的是这一条，可它跑不到。
+          this.resolveHit(target, dmg, (s) => turnMessages.push({ speaker: "系统", content: s, type: "system" }));
         }
 
         const hitMsg = isFumble ? "大失败！" : isCrit ? "暴击" : success ? "命中" : "未命";
@@ -1837,6 +1819,61 @@ export class GameSession {
   }
 
   // ── 攻击 ──
+  /**
+   * 一次攻击命中之后的结算：扣血 → 重伤判定 → 挂状态 → 写回世界。
+   *
+   * ⚠ 抽出来是因为**本来有两份**，而功能全的那份跑不到。
+   *
+   *   `act()` 里有一段带 `checkMajorWound` 的战斗结算（重伤、部位、
+   *   流血、昏迷都有），但意图派发在它**前面** —— `handleAttack` 一旦
+   *   认出「攻击」就 `return true`，`act()` 直接返回，那一段永远到不了。
+   *   而 `handleAttack` 自己只会扣血。
+   *
+   *   后果：**重伤/流血/昏迷在真实对局里一次都没生效过**。
+   *   我上一轮按 CoC 口径修的流血条件（只在打昏时才流血），
+   *   改的正是那段跑不到的代码 —— 等于没改。
+   *
+   *   这类「写了没接上」这轮已经是第三处了（前两处是致残描写、
+   *   载具类型），所以这次不是把逻辑再抄一遍，而是**只留一份**。
+   */
+  private resolveHit(
+    target: WorldEntity,
+    dmg: number,
+    msg: (s: string) => number,
+  ): void {
+    target.hp = Math.max(0, target.hp - dmg);
+    const mw = checkMajorWound(dmg, target.maxHp ?? 10, target.hp);
+    if (mw.isMajorWound) {
+      target.status = target.status || [];
+      target.status.push("重伤:" + mw.location);
+      // 带时限的状态，由 `tickStatusEffects()` 每回合推进。
+      // 跟着 `checkMajorWound` 走：CoC 7e 里重伤只掷 CON，
+      // 持续掉血属于濒死，所以只在这一击把人打昏时才流血。
+      if (mw.bleeding) target.status.push(newStatus("bleeding"));
+      if (mw.unconscious) target.status.push(newStatus("stunned"));
+      msg("💀 " + mw.description);
+    }
+    this.world.upsertEntity(target);
+  }
+
+  /**
+   * 攻击要打**指定的**目标。
+   *
+   * ⚠ 原先这里是 `enemies[Math.floor(Math.random() * enemies.length)]` ——
+   *   完全无视 `intent.target`。场上两个敌人时，「攻击哥布林」有一半概率
+   *   砍在另一个身上，而播报还写着你打的是哥布林。
+   */
+  private pickTarget(intent: ActionIntent, enemies: WorldEntity[]): WorldEntity | undefined {
+    if (enemies.length === 0) return undefined;
+    const want = intent.target?.trim();
+    if (want) {
+      const hit = enemies.find((e) => e.id === want || e.name === want)
+        ?? enemies.find((e) => e.name.includes(want) || want.includes(e.name));
+      if (hit) return hit;
+    }
+    return enemies[0];
+  }
+
   private handleAttack(intent: ActionIntent, msg: (s: string) => number): boolean {
     const skill = 50;
     let effectiveRoll = Math.floor(Math.random() * 100) + 1;
@@ -1867,10 +1904,9 @@ export class GameSession {
     if (dmg > 0) {
       const state = this.world.getCurrentState();
       const enemies = Object.values(state.entities).filter(e => (e.type === "monster" || e.type === "npc") && e.hp > 0);
-      if (enemies.length > 0) {
-        const target = enemies[Math.floor(Math.random() * enemies.length)];
-        target.hp = Math.max(0, target.hp - dmg);
-        this.world.upsertEntity(target);
+      const target = this.pickTarget(intent, enemies);
+      if (target) {
+        this.resolveHit(target, dmg, msg);
         msg(`${target.name} 剩余 HP: ${target.hp}/${target.maxHp}`);
       }
     }

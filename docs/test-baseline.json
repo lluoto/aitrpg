@@ -1,5 +1,5 @@
 {
-  "tests": 1855,
+  "tests": 1866,
   "files": 100,
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
@@ -152,6 +152,11 @@
       "tests": 1855,
       "files": 100,
       "when": "CoC 口径三修：重伤不必定流血、战斗改常规难度、极难难度形同虚设的引擎 bug；接上致残描写"
+    },
+    {
+      "tests": 1866,
+      "files": 100,
+      "when": "重伤结算从没跑到过：handleAttack 抢在 checkMajorWound 那段前面 return；顺带修攻击无视指定目标"
     }
   ]
 }
