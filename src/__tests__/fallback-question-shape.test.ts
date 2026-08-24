@@ -53,7 +53,10 @@ describe("话题里没有专名时，宁可抽象也不剧透", () => {
     // 不通顺，而且提问即剧透、回答即复述。
     const raw = "镇上最近有多起失踪案，警察压着不让说";
     const topic = extractTopic(raw);
-    for (const q of pool(topic)) {
+    const qs = pool(topic);
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空（池子空了「正文不得进问句」就成了空话）
+    expect(qs.size).toBeGreaterThan(0);
+    for (const q of qs) {
       expect(q).not.toContain(topic);
       expect(q).not.toContain("失踪案");
     }

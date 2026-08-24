@@ -230,8 +230,9 @@ describe("D&D 法术不受神话法术影响", () => {
       temperature: 0.7,
     }, "wizard", "法师甲");
 
-    // D&D 法术列表仍可用
+    // 原先只断言 res 存在。实跑：叙述是「你回忆了一下已知的法术」——
+    // 「仍正常运作」是可判的，不必只验没崩。
     const res = await dndSession.act("法术列表");
-    expect(res).toBeDefined();
+    expect(res.narrative).toContain("法术");
   });
 });

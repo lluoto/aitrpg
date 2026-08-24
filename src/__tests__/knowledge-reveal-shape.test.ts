@@ -82,6 +82,9 @@ describe("中间条目不复读", () => {
   test("**干扰输入**：每条都还带着原始 knowledge 的内容，没被框架吃掉", () => {
     const src = BARN_OF_PREMIER.npcs.find((n) => n.id === "phoebe_tricam")!;
     const rs = reveals("phoebe_tricam");
+    // 空表会让下面的 forEach 一条断言都不跑 —— 先钉住它非空
+    expect(src.knowledge.length).toBeGreaterThan(0);
+    expect(rs.length).toBe(src.knowledge.length);
     src.knowledge.forEach((k, i) => {
       const core = k.replace(/[。！？…]+$/, "").slice(0, 8);
       expect(rs[i]).toContain(core);
@@ -90,7 +93,9 @@ describe("中间条目不复读", () => {
 
   test("**干扰输入**：不重复标点（没有「。。」或「……。」）", () => {
     for (const id of ["phoebe_tricam", "police", "tramp", "mir_tricam"]) {
-      for (const r of reveals(id)) {
+      const rs = reveals(id);
+      expect(rs.length).toBeGreaterThan(0); // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+      for (const r of rs) {
         expect(r).not.toContain("。。");
         expect(r).not.toMatch(/…+。/);
       }

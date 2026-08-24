@@ -80,11 +80,16 @@ describe("调查: Primary 主线检定", () => {
   });
 
   it("成功时标记已发现", () => {
-    const e = new InvestigationEngine(YAML_PATH);
-    const r = e.investigate("antique_object", { history: 99 }, [], "p1", ruleEngine);
-    if (r.primary_result?.success || r.is_critical) {
+    // 原先包在 `if (成功)` 里 —— 掷失败就一条都不验。技能 99 也有 1% 摔。
+    // 钉住掷骰：d100 = 1，必定成功。
+    const real = Math.random;
+    try {
+      Math.random = () => 0;
+      const e = new InvestigationEngine(YAML_PATH);
+      const r = e.investigate("antique_object", { history: 99 }, [], "p1", ruleEngine);
+      expect(r.primary_result?.success || r.is_critical).toBe(true);
       expect(e.isDiscoveredBy("antique_object", "p1")).toBe(true);
-    }
+    } finally { Math.random = real; }
   });
 });
 
@@ -161,14 +166,22 @@ describe("调查: Combined Threshold 组合阈值", () => {
   });
 
   it("组合阈值后标记已发现", () => {
+    // ⚠ 断言改成无条件之后，还得把掷骰钉住 —— 否则技能再高也有 1% 摔，
+    //   那就是把「只在 if 里」换成了「1% 概率闪」，等于没改。
+    const real = Math.random;
+    Math.random = () => 0;
+    try {
     const r = engine.investigate("document", {
       library_use: 50,
       psychology: 50,
       education: 50,
     }, [], "p1", ruleEngine);
-    if (r.combined_triggered) {
-      expect(engine.isDiscoveredBy("document", "p1")).toBe(true);
-    }
+    // 原先包在 `if (r.combined_triggered)` 里 —— 没触发组合阈值就一条都不验。
+    // 组合阈值是否触发取决于掷骰，但**一旦触发就必须标记已发现**，
+    // 这条不变量与掷骰无关。钉住掷骰让它必定成功。
+    expect(r.combined_triggered || r.primary_result?.success).toBe(true);
+    expect(engine.isDiscoveredBy("document", "p1")).toBe(true);
+    } finally { Math.random = real; }
   });
 });
 
@@ -205,12 +218,17 @@ describe("调查: Fallback 全部失败", () => {
 
 describe("InvestigationEngine 发现追踪", () => {
   it("不同玩家独立追踪", () => {
+    // 同上：断言无条件了，掷骰也得钉住。
+    const real = Math.random;
+    Math.random = () => 0;
+    try {
     const e = new InvestigationEngine(YAML_PATH);
     const r = e.investigate("antique_object", { history: 99, art: 50, appraise: 50 }, [], "p1", ruleEngine);
-    if (r.combined_triggered || r.primary_result?.success) {
-      expect(e.isDiscoveredBy("antique_object", "p1")).toBe(true);
-      expect(e.isDiscoveredBy("antique_object", "p2")).toBe(false);
-    }
+    // 同上：掷失败就一条都不验。钉住掷骰后这两条无条件成立。
+    expect(r.combined_triggered || r.primary_result?.success).toBe(true);
+    expect(e.isDiscoveredBy("antique_object", "p1")).toBe(true);
+    expect(e.isDiscoveredBy("antique_object", "p2")).toBe(false);
+    } finally { Math.random = real; }
   });
 
   it("resetAttempts 清除追踪", () => {

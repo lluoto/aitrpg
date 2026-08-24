@@ -136,12 +136,17 @@ describe("CoC 瞄准 + 贯穿 + 命中部位", () => {
     });
 
     it("瞄准模式下极限成功=暴击（damage 最大）", () => {
-      const result = CoCEngine.combatCheck(99, null, "1d8", 1, 0, true, "头部");
-      if (result.successLevel === "extreme" || result.successLevel === "critical") {
+      // 原先包在 `if (successLevel === extreme || critical)` 里 —— 掷不出就一条都不验。
+      // 钉住掷骰：d100 = 1 必定大成功。
+      const real = Math.random;
+      try {
+        Math.random = () => 0;
+        const result = CoCEngine.combatCheck(99, null, "1d8", 1, 0, true, "头部");
+        expect(result.successLevel).toBe("critical");
         expect(result.damage).toBe(8);
         expect(result.isCritical).toBe(true);
         expect(result.hitLocation).toBe("头部");
-      }
+      } finally { Math.random = real; }
     });
 
     it("普通成功走随机伤害", () => {
@@ -172,11 +177,16 @@ describe("CoC 瞄准 + 贯穿 + 命中部位", () => {
     });
 
     it("大失败时 isImpale=false", () => {
-      const result = CoCEngine.combatCheck(10, null, "1d6", 0, 0, false, undefined);
-      if (!result.hit) {
+      // 原先包在 `if (!result.hit)` 里 —— 技能 10 也有一成命中，那一成里什么都不验。
+      // 钉住掷骰：d100 = 100，必定大失败。
+      const real = Math.random;
+      try {
+        Math.random = () => 0.999;
+        const result = CoCEngine.combatCheck(10, null, "1d6", 0, 0, false, undefined);
+        expect(result.hit).toBe(false);
         expect(result.isImpale).toBe(false);
         expect(result.isCritical).toBe(false);
-      }
+      } finally { Math.random = real; }
     });
 
     it("闪避成功且非暴击时 isImpale=false", () => {

@@ -119,6 +119,8 @@ describe("模组数据 — 普瑞米尔的谷仓的陷阱", () => {
   });
 
   test("每个陷阱的骰子表达式都解析得动", () => {
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(traps.length).toBeGreaterThan(0);
     for (const t of traps) {
       const m = t.trap;
       if (!m) continue;

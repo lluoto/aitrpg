@@ -546,6 +546,9 @@ describe("端到端 — 唯一简称认得出，不唯一的仍旧 forced", () =
       conn("farm_periphery", "进入农场外围（陷阱区）"),
       conn("farm_villa", "前往农场主别墅"),
     ];
+    // 标题说「三个目标都沾」，那就把三个钉住 —— 少一个的话
+    // 「简称不能凭空造出确定性」这件事本身就不成立了，测的是另一回事。
+    expect(conns.length).toBe(3);
     const o = run("去农场", conns);
     expect(o.forced).toBe(true);
     const c: PhraseCase = { id: "amb", kind: "ambiguous", desc: "共同前缀", said: "去农场", wantSceneId: null };

@@ -207,6 +207,8 @@ describe("评分键的形状", () => {
     // 一条不可能失败的断言比没有断言更糟：它让这个用例看上去覆盖了两侧。已删，换成三件能红的事。
     for (const [k, kinds] of Object.entries(ENTRY_SCORING_KEY)) {
       const seen = new Set<string>();
+      // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+      expect(kinds.length).toBeGreaterThan(0);
       for (const x of kinds) {
         if (x.kind !== "clue" && x.kind !== "item") continue;
         expect(x.id, `${k} 的 ${x.kind} 缺 id`).not.toBe("");

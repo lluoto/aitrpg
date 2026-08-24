@@ -46,6 +46,8 @@ describe("护甲数据", () => {
   });
 
   test("DR 值在合理范围内 (1-8)", () => {
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(COC_ARMOR.length).toBeGreaterThan(0);
     for (const armor of COC_ARMOR) {
       expect(armor.dr).toBeGreaterThanOrEqual(1);
       expect(armor.dr).toBeLessThanOrEqual(8);
@@ -53,6 +55,8 @@ describe("护甲数据", () => {
   });
 
   test("重量在合理范围内 (1-20)", () => {
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(COC_ARMOR.length).toBeGreaterThan(0);
     for (const armor of COC_ARMOR) {
       expect(armor.weight).toBeGreaterThanOrEqual(1);
       expect(armor.weight).toBeLessThanOrEqual(20);
@@ -73,6 +77,8 @@ describe("护甲数据", () => {
 // ============================================================
 describe("武器数据", () => {
   test("所有武器有完整字段", () => {
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(Object.keys(COC_WEAPONS_FULL).length).toBeGreaterThan(0);
     for (const [_name, w] of Object.entries(COC_WEAPONS_FULL)) {
       expect(w.damage).toBeTruthy();
       expect(typeof w.range).toBe("number");
@@ -112,6 +118,8 @@ describe("武器数据", () => {
 
   test("霰弹枪有特殊伤害格式", () => {
     const shotguns = Object.values(COC_WEAPONS_FULL).filter(w => w.traits.includes("霰弹"));
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(shotguns.length).toBeGreaterThan(0);
     for (const s of shotguns) {
       expect(s.damage).toContain("/"); // 分段伤害 4d6/2d6/1d6
     }

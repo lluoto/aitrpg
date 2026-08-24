@@ -40,6 +40,8 @@ describe("ConstraintEngine", () => {
   });
 
   it("默认约束的优先级应为 COC_GENERAL", () => {
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(DEFAULT_CONSTRAINTS.length).toBeGreaterThan(0);
     for (const c of DEFAULT_CONSTRAINTS) {
       expect(c.priority).toBe(ConstraintPriority.COC_GENERAL);
     }

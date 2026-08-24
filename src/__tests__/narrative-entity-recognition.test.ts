@@ -39,7 +39,10 @@ describe("模组数据：叙事实体声明", () => {
   // 实跑撞出来的：调查员是随机车卡，性别不定。
   // 初版识别文案写死了"他的视线"，跑出来是"玛格丽特·哈里斯没有接话。他的视线……"。
   it("识别文案不写死第三人称代词 —— 调查员性别是随机的", () => {
-    for (const ent of BARN_OF_PREMIER.narrative?.entities ?? []) {
+    const ents = BARN_OF_PREMIER.narrative?.entities ?? [];
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(ents.length).toBeGreaterThan(0);
+    for (const ent of ents) {
       expect(ent.recognition).not.toMatch(/[他她]/);
     }
   });
@@ -78,7 +81,10 @@ describe("职业门：谁会把话里的东西和眼前景物对上", () => {
   });
 
   it("名单之外的职业一个都不开", () => {
-    for (const a of getCoCArchetypes().filter((x) => !OPENS.includes(x.id))) {
+    const others = getCoCArchetypes().filter((x) => !OPENS.includes(x.id));
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(others.length).toBeGreaterThan(0);
+    for (const a of others) {
       expect(noticesEntity(a.label, ent)).toBe(false);
     }
   });

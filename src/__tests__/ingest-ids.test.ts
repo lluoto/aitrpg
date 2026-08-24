@@ -46,7 +46,9 @@ describe("assignSceneIds", () => {
   });
 
   test("纯 ASCII —— 中文 id 会渗进存档文件名与 Provenance.path", () => {
-    for (const id of assignSceneIds([sec("特里坎家"), sec("霍姆斯医院")])) {
+    const ids = assignSceneIds([sec("特里坎家"), sec("霍姆斯医院")]);
+    expect(ids.length).toBe(2); // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    for (const id of ids) {
       expect(id).toMatch(/^[a-z0-9_]+$/);
     }
   });

@@ -409,6 +409,8 @@ describe("COC_SKILLS", () => {
 
 describe("SKILL_NAME_MAP", () => {
   test("中文→英文双向映射一致（允许多中文→同英文）", () => {
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(Object.keys(SKILL_NAME_MAP).length).toBeGreaterThan(0);
     for (const [cn, en] of Object.entries(SKILL_NAME_MAP)) {
       // 多个中文名可映射到同一英文 key（如"格斗(肉搏)"→"fighting","格斗(剑)"→"fighting"）
       // 反向映射只保留第一个，但正向映射必须能在反向中找到
@@ -422,6 +424,10 @@ describe("SKILL_NAME_MAP", () => {
   });
 
   test("覆盖所有 COC_SKILLS", () => {
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(COC_SKILLS.length).toBeGreaterThan(0);
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(COC_SKILLS.length).toBeGreaterThan(0);
     for (const cn of COC_SKILLS) {
       expect(SKILL_NAME_MAP[cn]).toBeDefined();
     }
@@ -625,6 +631,8 @@ describe("autoAllocateSkills", () => {
 
   test("所有技能值不超过 99", () => {
     const result = autoAllocateSkills(mockArchetype, baseAttrs, 300, 500);
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(Object.keys(result).length).toBeGreaterThan(0);
     for (const [, val] of Object.entries(result)) {
       expect(val).toBeLessThanOrEqual(99);
     }

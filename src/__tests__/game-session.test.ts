@@ -101,12 +101,13 @@ describe("移动", () => {
     expect(res.state.scene).toBe("barn_interior");
   });
 
-  it("去地下室（如果存在）", async () => {
+  it("去地下室会给出移动叙述", async () => {
     // 需要先进入谷仓才能到地下室
     await session.act("移动到谷仓");
     const res = await session.act("去地下室");
-    // 地下室可能 locked, 测试不应崩溃
-    expect(res).toBeDefined();
+    // 原注释写「可能 locked，不应崩溃」，于是只验没崩。
+    // 实跑：叙述是「你走向了地下室。」—— 移动叙述是稳定给出的，可判。
+    expect(res.narrative).toContain("地下室");
   });
 });
 
@@ -148,19 +149,27 @@ describe("SAN 检定", () => {
 // ============================================================
 
 describe("考察", () => {
-  it("调查物体", async () => {
+  it("调查物体触发调查检查", async () => {
+    // 实跑：叙述是「调查检查 大失败！」——「触发了检查」可判，不必只验没崩。
     const res = await session.act("调查");
-    expect(res).toBeDefined();
+    expect(res.narrative).toContain("调查检查");
   });
 
-  it("侦查房间", async () => {
+  it("侦查房间触发侦查检查", async () => {
+    // ⚠ 断言字面要照抄实现。我第一版写「侦查检定」，红了 ——
+    //   实际输出是「侦查检**查**」（`${skillDisplay}检查 ${resultText}。`）。
+    //   终端把中文 mojibake 成一片问号，看不出差别，最后是打码位才认出来的：
+    //   4fa6 67e5 68c0 67e5 = 侦 查 检 查。
+    //   顺带记一笔：CoC 的行话是「检定」，这里全写成了「检查」——
+    //   要统一是文案决定，不在这轮顺手改。
     const res = await session.act("侦查房间");
-    expect(res).toBeDefined();
+    expect(res.narrative).toContain("侦查检查");
   });
 
-  it("阅读某物", async () => {
+  it("阅读某物给出翻阅叙述", async () => {
     const res = await session.act("阅读日记");
-    expect(res).toBeDefined();
+    expect(res.narrative).toContain("翻阅");
+    expect(res.narrative).toContain("日记");
   });
 });
 
@@ -259,10 +268,17 @@ describe("CoC 燃运", () => {
     expect(res).toBeDefined();
   });
 
-  it("燃运过多被拒绝", async () => {
-    // 燃运 999 超过每日上限
+  // ⚠ 这条原先叫「燃运过多被拒绝」，只断言 res 存在。实跑之后发现
+  //   **它许诺的拒绝根本没发生**：「燃运999 攻击敌人」这句压根没被识别成命令，
+  //   narrative 停在上一条的内容，事件里只有原样回显的输入。
+  //
+  //   幸运不足的拒绝逻辑是有的（`💫 幸运不足！`），但走的是意图解析出
+  //   `luckSpend` 的攻击路径 —— 「燃运999」这种写法解析不出来。
+  //   究竟该支持哪种写法是产品决定，不在这轮顺手改；先让测试说实话。
+  it("「燃运999 攻击敌人」这种写法目前解析不出燃运意图", async () => {
     const res = await session.act("燃运999 攻击敌人");
-    expect(res).toBeDefined();
+    expect(res.events.some((e) => e.content.includes("燃运999"))).toBe(true);
+    expect(res.events.some((e) => e.content.includes("幸运不足"))).toBe(false);
   });
 });
 
@@ -370,10 +386,12 @@ describe("CoC 追逐", () => {
     expect(res.narrative).toContain("追逐");
   });
 
-  it("追逐逃跑触发追逐启动（CoC 模式下如果有战斗）", async () => {
+  it("没有战斗时「逃跑」直接脱离，不启动追逐", async () => {
+    // 原标题带着「如果有战斗」的条件却不建立那个条件，断言也只验没崩。
+    // 实跑：无战斗时叙述是「你转身逃跑，迅速脱离了战斗」。
+    // 有战斗那一支要另立用例、先把战斗打起来，不是在这条里含糊带过。
     const res = await chaseSession.act("逃跑");
-    // 如果战斗激活则启动追逐，否则直接脱离
-    expect(res).toBeDefined();
+    expect(res.narrative).toContain("脱离");
   });
 
   it("多次追逐回合不崩溃", async () => {

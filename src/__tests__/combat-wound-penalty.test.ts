@@ -112,7 +112,10 @@ describe("战斗攻击 — 伤势惩罚骰", () => {
   test("疲劳与伤势分别可见，合计仍不超过 2", async () => {
     Math.random = () => 0;
     const evts = await fight([["甲", "deep"]]);
-    for (const e of attackChecks(evts, "甲")) {
+    const checks = attackChecks(evts, "甲");
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空（这局要是一次攻击都没打，下面就什么都没验）
+    expect(checks.length).toBeGreaterThan(0);
+    for (const e of checks) {
       expect(e.totalPenalty).toBe(Math.min(2, e.envPenalty + e.woundPenalty));
       expect(e.totalPenalty).toBeLessThanOrEqual(2);
     }

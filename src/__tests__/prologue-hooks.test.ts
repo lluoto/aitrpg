@@ -75,6 +75,8 @@ describe("hooks 模板", () => {
   test("**错误行为的红线**：不许写死第三人称代词", () => {
     // 写死「他」正是「玛丽·布朗……他见过太多案子」的直接原因。
     // 要用代词就走 {pronoun} 槽位。
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(hooks.length).toBeGreaterThan(0);
     for (const h of hooks) {
       const withoutSlots = h.replace(/\{pronoun\}/g, "");
       expect(withoutSlots).not.toMatch(/[他她]/);
@@ -82,6 +84,8 @@ describe("hooks 模板", () => {
   });
 
   test("用到代词的模板必须声明 {pronoun} 槽位", () => {
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(hooks.length).toBeGreaterThan(0);
     for (const h of hooks) {
       if (/\{pronoun\}/.test(h)) expect(h).toContain("{pronoun}");
     }
@@ -90,12 +94,16 @@ describe("hooks 模板", () => {
   test("**错误行为的红线**：不许替随机职业编侦探履历", () => {
     // 「见过太多案子」「办过无数案件」这类话，对护士/飞行员/艺术家一律是假的。
     // 卷入方式该说**这个职业真的会有的处境**，不是给谁都套一层侦探皮。
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(hooks.length).toBeGreaterThan(0);
     for (const h of hooks) {
       expect(h).not.toMatch(/见过太多案子|办过.*案|经手过.*案子|老练的侦探/);
     }
   });
 
   test("槽位齐全：{name} 与 {occupation} 都还在", () => {
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(hooks.length).toBeGreaterThan(0);
     for (const h of hooks) {
       expect(h).toContain("{name}");
       expect(h).toContain("{occupation}");
@@ -108,7 +116,10 @@ describe("渲染出来的句子 —— 正例/反例/干扰", () => {
     h.replace(/\{name\}/g, name).replace(/\{occupation\}/g, occ).replace(/\{pronoun\}/g, pronounOf(g));
 
   test("**正确**：女性角色渲染出「她」", () => {
-    for (const h of hooks.filter((x) => x.includes("{pronoun}"))) {
+    const withPronoun = hooks.filter((x) => x.includes("{pronoun}"));
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(withPronoun.length).toBeGreaterThan(0);
+    for (const h of withPronoun) {
       const s = render(h, "玛丽·布朗", "飞行员", "female");
       expect(s).toContain("她");
       expect(s).not.toContain("他");
@@ -116,13 +127,22 @@ describe("渲染出来的句子 —— 正例/反例/干扰", () => {
   });
 
   test("**正确**：男性角色渲染出「他」", () => {
-    for (const h of hooks.filter((x) => x.includes("{pronoun}"))) {
+    const withPronoun = hooks.filter((x) => x.includes("{pronoun}"));
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(withPronoun.length).toBeGreaterThan(0);
+    for (const h of withPronoun) {
       const s = render(h, "约翰·布朗", "护士", "male");
       expect(s).toContain("他");
     }
   });
 
   test("**干扰**：性别未知时仍是通顺的句子，不留下 `{pronoun}` 字面量", () => {
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(hooks.length).toBeGreaterThan(0);
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(hooks.length).toBeGreaterThan(0);
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(hooks.length).toBeGreaterThan(0);
     for (const h of hooks) {
       const s = render(h, "某人", "记者", undefined);
       expect(s).not.toContain("{");
@@ -131,7 +151,9 @@ describe("渲染出来的句子 —— 正例/反例/干扰", () => {
   });
 
   test("职业换成各种冷门职业都不会读出「他见过太多案子」这种断言", () => {
-    for (const occ of ["护士", "飞行员", "艺术家", "消防员", "殡葬师", "音乐家"]) {
+    const occs = ["护士", "飞行员", "艺术家", "消防员", "殡葬师", "音乐家"];
+    expect(occs.length).toBeGreaterThan(0); // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    for (const occ of occs) {
       for (const h of hooks) {
         const s = render(h, "某人", occ, "female");
         expect(s).not.toMatch(/见过太多案子/);

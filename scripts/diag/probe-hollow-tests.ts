@@ -86,7 +86,7 @@ const MAYBE_UNDEFINED = /\.\s*(find|match|get|shift|pop|at)\s*\(|\[[^\]]*\]|\?\.
 //   代价是像「八个合法取值原样返回」这种没写总括词的会漏掉 —— 认了：
 //   判据宁可漏报，也不能拿 97 条噪声把人淹了（这仓库栽过一次「174 个假阳性
 //   淹掉 2 个真问题」）。
-const COUNT_IN_TITLE = /(?:所有|全部|每一?个|恰好|共)[^，。]{0,8}(?:[0-9]+|[一二三四五六七八九十两]+)\s*(?:个|条|本|种|份|项|名|张|把|段|句|类)|(?:[0-9]+|[一二三四五六七八九十两]+)\s*(?:个|条|本|种|份|项|名|类)[^，。]{0,6}(?:都|全部|均)/;
+const COUNT_IN_TITLE = /(?:所有|全部|每一?个|恰好|共)[^，。]{0,8}(?:[0-9]+|[一二三四五六七八九十]+)\s*(?:个|条|本|种|项|名|类)|(?:[0-9]+|[三四五六七八九十]+)\s*(?:个|条|本|种|项|名|类)[^，。]{0,6}(?:都|全部|均)/;
 
 /**
  * 块里有没有任何「查数量」的断言。有就放过 —— 断得对不对要人读，判据不越权。
@@ -98,7 +98,7 @@ const COUNT_IN_TITLE = /(?:所有|全部|每一?个|恰好|共)[^，。]{0,8}(?:
  *   要消掉得判「toEqual 的实参是不是字面量数组」，那已经接近写解析器了 ——
  *   报出来让人读一眼更划算。**判据的边界要写出来，不能假装没有。**
  */
-const HAS_COUNT_ASSERT = /toHaveLength\s*\(|\.\s*(?:length|size)\s*\)\s*\.\s*(?:toBe|toEqual|toBeGreaterThan|toBeGreaterThanOrEqual|toBeLessThan|toBeLessThanOrEqual)|\.\s*(?:length|size)\s*\)\s*\.\s*not/;
+const HAS_COUNT_ASSERT = /toHaveLength\s*\(|\.\s*(?:length|size)\s*\)\s*\.\s*(?:toBe|toEqual|toBeGreaterThan|toBeGreaterThanOrEqual|toBeLessThan|toBeLessThanOrEqual)|\.\s*(?:length|size)\s*\)\s*\.\s*not|\)\s*\.\s*toEqual\s*\(\s*[A-Z_][\w$]*\s*\)|\)\s*\.\s*toEqual\s*\(\s*\[/;
 
 function trivialAssertion(stmt: string, maybeUndefinedVars: ReadonlySet<string>): boolean {
   if (/expect\s*\(\s*true\s*\)\s*\.\s*toBe\s*\(\s*true\s*\)/.test(stmt)) return true;
@@ -107,6 +107,10 @@ function trivialAssertion(stmt: string, maybeUndefinedVars: ReadonlySet<string>)
   if (!m) return false;
   const arg = m[1]!.trim();
   if (MAYBE_UNDEFINED.test(arg)) return false;
+  // 可选字段（`r.resolve` 这种返回对象上的 `?:` 字段）同样可能是 undefined，
+  // 对它 `toBeDefined()` 就是在验「这件事发没发生」—— 真断言。
+  // 判据看不出字段是不是可选，用个近似：属性链上的末段是常见的可选结果名。
+  if (/^[a-z_$][\w$]*\.[\w$]+$/i.test(arg) && /\.(resolve|result|error|reason|value|match|hit|found|entry)$/i.test(arg)) return false;
   // ⚠ 真实写法多半分两行：
   //     const event = res.events.find(…);
   //     expect(event).toBeDefined();
@@ -114,6 +118,32 @@ function trivialAssertion(stmt: string, maybeUndefinedVars: ReadonlySet<string>)
   //   46 条只降到 43。要往上追一步：这个变量是不是从可能返回 undefined 的表达式来的。
   if (/^[A-Za-z_$][\w$]*$/.test(arg) && maybeUndefinedVars.has(arg)) return false;
   return true;
+}
+
+/**
+ * 这个块里被遍历的东西**是不是全都空不了**。
+ *
+ * 两种空不了的形态：
+ *   · 直接遍历字面量数组：`for (const x of ["a", "b"])`
+ *   · 遍历一个块内由字面量赋值的局部变量：`const cases = [...]` 然后 `for … of cases`
+ *
+ * 只要有一个被遍历的东西不是这两种（filter 出来的、import 进来的常量表、
+ * 函数返回值），就还是要报 —— 那些是真会空的。
+ */
+function literalLoopOnly(body: string): boolean {
+  const iterated: string[] = [];
+  for (const m of body.matchAll(/for\s*\(\s*const\s+[\w{}\[\],\s]+\s+of\s+([^)]+?)\)\s*\{/g)) {
+    iterated.push(m[1]!.trim());
+  }
+  for (const m of body.matchAll(/([\w.$]+)\s*\.\s*forEach\s*\(/g)) iterated.push(m[1]!.trim());
+  if (iterated.length === 0) return false;
+
+  // 块内以字面量数组赋值的局部变量
+  const literalVars = new Set<string>();
+  for (const m of body.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*\[/g)) {
+    literalVars.add(m[1]!);
+  }
+  return iterated.every((e) => e.startsWith("[") || literalVars.has(e));
 }
 
 /** 块内哪些局部变量来自「可能是 undefined」的表达式 */
@@ -187,6 +217,12 @@ for (const f of files) {
       // 需要守卫的是**遍历集合**：for..of / forEach / map / filter。
       const countedLoop = /\bfor\s*\(\s*(let|var)\s+\w+\s*=\s*0\s*;\s*\w+\s*<\s*\d+\s*;/.test(bodyMask);
       const iteratesCollection = /\bfor\s*\([^;)]*\bof\b|\.\s*(forEach|map|filter|some|every)\s*\(/.test(bodyMask);
+      // ⚠ 遍历**字面量数组**空不了：`for (const x of ["a", "b"])`。
+      //   判据前几版把这类也报了，65 条里 19 条是这么来的。
+      //   块内用字面量赋值的局部变量同理（`const cases = [...]` 然后遍历 cases）——
+      //   得往上追一步，否则「空不了」的东西照样进名单。
+      if (iteratesCollection && !literalLoopOnly(bodyRaw)) { /* 落到下面的判断 */ }
+      if (iteratesCollection && literalLoopOnly(bodyRaw)) continue;
       const onlyInIf = !/\b(for|while)\s*\(/.test(bodyMask) && !/\.\s*forEach\s*\(/.test(bodyMask);
       if (onlyInIf) {
         hits.push({ file: f, line: i + 1, title, why: `${expects.length} 条断言**只在 if 里**，条件不成立就一条都不执行` });
@@ -208,14 +244,27 @@ for (const f of files) {
     // 有长度断言就放过 —— 是不是断得对要人读，判据不越权。
     // 「一个都不写进对象」「一个花括号都没有」「一个都不给」——
     // 这是「一个都没有」，说的是**零**，不是在许诺一张表有多大。
-    const meansNone = /一\s*(?:个|条|本|字)?\s*都\s*(?:不|没)/.test(title);
+    // 「一个都不写进对象」「一个花括号都没有」「上一页一个字都不接」——
+    // 这是「一个都没有」，说的是**零**，不是在许诺一张表有多大。
+    // 量词得放宽：花括号、键、字…… 第一版只认「个/条/本/字」，漏了一半。
+    const meansNone = /一\s*[\u4e00-\u9fa5]{0,3}\s*都\s*(?:不|没)/.test(title);
     if (!meansNone && COUNT_IN_TITLE.test(title) && !HAS_COUNT_ASSERT.test(bodyMask)) {
       hits.push({ file: f, line: i + 1, title, why: "标题许诺了数量，块里却没有任何长度/条数断言 —— 表缩水或膨胀都不会被发现" });
       continue;
     }
 
+    // 标题**自己就说了只验「不崩」**的，永真断言正是与它相符的写法，不该报。
+    //
+    // 「装填指令不崩溃」「空 config 不会抛异常」—— 这类是诚实的冒烟测试：
+    // 它没有许诺任何具体效果，`expect(res).toBeDefined()` 恰好是那个许诺的全部。
+    // 值得修的是**标题许诺了具体效果、断言却只说没崩**的那些
+    // （「装填后状态显示弹药」「D&D 模式下购买提示不支持」，都已改）。
+    //
+    // 判据必须能区分「弱」和「说谎」：前者是选择，后者是缺陷。
+    const smokeTitle = /不崩溃|不会?抛|不抛异常|不报错|能跑通|不死循环/.test(title);
+
     const undefinable = undefinableVars(bodyRaw);
-    if (stmts.length > 0 && stmts.every((s) => trivialAssertion(s, undefinable))) {
+    if (!smokeTitle && stmts.length > 0 && stmts.every((s) => trivialAssertion(s, undefinable))) {
       hits.push({ file: f, line: i + 1, title, why: "只有永真断言（toBeDefined / toBeTruthy / not.toThrow / true===true）" });
     }
   }

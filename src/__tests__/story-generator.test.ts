@@ -38,6 +38,8 @@ describe("基本生成（默认配置）", () => {
   });
 
   test("每个场景有 id/name/description/lighting/exits", () => {
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(story.scenes.length).toBeGreaterThan(0);
     for (const s of story.scenes) {
       expect(s.id).toBeTruthy();
       expect(s.name).toBeTruthy();
@@ -54,6 +56,8 @@ describe("基本生成（默认配置）", () => {
 
   test("场景之间连通（无孤立场景）", () => {
     const allIds = new Set(story.scenes.map(s => s.id));
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(story.scenes.length).toBeGreaterThan(0);
     for (const s of story.scenes) {
       if (s.exits.length === 0) {
         // 孤立场景不应存在——generator 会修复
@@ -68,6 +72,8 @@ describe("基本生成（默认配置）", () => {
 
   test("每场景出口的 target 都是有效场景 ID", () => {
     const allIds = new Set(story.scenes.map(s => s.id));
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(story.scenes.length).toBeGreaterThan(0);
     for (const s of story.scenes) {
       for (const exit of s.exits) {
         expect(allIds.has(exit.target)).toBe(true);
@@ -76,18 +82,24 @@ describe("基本生成（默认配置）", () => {
   });
 
   test("displayNames 覆盖所有场景", () => {
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(story.scenes.length).toBeGreaterThan(0);
     for (const s of story.scenes) {
       expect(story.displayNames[s.id]).toBe(s.name);
     }
   });
 
   test("aliases 包含场景名", () => {
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(story.scenes.length).toBeGreaterThan(0);
     for (const s of story.scenes) {
       expect(story.aliases[s.name]).toBe(s.id);
     }
   });
 
   test("items 包含每个场景的物品（可能为空）", () => {
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(story.scenes.length).toBeGreaterThan(0);
     for (const s of story.scenes) {
       expect(story.items[s.id]).toBeDefined();
       expect(Array.isArray(story.items[s.id])).toBe(true);
@@ -96,6 +108,8 @@ describe("基本生成（默认配置）", () => {
 
   test("clueTexts 的 scene 都是有效场景 ID", () => {
     const allIds = new Set(story.scenes.map(s => s.id));
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(story.clueTexts.length).toBeGreaterThan(0);
     for (const c of story.clueTexts) {
       expect(allIds.has(c.scene)).toBe(true);
     }
@@ -199,6 +213,8 @@ describe("实体生成", () => {
   test("实体有完整字段", () => {
     // 用可能包含怪物的子类型
     const story = generator.generate({ subgenre: "lovecraft", difficulty: 3, length: "medium" });
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(story.entities.length).toBeGreaterThan(0);
     for (const ent of story.entities) {
       expect(ent.id).toBeTruthy();
       expect(ent.name).toBeTruthy();
@@ -216,6 +232,8 @@ describe("实体生成", () => {
   test("实体位置对应有效场景", () => {
     const story = generator.generate({ subgenre: "slasher", length: "long" });
     const sceneIds = new Set(story.scenes.map(s => s.id));
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(story.entities.length).toBeGreaterThan(0);
     for (const ent of story.entities) {
       expect(sceneIds.has(ent.scene_id)).toBe(true);
     }
@@ -228,6 +246,8 @@ describe("实体生成", () => {
 describe("线索生成", () => {
   test("clueTexts 包含完整字段", () => {
     const story = generator.generate({ subgenre: "cult", length: "medium" });
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(story.clueTexts.length).toBeGreaterThan(0);
     for (const clue of story.clueTexts) {
       expect(clue.id).toBeTruthy();
       expect(clue.type).toBeTruthy();
@@ -248,6 +268,8 @@ describe("线索生成", () => {
   test("有线索的场景在 clueTexts 中有对应条目", () => {
     const story = generator.generate({ subgenre: "lovecraft", length: "medium" });
 
+    // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    expect(story.scenes.length).toBeGreaterThan(0);
     for (const s of story.scenes) {
       for (const clueId of s.clues) {
         const found = story.clueTexts.find(c => c.id === clueId);

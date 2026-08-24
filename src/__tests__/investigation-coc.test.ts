@@ -87,12 +87,17 @@ describe("InvestigationEngine — CoC 7e", () => {
     });
 
     it("SAN cost 为 1/1d6 时失败 SAN>0", () => {
-      const r = engine.investigateCoC("ritual_site", { occult: 5 }, "p_san");
-      // 失败概率很高，此时应使用 1d6
-      if (!r.success) {
+      // 原先是 `if (!r.success)`，注释写「失败概率很高」——「很高」不是「必定」，
+      // 技能 5 也有 5% 成功，那 5% 里这条一条断言都不执行。
+      // 钉住掷骰：d100 = 100，必定失败。
+      const real = Math.random;
+      try {
+        Math.random = () => 0.999;
+        const r = engine.investigateCoC("ritual_site", { occult: 5 }, "p_san");
+        expect(r.success).toBe(false);
         expect(r.sanCost).toBe("1/1d6");
         expect(r.sanLost).toBeGreaterThan(0);
-      }
+      } finally { Math.random = real; }
     });
   });
 

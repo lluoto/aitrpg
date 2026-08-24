@@ -209,14 +209,24 @@ describe("SanityEngine.sanityCheck()", () => {
     expect(e.state.indefiniteInsanity).toBe(true);
   });
 
-  it("获得恐惧症", () => {
-    const e = new SanityEngine(50);
-    // 触发 bout of madness 可能产生恐惧症
-    e.state.sanLostThisRound = 5;
-    const r = e.sanityCheck("0/1d6");
-    if (r.newPhobia) {
-      expect(e.state.phobias).toContain(r.newPhobia);
-    }
+  it("获得恐惧症时会记进 phobias", () => {
+    // 原先是 `if (r.newPhobia)` —— 没摇出恐惧症就一条都不验。
+    // 恐惧症是否产生本身带随机，但**一旦产生就必须记进列表**，
+    // 这条不变量与掷骰无关，多试几次总能拿到样本；拿不到就该红。
+    const real = Math.random;
+    let seen = false;
+    try {
+      for (let i = 0; i < 200 && !seen; i++) {
+        const e = new SanityEngine(50);
+        e.state.sanLostThisRound = 5;
+        const r = e.sanityCheck("0/1d6");
+        if (r.newPhobia) {
+          seen = true;
+          expect(e.state.phobias).toContain(r.newPhobia);
+        }
+      }
+    } finally { Math.random = real; }
+    expect(seen).toBe(true); // 200 次一个样本都没有 = 这条什么都没验
   });
 
   it("重置后 insanity 状态可共存", () => {
@@ -315,10 +325,15 @@ describe("CoCEngine.combatCheck()", () => {
   });
 
   it("d100=100 直接大失败", () => {
-    const r = CoCEngine.combatCheck(99, null, "1d6");
-    if (r.roll === 100) {
+    // 标题说的就是 d100=100，那就把它掷出来 —— 原先靠 `if (r.roll === 100)` 撞运气，
+    // 99% 的运行一条断言都不执行。
+    const real = Math.random;
+    try {
+      Math.random = () => 0.999;
+      const r = CoCEngine.combatCheck(99, null, "1d6");
+      expect(r.roll).toBe(100);
       expect(r.successLevel).toBe("fumble");
-    }
+    } finally { Math.random = real; }
   });
 });
 
@@ -591,10 +606,16 @@ describe("SanityEngine.rollNightmare()", () => {
     e.state.indefiniteInsanity = true;
     e.state.indefiniteLevel = "severe";
     e.state.currentSAN = 40;
-    const r = e.rollNightmare();
+    // 噩梦是否触发带随机，但**一旦触发就必须扣 SAN** —— 这条不变量与掷骰无关。
+    // 原先 `if (r)` 不成立时一条都不验，而「没触发」恰恰是最常见的情况。
+    // 多试几次拿样本；一个都拿不到就该红（那说明噩梦根本不会触发）。
+    let r = e.rollNightmare();
+    for (let i = 0; i < 200 && !r; i++) {
+      e.state.currentSAN = 40;
+      r = e.rollNightmare();
+    }
+    expect(r).toBeTruthy(); // 200 次都没触发 = 这条什么都没验
     if (r) {
-      // 如果触发了噩梦，SAN 应减少
-      // severe 噩梦 sanLoss 来自 NIGHTMARE_TABLE
       expect(e.state.currentSAN).toBeLessThan(40);
       expect(r.sanLoss).toBeGreaterThan(0);
     }

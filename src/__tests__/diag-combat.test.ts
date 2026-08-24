@@ -87,7 +87,9 @@ describe("敌人还手 — 攻击者身份必须验证", () => {
   });
 
   test("敌人技能改名为「触手」/「格斗(钳肢)」→ 仍然认得出（不靠技能名）", () => {
-    for (const skill of ["触手", "格斗(钳肢)", "钳肢横扫"]) {
+    const skills = ["触手", "格斗(钳肢)", "钳肢横扫"];
+    expect(skills.length).toBeGreaterThan(0); // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
+    for (const skill of skills) {
       const r = reduceCombat([
         start(), round(1),
         chk("米戈", skill, { actorKind: "enemy" }),
