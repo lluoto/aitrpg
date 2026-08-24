@@ -19,14 +19,21 @@ import type { MessageType } from "../agent/types";
 // ============================================================
 
 describe("MYTHOS_CREATURE_MAP", () => {
-  it("所有 8 个生物均可通过中文名查到", () => {
-    const expectedNames = ["深潜者", "修格斯", "夜魇", "廷达罗斯猎犬", "拜亚基", "维度漫步者", "星之精", "米戈"];
-    for (const name of expectedNames) {
-      expect(MYTHOS_CREATURE_MAP.get(name)).toBeDefined();
+  // ⚠ 这条原先叫「所有 8 个生物均可通过中文名查到」，遍历的是测试里手写的 8 个名字。
+  //   而 `MYTHOS_CREATURES` 现在有 **40 个** —— 数据从 8 涨到 40，标题里的「所有」
+  //   早就不成立了，测试实际只覆盖两成。新加的生物漏建名字索引，这条一声不吭。
+  //
+  //   改成遍历真实数据。数量也一并钉住：表膨胀或缩水都该有人知道，
+  //   而不是等某天索引漏了才在运行时查不到。
+  it("每个生物都能通过中文名查到", () => {
+    expect(MYTHOS_CREATURES.length).toBe(40);
+    expect(MYTHOS_CREATURE_MAP.size).toBe(MYTHOS_CREATURES.length);
+    for (const c of MYTHOS_CREATURES) {
+      expect(MYTHOS_CREATURE_MAP.get(c.name)).toBeDefined();
     }
   });
 
-  it("所有 8 个生物均可通过 id 查到", () => {
+  it("每个生物都能通过 id 查到", () => {
     const expectedIds = ["deep_one", "shoggoth", "nightgaunt", "hound_of_tindalos", "byakhee", "dimensional_shambler", "star_vampire", "mi_go"];
     for (const id of expectedIds) {
       expect(MYTHOS_CREATURE_BY_ID.get(id)).toBeDefined();

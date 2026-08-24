@@ -91,9 +91,13 @@ describe("buildItemPrompt", () => {
     // 认「- 类别名：」这个条目形态，不认裸词：item 和 clue 在下面那条「注意」里也各出现一次
     // （拿得走的是 item，知道了的是 clue），拿裸词断言的话，把这两条从类别表里删掉测试照样绿 ——
     // 而它俩正是那条注意存在的理由，六个里最不能漏的一对。
-    for (const k of ["clue", "item", "trap", "connection", "npc_knowledge", "event"]) {
+    const cats = ["clue", "item", "trap", "connection", "npc_knowledge", "event"];
+    for (const k of cats) {
       expect(p).toContain(`- ${k}：`);
     }
+    // 标题说「六个」。只查成员不查数量的话，prompt 里**多**出一个类别同样没人发现，
+    // 而多一个类别意味着模型会返回一种下游不认识的东西。
+    expect((p.match(/^- \w+：/gm) ?? []).length).toBe(cats.length);
   });
 
   test("无名条目也要能渲染，不能塌成空行", () => {

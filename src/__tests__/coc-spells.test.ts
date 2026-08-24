@@ -3,6 +3,7 @@
 
 import { describe, it, expect, beforeEach } from "bun:test";
 import { GameSession } from "../api/game-session";
+import { MYTHOS_TOMES } from "../rules/mythos-expansion";
 
 
 let session: GameSession;
@@ -47,6 +48,9 @@ describe("神话典籍阅读", () => {
   });
 
   it("阅读全部 5 本典籍均触发 SAN 检定和 CM 成长", async () => {
+    // 标题说「全部 5 本」，那就先确认典籍表真的是 5 本 ——
+    // 手写的名单和真实数据分叉时，这条会红在该红的地方。
+    expect(MYTHOS_TOMES.length).toBe(5);
     const allTomes = ["死灵之书", "无名祭祀书", "黄衣之王", "塞拉伊诺断章", "阿卡姆特集"];
     // 将额外典籍加入当前场景
     const items: string[] = (session as any).sceneItems.get("farm_exterior") ?? [];

@@ -11,6 +11,9 @@ import { asNPCMood, NPC_MOODS } from "../agent/types";
 
 describe("asNPCMood", () => {
   it("八个合法取值原样返回", () => {
+    // 标题说「八个」，那就把八个钉住 —— 否则 NPC_MOODS 缩水成三个，
+    // 这条照样绿，而下游按八个取值分派的分支会集体落空。
+    expect(NPC_MOODS.length).toBe(8);
     for (const mood of NPC_MOODS) {
       expect(asNPCMood(mood)).toBe(mood);
     }
