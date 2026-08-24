@@ -156,6 +156,40 @@ for (const f of [...srcFiles, ...walk("scripts", [".ts"])]) {
   }
   notes.push(`文档引用校验覆盖 ${generated.length} 份生成文档：${generated.join("、") || "(无)"}`);
   if (!gitOk) notes.push("git ls-files 不可用 —— 只校验了文档引用脚本是否存在，没校验是否入库");
+
+  // ── 10. 源码拿来当证据的文件，仓库里得真有 ──
+  //
+  // 第 7 项管的是「文档叫人跑的脚本」，这一项管的是「代码引用的证据」。
+  // 同一个病，另一层皮：四处注释写着「实跑原文见 play-logs/run-….txt」，
+  // 而 `play-logs/` 在 .gitignore 里 —— **克隆下来的人根本打不开那个文件**。
+  // 一句指向不存在之物的证据，读起来像有据可查，实际等于没有。
+  //
+  // 只认「路径样子的引用」：带目录分隔符且有扩展名。散文里提一句
+  // 「见跑局日志」不算，那没许诺具体哪一份。
+  //
+  // ⚠ **不查 `analysis/`**。判据第一版把它算进来，报出 4 条全是误报：
+  //   那是各个探针在 console.log 里声明自己的产物路径。
+  //   `analysis/` 的东西都能由一个点得出名字的脚本重跑再生，
+  //   引用它不算「指向不存在之物」。真正查不回来的是
+  //   `play-logs/`（一次性跑局原文）、`tools/`（历史草稿）、`data/`（本机库）。
+  const EVIDENCE_REF = /(?:^|[\s(（「`])((?:play-logs|data|tools)\/[\w./-]+\.(?:txt|md|json|jsonl))/g;
+  const srcFiles = [...walk("src", [".ts"]), ...walk("scripts", [".ts"])];
+  for (const f of srcFiles) {
+    const text = read(f);
+    for (const m of text.matchAll(EVIDENCE_REF)) {
+      const ref = m[1]!;
+      const line = text.slice(0, m.index).split("\n").length;
+      if (!existsSync(ref)) {
+        push([{ file: f, line, rule: "evidence-missing", message: `引用的证据文件不存在：${ref}` }]);
+      } else if (gitOk && !trackedSet.has(ref)) {
+        push([{
+          file: f, line, rule: "evidence-untracked",
+          message: `证据没入库，别人克隆下来打不开：${ref}`
+            + `（要么拷进 docs/evidence/ 并改引用，要么别在注释里点具体文件名）`,
+        }]);
+      }
+    }
+  }
 }
 
 // ── 5. typecheck ──

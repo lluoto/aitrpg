@@ -114,7 +114,7 @@ function pickDemeanor(npc: ModuleNPC): string {
  *
  * 有些 NPC 只有身份没有姓名 —— 模组里那名警察的 name 和 role 都是"警员"。
  * 无条件拼成 `${role}${name}` 就得到「你们好。我是警员警员。请说明来意。」，
- * 实跑原文见 play-logs/run-2026-08-18T06-50-07.txt。
+ * 实跑原文见 docs/evidence/run-2026-08-18T06-50-07.txt。
  *
  * 判据用 includes 而不是全等：还有"艾伦警长"这种名字本身已经含着身份的情况，
  * 再前置一个身份同样是重复。

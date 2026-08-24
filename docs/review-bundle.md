@@ -1,3 +1,6 @@
+> ⚠ **本文件由 `scripts/make-review-bundle.ts` 生成，手改会被覆盖。**
+> 要改正文请改 `docs/review-request.md`；要改附录请改被打包的那些脚本。
+
 # 外部 review 请求：诊断判据是否可信
 
 > 用途：把这份连同下面列出的文件一起交给**另一个模型**（不是写这些代码的那个），
@@ -107,21 +110,34 @@
 # 附：待审脚本全文
 ======================================================================
 
-## tools/_diag-phrasing.ts
+## scripts/diag/diag-phrasing.ts
 
 ```ts
 // 量「玩家说的话没被匹配上、引擎替他挑了」有多频繁。
 //
-// 记录里的原话：玩家说的话只要不含某个场景名的前 8 个字，就被静默丢弃，
-// 引擎按分数自己挑一个地方送过去。「比菜单更糟 —— 菜单至少还承认玩家做了选择」。
+// ⚠ 判据本身返工过一次（见 docs/review-request.md 第 6 条）。上一版的问题：
+//   1. 12 种说法里 8 种都含完整地名 → 跑出 100%，看着像匹配很好，
+//      其实只说明用例太容易。补进会掉的用例后是 66.9%。
+//   2. 「换个地方看看」「去那边」这种句子**根本没指定目标**，
+//      却被算进「目标命中率」的分母。分子必然是 0，指标不度量任何东西。
+//      这类输入唯一能要求的是：引擎必须承认自己是替玩家挑的（forced=true）。
+//   3. 报告写着「8 种说法」，实际列了 12 种。
+//   4. 只按模组给的连接顺序跑一遍 —— 干扰项恰好排在目标之后时全绿，
+//      实现改错也发现不了（同一份 review 的第 3 条错就是这么来的）。
 //
-// matchKeys 那轮改进（整句 / 去括号 / 场景真名 三个键）之后应该好转，
-// 但从没量过。这里用主循环脚手架灌不同说法，看 forced 比例。
+// 现在：用例分正例 / 反例 / 歧义三类，各有各的判据（见 src/diagnostics/phrasing.ts，
+// 那边有正反例校准测试）；每条用例按原序和逆序各跑一遍。
 process.env.LLM_DISABLED = "true";
 
-import { chooseConnection, type MoveWorldView } from "../src/play-module";
-import { BARN_OF_PREMIER } from "../src/module/barn-of-premier";
-import type { SceneConnection } from "../src/module/types";
+import { chooseConnection, type MoveWorldView } from "../../src/play-module";
+import { matchKeys } from "../../src/play/move-util";
+import { BARN_OF_PREMIER } from "../../src/module/barn-of-premier";
+import type { SceneConnection } from "../../src/module/types";
+import {
+  addPhraseResult, newPhraseReport, pct,
+  type PhraseCase, type PhraseOutcome,
+} from "../../src/diagnostics/phrasing";
+import { writeReport } from "../../src/diagnostics/report";
 
 const view: MoveWorldView = {
   isSceneVisited: () => false,
@@ -130,652 +146,1081 @@ const view: MoveWorldView = {
   sceneName: (id) => BARN_OF_PREMIER.scenes.find((s) => s.id === id)?.name ?? "",
 };
 
-interface Case { desc: string; say: (c: SceneConnection, name: string) => string }
+const nameOf = (c: SceneConnection) => view.sceneName(c.targetSceneId);
+const stripVerb = (s: string) => s.replace(/^(前往|进入|返回|回到|离开|去|到)\s*/, "").trim();
 
-// 玩家可能怎么表达「我要去 X」
-const PHRASINGS: Case[] = [
-  { desc: "照抄选项原文", say: (c) => c.condition },
-  { desc: "只说地名", say: (_c, n) => n },
-  { desc: "「去」+地名", say: (_c, n) => `去${n}` },
-  { desc: "「我们去」+地名", say: (_c, n) => `我们去${n}看看` },
-  { desc: "「前往」+地名", say: (_c, n) => `前往${n}` },
-  { desc: "地名+「那边」", say: (_c, n) => `${n}那边应该有线索` },
-  { desc: "带犹豫的口语", say: (_c, n) => `嗯……先去${n}吧` },
-  { desc: "地名在句中", say: (_c, n) => `我觉得${n}值得看看，走吧` },
+/**
+ * 这个说法在这组连接里是不是只对应**一个目标场景**。
+ *
+ * ⚠ 数的是**目的地**不是连接。`maintenance_room` 有两条连接都通向 `sewer`
+ * （「返回下水道」/「通过奇怪管道」），按连接数算会把「去下水」判成歧义 ——
+ * 可玩家想去哪儿一点都不含糊，两条路通同一个地方。
+ * 这跟前面「别去下水道，去下水道」是同一个错：拿连接当身份，而身份是场景。
+ */
+function uniqueAmong(phrase: string, conns: SceneConnection[], target: SceneConnection): boolean {
+  if (phrase.length < 2) return false;
+  const hits = conns.filter((c) => matchKeys(c, view).some((k) => k.includes(phrase) || phrase.includes(k)));
+  const targets = new Set(hits.map((c) => c.targetSceneId));
+  return targets.size === 1 && targets.has(target.targetSceneId);
+}
 
-  // 下面这些是**该失败也可能失败**的 —— 上面八种全含完整地名，
-  // 全中不说明匹配好，只说明用例太容易。判据要有区分力就得有会掉的。
-  { desc: "只说地名前两字", say: (_c, n) => `去${n.slice(0, 2)}` },
-  { desc: "同义改写（不含原名）", say: () => "换个地方看看" },
-  { desc: "代词指代", say: () => "去那边" },
-  { desc: "描述目的地特征", say: () => "去那个有灯光的房间" },
+/**
+ * 别的连接里有没有哪个键是这句话的子串 —— 有就是「重叠地名」陷阱。
+ *
+ * 比的是 `targetSceneId` 而不是连接对象：同一个场景可以挂两条连接
+ * （`maintenance_room` 有两条都通向 `sewer`），拿另一条当干扰项
+ * 会造出「别去下水道，去下水道」这种判不出东西的用例。
+ */
+function overlappingRival(said: string, conns: SceneConnection[], target: SceneConnection): SceneConnection | null {
+  for (const c of conns) {
+    if (c.targetSceneId === target.targetSceneId) continue;
+    if (matchKeys(c, view).some((k) => k.length >= 2 && said.includes(k))) return c;
+  }
+  return null;
+}
+
+/**
+ * 给一个「目标连接 + 它所在的连接组」造出一批用例。
+ *
+ * 前 8 条是含完整地名的正例（上一版就只有这些，所以 100%）；
+ * 后面几条是**会掉的**：唯一简称、唯一别名、否定、提及非目标、重叠地名、
+ * 同义改写、代词、描述特征。判据要有区分力，就得有会掉的。
+ */
+function buildCases(target: SceneConnection, conns: SceneConnection[]): PhraseCase[] {
+  const name = nameOf(target);
+  const want = target.targetSceneId;
+  // ⚠ 干扰项必须指向**别的场景**，不能只是「别的连接」。
+  // `maintenance_room` 有两条连接都通向 `sewer`（「返回下水道」/「通过奇怪管道」），
+  // 按「别的连接」取就会造出「别去下水道，去下水道」这种句子 ——
+  // forbid 与 want 是同一个地方，判据必然失败，而那是用例的错不是引擎的错。
+  // 这正是这轮要修的那类毛病：用例没有区分力，跑出来的数说明不了任何事。
+  const other = conns.find((c) => c.targetSceneId !== want && nameOf(c));
+  const otherName = other ? nameOf(other) : "";
+  const cases: PhraseCase[] = [
+    { id: "p1-原文", kind: "positive", desc: "照抄选项原文", said: target.condition, wantSceneId: want },
+    { id: "p2-地名", kind: "positive", desc: "只说地名", said: name, wantSceneId: want },
+    { id: "p3-去地名", kind: "positive", desc: "「去」+地名", said: `去${name}`, wantSceneId: want },
+    { id: "p4-我们去", kind: "positive", desc: "「我们去」+地名", said: `我们去${name}看看`, wantSceneId: want },
+    { id: "p5-前往", kind: "positive", desc: "「前往」+地名", said: `前往${name}`, wantSceneId: want },
+    { id: "p6-那边", kind: "positive", desc: "地名+「那边」", said: `${name}那边应该有线索`, wantSceneId: want },
+    { id: "p7-犹豫", kind: "positive", desc: "带犹豫的口语", said: `嗯……先去${name}吧`, wantSceneId: want },
+    { id: "p8-句中", kind: "positive", desc: "地名在句中", said: `我觉得${name}值得看看，走吧`, wantSceneId: want },
+  ];
+
+  // 唯一简称：地名的最短唯一前缀（如「维森酒吧」→「维森」）
+  for (let len = 2; len < name.length; len++) {
+    const abbr = name.slice(0, len);
+    if (uniqueAmong(abbr, conns, target)) {
+      cases.push({ id: "p9-唯一简称", kind: "positive", desc: "唯一简称", said: `先去${abbr}那边`, wantSceneId: want });
+      break;
+    }
+  }
+
+  // 唯一别名：选项文案去掉动词之后与场景真名不同的那种（「返回镇上」→ 场景叫「普瑞米尔」）
+  const alias = stripVerb(target.condition).replace(/[（(][^）)]*[）)]/g, "").trim();
+  if (alias && alias !== name && uniqueAmong(alias, conns, target)) {
+    cases.push({ id: "p10-唯一别名", kind: "positive", desc: "唯一别名", said: `我们去${alias}`, wantSceneId: want });
+  }
+
+  // 唯一后缀：中文地名的中心词在后面（「霍姆斯**医院**」「维森**酒吧**」），
+  // 玩家最常省掉的正是前面的专名。前缀那一支覆盖不到它。
+  const bare = name.replace(/[（(][^）)]*[）)]/g, "").trim();
+  for (let len = 2; len < bare.length; len++) {
+    const suffix = bare.slice(bare.length - len);
+    if (uniqueAmong(suffix, conns, target)) {
+      cases.push({ id: "p11-唯一后缀", kind: "positive", desc: "唯一后缀（中心词）", said: `我们去${suffix}看看`, wantSceneId: want });
+      break;
+    }
+  }
+
+  if (other) {
+    // 否定式：「别去 A，去 B」。判据要求**不能**选中 A。
+    cases.push({
+      id: "n1-否定", kind: "negative", desc: "否定一个目标同时指定另一个",
+      said: `别去${otherName}，去${name}`, wantSceneId: want, forbidSceneId: other.targetSceneId,
+    });
+    // 提及非目标：「A 已经去过了，现在去 B」
+    cases.push({
+      id: "n2-提及非目标", kind: "negative", desc: "提到别处但目标是自己点名的那个",
+      said: `${otherName}那边已经去过了，现在去${name}`, wantSceneId: want, forbidSceneId: other.targetSceneId,
+    });
+  }
+
+  // 重叠地名：别的连接的键正好是这句话的子串
+  const rival = overlappingRival(`去${name}`, conns, target);
+  if (rival) {
+    cases.push({
+      id: "n3-重叠地名", kind: "negative", desc: "别处的地名是本句的子串",
+      said: `去${name}`, wantSceneId: want, forbidSceneId: rival.targetSceneId,
+    });
+  }
+
+  cases.push(
+    { id: "a1-同义改写", kind: "ambiguous", desc: "同义改写（不含任何地名）", said: "换个地方看看", wantSceneId: null },
+    { id: "a2-代词", kind: "ambiguous", desc: "代词指代", said: "去那边", wantSceneId: null },
+    { id: "a3-描述特征", kind: "ambiguous", desc: "描述目的地特征", said: "去那个有灯光的房间", wantSceneId: null },
+  );
+  // 只说前两字：唯一时算正例（唯一简称已单列），不唯一时是歧义
+  const two = name.slice(0, 2);
+  if (!uniqueAmong(two, conns, target)) {
+    cases.push({ id: "a4-前两字", kind: "ambiguous", desc: "只说地名前两字（不唯一）", said: `去${two}`, wantSceneId: null });
+  }
+  return cases;
+}
+
+function runOnce(said: string, conns: SceneConnection[]): PhraseOutcome {
+  const r = chooseConnection({ action: said }, conns, view);
+  // `trace.matched` 让判据说得出**为什么**没对上：一个键都没命中、
+  // 只命中了别人的键、还是自己和别人都命中靠顺序抢先。三类修法完全不同。
+  return { chosenSceneId: r.conn?.targetSceneId ?? null, forced: r.forced, matched: r.trace.matched };
+}
+
+const report = newPhraseReport();
+// 顺序敏感性：同一批用例按原序和逆序各跑一遍。
+// 只跑一种顺序时，「干扰项恰好排在目标之后」会让判据全绿。
+const orders: { label: string; arrange: (c: SceneConnection[]) => SceneConnection[] }[] = [
+  { label: "原序", arrange: (c) => c },
+  { label: "逆序", arrange: (c) => [...c].reverse() },
 ];
-
-let rows: string[] = [];
-const tally = new Map<string, { hit: number; total: number }>();
+const perOrder = new Map<string, { hit: number; total: number }>();
+const caseIds = new Set<string>();
 
 for (const scene of BARN_OF_PREMIER.scenes) {
   const conns = scene.connections as SceneConnection[];
   if (conns.length < 2) continue; // 单出口没得选，不算数
 
   for (const target of conns) {
-    const name = view.sceneName(target.targetSceneId);
-    if (!name) continue;
-
-    for (const p of PHRASINGS) {
-      const said = p.say(target, name);
-      const r = chooseConnection({ action: said }, conns, view);
-      const hit = r.conn?.targetSceneId === target.targetSceneId && !r.forced;
-
-      const t = tally.get(p.desc) ?? { hit: 0, total: 0 };
-      t.total++; if (hit) t.hit++;
-      tally.set(p.desc, t);
-
-      if (!hit && rows.length < 20) {
-        rows.push(`  想去「${name}」说的是「${said}」→ ${r.forced ? "**被替选**到" : "匹配到"}「${r.conn ? view.sceneName(r.conn.targetSceneId) : "(null)"}」`);
+    if (!nameOf(target)) continue;
+    const cases = buildCases(target, conns);
+    for (const c of cases) caseIds.add(`${c.kind}/${c.id}`);
+    for (const o of orders) {
+      const arranged = o.arrange(conns);
+      for (const c of cases) {
+        const j = addPhraseResult(report, c, runOnce(c.said, arranged), `${scene.name}→${nameOf(target)}·${o.label}`);
+        const t = perOrder.get(o.label) ?? { hit: 0, total: 0 };
+        t.total++; if (j.verdict === "pass") t.hit++;
+        perOrder.set(o.label, t);
       }
     }
   }
 }
 
 const out: string[] = ["# 玩家说的话，引擎认不认", ""];
-out.push("拿模组里每个多出口场景 × 每个出口 × 8 种说法，看能不能匹配到玩家想去的地方。");
+out.push(`拿模组里每个多出口场景 × 每个出口 × **${caseIds.size} 种说法**（正例/反例/歧义三类），`);
+out.push("每种再按连接的原序与逆序各跑一遍 —— 只跑一种顺序时，干扰项恰好排在目标之后就会全绿。");
 out.push("");
-out.push("| 说法 | 命中 | 总数 | 命中率 |");
+out.push("判据（见 `src/diagnostics/phrasing.ts`，有正反例校准测试）：");
+out.push("");
+out.push("| 类别 | 通过条件 | 进不进命中率 |");
+out.push("|---|---|---|");
+out.push("| 正例 | 选中目标且 `forced=false` | 进 |");
+out.push("| 反例 | 不选中被否定/被提及的那个，且去了指定目标 | 不进 |");
+out.push("| 歧义 | `forced=true`（引擎老实承认是替选） | 不进 |");
+out.push("");
+out.push("## 汇总");
+out.push("");
+out.push(`- **目标命中率（仅正例）：${report.hitRate.hit}/${report.hitRate.total} = ${pct(report.hitRate)}**`);
+out.push(`- 反例通过率：${report.negative.hit}/${report.negative.total} = ${pct(report.negative)}`);
+out.push(`- 歧义输入「老实承认替选」率：${report.ambiguous.hit}/${report.ambiguous.total} = ${pct(report.ambiguous)}`);
+out.push("");
+out.push("按连接顺序分：");
+out.push("");
+out.push("| 顺序 | 通过 | 总数 | 通过率 |");
 out.push("|---|---|---|---|");
-for (const [k, v] of tally) {
-  const pct = ((v.hit / v.total) * 100).toFixed(0);
-  out.push(`| ${k} | ${v.hit} | ${v.total} | ${pct}% |`);
+for (const [k, v] of perOrder) out.push(`| ${k} | ${v.hit} | ${v.total} | ${pct(v)} |`);
+out.push("");
+out.push("## 逐条说法");
+out.push("");
+out.push("| 类别 | 说法 | 通过 | 总数 | 通过率 |");
+out.push("|---|---|---|---|---|");
+for (const [id, v] of [...report.byId.entries()].sort()) {
+  out.push(`| ${v.kind} | ${id} ${v.desc} | ${v.tally.hit} | ${v.tally.total} | ${pct(v.tally)} |`);
 }
-const all = [...tally.values()].reduce((a, b) => ({ hit: a.hit + b.hit, total: a.total + b.total }), { hit: 0, total: 0 });
 out.push("");
-out.push(`**合计 ${all.hit}/${all.total} = ${((all.hit / all.total) * 100).toFixed(1)}%**`);
+out.push("## 失败按成因分类");
 out.push("");
-out.push("没命中的例子：");
+out.push("三类的修法完全不同，混在一个「命中率」里等于知道有病不知道病在哪。");
 out.push("");
-out.push(...rows);
+const FAIL_LABEL: Record<string, string> = {
+  "no-key": "一个键都没命中 —— 匹配方式太窄（缺简称/别名/同义词）",
+  "rival-only": "只命中了别处的键 —— 子串比对认错了人（重叠地名、否定）",
+  "ambiguous": "自己和别处都命中 —— 靠候选顺序抢先，换个顺序就翻车",
+  "forced-hit": "目标对了但引擎标了替选 —— 是蒙对的，不是听懂的",
+  "other": "其它",
+};
+out.push("| 成因 | 条数 |");
+out.push("|---|---|");
+for (const [k, n] of [...report.failKinds.entries()].sort((a, b) => b[1] - a[1])) {
+  out.push(`| ${FAIL_LABEL[k] ?? k} | ${n} |`);
+}
+out.push("");
+out.push(`## 没通过的例子（共 ${report.failures.length} 条，列前 25）`);
+out.push("");
+for (const f of report.failures.slice(0, 25)) out.push(`- ${f}`);
 
-await Bun.write("tools/diag-phrasing.md", out.join("\n") + "\n");
-console.log(`合计命中 ${all.hit}/${all.total} = ${((all.hit / all.total) * 100).toFixed(1)}%  -> tools/diag-phrasing.md`);
+await writeReport("diag-phrasing.md", out.join("\n") + "\n");
+console.log(
+  `目标命中率 ${report.hitRate.hit}/${report.hitRate.total} = ${pct(report.hitRate)}｜` +
+  `反例 ${report.negative.hit}/${report.negative.total}｜歧义承认 ${report.ambiguous.hit}/${report.ambiguous.total}` +
+  `  -> analysis/diag/diag-phrasing.md`,
+);
 ```
 
-## tools/_diag-downed.ts
+## scripts/diag/diag-downed.ts
 
 ```ts
-// 量「倒下之后还在行动」有多普遍。
+// 量「昏迷的调查员是不是还在**自己掷骰**」。
 //
-// 昏迷（hp<=0）现在只是个数字：scene-pipeline 里没有任何一处检查它，
-// 于是出现「两名调查员都失去了意识」之后接着查线索、掷理智、陷入疯狂的序列。
-// 这是既有缺陷 —— 陷阱早就能把人打昏，只是以前罕见；敌人开始还手后变常见了。
+// ── 范围（上一版没写清，名称/实现/报告三处不一致）──
+// 只管该角色**自己发起的技能检定**。不管 SAN 检定（被动反应，单列计数）、
+// 不管同伴替他做的事（急救掷骰的人是施救者）、不管说话和被拖走（引擎里没有对应掷骰）。
+//
+// ── 上一版为什么不可信 ──
+// 它认 `❤ X HP n → 0（昏迷` 这一行。但昏迷有两条路径：
+//   1. 伤害把 HP 打到 0        → 有那行
+//   2. 重伤体质检定失败        → **没有那行**（HP 还剩着，人先倒了）
+// 第 2 条整条漏掉，「违规 0 次」于是既可能是真没问题、也可能是根本没在看，
+// 两种情况输出一模一样。现在改读结构化事件（src/play/events.ts），
+// 判据在 src/diagnostics/downed.ts，有正例/反例/干扰项校准测试。
 process.env.LLM_DISABLED = "true";
 
-import { runModule } from "../src/play-module";
-import { BARN_OF_PREMIER, BARN_SUPPORT } from "../src/module/barn-of-premier";
-import type { PlayerDecision } from "../src/agent/player-agent";
+import { BARN_OF_PREMIER, BARN_SUPPORT } from "../../src/module/barn-of-premier";
+import { runSeeded } from "../../src/diagnostics/run-harness";
+import { writeReport } from "../../src/diagnostics/report";
+import { reduceDowned, mergeDowned, type DownedReport } from "../../src/diagnostics/downed";
 
+// 用法：bun scripts/diag/diag-downed.ts [局数] [起始局号]
+// 起始局号让「每次最多跑 N 局」也能覆盖到不同的种子段：
+//   bun scripts/diag/diag-downed.ts 3 1   → 第 1~3 局
+//   bun scripts/diag/diag-downed.ts 3 4   → 第 4~6 局（与上面不重叠）
 const N = Number(process.argv[2] ?? 20);
+const FROM = Number(process.argv[3] ?? 1);
+const TIMEOUT_MS = 120_000;
+const MAX_DECISIONS = 200;
 
-async function once(seed: number) {
-  const lines: string[] = [];
-  let n = seed;
-  const rnd = () => { n = (n * 1103515245 + 12345) & 0x7fffffff; return n / 0x7fffffff; };
-  await runModule(BARN_OF_PREMIER, BARN_SUPPORT, {
-    onLine: (l) => lines.push(l),
-    decide: async (_c, options): Promise<PlayerDecision> => {
-      const chose = options[Math.floor(rnd() * options.length)] ?? "";
-      return { action: chose, intent: chose.startsWith("调查") ? "investigate" : "move" };
-    },
-  });
+async function main() {
+  const per: DownedReport[] = [];
+  let koRuns = 0, bothRuns = 0, abnormal = 0, ambiguous = 0;
+  const abnormalNotes: string[] = [];
+  const ambiguityNotes: string[] = [];
 
-  // 判据必须是「**倒着的那个人**在掷骰」，不能是「第一次昏迷之后的所有掷骰」——
-  // 后者把急救苏醒之后的正常行动也算进去，永远报警，等于没测。
-  // 逐行跟踪每个人的倒下/苏醒状态，只统计处于倒下态时该人自己的检定。
-  const down = new Map<string, boolean>();
-  let violations = 0;
-  const samples: string[] = [];
-
-  for (const l of lines) {
-    // 谁倒下了
-    const ko = l.match(/❤ (\S+?) HP \d+ → 0（昏迷/);
-    if (ko) { down.set(ko[1]!, true); continue; }
-    // 谁醒了
-    const up = l.match(/(\S+?)猛地咳嗽起来/);
-    if (up) { down.set(up[1]!, false); continue; }
-
-    // 倒着的人自己在掷骰 = 违规。
-    //
-    // 但「体质（重伤）」要排除：它是 HP 归零**那一刻**的结算，
-    // 播报顺序排在昏迷行之后，属于同一次受伤的一部分，不是"倒下后又行动"。
-    const chk = l.match(/➜ (\S+?) 【(.+?)】/);
-    if (chk && down.get(chk[1]!) && !/体质（重伤）/.test(chk[2]!)) {
-      violations++;
-      if (samples.length < 3) samples.push(l.trim().slice(0, 76));
+  for (let i = FROM; i < FROM + N; i++) {
+    const r = await runSeeded(BARN_OF_PREMIER, BARN_SUPPORT, {
+      seed: i * 7919, timeoutMs: TIMEOUT_MS, maxDecisions: MAX_DECISIONS,
+    });
+    if (r.threw || r.timedOut || r.hitDecisionCap) {
+      // 异常局照样要报出来。上一版直接 continue，等于把坏局从分母里删掉。
+      abnormal++;
+      abnormalNotes.push(`  #${i} ${r.timedOut ? "超时" : r.hitDecisionCap ? "决策步数打满" : "抛异常"}：${r.errorMessage}`);
+    }
+    const d = reduceDowned(r.events);
+    per.push(d);
+    if (d.everDown.length > 0) koRuns++;
+    if (d.allDown) bothRuns++;
+    if (d.ambiguousIdentity) {
+      ambiguous++;
+      ambiguityNotes.push(`  #${i}（seed ${i * 7919}）${d.ambiguityReason}`);
     }
   }
 
-  return {
-    everDown: [...down.keys()].length > 0,
-    violations,
-    samples,
-    bothDown: lines.some((l) => /两名调查员都失去了意识/.test(l)),
-    revived: lines.filter((l) => /猛地咳嗽起来/.test(l)).length,
-    aborted: lines.some((l) => /调查中止/.test(l)),
-  };
-}
-
-async function main() {
-  let koRuns = 0, bothRuns = 0, viol = 0, revived = 0, aborted = 0;
-  const samples: string[] = [];
-  for (let i = 1; i <= N; i++) {
-    const r = await once(i * 7919);
-    if (!r.everDown) continue;
-    koRuns++;
-    if (r.bothDown) bothRuns++;
-    if (r.aborted) aborted++;
-    viol += r.violations;
-    revived += r.revived;
-    for (const s of r.samples) if (samples.length < 5) samples.push(s);
-  }
+  const m = mergeDowned(per);
   const out = [
-    `${N} 局：出现昏迷 ${koRuns} 局，两人同时倒下 ${bothRuns} 局，走「调查中止」${aborted} 局`,
-    `急救唤醒成功 ${revived} 次`,
-    "",
-    `倒着的人自己掷骰（违规）：${viol} 次`,
-    ...samples.map((s) => "    " + s),
-    "",
-    viol === 0
-      ? "✓ 昏迷期间不再行动"
-      : "⚠ 仍有倒下的人在掷骰",
+    `范围：**昏迷期间该角色自己发起的技能检定**。`,
+    `SAN 检定（被动反应）、同伴代做的检定、受伤那一刻的重伤结算检定都不算违规，但都单列计数。`,
+    ``,
+    `第 ${FROM}~${FROM + N - 1} 局，共 ${N} 局（异常 ${abnormal} 局，已计入）：出现昏迷 ${koRuns} 局，两人同时倒下 ${bothRuns} 局`,
+    ...abnormalNotes,
+    ``,
+    `倒下成因：HP 直接归零 ${m.byCause["hp-zero"]} 次，重伤体质检定失败 ${m.byCause["major-wound-con"]} 次`,
+    `急救唤醒成功 ${m.revives} 次；苏醒后本人正常检定 ${m.checksAfterRevive} 次（这些**不是**违规）`,
+    `昏迷期间同伴代做的检定 ${m.byPartnerWhileDown} 次（不是违规）`,
+    `昏迷期间的 SAN 检定 ${m.sanWhileDowned} 次（范围外，被动反应）`,
+    `受伤当场的重伤结算检定豁免 ${m.settlementExempt} 次`,
+    ``,
+    `**${ambiguous > 0 ? "疑似违规（见下方身份不可分辨）" : "违规（昏迷期间本人掷骰）"}：${m.violations.length} 次**`,
+    ...m.violations.slice(0, 8).map((v) => `    ${v.actor} 【${v.skill}】（倒下成因：${v.cause}）`),
+    ...(ambiguous > 0
+      ? ["", `⚠ 有 ${ambiguous} 局**身份不可分辨**，这些局的违规计数既不能算通过也不能算违规：`, ...ambiguityNotes]
+      : []),
+    ``,
+    ambiguous > 0
+      ? "◻ 本轮**不可判定** —— 先把重名那几局排除掉再看结论"
+      : m.byCause["hp-zero"] + m.byCause["major-wound-con"] === 0
+        ? "· 本轮没有人倒下 —— 这不等于判据通过，只是没有可判的样本"
+        : m.violations.length === 0
+          ? "✓ 昏迷期间没有本人发起的技能检定"
+          : "⚠ 仍有倒下的人在掷骰",
   ].join("\n");
-  await Bun.write("tools/diag-downed.txt", out + "\n");
+
+  await writeReport("diag-downed.txt", out + "\n");
   console.log(out);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
 ```
 
-## tools/_diag-wounds.ts
+## scripts/diag/diag-wounds.ts
 
 ```ts
-// 量伤势惩罚骰到底触没触发。
+// 量伤势分级 / 重伤体质检定 / 惩罚骰到底有没有生效。
 //
-// ⚠ 不要用 `bun run src/play-module.ts *> file` 再去读那个文件：
-// PowerShell 的重定向会把 UTF-8 写坏，中文全成乱码，正则一条都匹配不上，
-// 于是"12 局 0 次"这种结论其实是编码问题不是行为问题（踩过）。
-// 正确做法是走 onLine 回调在内存里收，脚本自己 Bun.write 落盘。
+// ── 上一版为什么不可信 ──
+// 1. `lines.filter(l => /惩罚骰/.test(l))` 当成「伤势惩罚生效」的证据。
+//    播报里带这三个字的至少三种来源：伤势 `[1惩罚骰·伤势]`、
+//    环境 `[1惩罚骰]`、战斗疲劳 `[惩罚骰×2]`。混成一堆之后
+//    **把 `recordWound()` 整个删掉，计数照样非零** —— 判据不会变红。
+// 2. 只按播报标签分档。HP 归零那行的后缀被写死成「（昏迷/濒死！）」，
+//    把伤势标签盖掉了，最该统计的那一档必然漏。
+// 3. 「40 局 74 次伤害，≥50% 有 4 次」是**跨局汇总**，没有按角色、按顺序
+//    验证「这 4 次各自后面跟了一次体质检定」。前者成立不代表后者成立。
+//
+// 现在按角色、按事件顺序跑状态机验四条不变量（见 src/diagnostics/wounds.ts，
+// 那边有正例/反例/干扰项校准测试，删 recordWound / 删 CON 检定 / 去 ignoreWound
+// 三种变异各有一条测试抓住）。
 process.env.LLM_DISABLED = "true";
 
-import { runModule } from "../src/play-module";
-import { BARN_OF_PREMIER, BARN_SUPPORT } from "../src/module/barn-of-premier";
-import type { PlayerDecision } from "../src/agent/player-agent";
+import { BARN_OF_PREMIER, BARN_SUPPORT } from "../../src/module/barn-of-premier";
+import { runSeeded } from "../../src/diagnostics/run-harness";
+import { writeReport } from "../../src/diagnostics/report";
+import { reduceWounds, mergeWounds, type WoundReport } from "../../src/diagnostics/wounds";
 
 const N = Number(process.argv[2] ?? 12);
+const TIMEOUT_MS = 120_000;
+const MAX_DECISIONS = 200;
 
-interface Hit {
-  run: number;
-  from: number;
-  to: number;
-  label: string;
-}
-
-async function once(run: number, seed: number) {
-  const lines: string[] = [];
-  let n = seed;
-  const rnd = () => { n = (n * 1103515245 + 12345) & 0x7fffffff; return n / 0x7fffffff; };
-
-  await runModule(BARN_OF_PREMIER, BARN_SUPPORT, {
-    onLine: (l) => lines.push(l),
-    decide: async (_c, options): Promise<PlayerDecision> => {
-      const chose = options[Math.floor(rnd() * options.length)] ?? "";
-      return { action: chose, intent: chose.startsWith("调查") ? "investigate" : "move" };
-    },
-  });
-
-  const dmg: Hit[] = [];
-  for (const l of lines) {
-    const m = l.match(/HP (\d+) → (\d+)(（(.+?)）)?/);
-    if (m) dmg.push({ run, from: +m[1]!, to: +m[2]!, label: m[4] ?? "" });
-  }
-  return {
-    dmg,
-    penalty: lines.filter((l) => /惩罚骰/.test(l)),
-    conCheck: lines.filter((l) => /体质（重伤）/.test(l)),
-    healed: lines.filter((l) => /惩罚骰解除|伤势得到处理/.test(l)),
-    // 不变量：重伤体质检定结算的就是这处伤，不该被它自己罚
-    selfPenalized: lines.filter((l) => /体质（重伤）/.test(l) && /伤势/.test(l)),
-  };
-}
+const BREACH_LABEL: Record<string, string> = {
+  "missing-con": "重伤之后没有体质检定",
+  "duplicate-con": "同一次重伤掷了多次体质检定",
+  "con-self-penalized": "体质检定被它自己结算的那处伤罚（双重计算）",
+  "wound-penalty-missing": "身上有伤，读伤势的检定却没带惩罚骰",
+  "penalty-after-heal": "伤势已处理，却还在扣伤势惩罚骰",
+  "missing-wound-record": "重伤且人还站着，却没把伤势记下来（recordWound 没生效）",
+};
 
 async function main() {
-  const allDmg: Hit[] = [];
-  const allPen: string[] = [];
-  const allCon: string[] = [];
-  const allHeal: string[] = [];
-  const allSelf: string[] = [];
+  const per: WoundReport[] = [];
+  let abnormal = 0;
+  const abnormalNotes: string[] = [];
 
   for (let i = 1; i <= N; i++) {
-    const r = await once(i, i * 7919);
-    allDmg.push(...r.dmg);
-    allPen.push(...r.penalty);
-    allCon.push(...r.conCheck);
-    allHeal.push(...r.healed);
-    allSelf.push(...r.selfPenalized);
+    const r = await runSeeded(BARN_OF_PREMIER, BARN_SUPPORT, {
+      seed: i * 7919, timeoutMs: TIMEOUT_MS, maxDecisions: MAX_DECISIONS,
+    });
+    if (r.threw || r.timedOut || r.hitDecisionCap) {
+      abnormal++;
+      abnormalNotes.push(`  #${i} ${r.timedOut ? "超时" : r.hitDecisionCap ? "决策步数打满" : "抛异常"}：${r.errorMessage}`);
+    }
+    per.push(reduceWounds(r.events));
   }
+
+  const m = mergeWounds(per);
+  const byKind = new Map<string, number>();
+  for (const b of m.breaches) byKind.set(b.kind, (byKind.get(b.kind) ?? 0) + 1);
 
   const out: string[] = [];
-  out.push(`${N} 局：伤害事件 ${allDmg.length} 次，重伤体质检定 ${allCon.length} 次，惩罚骰播报 ${allPen.length} 次，解除 ${allHeal.length} 次`);
-  out.push(
-    allSelf.length === 0
-      ? "✓ 不变量：没有一次重伤体质检定被它自己那处伤罚到"
-      : `✗ 不变量破了：${allSelf.length} 次重伤体质检定被自身伤势罚（双重计算）`,
-  );
-  for (const l of allSelf.slice(0, 3)) out.push("    " + l.trim());
+  out.push(`${N} 局（异常 ${abnormal} 局，已计入）`);
+  out.push(...abnormalNotes);
   out.push("");
-
-  // 按伤害占比分档 —— 想看清为什么触发得少
-  const buckets = { "<25%": 0, "25-49%": 0, "≥50%": 0, "≥75%": 0 };
-  for (const d of allDmg) {
-    const lost = d.from - d.to;
-    // maxHp 不在这行里，用「掉血前的 HP」当下界估算不准，所以只统计标签
-    if (!d.label) buckets["<25%"]++;
-    else if (d.label === "轻伤") buckets["25-49%"]++;
-    else if (d.label === "重伤") buckets["≥50%"]++;
-    else if (d.label === "致命伤") buckets["≥75%"]++;
-  }
-  out.push("按引擎判定的伤势分档：");
-  for (const [k, v] of Object.entries(buckets)) out.push(`  ${k.padEnd(8)} ${v}`);
+  out.push("## 伤势分级（按引擎算出的 severity，不看播报标签）");
   out.push("");
-
-  out.push("伤害明细（前 30 条）：");
-  for (const d of allDmg.slice(0, 30)) {
-    out.push(`  #${d.run} HP ${d.from}→${d.to} 掉${d.from - d.to} ${d.label || "(无标签)"}`);
-  }
+  out.push(`  伤害事件 ${m.damages} 次`);
+  for (const [k, v] of Object.entries(m.severityBuckets)) out.push(`  ${k.padEnd(9)} ${v}`);
   out.push("");
-
-  if (allPen.length) {
-    out.push("惩罚骰相关播报：");
-    for (const l of allPen.slice(0, 20)) out.push("  " + l.trim());
+  out.push("  ⚠ HP 归零那一行的播报后缀是「昏迷/濒死！」，按文本分档会把这一档整个漏掉。");
+  out.push("");
+  out.push("## 重伤流程");
+  out.push("");
+  out.push(`  deep/grievous 且人还站着：${m.majorWoundsStanding} 次 → 应有同样次数的重伤体质检定`);
+  out.push(`  deep/grievous 但当场昏迷：${m.majorWoundsWhileDown} 次 → **不该**掷体质检定（人已经躺下，那一掷没什么可决定的）`);
+  out.push("    · 口径由 `needsMajorWoundCheck()` 一处说了算。四个调用点原先两种写法，");
+  out.push("      判据当时只能把这一档单列出来不下结论 —— 判据被实现的不一致逼哑了。");
+  out.push(`  实际重伤体质检定：${m.conChecks} 次`);
+  out.push(`  记下的伤势：${m.woundsRecorded} 次，处理掉：${m.woundsHealed} 次`);
+  out.push("");
+  out.push("## 惩罚骰来源必须分开");
+  out.push("");
+  out.push(`  真被伤势罚到的检定：${m.woundPenalizedChecks} 次   ← 这是伤势机制生效的**唯一**证据`);
+  out.push(`  只带环境/疲劳惩罚的检定：${m.envOnlyPenalizedChecks} 次   ← 不许拿它充数`);
+  out.push(`  有伤但该掷骰路径不读伤势：${m.woundBlindRolls} 次   ← 应为 0，见下`);
+  out.push("");
+  out.push("  · 战斗里调查员的攻击掷骰原先直接调 `CoCEngine.skillCheck`，绕过 `checks.ts` 的");
+  out.push("    `check()`，伤势惩罚在战斗攻击上一点作用都没有。这个缺口正是「按来源分账」");
+  out.push("    之后露出来的：记下的伤势有好几处，真被伤势罚到的检定却几乎为零。");
+  out.push("    现已接上（疲劳与伤势分别标注，合计仍受 CoC 7e 的 2 颗上限约束）。");
+  out.push("    这一行留着守回归：再有谁另开一条绕过 `check()` 的路，它会立刻非零。");
+  out.push("");
+  out.push("## 不变量破例");
+  out.push("");
+  if (m.breaches.length === 0) {
+    out.push(`  ✓ 无破例（${m.majorWoundsStanding} 次重伤各自恰有一次不受自身伤势影响的体质检定，`);
+    out.push(`    ${m.woundPenalizedChecks} 次后续检定带伤势惩罚，${m.woundsHealed} 次处理后惩罚消失）`);
+    if (m.majorWoundsStanding === 0) {
+      out.push("  · 但本轮 0 次重伤 —— 「无破例」在这里只说明没有可判的样本，不说明机制生效");
+    }
   } else {
-    out.push("⚠ 没有任何惩罚骰播报。");
+    out.push(`  ✗ ${m.breaches.length} 处破例：`);
+    for (const [k, v] of byKind) out.push(`    ${v} × ${BREACH_LABEL[k] ?? k}`);
+    out.push("");
+    for (const b of m.breaches.slice(0, 10)) out.push(`    ${JSON.stringify(b)}`);
   }
 
-  await Bun.write("tools/diag-wounds.txt", out.join("\n") + "\n");
-  console.log(out.slice(0, 3).join("\n"));
-  console.log("→ tools/diag-wounds.txt");
+  await writeReport("diag-wounds.txt", out.join("\n") + "\n");
+  console.log(out.join("\n"));
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
 ```
 
-## tools/_diag-combat.ts
+## scripts/diag/diag-combat.ts
 
 ```ts
-// 量战斗到底有没有发生、玩家掉不掉血。
-// 走 onLine 在内存收，不经 PowerShell 重定向（那会把 UTF-8 写坏）。
+// 量 Boss 到底还不还手、玩家掉不掉血。
+//
+// ── 上一版为什么不可信 ──
+// `inCombat.filter(l => /【格斗】/.test(l)).length` 当敌人挥击次数，
+// 然后 `swings === 0 ? 报警 : 通过`。三个洞：
+//   1. **不验攻击者**：玩家若有个正好叫「格斗」的技能，判据直接变绿。
+//   2. **认死技能名**：敌人技能改叫「触手」或「格斗(钳肢)」就一次都不认，
+//      静默掉到 0 —— 真报警和漏报长得一模一样。
+//   3. **跨局求和**：10 局里 1 局打了 1 下，另外 9 局全程发呆也算「会还手了」。
+// 战斗段的行范围也是猜的（`findIndex(/战斗轮/)` 到下一条 `═{10,}`，
+// 而 `═` 分隔线在战斗开始处就有三条）。
+//
+// 现在按 combat-start / combat-round 事件划分战斗与轮次，敌人还手直接读
+// `enemy-attack` 事件（自带攻击者与目标）。判据见 src/diagnostics/combat.ts。
 process.env.LLM_DISABLED = "true";
 
-import { runModule } from "../src/play-module";
-import { BARN_OF_PREMIER, BARN_SUPPORT } from "../src/module/barn-of-premier";
-import type { PlayerDecision } from "../src/agent/player-agent";
+import { BARN_OF_PREMIER, BARN_SUPPORT } from "../../src/module/barn-of-premier";
+import { runSeeded } from "../../src/diagnostics/run-harness";
+import { writeReport } from "../../src/diagnostics/report";
+import { reduceCombat, judgeCombat, type CombatReport } from "../../src/diagnostics/combat";
 
 const N = Number(process.argv[2] ?? 10);
-
-async function once(seed: number) {
-  const lines: string[] = [];
-  let n = seed;
-  const rnd = () => { n = (n * 1103515245 + 12345) & 0x7fffffff; return n / 0x7fffffff; };
-
-  await runModule(BARN_OF_PREMIER, BARN_SUPPORT, {
-    onLine: (l) => lines.push(l),
-    decide: async (_c, options): Promise<PlayerDecision> => {
-      const chose = options[Math.floor(rnd() * options.length)] ?? "";
-      return { action: chose, intent: chose.startsWith("调查") ? "investigate" : "move" };
-    },
-  });
-
-  // 战斗段的行范围 —— 用来区分「战斗里挨的打」和「陷阱挨的打」
-  const s = lines.findIndex((l) => /战斗轮/.test(l));
-  const e = s < 0 ? -1 : lines.findIndex((l, i) => i > s && /═{10,}/.test(l) && i > s + 3);
-  const inCombat = s >= 0 ? lines.slice(s, e > s ? e : lines.length) : [];
-
-  return {
-    fought: s >= 0,
-    won: lines.some((l) => /战斗胜利|被击退/.test(l)),
-    attacks: lines.filter((l) => /格斗\(肉搏\)|射击\(手枪\)/.test(l)).length,
-    fatigue: lines.filter((l) => /惩罚骰×/.test(l)).length,
-    pcDamage: lines.filter((l) => /HP \d+ → \d+/.test(l)).length,
-    // 敌人还手相关
-    enemySwings: inCombat.filter((l) => /【格斗】/.test(l)).length,
-    dodges: inCombat.filter((l) => /【闪避】/.test(l)).length,
-    combatDamage: inCombat.filter((l) => /HP \d+ → \d+/.test(l)).length,
-    knockouts: inCombat.filter((l) => /昏迷过去|失去了意识/.test(l)).length,
-  };
-}
+const TIMEOUT_MS = 120_000;
+const MAX_DECISIONS = 200;
 
 async function main() {
-  let fought = 0, won = 0, atk = 0, fat = 0, dmg = 0;
-  let swings = 0, dodges = 0, cdmg = 0, ko = 0;
+  const per: CombatReport[] = [];
+  let abnormal = 0;
+  const abnormalNotes: string[] = [];
+  const perRun: string[] = [];
+
   for (let i = 1; i <= N; i++) {
-    const r = await once(i * 7919);
-    if (r.fought) fought++;
-    if (r.won) won++;
-    atk += r.attacks;
-    fat += r.fatigue;
-    dmg += r.pcDamage;
-    swings += r.enemySwings;
-    dodges += r.dodges;
-    cdmg += r.combatDamage;
-    ko += r.knockouts;
+    const r = await runSeeded(BARN_OF_PREMIER, BARN_SUPPORT, {
+      seed: i * 7919, timeoutMs: TIMEOUT_MS, maxDecisions: MAX_DECISIONS,
+    });
+    if (r.threw || r.timedOut || r.hitDecisionCap) {
+      abnormal++;
+      abnormalNotes.push(`  #${i} ${r.timedOut ? "超时" : r.hitDecisionCap ? "决策步数打满" : "抛异常"}：${r.errorMessage}`);
+    }
+    const c = reduceCombat(r.events);
+    per.push(c);
+    for (const enc of c.encounters) {
+      const swings = enc.rounds.reduce((a, rd) => a + rd.enemyAttacks.length, 0);
+      const pcAtk = enc.rounds.reduce((a, rd) => a + rd.pcAttacks.length, 0);
+      perRun.push(
+        `  #${i} vs ${enc.enemy}：${enc.rounds.length} 轮，敌人挥击 ${swings} 次，` +
+        `调查员攻击 ${pcAtk} 次，玩家掉血 ${enc.pcHpLost}，结果 ${enc.result}` +
+        (swings === 0 ? "   ⚠ 这一局敌人一次都没动" : ""),
+      );
+    }
   }
-  const out = [
-    `${N} 局：发生战斗 ${fought} 局，其中击退 ${won} 局`,
-    `调查员攻击掷骰 ${atk} 次，疲劳惩罚骰播报 ${fat} 次`,
-    `玩家 HP 变化 ${dmg} 次（含陷阱）`,
-    "",
-    "敌人还手：",
-    `  敌人挥击 ${swings} 次，玩家闪避掷骰 ${dodges} 次`,
-    `  战斗中造成 HP 变化 ${cdmg} 次，打昏 ${ko} 次`,
-    swings === 0 ? "  ⚠ 敌人一次都没还手" : "  ✓ 敌人会还手了",
-  ].join("\n");
-  await Bun.write("tools/diag-combat.txt", out + "\n");
-  console.log(out);
+
+  const v = judgeCombat(per);
+  const out: string[] = [];
+  out.push(`${N} 局（异常 ${abnormal} 局，已计入）：发生战斗 ${v.fights} 局`);
+  out.push(...abnormalNotes);
+  out.push("");
+  out.push("## 敌人还手（按攻击者身份认，不按技能名）");
+  out.push("");
+  out.push(`  敌人挥击 ${v.enemySwings} 次：命中 ${v.enemyHits}，被闪开 ${v.dodged}，没掷中 ${v.missed}`);
+  out.push(`  调查员攻击掷骰 ${v.pcAttacks} 次`);
+  out.push(`  战斗中玩家掉血合计 ${v.pcHpLost} 点`);
+  out.push(`  攻击者身份对不上的事件 ${v.misattributed} 次（应恒为 0，非 0 说明事件源出问题）`);
+  out.push("");
+  out.push("## 判据：按**发生战斗的那一局**看，不看跨局总数");
+  out.push("");
+  if (v.fights === 0) {
+    out.push("  · 本轮一局都没打起来 —— 无从判断敌人会不会还手（不是通过，也不是失败）");
+  } else if (v.silentFights > 0) {
+    out.push(`  ⚠ ${v.silentFights}/${v.fights} 局的敌人一次都没挥击`);
+  } else {
+    out.push(`  ✓ ${v.fights}/${v.fights} 局敌人都还手了`);
+  }
+  out.push("");
+  out.push("## 战斗中的昏迷（两条成因都认）");
+  out.push("");
+  const byCause = { "hp-zero": 0, "major-wound-con": 0 };
+  for (const k of v.knockouts) byCause[k.cause]++;
+  out.push(`  HP 直接归零 ${byCause["hp-zero"]} 次，重伤体质检定失败 ${byCause["major-wound-con"]} 次`);
+  out.push("  · 第二条在播报里**没有** `HP n → 0` 那一行，只按文本找必然漏。");
+  out.push("");
+  out.push("## 战斗结果分布");
+  out.push("");
+  for (const [k, n] of Object.entries(v.results)) out.push(`  ${k.padEnd(10)} ${n}`);
+  out.push("");
+  out.push("## 逐局");
+  out.push("");
+  out.push(...perRun);
+
+  await writeReport("diag-combat.txt", out.join("\n") + "\n");
+  console.log(out.join("\n"));
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
 ```
 
-## tools/_diag-fuzz.ts
+## scripts/diag/diag-fuzz.ts
 
 ```ts
 // 随机策略跑多局，找只在特定路径上冒出来的毛病。
-// 随机玩家最接近真人：既不是永远听引擎的，也不是永远对着干。
+//
+// ── 上一版为什么不可信 ──
+// 可复现的反例（它自己的输出）：
+//     通关 10/10
+//     跑完没有结局的局：1/10
+// 两句话互相打脸，因为「通关」量的是**进过终局场景**，而「有没有结局」
+// 量的是**念没念结局文本**。全员倒下时 `evaluateEnding` 返回 null，
+// 一个结局字都不会念，但人可能早就进过维修间了。
+//
+// 另外三处：
+//   · 分母是 `rows.length`，而 `rows` 只 push 成功的局 —— 越崩越接近 100%。
+//   · `maxRepeat` / `emptyOptionStops` / `blank` 算了但从不判定也不打印。
+//   · 「死循环」根本没测：既没超时也没决策步数上限，真死循环时脚本自己挂着。
+//   · seed 只控制选项，骰子和战斗仍走 `Math.random()` —— 拿它当确定性依据是错的。
+//
+// 现在：通关 = 正常返回 **且** 发出 `ending` 事件；分母固定为计划局数；
+// 每局有超时和决策步数上限；`maxRepeat`/空选项都参与判定并打印；
+// 整条 RNG 注入（见 run-harness），并跑一次同 seed 复现自检把结论量出来。
 process.env.LLM_DISABLED = "true";
 
-import { runModule } from "../src/play-module";
-import { BARN_OF_PREMIER, BARN_SUPPORT } from "../src/module/barn-of-premier";
-import type { PlayerDecision } from "../src/agent/player-agent";
+import { BARN_OF_PREMIER, BARN_SUPPORT } from "../../src/module/barn-of-premier";
+import { runSeeded } from "../../src/diagnostics/run-harness";
+import { writeReport } from "../../src/diagnostics/report";
+import {
+  summarizeFuzzEvents, judgeFuzz, DEFAULT_FUZZ_THRESHOLDS,
+  type FuzzRunOutcome,
+} from "../../src/diagnostics/fuzz";
 
-const HEADER = /^\n?━ (?:再次来到 )?(.+)$/;
+// 用法：bun scripts/diag/diag-fuzz.ts [局数] [起始局号]
+// 起始局号让「每次最多跑 N 局」也能覆盖不同的种子段而不重叠。
+const PLANNED = Number(process.argv[2] ?? 10);
+const FROM = Number(process.argv[3] ?? 1);
+const TH = { ...DEFAULT_FUZZ_THRESHOLDS, timeoutMs: 90_000, maxDecisions: 120 };
+const FINALE = BARN_SUPPORT.finaleSceneId;
 
-async function once(seedish: number) {
-  const entries: string[] = [];
-  const lines: string[] = [];
-  let moveStops = 0, invStops = 0, emptyOptionStops = 0;
-  let n = seedish;
-  const rnd = () => { n = (n * 1103515245 + 12345) & 0x7fffffff; return n / 0x7fffffff; };
-
-  await runModule(BARN_OF_PREMIER, BARN_SUPPORT, {
-    onLine: (line) => {
-      const m = line.match(HEADER);
-      if (m) entries.push(m[1]!.trim());
-      lines.push(line);
-    },
-    decide: async (_c, options): Promise<PlayerDecision> => {
-      if (options.length === 0) emptyOptionStops++;
-      const chose = options[Math.floor(rnd() * options.length)] ?? "";
-      if (options.some(o => o.startsWith("调查"))) invStops++; else moveStops++;
-      return { action: chose, intent: chose.startsWith("调查") ? "investigate" : "move" };
-    },
-  });
-
-  const finale = BARN_OF_PREMIER.scenes.find(s => s.id === BARN_SUPPORT.finaleSceneId)?.name;
-  // 连续同名进场 = 原地打转
-  let maxRepeat = 1, cur = 1;
-  for (let i = 1; i < entries.length; i++) {
-    if (entries[i] === entries[i - 1]) { cur++; maxRepeat = Math.max(maxRepeat, cur); } else cur = 1;
-  }
-  // 空行/纯空白播报
-  const blank = lines.filter(l => l.trim() === "").length;
-  // 结局到底有没有念出来 —— 只"进过终局场景"不等于故事有收场
-  const labels = ["True End", "Near-Truth End", "Good End", "Bad End", "Normal End"];
-  const endLine = lines.find(l => labels.some(t => l.includes(t)));
-  const ending = endLine ? labels.find(t => endLine.includes(t))! : "(无结局)";
-  return {
-    finale: entries.includes(finale ?? ""),
-    entries: entries.length,
-    distinct: new Set(entries).size,
-    moveStops, invStops, emptyOptionStops, maxRepeat, ending,
-    lines: lines.length, blank,
-  };
-}
+const FAIL_LABEL: Record<string, string> = {
+  threw: "抛异常",
+  timeout: "超时（疑似死循环）",
+  "decision-cap": "决策步数打满（疑似死循环）",
+  "no-ending": "跑完没有正式结局",
+  "empty-options": "出现空选项岔口",
+  "scene-loop": "同名场景连续进场超上限",
+};
 
 async function main() {
-  const rows = [];
-  for (let i = 1; i <= 10; i++) {
-    try {
-      rows.push({ i, ...(await once(i * 7919)) });
-    } catch (e) {
-      console.log(`#${i} 抛异常: ${e instanceof Error ? e.message : String(e)}`);
-    }
+  const outcomes: FuzzRunOutcome[] = [];
+
+  for (let i = FROM; i < FROM + PLANNED; i++) {
+    const seed = i * 7919;
+    const r = await runSeeded(BARN_OF_PREMIER, BARN_SUPPORT, {
+      seed, timeoutMs: TH.timeoutMs, maxDecisions: TH.maxDecisions,
+    });
+    const s = summarizeFuzzEvents(r.events, FINALE);
+    outcomes.push({
+      seed,
+      threw: r.threw, errorMessage: r.errorMessage,
+      timedOut: r.timedOut, hitDecisionCap: r.hitDecisionCap,
+      ...s,
+      decisions: r.decisions, // 以脚手架计数为准（抛异常时事件可能没走完）
+    });
   }
-  console.log(`通关 ${rows.filter(r => r.finale).length}/${rows.length}`);
-  console.log(`空选项岔口总数 ${rows.reduce((a, r) => a + r.emptyOptionStops, 0)}`);
-  const noEnd = rows.filter(r => r.ending === "(无结局)").length;
-  console.log(`跑完没有结局的局：${noEnd}/${rows.length}`);
-  console.log("局  进场 不同 移动 调查 到终局 结局");
-  for (const r of rows) {
-    console.log(`#${r.i}  ${r.entries}  ${r.distinct}  ${r.moveStops}  ${r.invStops}  ${r.finale}  ${r.ending}`);
+
+  const report = judgeFuzz(outcomes, PLANNED, TH);
+
+  // 复现自检：同一个 seed 再跑一遍，比事件流。
+  // 「seed 能不能当确定性回归依据」是个**可测量**的问题，不该靠声称。
+  const a = await runSeeded(BARN_OF_PREMIER, BARN_SUPPORT, { seed: 7919, timeoutMs: TH.timeoutMs, maxDecisions: TH.maxDecisions, keepLines: true });
+  const b = await runSeeded(BARN_OF_PREMIER, BARN_SUPPORT, { seed: 7919, timeoutMs: TH.timeoutMs, maxDecisions: TH.maxDecisions, keepLines: true });
+  const eventsSame = JSON.stringify(a.events) === JSON.stringify(b.events);
+  const linesSame = a.lines.join("\n") === b.lines.join("\n");
+
+  const out: string[] = [];
+  out.push(`# 随机玩法 fuzz（第 ${FROM}~${FROM + PLANNED - 1} 局，计划 ${PLANNED} 局）`);
+  out.push("");
+  out.push("判据：**通关 = 正常返回且产生正式结局**（`ending` 事件）。");
+  out.push("「进过终局场景」不参与判定，只作对照 —— 上一版把它当通关，于是同一份输出里");
+  out.push("「通关 10/10」和「跑完没有结局 1/10」同时成立。");
+  out.push("");
+  out.push(`阈值：单局超时 ${TH.timeoutMs}ms，最多决策 ${TH.maxDecisions} 步，同名场景最多连续进 ${TH.maxRepeat} 次。`);
+  out.push("");
+  out.push("## 结论");
+  out.push("");
+  out.push(`**通关 ${report.passed}/${report.planned}**`);
+  out.push("");
+  out.push("| 失败项 | 局数 |");
+  out.push("|---|---|");
+  for (const [k, n] of Object.entries(report.byFailure)) out.push(`| ${FAIL_LABEL[k] ?? k} | ${n} |`);
+  out.push("");
+  out.push(`走到终局场景却没有结局：${report.finaleWithoutEnding} 局`);
+  out.push("（这个数**必然**已经包含在上面的「跑完没有正式结局」里；两者不再互相矛盾）");
+  out.push("");
+  out.push("结局分布：");
+  out.push("");
+  for (const [k, n] of Object.entries(report.endings)) out.push(`  ${k.padEnd(16)} ${n}`);
+  out.push("");
+  out.push("## 复现性自检（同 seed 连跑两局）");
+  out.push("");
+  out.push(`  事件流一致：${eventsSame ? "是" : "否"}（draws ${a.draws} vs ${b.draws}）`);
+  out.push(`  播报文本一致：${linesSame ? "是" : "否"}`);
+  out.push("");
+  if (eventsSame && linesSame) {
+    out.push("  ✓ 整条 RNG 已注入且没有跨局残留状态，事件流与播报文本都可复现，");
+    out.push("    seed **可以**作确定性回归依据。");
+  } else if (eventsSame) {
+    out.push("  · 事件流可复现，可作回归依据；播报文本不可复现 —— 说明还有**跨局残留的状态**");
+    out.push("    （不是随机源，随机源会连事件流一起打乱）。**不要用文本 diff 做回归**，");
+    out.push("    并把残留的那份状态找出来收进 RunContext / Dedup。");
+  } else {
+    out.push("  ⚠ 事件流都不可复现 —— 还有未被 `withSeededRandom` 接管的随机源，");
+    out.push("    seed 不能当确定性依据。先把它找出来，别拿 seed 做回归。");
   }
+  out.push("");
+  out.push("## 逐局");
+  out.push("");
+  out.push("| 局 | seed | 进场 | 不同场景 | 决策 | 最大连续同场景 | 空选项 | 到终局场景 | 结局 | 判定 |");
+  out.push("|---|---|---|---|---|---|---|---|---|---|");
+  for (const { outcome: o, fails } of report.rows) {
+    out.push(
+      `| ${report.rows.indexOf(report.rows.find((r) => r.outcome === o)!) + 1} | ${o.seed} | ${o.sceneEntries} | ${o.distinctScenes} | ` +
+      `${o.decisions} | ${o.maxRepeat} | ${o.emptyOptionStops} | ${o.reachedFinaleScene} | ${o.ending || "(无)"} | ` +
+      `${fails.length === 0 ? "通关" : fails.map((f) => FAIL_LABEL[f] ?? f).join("、")} |`,
+    );
+  }
+
+  await writeReport("diag-fuzz.md", out.join("\n") + "\n");
+  console.log(`通关 ${report.passed}/${report.planned}｜没结局 ${report.byFailure["no-ending"]}｜走到终局场景却没结局 ${report.finaleWithoutEnding}｜事件流可复现 ${eventsSame}  -> analysis/diag/diag-fuzz.md`);
 }
 
 main().catch((e) => { console.error("跑挂了:", e); process.exit(1); });
 ```
 
-## tools/_audit-backup.ts
+## scripts/diag/audit-backup.ts
 
 ```ts
 // 分辨「丢了就没了」和「能重新生成」。
 //
-// risk-01：C:\aitrpg 下只有 poc/ 有版本控制和远端，其余 3.7GB 裸奔。
-// 但不是所有东西都值得备份 —— 抽取产物能从源材料重跑，源材料才是根。
-// 不分层的话，要么漏掉根，要么把几 GB 中间产物一起搬。
+// ── 上一版为什么不可信 ──
+// 1. `if (n === "poc") continue;` —— 假定整个 `poc/` 都有远端。可是 `.gitignore`
+//    排掉了 `tools/ data/ play-logs/ analysis/ play-records/` 与
+//    `frontend/public/{bgm,voice}`，光 bgm+voice 就 76MB。
+//    「有仓库」不等于「入库了」，要问 git 而不是猜目录名。
+// 2. 分类优先级反了：`.md/.yaml` 先撞「手写设计」→ 生成目录里的报告被算成人写的；
+//    「备份残留」排在扩展名规则后面 → `x.ts.bak` 先被算成脚本，
+//    于是「备份残留」那一档看着永远很干净。
+// 3. 漏项：根目录 `.txt`（4.5MB 小说全文）、图片、音频、`.zip`、
+//    `.py`（4109 个）、没有 raw/source 路径特征的手写 JSON/TXT。
+//    review-request 第 5 条那个「53MB vs 489MB，差 9 倍」就是漏根目录 txt 来的。
+// 4. `depth > 6 return` 和 `catch { return }` 都是**静默**的：
+//    截断和读不了的目录一声不吭，算出来的总量凭什么可信。
+// 5. 「其它」还剩一大堆没分类，却照样发布「不可再生 500MB」这种精确数。
+//
+// 分类判据抽成了纯函数 `src/diagnostics/backup-classify.ts`，
+// 那边用临时路径字符串做正反夹具，不必真有一棵 4GB 的文件树才能测。
+
 import { readdirSync, statSync } from "fs";
-import { join, extname } from "path";
+import { join } from "path";
+import { spawnSync } from "child_process";
+import {
+  classifyPath, summarize, irreplaceableStatement,
+  type AuditItem, type BackupClass,
+} from "../../src/diagnostics/backup-classify";
+import { writeReport } from "../../src/diagnostics/report";
 
 const ROOT = "C:\\aitrpg";
+const REPO = join(ROOT, "poc");
+const MAX_DEPTH = 12;
 
-interface Item { path: string; size: number; kind: string }
-const items: Item[] = [];
+// ── 1. 问 git：哪些文件真的入库了 ─────────────────────────────
 
-function classify(p: string, name: string): string {
-  const rel = p.replace(ROOT + "\\", "");
-  const ext = extname(name).toLowerCase();
-  if ([".pdf", ".docx", ".xlsx", ".epub", ".mobi"].includes(ext)) return "源材料";
-  if (/来源|原著|raw|source/i.test(rel) && [".txt", ".json"].includes(ext)) return "源材料";
-
-  // ⚠ 判据补过一次：原先 .txt 只有落在 来源/原著/raw 路径下才算源材料，
-  // 于是「世界模型」根目录下那些**小说全文** txt（每份 15~18MB）被扔进「其它」，
-  // 而它们正是整条抽取链的根 —— 章节切片、实体索引、v18 主档全从它们来。
-  //
-  // 判据：直接躺在 世界模型\ 下、且够大（>1MB）的 .txt = 小说全文。
-  // 按章切分的产物在 chapters_* / extracted_* 子目录里，不会命中这一条。
-  const depth = rel.split("\\").length;
-  if (ext === ".txt" && depth === 2 && rel.startsWith("世界模型\\")) return "源材料";
-  if ([".yaml", ".yml", ".md"].includes(ext)) return "手写设计";
-  if (rel.includes("_output") || rel.includes("_extracted")) return "抽取产物";
-  if (ext === ".jsonl") return "抽取产物";
-  if ([".mjs", ".cjs", ".js", ".ts"].includes(ext)) return "脚本";
-  if (/\.bak\d*|_bak|_before_/.test(name)) return "备份残留";
-  return "其它";
+function gitTrackedFiles(): { tracked: Set<string>; ok: boolean; note: string } {
+  const r = spawnSync("git", ["-C", REPO, "ls-files"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  if (r.error || r.status !== 0) {
+    return {
+      tracked: new Set(),
+      ok: false,
+      note: `git ls-files 失败（${r.error?.message ?? `退出码 ${r.status}`}）—— 无法区分已跟踪与被忽略，poc/ 全部按「未备份」计入`,
+    };
+  }
+  const set = new Set(
+    r.stdout.split("\n").map((l) => l.trim()).filter(Boolean)
+      .map((p) => join(REPO, p.replace(/\//g, "\\"))),
+  );
+  return { tracked: set, ok: true, note: "" };
 }
 
-function walk(dir: string, depth = 0) {
-  if (depth > 6) return;
+/** 入库 ≠ 推上去了。没有 upstream 或有未推送提交，「有远端」这个前提就不成立 */
+function remoteStatus(): string {
+  const remotes = spawnSync("git", ["-C", REPO, "remote"], { encoding: "utf8" });
+  if (remotes.error || remotes.status !== 0) return "⚠ 读不到 git remote —— 无法确认 poc/ 是否真有远端";
+  const names = remotes.stdout.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (names.length === 0) return "⚠ **poc/ 根本没有配置远端** —— 「已跟踪 = 有备份」这个前提不成立，全部按未备份看待";
+  const ahead = spawnSync("git", ["-C", REPO, "rev-list", "--count", "@{u}..HEAD"], { encoding: "utf8" });
+  if (ahead.error || ahead.status !== 0) {
+    return `远端：${names.join(", ")}；⚠ 当前分支没有 upstream —— 已提交但未必推得上去`;
+  }
+  const n = Number(ahead.stdout.trim());
+  return n > 0
+    ? `远端：${names.join(", ")}；⚠ 有 ${n} 个提交**尚未推送** —— 这部分同样只存在于本机`
+    : `远端：${names.join(", ")}；HEAD 已推送`;
+}
+
+// ── 2. 遍历。截断与读失败都要留痕，不许静默 ────────────────────
+
+const items: AuditItem[] = [];
+const truncatedDirs: string[] = [];
+const unreadableDirs: string[] = [];
+const unreadableFiles: string[] = [];
+let trackedCount = 0;
+let trackedSize = 0;
+
+const { tracked, ok: gitOk, note: gitNote } = gitTrackedFiles();
+
+function record(full: string, size: number) {
+  const rel = full.startsWith(ROOT + "\\") ? full.slice(ROOT.length + 1) : full;
+  const r = classifyPath({ rel, size });
+  items.push({ rel, size, kind: r.kind, rule: r.rule, manualReview: r.manualReview });
+}
+
+function walk(dir: string, depth: number) {
+  if (depth > MAX_DEPTH) { truncatedDirs.push(dir); return; }
   let names: string[];
-  try { names = readdirSync(dir); } catch { return; }
+  try {
+    names = readdirSync(dir);
+  } catch (e) {
+    // 上一版这里是 `catch { return }` —— 读不了的目录一声不吭地从统计里消失
+    unreadableDirs.push(`${dir}  (${e instanceof Error ? e.message : String(e)})`);
+    return;
+  }
   for (const n of names) {
-    if (["node_modules", ".git", "dist"].includes(n)) continue;
+    if (n === ".git" || n === "node_modules") continue;
     const p = join(dir, n);
     let st;
-    try { st = statSync(p); } catch { continue; }
-    if (st.isDirectory()) walk(p, depth + 1);
-    else items.push({ path: p, size: st.size, kind: classify(p, n) });
+    try { st = statSync(p); } catch (e) {
+      unreadableFiles.push(`${p}  (${e instanceof Error ? e.message : String(e)})`);
+      continue;
+    }
+    if (st.isDirectory()) { walk(p, depth + 1); continue; }
+    // poc/ 里**已跟踪**的文件才算有远端；被 .gitignore 排除的照样要审
+    if (gitOk && tracked.has(p)) { trackedCount++; trackedSize += st.size; continue; }
+    record(p, st.size);
   }
 }
 
-for (const n of readdirSync(ROOT)) {
-  if (n === "poc") continue;
-  const p = join(ROOT, n);
-  try {
-    if (statSync(p).isDirectory()) walk(p);
-    else items.push({ path: p, size: statSync(p).size, kind: classify(p, n) });
-  } catch { /* ignore */ }
-}
+walk(ROOT, 0);
+
+// ── 3. 汇总 ──────────────────────────────────────────────────
 
 const mb = (b: number) => (b / 1024 / 1024).toFixed(1);
-const byKind = new Map<string, { n: number; size: number }>();
-for (const it of items) {
-  const cur = byKind.get(it.kind) ?? { n: 0, size: 0 };
-  cur.n++; cur.size += it.size;
-  byKind.set(it.kind, cur);
-}
+const s = summarize(items);
 
-const RECOVERY: Record<string, string> = {
+const RECOVERY: Record<BackupClass, string> = {
   "源材料": "**找不回来** — 外部来源，未必还能拿到",
   "手写设计": "**找不回来** — 人写的",
   "脚本": "**找不回来** — 除非 poc 里有副本",
   "抽取产物": "能重跑（前提是源材料 + 脚本都在）",
   "备份残留": "本身就是旧副本，不必再备",
-  "其它": "看情况",
+  "待确认": "**判据说不准，需要人过一遍**",
 };
 
 const out: string[] = ["# 备份分层：什么丢了就没了", ""];
-out.push("范围：`C:\\aitrpg` 除 `poc/`（有远端）之外的全部。");
+out.push("范围：`C:\\aitrpg` **全部**，其中 `poc/` 只排除 git 已跟踪的文件。");
 out.push("");
+out.push(`- ${remoteStatus()}`);
+out.push(`- poc/ 已跟踪（视为有远端，未计入下表）：${trackedCount} 个 / ${mb(trackedSize)} MB`);
+if (!gitOk) out.push(`- ${gitNote}`);
+out.push(`- 遍历深度上限 ${MAX_DEPTH}；被截断的目录 ${truncatedDirs.length} 个，读不了的目录 ${unreadableDirs.length} 个，读不了的文件 ${unreadableFiles.length} 个`);
+out.push("");
+
 out.push("| 类别 | 文件数 | 大小 (MB) | 丢了怎么办 |");
 out.push("|---|---|---|---|");
-for (const [k, v] of [...byKind.entries()].sort((a, b) => b[1].size - a[1].size)) {
-  out.push(`| ${k} | ${v.n} | ${mb(v.size)} | ${RECOVERY[k] ?? ""} |`);
+for (const [k, v] of [...s.byKind.entries()].sort((a, b) => b[1].size - a[1].size)) {
+  out.push(`| ${k} | ${v.count} | ${mb(v.size)} | ${RECOVERY[k]} |`);
+}
+out.push("");
+out.push("## 结论");
+out.push("");
+out.push(irreplaceableStatement(s));
+out.push("");
+
+if (!s.complete) {
+  out.push("## 待人工确认清单（判据说不准的那些）");
+  out.push("");
+  out.push("判据只能把它们排除在「明确可重建」之外，不能替人断定值不值得备份。");
+  out.push("在这份清单被过完之前，**上面的总量只是下界**。");
+  out.push("");
+  const pending = items.filter((i) => i.kind === "待确认" || i.manualReview);
+  const byRule = new Map<string, { n: number; size: number; samples: string[] }>();
+  for (const p of pending) {
+    const cur = byRule.get(p.rule) ?? { n: 0, size: 0, samples: [] };
+    cur.n++; cur.size += p.size;
+    if (cur.samples.length < 5) cur.samples.push(`${p.rel} (${mb(p.size)} MB)`);
+    byRule.set(p.rule, cur);
+  }
+  for (const [rule, v] of [...byRule.entries()].sort((a, b) => b[1].size - a[1].size)) {
+    out.push(`### ${rule} — ${v.n} 个 / ${mb(v.size)} MB`);
+    out.push("");
+    for (const sm of v.samples) out.push(`- \`${sm}\``);
+    out.push("");
+  }
+  out.push("按大小排前 20 个待确认：");
+  out.push("");
+  for (const p of [...pending].sort((a, b) => b.size - a.size).slice(0, 20)) {
+    out.push(`- \`${p.rel}\`  ${mb(p.size)} MB  [${p.rule}]`);
+  }
+  out.push("");
 }
 
-const CRITICAL = ["源材料", "手写设计", "脚本"];
-const crit = items.filter((i) => CRITICAL.includes(i.kind));
-const critSize = crit.reduce((a, b) => a + b.size, 0);
+out.push("## 已确定不可再生 · 按大小排前 25");
 out.push("");
-out.push(`**不可再生合计：${crit.length} 个文件 / ${mb(critSize)} MB**`);
-out.push("");
-out.push("按大小排前 25 个：");
-out.push("");
-for (const it of crit.sort((a, b) => b.size - a.size).slice(0, 25)) {
-  out.push(`- \`${it.path.replace(ROOT + "\\", "")}\`  ${mb(it.size)} MB  [${it.kind}]`);
+const crit = items.filter((i) => ["源材料", "手写设计", "脚本"].includes(i.kind));
+for (const it of [...crit].sort((a, b) => b.size - a.size).slice(0, 25)) {
+  out.push(`- \`${it.rel}\`  ${mb(it.size)} MB  [${it.kind} · ${it.rule}]`);
 }
 out.push("");
-out.push("最大的抽取产物（能重跑，但要时间）：");
+out.push("## 最大的抽取产物（能重跑，但要时间）");
 out.push("");
 for (const it of items.filter((i) => i.kind === "抽取产物").sort((a, b) => b.size - a.size).slice(0, 8)) {
-  out.push(`- \`${it.path.replace(ROOT + "\\", "")}\`  ${mb(it.size)} MB`);
+  out.push(`- \`${it.rel}\`  ${mb(it.size)} MB`);
 }
 
-await Bun.write("tools/audit-backup.md", out.join("\n") + "\n");
-console.log(`不可再生 ${crit.length} 个 / ${mb(critSize)} MB  -> tools/audit-backup.md`);
+if (truncatedDirs.length || unreadableDirs.length || unreadableFiles.length) {
+  out.push("");
+  out.push("## 遍历没覆盖到的地方（这些不在上面任何一个数字里）");
+  out.push("");
+  for (const d of truncatedDirs.slice(0, 20)) out.push(`- 深度截断：\`${d}\``);
+  for (const d of unreadableDirs.slice(0, 20)) out.push(`- 读不了的目录：\`${d}\``);
+  for (const f of unreadableFiles.slice(0, 20)) out.push(`- 读不了的文件：\`${f}\``);
+}
+
+await writeReport("audit-backup.md", out.join("\n") + "\n");
+console.log(
+  `${s.complete ? "审计完成" : "**审计未完成**"}｜已确定不可再生 ${s.irreplaceableCount} 个 / ${mb(s.irreplaceableSize)} MB｜` +
+  `待确认 ${s.pendingCount} 个 / ${mb(s.pendingSize)} MB｜` +
+  `深度截断 ${truncatedDirs.length}｜读失败 ${unreadableDirs.length + unreadableFiles.length}` +
+  `  -> analysis/diag/audit-backup.md`,
+);
 ```
 
 ## scripts/preflight.ts
 
 ```ts
-// 改动前后各跑一次的自检。把我反复犯的几类错做成机器判据，别靠记性。
+// 改动前后各跑一次的自检。把反复犯的几类错做成机器判据，别靠记性。
 //
 // 用法：
 //   bun scripts/preflight.ts            全查
 //   bun scripts/preflight.ts --quick    只查快的（跳过测试）
 //
-// 背景：一轮里连着犯了五次同类失误（机械切割截断语义单元、假绿测试、
-// 判据写错），每次都要一个来回才发现。能变成检查项的就别留给注意力。
+// 九项检查：切割残渣 / 占位注释 / 反向 import / PowerShell 读中文 /
+//           丢掉的成功与否返回值 / 无声吞错的 catch /
+//           文档引用的脚本是否入库 / typecheck / 测试条数基线
+//
+// ⚠ 这份脚本自己返工过一次。上一版六项检查里，**五项能被同一段坏代码骗过**：
+//   1. 切割残渣：只认 `return|await|赋值` 四种起手式 → 函数头被删后留下
+//      `register()` / `if` / `for` 一个都不报；同时不看花括号深度 →
+//      合法函数里「JSDoc + return」被当成切歪（这是 174 个假阳性的来源）。
+//   3. 循环依赖：正则 `from ["']\.\.\/play-module["']` → dynamic import、
+//      带扩展名的路径、别名、`export ... from`、`require()` 全漏；
+//      而注释和字符串里的 import 文本反倒会误报。
+//   4. PowerShell 风险：只查 `.ts`、只认 `spawnSync`，命中之后还只放进
+//      `notes`，脚本照样 `exit 0` —— 报了等于没报。
+//   5. typecheck：只 grep stdout 里的 `error TS`。进程没起来、被信号杀掉、
+//      或者 tsc 换个输出格式，三种情况都是「炸了但报绿」。
+//   6. 测试条数：只 print，不跟任何基线比 —— 那不是回归检查。
+//
+// 判据都抽到了 `src/diagnostics/source-scan.ts`，每一项有「应报」「不应报」
+// 两侧测试（`src/__tests__/diag-preflight-checks.test.ts`）。
 
-import { readFileSync, readdirSync, statSync } from "fs";
+import { readFileSync, readdirSync, statSync, existsSync } from "fs";
 import { join } from "path";
 import { spawnSync } from "child_process";
+import {
+  findTruncatedBlocks, findPlaceholderResidue, findReverseImports, findShellRisks,
+  judgeProcess, parseTestOutput, judgeTestCount,
+  referencedScripts, judgeScriptRefs, generatedDocs,
+  boolReturningNames, findDroppedReturns, findSilentCatches,
+  type Finding, type TestBaseline,
+} from "../src/diagnostics/source-scan";
 
 const quick = process.argv.includes("--quick");
 const problems: string[] = [];
 const notes: string[] = [];
 
-function walk(dir: string): string[] {
+const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".codegraph", ".superpowers"]);
+
+function walk(dir: string, exts: string[]): string[] {
   const out: string[] = [];
+  if (!existsSync(dir)) return out;
   for (const e of readdirSync(dir)) {
+    if (SKIP_DIRS.has(e)) continue;
     const p = join(dir, e);
-    if (statSync(p).isDirectory()) out.push(...walk(p));
-    else if (p.endsWith(".ts")) out.push(p);
+    let st;
+    try { st = statSync(p); } catch { continue; }
+    if (st.isDirectory()) out.push(...walk(p, exts));
+    else if (exts.some((x) => p.toLowerCase().endsWith(x))) out.push(p);
   }
   return out;
 }
 
-const srcFiles = walk("src");
+const read = (f: string) => readFileSync(f, "utf8"); // 中文源码必须走 fs，不能过 PowerShell
+const push = (fs: Finding[]) => { for (const f of fs) problems.push(`${f.file}:${f.line}  ${f.message}`); };
 
-// ── 1. 切割残渣：文档注释紧跟着**语句**（而不是声明） ──
+const srcFiles = walk("src", [".ts"]);
+
+// ── 1. 切割残渣：**顶层**块注释后面直接是语句 ──
 //
-// 机械切割最常见的后果：注释块留下、函数头被搬走，于是 `*/` 下面直接是
-// 函数体的第一条语句。
-//
-// ⚠ 判据必须收窄。第一版写成「下一行不是声明就报警」，
-// 结果 174 个假阳性 —— 接口字段、对象属性、switch case、联合类型的续行
-// 全被算进去了，真问题（2 个）被淹没。判据没验就上，正是这轮反复犯的错。
-//
-// 现在只认最确定的一种：`*/` 紧跟 `return` / 赋值 / `await`，
-// 那在文档注释后面出现几乎必然是切歪了。
-const CUT_SIGNS = /^(return\b|await\b|const \w+ = (await )?\w+\(|\w+ = )/;
-for (const f of srcFiles) {
-  const lines = readFileSync(f, "utf8").split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i]!.trim() !== "*/") continue;
-    const next = (lines[i + 1] ?? "").trim();
-    if (CUT_SIGNS.test(next)) {
-      problems.push(`${f}:${i + 2}  文档注释后面直接是语句 —— 切割可能截断了函数头`);
-    }
-  }
-}
+// 收窄的关键是花括号深度必须为 0。深度 ≥ 1 的地方（接口字段、对象属性、
+// switch case、联合类型续行、函数体内的说明）本来就允许注释后面跟非声明，
+// 上一版没这一条，174 个假阳性淹掉 2 个真问题。
+// 有了深度之后，判据可以反过来写：顶层注释后面**不是声明**就报，
+// 于是 `register()` / `if` / `for` 这些残骸也一并认出来。
+for (const f of srcFiles) push(findTruncatedBlocks(f, read(f)));
 
 // ── 2. 搬运残渣：同一句占位注释出现多次 ──
-const PLACEHOLDER = /已抽到 src\/play\/[\w-]+\.ts（纯搬运/;
-for (const f of srcFiles) {
-  const lines = readFileSync(f, "utf8").split("\n");
-  const hits = lines.map((l, i) => (PLACEHOLDER.test(l) ? i + 1 : 0)).filter(Boolean);
-  if (hits.length > 1) {
-    problems.push(`${f}  搬运占位注释残留 ${hits.length} 处（L${hits.join(", L")}）`);
-  }
-}
+for (const f of srcFiles) push(findPlaceholderResidue(f, read(f)));
 
 // ── 3. 循环依赖：src/play/* 反向 import play-module ──
 // 抽出来的模块反向 import 原文件就是环。tsc 不报，得自己看。
+// 用 Bun 的解析器取 import（见 source-scan.scanImports）：静态/动态/require/
+// `export ... from` 都认，注释与字符串里的 import 文本不认。
 for (const f of srcFiles.filter((p) => p.includes("play") && !p.endsWith("play-module.ts"))) {
-  const t = readFileSync(f, "utf8");
-  if (/from\s+["']\.\.\/play-module["']/.test(t)) {
-    problems.push(`${f}  反向 import play-module —— 成环，把需要的东西也抽出来`);
-  }
+  push(findReverseImports(f, read(f), "play-module"));
 }
 
-// ── 4. 中文过 PowerShell：脚本里不该用 Select-String 读源码 ──
-// 排除本文件 —— 它是那个检查器，提到这两个词是判据本身。
-// 只认**真调用**（spawnSync / 反引号命令串里出现），不认文案里提到这两个词 ——
-// 否则连「警告不要用它」的文字本身都会被报，判据自己咬自己。
-for (const f of walk("scripts")) {
-  if (f.endsWith("preflight.ts")) continue;
-  const t = readFileSync(f, "utf8");
-  const realCall = /spawnSync\([^)]*(Select-String|Get-Content)|["'`][^"'`]*\|\s*(Select-String|Get-Content)/;
-  if (realCall.test(t)) {
-    notes.push(`${f}  真的在调 Select-String/Get-Content —— 读中文源码会 mojibake，用 fs.readFileSync`);
+// ── 4. 中文过 PowerShell ──
+//
+// 范围从「只有 scripts/*.ts」扩到仓库里真正在跑的脚本类型：
+// `.ts/.js/.mjs/.cjs/.ps1`，覆盖 src、scripts、tools、frontend。
+// `src/__tests__` 排除 —— 那里的坏样例是**判据的输入夹具**，不是真调用；
+// 这条排除有明确理由，不是「让输出变绿」。
+//
+// 命中一律进 problems。上一版放进 notes 然后 exit 0，等于报了也没人拦。
+const scriptExts = [".ts", ".js", ".mjs", ".cjs", ".ps1"];
+const scriptFiles = [
+  ...walk("src", scriptExts).filter((p) => !p.includes(join("src", "__tests__"))),
+  ...walk("scripts", scriptExts),
+  ...walk("tools", scriptExts),
+  ...walk("frontend", scriptExts),
+];
+for (const f of scriptFiles) push(findShellRisks(f, read(f)));
+
+// ── 8. 「成功与否」的返回值被丢掉 ──
+//
+// 「静默失败」在这个仓库有前科，docs/kp-tool-surface-assessment.md §八 记了两次，
+// 原话是「类型检查与 710 个测试全绿，只有真实跑团暴露了它」。
+// 这条检查第一次跑就逮到 `this.setScene(sceneId);` 两处 ——
+// 而 `setActiveScene` 失败时会先清空全部 is_active，把世界弄成
+// **一个活动场景都不剩**，比什么都没做更糟。
+//
+// 现在仓库里是 0 处，所以**不设豁免名单**：新增一处就红，
+// 要么接住返回值，要么显式 `void`，要么说明白为什么可以不管。
+{
+  const scanned = [...srcFiles, ...walk("scripts", [".ts"])]
+    .filter((p) => !p.includes(join("src", "__tests__")));
+  const boolNames = new Set<string>();
+  for (const f of scanned) for (const n of boolReturningNames(read(f))) boolNames.add(n);
+  for (const f of scanned) push(findDroppedReturns(f, read(f), boolNames));
+  notes.push(`返回 boolean 的实现 ${boolNames.size} 个，返回值被丢掉 0 处（超过 0 就会变成上面的问题）`);
+}
+
+// ── 9. 无声吞掉错误的 catch ──
+//
+// 空 catch 不是罪，**吞掉了却不说为什么**才是。
+// 实跑第一次逮到 `mythos-module` 两处：`JSON.parse(exits)` 失败后照样
+// 把空数组写回数据库，场景出口被静默抹掉 —— 正是 §八 记的那种事故。
+// 修完是 0 处，同样不设豁免名单：写一行理由就能过，这个成本该付。
+for (const f of [...srcFiles, ...walk("scripts", [".ts"])]) {
+  push(findSilentCatches(f, read(f)));
+}
+
+// ── 7. 生成的文档叫人跑的脚本，仓库里得真有 ──
+//
+// `docs/handoff.md` 曾经整整一张表指着 `tools/_diag-*.ts`，而 `tools/`
+// 在 .gitignore 里 —— 新克隆一个都没有。判据入了库、测试也齐了，
+// 可跑它们的入口不在仓库里。这跟「判据看着在检查、其实什么也没量」
+// 是同一类错，只是换了层皮，所以做成检查项。
+//
+// **只查脚本生成的那几份文档**：它们每次都会被重写，里面的每一句都必须
+// 当下为真。`docs/notes/*.md` 是 append-only 的工作记录，
+// 「当时用某个一次性脚本数出 4 处」是历史事实，那脚本后来删了不算缺陷。
+// 不收窄的话第一次跑就是 43 个报告，其中 42 个来自 notes —— 又一次假阳性淹没真问题。
+{
+  const tracked = spawnSync("git", ["ls-files"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const trackedSet = new Set(
+    (tracked.stdout ?? "").split("\n").map((l) => l.trim()).filter(Boolean),
+  );
+  const gitOk = !tracked.error && tracked.status === 0;
+  const generated = generatedDocs(walk("scripts", [".ts"]).map(read));
+  for (const doc of generated) {
+    if (!existsSync(doc)) continue; // 还没生成过，不是这条检查的事
+    const refs = referencedScripts(read(doc)).map((p) => ({
+      path: p,
+      exists: existsSync(p),
+      // git 拿不到时不冤枉人：只查存在性，并在 notes 里说清楚
+      tracked: gitOk ? trackedSet.has(p) : true,
+    }));
+    push(judgeScriptRefs(refs, doc));
   }
+  notes.push(`文档引用校验覆盖 ${generated.length} 份生成文档：${generated.join("、") || "(无)"}`);
+  if (!gitOk) notes.push("git ls-files 不可用 —— 只校验了文档引用脚本是否存在，没校验是否入库");
 }
 
 // ── 5. typecheck ──
+// 先看退出状态（error / signal / status），再看输出。
+// 只 grep 输出的话，进程没起来时输出是空串，判据会当成「零个错」。
 const tsc = spawnSync("bun", ["run", "typecheck"], { encoding: "utf8", shell: true });
-const tsErrors = (tsc.stdout + tsc.stderr).split("\n").filter((l) => /error TS/.test(l));
-if (tsErrors.length) {
+const tscVerdict = judgeProcess("typecheck", tsc);
+const tscOut = (tsc.stdout ?? "") + (tsc.stderr ?? "");
+if (!tscVerdict.ok) {
+  problems.push(tscVerdict.reason);
+  const tsErrors = tscOut.split("\n").filter((l) => /error TS/.test(l));
   const syntax = tsErrors.filter((l) => /TS1\d{3}/.test(l));
-  problems.push(`typecheck 报 ${tsErrors.length} 个错`);
-  if (syntax.length) {
-    problems.push(`  其中 ${syntax.length} 个是**语法错** —— 通常意味着切歪了，不是缺 import`);
-  }
+  if (tsErrors.length) problems.push(`  输出里能认出 ${tsErrors.length} 条 error TS`);
+  if (syntax.length) problems.push(`  其中 ${syntax.length} 条是**语法错** —— 通常意味着切歪了，不是缺 import`);
   for (const e of tsErrors.slice(0, 5)) problems.push("  " + e.trim());
+} else {
+  // 退出码 0 但输出里有 error TS = tsc 的行为变了，同样要拦
+  const stray = tscOut.split("\n").filter((l) => /error TS/.test(l));
+  if (stray.length) problems.push(`typecheck 退出码 0，输出里却有 ${stray.length} 条 error TS —— 判据与工具行为不一致，先查清楚`);
+  else notes.push("typecheck 通过（退出码 0）");
 }
 
-// ── 6. 测试条数（只有条数是可靠回归信号） ──
+// ── 6. 测试：退出状态 + 条数基线 ──
+// 「只打印当前条数」不是检查 —— 跟什么比？有基线才有回归。
+const BASELINE_PATH = "docs/test-baseline.json";
 if (!quick) {
   const t = spawnSync("bun", ["test"], { encoding: "utf8", shell: true });
-  const ran = (t.stdout + t.stderr).match(/Ran (\d+) tests/);
-  const failed = (t.stdout + t.stderr).match(/(\d+) fail/);
-  if (ran) notes.push(`测试 ${ran[1]} 条`);
-  if (failed && failed[1] !== "0") problems.push(`测试有 ${failed[1]} 条失败`);
+  const text = (t.stdout ?? "") + (t.stderr ?? "");
+  const verdict = judgeProcess("bun test", t);
+  const counts = parseTestOutput(text);
+
+  if (!existsSync(BASELINE_PATH)) {
+    problems.push(`缺少测试基线 ${BASELINE_PATH} —— 没有基线就没有回归检查；先跑一次并写入 {"tests":N,"files":M}`);
+  } else {
+    const base = JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as TestBaseline;
+    const r = judgeTestCount(counts, base);
+    problems.push(...r.problems);
+    notes.push(...r.notes);
+  }
+  // 退出码与条数是两条独立证据，都要看：
+  // 条数对得上但进程非零退出（比如收尾时崩了）同样是坏的。
+  if (!verdict.ok && (counts.failed ?? 0) === 0) {
+    problems.push(`${verdict.reason}（输出里没解析到失败条数 —— 别因为「看着没 fail」就放过）`);
+  } else if (!verdict.ok) {
+    problems.push(verdict.reason);
+  }
+} else {
+  notes.push("--quick：跳过测试与条数基线检查");
 }
 
 // ── 输出 ──
@@ -792,161 +1237,186 @@ process.exit(problems.length ? 1 : 0);
 # 附：最近一次产物（供对照）
 ======================================================================
 
-## tools/diag-phrasing.md
+## analysis/diag/diag-phrasing.md
 
 ```
 # 玩家说的话，引擎认不认
 
-拿模组里每个多出口场景 × 每个出口 × 8 种说法，看能不能匹配到玩家想去的地方。
+拿模组里每个多出口场景 × 每个出口 × **17 种说法**（正例/反例/歧义三类），
+每种再按连接的原序与逆序各跑一遍 —— 只跑一种顺序时，干扰项恰好排在目标之后就会全绿。
 
-| 说法 | 命中 | 总数 | 命中率 |
+判据（见 `src/diagnostics/phrasing.ts`，有正反例校准测试）：
+
+| 类别 | 通过条件 | 进不进命中率 |
+|---|---|---|
+| 正例 | 选中目标且 `forced=false` | 进 |
+| 反例 | 不选中被否定/被提及的那个，且去了指定目标 | 不进 |
+| 歧义 | `forced=true`（引擎老实承认是替选） | 不进 |
+
+## 汇总
+
+- **目标命中率（仅正例）：800/800 = 100.0%**
+- 反例通过率：144/144 = 100.0%
+- 歧义输入「老实承认替选」率：234/234 = 100.0%
+
+按连接顺序分：
+
+| 顺序 | 通过 | 总数 | 通过率 |
 |---|---|---|---|
-| 照抄选项原文 | 38 | 38 | 100% |
-| 只说地名 | 38 | 38 | 100% |
-| 「去」+地名 | 38 | 38 | 100% |
-| 「我们去」+地名 | 38 | 38 | 100% |
-| 「前往」+地名 | 38 | 38 | 100% |
-| 地名+「那边」 | 38 | 38 | 100% |
-| 带犹豫的口语 | 38 | 38 | 100% |
-| 地名在句中 | 38 | 38 | 100% |
-| 只说地名前两字 | 1 | 38 | 3% |
-| 同义改写（不含原名） | 0 | 38 | 0% |
-| 代词指代 | 0 | 38 | 0% |
-| 描述目的地特征 | 0 | 38 | 0% |
+| 原序 | 589 | 589 | 100.0% |
+| 逆序 | 589 | 589 | 100.0% |
 
-**合计 305/456 = 66.9%**
+## 逐条说法
 
-没命中的例子：
-
-  想去「加比的拖车房」说的是「去加比」→ **被替选**到「加比的拖车房」
-  想去「加比的拖车房」说的是「换个地方看看」→ **被替选**到「加比的拖车房」
-  想去「加比的拖车房」说的是「去那边」→ **被替选**到「加比的拖车房」
-  想去「加比的拖车房」说的是「去那个有灯光的房间」→ **被替选**到「加比的拖车房」
-  想去「普瑞米尔」说的是「去普瑞」→ **被替选**到「加比的拖车房」
-  想去「普瑞米尔」说的是「换个地方看看」→ **被替选**到「加比的拖车房」
-  想去「普瑞米尔」说的是「去那边」→ **被替选**到「加比的拖车房」
-  想去「普瑞米尔」说的是「去那个有灯光的房间」→ **被替选**到「加比的拖车房」
-  想去「特里坎家」说的是「去特里」→ **被替选**到「特里坎家」
-  想去「特里坎家」说的是「换个地方看看」→ **被替选**到「特里坎家」
-  想去「特里坎家」说的是「去那边」→ **被替选**到「特里坎家」
-  想去「特里坎家」说的是「去那个有灯光的房间」→ **被替选**到「特里坎家」
-  想去「维森酒吧」说的是「去维森」→ **被替选**到「特里坎家」
-  想去「维森酒吧」说的是「换个地方看看」→ **被替选**到「特里坎家」
-  想去「维森酒吧」说的是「去那边」→ **被替选**到「特里坎家」
-  想去「维森酒吧」说的是「去那个有灯光的房间」→ **被替选**到「特里坎家」
-  想去「警察局」说的是「去警察」→ **被替选**到「特里坎家」
+| 类别 | 说法 | 通过 | 总数 | 通过率 |
+|---|---|---|---|---|
+| ambiguous | a1-同义改写 同义改写（不含任何地名） | 76 | 76 | 100.0% |
+| ambiguous | a2-代词 代词指代 | 76 | 76 | 100.0% |
+| ambiguous | a3-描述特征 描述目的地特征 | 76 | 76 | 100.0% |
+| ambiguous | a4-前两字 只说地名前两字（不唯一） | 6 | 6 | 100.0% |
+| negative | n1-否定 否定一个目标同时指定另一个 | 72 | 72 | 100.0% |
+| negative | n2-提及非目标 提到别处但目标是自己点名的那个 | 72 | 72 | 100.0% |
+| positive | p1-原文 照抄选项原文 | 76 | 76 | 100.0% |
+| positive | p10-唯一别名 唯一别名 | 44 | 44 | 100.0% |
+| positive | p11-唯一后缀 唯一后缀（中心词） | 74 | 74 | 100.0% |
+| positive | p2-地名 只说地名 | 76 | 76 | 100.0% |
 ```
 
-## tools/diag-downed.txt
+## analysis/diag/diag-downed.txt
 
 ```
-25 局：出现昏迷 12 局，两人同时倒下 1 局，走「调查中止」1 局
-急救唤醒成功 5 次
+范围：**昏迷期间该角色自己发起的技能检定**。
+SAN 检定（被动反应）、同伴代做的检定、受伤那一刻的重伤结算检定都不算违规，但都单列计数。
 
-倒着的人自己掷骰（违规）：0 次
+第 1~3 局，共 3 局（异常 0 局，已计入）：出现昏迷 1 局，两人同时倒下 0 局
 
-✓ 昏迷期间不再行动
+倒下成因：HP 直接归零 1 次，重伤体质检定失败 0 次
+急救唤醒成功 0 次；苏醒后本人正常检定 0 次（这些**不是**违规）
+昏迷期间同伴代做的检定 4 次（不是违规）
+昏迷期间的 SAN 检定 3 次（范围外，被动反应）
+受伤当场的重伤结算检定豁免 0 次
+
+**违规（昏迷期间本人掷骰）：0 次**
+
+✓ 昏迷期间没有本人发起的技能检定
 ```
 
-## tools/diag-wounds.txt
+## analysis/diag/diag-wounds.txt
 
 ```
-30 局：伤害事件 98 次，重伤体质检定 17 次，惩罚骰播报 88 次，解除 1 次
-✓ 不变量：没有一次重伤体质检定被它自己那处伤罚到
+3 局（异常 0 局，已计入）
 
-按引擎判定的伤势分档：
-  <25%     35
-  25-49%   35
-  ≥50%     14
-  ≥75%     0
+## 伤势分级（按引擎算出的 severity，不看播报标签）
 
-伤害明细（前 30 条）：
-  #1 HP 10→6 掉4 轻伤
-  #1 HP 6→2 掉4 轻伤
-  #1 HP 2→0 掉2 昏迷/濒死！
-  #2 HP 10→7 掉3 轻伤
-  #2 HP 10→6 掉4 轻伤
-  #2 HP 6→2 掉4 轻伤
-  #3 HP 10→9 掉1 (无标签)
-  #3 HP 10→5 掉5 重伤
-  #3 HP 9→8 掉1 (无标签)
-  #4 HP 12→10 掉2 (无标签)
-  #4 HP 10→9 掉1 (无标签)
-  #5 HP 11→6 掉5 轻伤
-  #5 HP 6→2 掉4 轻伤
-  #5 HP 2→0 掉2 昏迷/濒死！
-  #7 HP 9→5 掉4 轻伤
-  #7 HP 5→3 掉2 (无标签)
-  #7 HP 3→2 掉1 (无标签)
-  #8 HP 11→10 掉1 (无标签)
-  #8 HP 10→7 掉3 轻伤
-  #8 HP 7→5 掉2 (无标签)
-  #8 HP 13→10 掉3 (无标签)
-  #9 HP 12→7 掉5 轻伤
-  #9 HP 7→5 掉2 (无标签)
-  #9 HP 5→3 掉2 (无标签)
-  #9 HP 10→4 掉6 重伤
-  #10 HP 10→5 掉5 重伤
-  #10 HP 11→9 掉2 (无标签)
-  #10 HP 9→7 掉2 (无标签)
-  #10 HP 7→3 掉4 轻伤
-  #10 HP 5→0 掉5 昏迷/濒死！
+  伤害事件 12 次
+  scratch   4
+  flesh     6
+  deep      2
+  grievous  0
+  lethal    0
+
+  ⚠ HP 归零那一行的播报后缀是「昏迷/濒死！」，按文本分档会把这一档整个漏掉。
+
+## 重伤流程
+
+  deep/grievous 且人还站着：1 次 → 应有同样次数的重伤体质检定
+  deep/grievous 但当场昏迷：1 次 → **不该**掷体质检定（人已经躺下，那一掷没什么可决定的）
+    · 口径由 `needsMajorWoundCheck()` 一处说了算。四个调用点原先两种写法，
+      判据当时只能把这一档单列出来不下结论 —— 判据被实现的不一致逼哑了。
+  实际重伤体质检定：1 次
+  记下的伤势：1 次，处理掉：0 次
+
+## 惩罚骰来源必须分开
+
+  真被伤势罚到的检定：0 次   ← 这是伤势机制生效的**唯一**证据
+  只带环境/疲劳惩罚的检定：3 次   ← 不许拿它充数
+  有伤但该掷骰路径不读伤势：0 次   ← 应为 0，见下
+
+  · 战斗里调查员的攻击掷骰原先直接调 `CoCEngine.skillCheck`，绕过 `checks.ts` 的
+    `check()`，伤势惩罚在战斗攻击上一点作用都没有。这个缺口正是「按来源分账」
+    之后露出来的：记下的伤势有好几处，真被伤势罚到的检定却几乎为零。
+    现已接上（疲劳与伤势分别标注，合计仍受 CoC 7e 的 2 颗上限约束）。
+    这一行留着守回归：再有谁另开一条绕过 `check()` 的路，它会立刻非零。
+
+## 不变量破例
+
+  ✓ 无破例（1 次重伤各自恰有一次不受自身伤势影响的体质检定，
+    0 次后续检定带伤势惩罚，0 次处理后惩罚消失）
 ```
 
-## tools/diag-combat.txt
+## analysis/diag/diag-combat.txt
 
 ```
-12 局：发生战斗 9 局，其中击退 3 局
-调查员攻击掷骰 75 次，疲劳惩罚骰播报 8 次
-玩家 HP 变化 40 次（含陷阱）
+3 局（异常 0 局，已计入）：发生战斗 2 局
 
-敌人还手：
-  敌人挥击 46 次，玩家闪避掷骰 27 次
-  战斗中造成 HP 变化 20 次，打昏 2 次
-  ✓ 敌人会还手了
+## 敌人还手（按攻击者身份认，不按技能名）
+
+  敌人挥击 12 次：命中 4，被闪开 1，没掷中 7
+  调查员攻击掷骰 13 次
+  战斗中玩家掉血合计 15 点
+  攻击者身份对不上的事件 0 次（应恒为 0，非 0 说明事件源出问题）
+
+## 判据：按**发生战斗的那一局**看，不看跨局总数
+
+  ✓ 2/2 局敌人都还手了
+
+## 战斗中的昏迷（两条成因都认）
+
+  HP 直接归零 1 次，重伤体质检定失败 0 次
+  · 第二条在播报里**没有** `HP n → 0` 那一行，只按文本找必然漏。
+
+## 战斗结果分布
+
+  lost       1
+  defeated   1
+
+## 逐局
+
+  #1 vs 米-戈：4 轮，敌人挥击 8 次，调查员攻击 7 次，玩家掉血 11，结果 lost
+  #2 vs 米-戈：3 轮，敌人挥击 4 次，调查员攻击 6 次，玩家掉血 4，结果 defeated
 ```
 
-## tools/audit-backup.md
+## analysis/diag/audit-backup.md
 
 ```
 # 备份分层：什么丢了就没了
 
-范围：`C:\aitrpg` 除 `poc/`（有远端）之外的全部。
+范围：`C:\aitrpg` **全部**，其中 `poc/` 只排除 git 已跟踪的文件。
+
+- 远端：origin；HEAD 已推送
+- poc/ 已跟踪（视为有远端，未计入下表）：299 个 / 3.5 MB
+- 遍历深度上限 12；被截断的目录 0 个，读不了的目录 0 个，读不了的文件 0 个
 
 | 类别 | 文件数 | 大小 (MB) | 丢了怎么办 |
 |---|---|---|---|
-| 抽取产物 | 858 | 2590.6 | 能重跑（前提是源材料 + 脚本都在） |
-| 其它 | 97519 | 601.4 | 看情况 |
-| 源材料 | 111 | 474.4 | **找不回来** — 外部来源，未必还能拿到 |
-| 手写设计 | 901 | 12.0 | **找不回来** — 人写的 |
-| 脚本 | 121 | 2.5 | **找不回来** — 除非 poc 里有副本 |
-| 备份残留 | 6 | 0.3 | 本身就是旧副本，不必再备 |
+| 抽取产物 | 89349 | 2028.6 | 能重跑（前提是源材料 + 脚本都在） |
+| 源材料 | 308 | 801.0 | **找不回来** — 外部来源，未必还能拿到 |
+| 待确认 | 6339 | 196.8 | **判据说不准，需要人过一遍** |
+| 脚本 | 4355 | 15.3 | **找不回来** — 除非 poc 里有副本 |
+| 手写设计 | 753 | 7.4 | **找不回来** — 人写的 |
+| 备份残留 | 10 | 3.8 | 本身就是旧副本，不必再备 |
 
-**不可再生合计：1133 个文件 / 488.9 MB**
+## 结论
 
-按大小排前 25 个：
+⚠ 审计**未完成**，不给精确总量。
+已确定不可再生**至少** 5416 个文件 / 823.6 MB；
+另有待人工确认 6341 个 / 200.1 MB，上界为 1023.7 MB。
+原因：待确认 6341 个 / 200.1 MB（占 6.6%），超过 2% 或 50MB 阈值
 
-- `世界模型\黎明之剑.txt`  18.2 MB  [源材料]
-- `世界模型\《战神领主》【爱上阅读_www.isyd.net】.txt`  16.8 MB  [源材料]
-- `世界模型\异常生物见闻录_远瞳.txt`  15.7 MB  [源材料]
-- `世界模型\《英雄信条》【爱上阅读_www.isyd.net】.txt`  15.6 MB  [源材料]
-- `世界模型\末法王座-庄毕凡.txt`  14.8 MB  [源材料]
-- `世界模型\《异界全职业大师》【爱上阅读_www.isyd.net】.txt`  13.9 MB  [源材料]
-- `世界模型\Éñ¼¶Ìì¸³.txt`  11.9 MB  [源材料]
-- `世界模型\《召唤圣剑》作者：西贝猫.txt`  11.9 MB  [源材料]
-- `世界模型\《琥珀之剑》（校对版全本）作者：绯炎.txt`  11.2 MB  [源材料]
-- `世界模型\琥珀之剑.txt`  11.1 MB  [源材料]
-- `世界模型\《网游之帝皇崛起》（校对版全本）作者：坠落凡尘.txt`  11.0 MB  [源材料]
-- `世界模型\《巫师之旅》作者：一行白鹭上青天.txt`  10.6 MB  [源材料]
-- `世界模型\永恒国度.txt`  10.4 MB  [源材料]
-- `世界模型\黎明之剑.epub`  10.2 MB  [源材料]
-- `世界模型\《惊悚乐园》（校对版全本+番外）作者：三天两觉.txt`  9.8 MB  [源材料]
-- `世界模型\秦吏.txt`  9.8 MB  [源材料]
-- `世界模型\《奥术神座》（精校版全本+番外）作者：爱潜水的乌贼.txt`  9.5 MB  [源材料]
-- `世界模型\疯巫妖_utf8.txt`  9.4 MB  [源材料]
-- `世界模型\《巨龙王座》（校对版全本）作者：焰闪.txt`  9.0 MB  [源材料]
-- `世界模型\《奥术起源》（校对版全本）作者：永夜骑士.txt`  9.0 MB  [源材料]
-- `世界模型\网游之射破苍穹_龙大人.txt`  8.5 MB  [源材料]
-- `世界模型\《绝对暴力》【爱上阅读_www.isyd.net】.txt`  8.0 MB  [源材料]
-- `世界模型\末法王座-庄毕凡.epub`  7.7 MB  [源材料]
+## 待人工确认清单（判据说不准的那些）
+
+判据只能把它们排除在「明确可重建」之外，不能替人断定值不值得备份。
+在这份清单被过完之前，**上面的总量只是下界**。
+
+### small-text-unclassified — 6318 个 / 115.2 MB
+
+- `poc\.superpowers\sdd\acc.txt (0.0 MB)`
+- `poc\.superpowers\sdd\acc2.txt (0.0 MB)`
+- `poc\.superpowers\sdd\acc3.txt (0.0 MB)`
+- `poc\.superpowers\sdd\ci.txt (0.0 MB)`
+- `poc\.superpowers\sdd\ci2.txt (0.0 MB)`
+
+### unknown-ext — 19 个 / 60.3 MB
+
+- `poc\.codegraph\.gitignore (0.0 MB)`
 ```

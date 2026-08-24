@@ -55,7 +55,7 @@ describe("planSpeech", () => {
 // 提示词第 7 条主动要求台词带括号神态，允许穿插句中。送进 TTS 会被照着念出来，
 // 但它们是现有最好的韵律提示（voice-readiness.md 第五节），所以切分而不是删除。
 describe("舞台指示切分", () => {
-  // 样本取自实跑日志 play-logs/run-2026-08-18T03-41-30.txt
+  // 样本取自实跑日志 docs/evidence/run-2026-08-18T03-41-30.txt
   it("摘掉句中的括号神态，台词本身不动", () => {
     const { spoken, directions } = splitStageDirections(
       "睡得安稳？（她神经质地笑了笑，眼神游离）我哪知道，他连门都不让我进。",

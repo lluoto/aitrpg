@@ -12,7 +12,7 @@ import { speechLead, askerScore, partnerRemark, isMajorWound, isRedundantMoveLin
 import { selfIntroduction } from "../llm/generate-llm-expanded";
 
 describe("引导桥不重复动词", () => {
-  // 实跑原文：play-logs/run-2026-08-18T06-06-34.txt
+  // 实跑原文：docs/evidence/run-2026-08-18T06-06-34.txt
   // 「菲碧·特里坎焦虑不安地搓着手说，说："你们回来了！"」
   it("动作已经以「说」收尾时不再补一个", () => {
     expect(speechLead("焦虑不安地搓着手说")).toBe("焦虑不安地搓着手说：");

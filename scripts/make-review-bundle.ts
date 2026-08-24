@@ -18,6 +18,14 @@ const TARGETS = [
 ];
 
 const out: string[] = [];
+// ⚠ 必须自报家门。这份 38KB 的产物是 review-request.md 加脚本全文拼出来的，
+//   开头照抄 review-request 的正文，**读起来跟手写文档一模一样** ——
+//   preflight 把它列为生成文档（会被整份重写），而文件里没有任何一句话说过这件事。
+//   下一个人在这儿改了字，下次 `bun scripts/make-review-bundle.ts` 就悄悄覆盖掉。
+//   handoff.md 与 now.md 的头部都写了刷新命令，只有这份漏了。
+out.push("> ⚠ **本文件由 `scripts/make-review-bundle.ts` 生成，手改会被覆盖。**");
+out.push("> 要改正文请改 `docs/review-request.md`；要改附录请改被打包的那些脚本。");
+out.push("");
 out.push(readFileSync("docs/review-request.md", "utf8"));
 out.push("");
 out.push("=".repeat(70));

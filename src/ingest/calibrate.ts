@@ -1,7 +1,7 @@
 // 摄取管线 · 校准器
 //
 // 读取模块的产出不覆盖现有模组文件，并排放着做逐字段对比。
-// 现有的 barn-of-premier.ts 是被实跑校准过的（tools/modules/CALIBRATION_REPORT.md），
+// 现有的 barn-of-premier.ts 是被实跑校准过的（docs/evidence/CALIBRATION_REPORT.md），
 // 拿它当基准，差异清单就是"读取模块还差多少"的度量。
 //
 // 反过来也成立：如果生成物在某个字段上比基准更准，那说明该改的是基准。
