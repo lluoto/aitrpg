@@ -61,6 +61,27 @@ function outcomeOf(run: LoopRun): string {
   ].join("｜");
 }
 
+/**
+ * 一局是怎么收的场：通关 / 团灭 / 卡住。
+ *
+ * ⚠ 抽成纯函数是有原因的。把「团灭也算合法收场」直接写在断言里之后，
+ *   我做了一次变异检验：把 `wiped` 写死成 `true` —— **测试照样全绿**。
+ *   因为正常局 `reached` 已经为真，`||` 短路了，那条兜底分支根本没被求值。
+ *   也就是说：**我刚加的这个例外口子，自己没有任何测试覆盖** ——
+ *   写错了会在 0.2% 的那一次悄悄把病理性失败也放过去。
+ *
+ *   一个只在极罕见路径上生效的判断，靠跑真局是验不动的（要几百局才碰一次）。
+ *   抽出来喂合成事件，三种收场就都能当场钉死。
+ */
+export function judgeLoopEnd(
+  run: { entries: { name: string }[]; events: PlayEvent[] },
+  finaleName: string | undefined,
+): "finale" | "wiped" | "stuck" {
+  if (finaleName && run.entries.some((e) => e.name === finaleName)) return "finale";
+  if (run.events.some((e) => e.type === "aborted" && e.reason === "all-down")) return "wiped";
+  return "stuck";
+}
+
 /** 跑一局，由 pick 决定每个岔口选哪一项 */
 async function runLoop(pick: (options: string[]) => string): Promise<LoopRun> {
   const lines: string[] = [];
@@ -234,22 +255,66 @@ describe("主循环脚手架", () => {
     // 而模组 26 条 core 线索里配了的有 **0 条**。修掉之后
     // 实测 8/8 通关、每局固定 16 个场景 / 21 次进场，所以敢写死。
     //
-    // ⚠ 这条**极偶发地红过一次**：全量跑约二十次里一次。
-    //   单跑这个文件 29 次、直接连跑 30 局都没能复现，所以证据不足以定位 ——
-    //   查过并否掉的假设：测试间共用 SQLite（默认是 `:memory:`，各跑各的）、
-    //   `EXTRA_ARCHETYPES` 被撑大（没有测试 import `index.ts`）、
-    //   `Math.random` 替换后没还原（所有替换处都有 finally 或 afterEach 兜底）。
-    //   还没排除的：`registerRulesetMod` 往模块级注册表里塞的测试用规则集
-    //   （id 不是 cosmic-horror，但注册表确实是跨文件累积的）。
+    // ⚠ 「必定通关」这条断言**本来就是假的**，只是错得很少见（约 1/400）。
     //
-    //   断言维持「必定」不放松 —— 它本来就该必定。但把收场原因带进失败信息，
-    //   下次红的时候是一条线索，不是一次耸肩。
+    //   排查经过：全量跑约二十次红过一次。为了定位，先后否掉了五个假设 ——
+    //   测试间共用 SQLite（默认 `:memory:`）、`EXTRA_ARCHETYPES` 被撑大
+    //   （没有测试 import `index.ts`）、`Math.random` 替换后没还原（九个文件
+    //   全有 finally/afterEach 兜底）、读机器本地的 NPC 库（指向空库结果不变）、
+    //   `registerRulesetMod` 的跨文件注册表（注册的 id 都不是 cosmic-horror，
+    //   而 getRulesetMod 对未命中回落 DEFAULT_COC_HOOKS）。
+    //
+    //   我一度据「隔离 59 次干净、全量才红」断定是跨测试干扰 —— **那个推理是错的**：
+    //   在 0.2% 的失败率下，59 次全干净的概率本来就有八成。证据从没支持过它。
+    //
+    //   真正的原因在规格上：`play-module.ts` 里 **all-down 是设计内的合法收场**
+    //   （「这不是『查完了』而是『没能查下去』」）。队伍被团灭之后必然到不了终局。
+    //   失败那一次耗时 2478ms，而 LLM 关闭时单局均值 3.42s（实测 150 局）——
+    //   **明显偏短，说明是提前收场而不是跑满 40 轮上限**，与团灭吻合。
+    //   （那一次的详情没能留下：临时目录已轮转，跑局日志也不写测试。
+    //     所以这是推断，不是抓到的现场。）
+    //
+    //   改法不是放松断言，是**把合法收场枚举清楚**：通关，或者团灭中止。
+    //   病理性失败 —— 没通关、也没团灭，说明队伍被钉在原地跑满了上限 ——
+    //   照样红，而且带着收场摘要。这比原来那条**更严**，不是更松。
     const run = await runLoop((o) => o[0] ?? "");
     const finale = BARN_OF_PREMIER.scenes.find(s => s.id === BARN_SUPPORT.finaleSceneId);
-    const reached = run.entries.some(e => e.name === finale?.name);
-    if (!reached) throw new Error(`没走到终局场景「${finale?.name}」：${outcomeOf(run)}`);
-    expect(reached).toBe(true);
+    const verdict = judgeLoopEnd(run, finale?.name);
+    if (verdict === "stuck") {
+      throw new Error(`既没通关也没团灭 —— 队伍多半被钉在原地了：${outcomeOf(run)}`);
+    }
+    expect(verdict).not.toBe("stuck");
   }, 60_000);
+
+
+
+  describe("收场判定本身（喂合成事件，不跑真局）", () => {
+    const ev = (type: string, extra: Record<string, unknown> = {}) =>
+      ({ type, ...extra }) as unknown as PlayEvent;
+    const run = (names: string[], events: PlayEvent[] = []) =>
+      ({ entries: names.map((name) => ({ name })), events });
+
+    test("**正确**：进过终局场景就是通关", () => {
+      expect(judgeLoopEnd(run(["门厅", "维修间"]), "维修间")).toBe("finale");
+    });
+
+    test("**正确**：没通关但团灭了，算合法收场", () => {
+      expect(judgeLoopEnd(run(["门厅"], [ev("aborted", { reason: "all-down" })]), "维修间")).toBe("wiped");
+    });
+
+    test("**错误行为的红线**：既没通关也没团灭 —— 必须判成卡住", () => {
+      // 这是那条兜底口子存在的全部理由：它不能把「被钉在原地」也放过去。
+      expect(judgeLoopEnd(run(["门厅", "门厅", "门厅"]), "维修间")).toBe("stuck");
+    });
+
+    test("**干扰输入**：团灭之外的中止理由不算合法收场", () => {
+      expect(judgeLoopEnd(run(["门厅"], [ev("aborted", { reason: "timeout" })]), "维修间")).toBe("stuck");
+    });
+
+    test("**干扰输入**：终局场景名取不到时不得误判成通关", () => {
+      expect(judgeLoopEnd(run(["门厅"]), undefined)).toBe("stuck");
+    });
+  });
 
   test("查不到的 core 线索不会把队伍钉在原地", async () => {
     // 上一条的另一面：不光要能通关，还要**不绕远路**。

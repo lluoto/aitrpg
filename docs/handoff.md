@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-23 13:58  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-24 02:03  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：60c7ed4 chore: dead exports 266 → 0 (net -1371 lines)  ·  **测试**：1821 条 / 94 文件，全绿（基线 1821，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：4018dae test: tests were reading a 33k-row database that isn't in the repo  ·  **测试**：1826 条 / 94 文件，全绿（基线 1826，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -108,6 +108,8 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 
 ## 最近做了什么
 
+- 4018dae test: tests were reading a 33k-row database that isn't in the repo
+- 2620199 fix: a flaky SAN test that also wasn't testing what its name said
 - 60c7ed4 chore: dead exports 266 → 0 (net -1371 lines)
 - 37064a6 chore: unused-symbol count 250 → 0, and the checks are on for good now
 - 74c9ae5 feat: the resolve system's three methods were each referenced exactly once — by themselves
@@ -118,8 +120,6 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 - 8ca53fa fix: the ingest subsystem's only entry point was gitignored
 - 52c168d fix: fallbackQuestion took a topic and threw it away
 - d976680 fix: every knowledge reveal ended with "我知道的就这些了", including the ones that didn't
-- a4fdb58 fix: dialogue leads read like stage directions, and pasted the role label in
-- 0a8d1a7 fix: a partial LLM answer silently fell back to the 3-line candidate pool
 
 ## 代码地图
 
