@@ -240,6 +240,50 @@ if (!quick) {
   notes.push("--quick：跳过测试与条数基线检查");
 }
 
+// ── 11. 断线：类的公开方法没有调用方 ──
+//
+// 这一轮反复撞见同一个病：**两端都写好了，中间那根线没接**。
+//   · `NPCCombatEngine.getSanCost()`               遭遇修格斯 = 遭遇野狗
+//   · `InvestigationEngine.setDifficultyProfile()` 难度按钮按下去什么都没变
+// 数据在、实现在，只差一句调用。不报错、不让测试变红，
+// 只让「本该发生的事」安静地不发生。
+//
+// 现有的 `probe-dead-code` 抓不到 —— 它量的是**模块级导出**，
+// 而这些是**类的公开方法**：类本身在用，只有那一个方法没人调。
+// tsc 也不管（`noUnusedLocals` 不看公开方法）。
+//
+// ⚠ 判法是「**不许增长**」而不是「必须为 0」。
+//   当前有 90 处，绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案）——
+//   要求清零等于要求现在把它们全删掉或全接上，那不是这一条该做的决定。
+//   能守住的是：**别再新增**。哪天有人又写了一个没人调的 setter，这里会变红。
+{
+  const p = spawnSync("bun", ["scripts/diag/probe-unwired.ts"], { encoding: "utf8", shell: true });
+  const out = (p.stdout ?? "") + (p.stderr ?? "");
+  const m = /没调用方\s*(\d+)/.exec(out);
+  if (!m) {
+    problems.push("断线判据没跑起来（probe-unwired 的输出里解析不到条数）—— 判据自己坏了也要变红");
+  } else {
+    const now = Number(m[1]);
+    const base = existsSync(BASELINE_PATH)
+      ? (JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as { unwiredMethods?: number }).unwiredMethods
+      : undefined;
+    if (base === undefined) {
+      problems.push(`${BASELINE_PATH} 里缺 unwiredMethods 基线 —— 没有基线就没有回归检查；当前是 ${now}`);
+    } else if (now > base) {
+      problems.push(
+        `没有调用方的公开方法从 ${base} 涨到 ${now} —— 新写的能力没接上，` +
+        `或者接线被改掉了。看 analysis/diag/probe-unwired.md`,
+      );
+    } else {
+      notes.push(
+        now < base
+          ? `断线 ${base} → ${now}（少了 ${base - now} 处，记得把基线调下来）`
+          : `断线 ${now} 处，与基线一致（判法是不许增长，不是必须为 0 —— 理由见 preflight 第 11 项）`,
+      );
+    }
+  }
+}
+
 // ── 输出 ──
 console.log(problems.length === 0 ? "✓ preflight 通过" : `✗ preflight 发现 ${problems.length} 个问题`);
 for (const p of problems) console.log("  " + p);

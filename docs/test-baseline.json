@@ -1,6 +1,8 @@
 {
   "tests": 1943,
   "files": 110,
+  "unwiredMethods": 90,
+  "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
     {
