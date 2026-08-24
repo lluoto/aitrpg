@@ -8,6 +8,18 @@ import type { ActionIntent, WorldState, WorldEntity } from "../types";
 import type { WorldStateManager } from "../state/world-state-manager";
 import { inferGrailRank } from "../rules/grail-engine";
 
+/**
+ * NPC 技能推定。CoC 里普通 NPC 没有完整角色卡，用一个保守的默认值。
+ *
+ * ⚠ 这两个数字原先只写在 `index.ts` 的 `resolveNPCAction()` 里
+ *   （`intent.weapon ? 40 : 30`），因为**只有 CLI 有「敌人还手」这件事**。
+ *   GameSession 那条路的战斗是单向的：实测打十回合，玩家一滴血没掉。
+ *   接上还手之后两处都要用这两个数字，所以提到这里 ——
+ *   放在 `game-session.ts` 会让 CLI 反向依赖它，放在这里两边都自然。
+ */
+export const NPC_ARMED_SKILL = 40;
+export const NPC_UNARMED_SKILL = 30;
+
 // ============================================================
 // YAML 配置类型
 // ============================================================

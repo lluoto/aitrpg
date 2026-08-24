@@ -1,6 +1,6 @@
 {
-  "tests": 1928,
-  "files": 108,
+  "tests": 1934,
+  "files": 109,
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
     {
@@ -182,6 +182,11 @@
       "tests": 1928,
       "files": 108,
       "when": "意图解析：ATTACK_VERBS 里写着「潜行」导致潜行被判成攻击；补 6 个 CoC 技能词；给 GameSession 也接上 LLM 意图解析，测试默认离线"
+    },
+    {
+      "tests": 1934,
+      "files": 109,
+      "when": "网页端战斗是单向的：打十回合玩家一滴血不掉。接上敌人还手（走共用律书），并修 combatActive 永远为 false"
     }
   ]
 }

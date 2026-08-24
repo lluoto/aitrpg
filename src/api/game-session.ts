@@ -17,7 +17,7 @@ import { SanityEngine, calcDamageBonus, checkMajorWound, sanOutcomeLabel } from 
 import { KPAgent } from "../agent/kp-agent";
 import { AgentRegistry } from "../agent/agent-registry";
 import { WorldStateManager } from "../state/world-state-manager";
-import { NPCCombatEngine } from "../combat/npc-combat";
+import { NPCCombatEngine, NPC_UNARMED_SKILL } from "../combat/npc-combat";
 import { CompanionManager } from "../combat/companion-manager";
 import { PlayerSession, type VisibilityRule } from "../session/player-session";
 import { InvestigationEngine } from "../investigation/investigation-engine";
@@ -1964,6 +1964,68 @@ export class GameSession {
     return enemies[0];
   }
 
+  /**
+   * 敌人还手。
+   *
+   * ⚠ 接这个之前，**这条路上的战斗是单向的**：实测打十回合，
+   *   玩家 9/9 一滴血没掉，怪物只挨打。
+   *   也就是说这一轮修好的重伤判定、流血、致残描写，**全都只对怪物生效** ——
+   *   玩家永远不会受伤，战斗没有风险。
+   *
+   *   CLI 那边一直有 `resolveNPCAction()`（index.ts:750），走的是共用的
+   *   律书 `rules.adjudicateAttack`。这里不另写一份判定，调同一个入口 ——
+   *   这个仓库反复在修的病就是「两份实现各自漂移」。
+   *
+   *   技能推定沿用 CLI 的口径（有武器 40%、徒手 30%）。这两个数字原先
+   *   只写在 index.ts 里，现在两处都要用，所以提成常量放在这里，
+   *   并在 CLI 侧注明出处，免得哪天一边改了另一边不知道。
+   */
+  /** 当前场上还活着的敌人。战斗旗、还手、退出战斗三处共用一份判断。 */
+  private aliveEnemies(): WorldEntity[] {
+    const state = this.world.getCurrentState();
+    return Object.values(state.entities).filter(
+      (e) => (e.type === "monster" || e.type === "npc") && (e.hp ?? 0) > 0,
+    );
+  }
+
+  private npcCounterAttack(intent: ActionIntent, msg: (s: string) => number): void {
+    if (!this.combatActive) return;
+    const state = this.world.getCurrentState();
+    const enemies = this.aliveEnemies();
+    if (enemies.length === 0) return;
+    const attacker = this.pickTarget(intent, enemies); // 谁被打就谁还手
+    if (!attacker) return;
+
+    const player = state.entities["player"];
+    if (!player || player.hp <= 0) return;            // 已经倒下的人不再挨打
+
+    const result = this.rules.adjudicateAttack(
+      { action: "attack", target: player.id },
+      {
+        name: attacker.name, id: attacker.id, proficiency: 2,
+        abilities: { strength: 14, dexterity: 12, constitution: 14, intelligence: 8, wisdom: 10, charisma: 6 },
+        hasSneakAttack: false,
+      },
+      player,
+      this.activeRuleset,
+      false, false, undefined,
+      NPC_UNARMED_SKILL,                               // 徒手 30%
+      Math.floor((this.activeCharacter?.attributes?.dexterity ?? 50) / 2), // 闪避 = DEX/2
+    );
+
+    if (!result.hit) {
+      msg(`${attacker.name} 向你扑来，被你躲开了。`);
+      return;
+    }
+    this.resolveHit(player, result.damage, msg);       // 玩家也吃重伤/流血/致残
+    if (this.activeCharacter) this.activeCharacter.hp = player.hp;
+    msg(`${attacker.name} 击中了你，造成 ${result.damage} 点伤害（你剩余 ${player.hp}/${player.maxHp}）`);
+    if (player.hp <= 0) {
+      this.dead = true;
+      msg("你倒下了。");
+    }
+  }
+
   private handleAttack(intent: ActionIntent, msg: (s: string) => number): boolean {
     const skill = 50;
     let effectiveRoll = Math.floor(Math.random() * 100) + 1;
@@ -2000,6 +2062,13 @@ export class GameSession {
         msg(`${target.name} 剩余 HP: ${target.hp}/${target.maxHp}`);
       }
     }
+    // ⚠ `combatActive = true` 原先**只写在 `act()` 里那段被遮死的代码**（L1199），
+    //   而意图派发抢在它前面 return —— 于是这面旗在真实路径上**永远是 false**。
+    //   看得见的症状：`getSuggestions()` 打起来了还在提示「调查四周 / 与 NPC 交流」。
+    this.combatActive = this.aliveEnemies().length > 0;
+    this.npcCounterAttack(intent, msg);
+    // 打完最后一个敌人就退出战斗，否则这面旗立起来就再也放不下
+    if (this.aliveEnemies().length === 0) this.combatActive = false;
     this.lastDiceRoll = { expr: `d100${luckSpendMsg}`, total: effectiveRoll };
     this.lastNarrative = `你向敌人发起了攻击！${hitMsg}`;
     return true;

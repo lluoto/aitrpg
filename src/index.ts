@@ -23,7 +23,7 @@ import { KPAgent } from "./agent/kp-agent";
 import { AgentRegistry } from "./agent/agent-registry";
 import { WorldStateManager } from "./state/world-state-manager";
 import type { WorldEntity } from "./types";
-import { NPCCombatEngine } from "./combat/npc-combat";
+import { NPCCombatEngine, NPC_ARMED_SKILL, NPC_UNARMED_SKILL } from "./combat/npc-combat";
 import { PlayerSession, type VisibilityRule } from "./session/player-session";
 import { InvestigationEngine } from "./investigation/investigation-engine";
 import { WorldModelLoader, DEFAULT_V18_PATH, DEFAULT_CTHULHU_PATH } from "./world/world-model-loader";
@@ -769,7 +769,9 @@ async function resolveNPCAction(
   let npcSkill: number | undefined;
   let npcDodge: number | undefined;
   if (activeRuleset === "cosmic-horror") {
-    npcSkill = intent.weapon ? 40 : 30; // 有武器=格斗40%，无=肉搏30%
+    // 这两个数字提到 game-session 里做了常量 —— GameSession 接上「敌人还手」之后
+    // 两处都要用它们，各写一份迟早漂。
+    npcSkill = intent.weapon ? NPC_ARMED_SKILL : NPC_UNARMED_SKILL;
     npcDodge = Math.floor(((npcAttacker.abilities.dexterity ?? 10) / 10) * 8);
   }
 
