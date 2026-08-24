@@ -61,22 +61,31 @@ describe("CoCEngine.skillCheck()", () => {
     expect(r.checkType).toBe("extreme");
   });
 
+  // ⚠ 这一族测试原先写成 `if (r.roll === 1) { expect(…) }`，注释是
+  //   「无法强制随机值, 但验证该分支逻辑存在」。**那个前提是错的** ——
+  //   rollD100 就是 `floor(Math.random()*100)+1`，钉住 Math.random 就能强制。
+  //   照原样的话，d100=1 只有 1% 的运行成立，**其余 99% 一条断言都不执行**，
+  //   而测试照样绿。它只在功能正常时才验东西，坏了反而静默通过。
   it("d100=1 必定大成功", () => {
-    // 模拟: 只跑少量, 逻辑上 roll=1 时 successLevel='critical'
-    // 无法强制随机值, 但验证该分支逻辑存在
-    const r = CoCEngine.skillCheck(5);
-    if (r.roll === 1) {
+    const real = Math.random;
+    try {
+      Math.random = () => 0;               // floor(0*100)+1 = 1
+      const r = CoCEngine.skillCheck(5);
+      expect(r.roll).toBe(1);
       expect(r.successLevel).toBe("critical");
       expect(r.isSuccess).toBe(true);
-    }
+    } finally { Math.random = real; }
   });
 
   it("d100=100 必定大失败", () => {
-    const r = CoCEngine.skillCheck(95);
-    if (r.roll === 100) {
+    const real = Math.random;
+    try {
+      Math.random = () => 0.999;           // floor(0.999*100)+1 = 100
+      const r = CoCEngine.skillCheck(95);
+      expect(r.roll).toBe(100);
       expect(r.successLevel).toBe("fumble");
       expect(r.isSuccess).toBe(false);
-    }
+    } finally { Math.random = real; }
   });
 
   it("奖励骰生成 ≤100 值", () => {
@@ -175,15 +184,18 @@ describe("SanityEngine.sanityCheck()", () => {
   });
 
   it("短期内累计损失 >= 5 触发临时疯狂", () => {
-    const e = new SanityEngine(50);
-    // 模拟连续高额损失
-    // 先重置 round 计数器
-    e.state.sanLostThisRound = 5;
-    // 调用时触发临时疯狂
-    const r = e.sanityCheck("0/5");
-    if (!r.passed && r.sanLoss >= 5) {
-      // sanLoss 5 + 累计 5 = 10, ≥ 5 触发
-    }
+    // ⚠ 这条原先 if 体里**只有两行注释**，一条断言都没有 —— 纯占位。
+    //   钉住掷骰强制失败，把它该验的事真的验出来。
+    const real = Math.random;
+    try {
+      Math.random = () => 0.999;           // d100 = 100，必定失败
+      const e = new SanityEngine(50);
+      e.state.sanLostThisRound = 5;
+      const r = e.sanityCheck("0/5");
+      expect(r.passed).toBe(false);
+      expect(r.sanLoss).toBe(5);
+      expect(e.state.temporaryInsanity).toBe(true);
+    } finally { Math.random = real; }
   });
 
   it("损失 >= maxSAN/5 触发不定疯狂", () => {
@@ -291,13 +303,15 @@ describe("CoCEngine.combatCheck()", () => {
   });
 
   it("大失败导致自动未命中", () => {
-    // fumble 时 hit=false, damage=0
-    const r = CoCEngine.combatCheck(5, null, "1d6");
-    if (r.successLevel === "fumble") {
+    const real = Math.random;
+    try {
+      Math.random = () => 0.999;           // d100 = 100 → 必定 fumble
+      const r = CoCEngine.combatCheck(5, null, "1d6");
+      expect(r.successLevel).toBe("fumble");
       expect(r.hit).toBe(false);
       expect(r.damage).toBe(0);
       expect(r.result).toContain("攻击失误");
-    }
+    } finally { Math.random = real; }
   });
 
   it("d100=100 直接大失败", () => {

@@ -574,8 +574,7 @@ export class ChaseEngine {
       };
     }
 
-    // 每个参与者独立检定
-    const vehicle = VEHICLE_STATS[state.vehicleType];
+    // 每个参与者独立检定（载具速度改按参与者各自的算，见下面 sideSpeed）
     for (const p of activeParticipants) {
       const skillValue = this.getSkillForRound(p, obstacle);
       const difficulty = obstacle.def.difficulty;
@@ -645,8 +644,21 @@ export class ChaseEngine {
     // 双方净变化叠加
     let netDistanceChange = pursuerNetChange + fugitiveNetChange;
 
-    // 载具基础速度
-    netDistanceChange += vehicle.baseSpeed;
+    // ⚠ 载具速度原先是 `netDistanceChange += vehicle.baseSpeed`，而 `vehicle` 取的是
+    //   **整场追逐**那一个 `state.vehicleType`。两个后果：
+    //     1. `ChaseParticipant.vehicleType`（每个参与者各自的载具）**每个调用方都在赋值，
+    //        却从没被读过** —— 「追的人开车、逃的人跑步」和「两边都跑步」算出来一模一样。
+    //     2. 就算用整场那个也是错的：两边都开车时（baseSpeed=2），
+    //        距离每轮无条件 +2，**系统性地偏袒逃亡方**。开车追人反而更难追上。
+    //
+    //   载具影响的是**速度差**，不是绝对速度。逃方比追方快多少，距离就拉开多少。
+    const sideSpeed = (rs: typeof results) => {
+      const ps = rs.map((r) => state.participants.find((pp) => pp.name === r.name))
+        .filter((p): p is ChaseParticipant => !!p);
+      if (ps.length === 0) return 0;
+      return ps.reduce((a, p) => a + VEHICLE_STATS[p.vehicleType ?? state.vehicleType].baseSpeed, 0) / ps.length;
+    };
+    netDistanceChange += sideSpeed(fugitiveResults) - sideSpeed(pursuerResults);
 
     const newDistance = Math.max(0, Math.min(100, state.distance + netDistanceChange));
     const newRange = rangeFromDistance(newDistance);

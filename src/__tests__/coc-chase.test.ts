@@ -396,18 +396,65 @@ describe("载具追逐", () => {
       "urban",
     );
 
-    // 载具应该有恒定的速度优势累积
-    let footAvgChange = 0;
-    let carAvgChange = 0;
-    for (let i = 0; i < 10; i++) {
+    // ⚠ 这条原先跑了十轮、累加了两个平均值，然后**一条断言都没有** ——
+    //   三行注释代替了断言：「不一定每次都成立但长期趋势明显」
+    //   「可能因随机性偶尔失败，但大概率通过」。
+    //   一个不敢断言的测试，等于没有测试；而它照样计入回归基线。
+    //
+    //   载具速度其实是**确定的**：`netDistanceChange += vehicle.baseSpeed`，
+    //   查表 foot=0、car=2。把掷骰钉住之后，两边唯一的差别就只剩 baseSpeed，
+    //   于是「开车的距离变化恰好比走路多 2」是可判的，不需要靠「长期趋势」。
+    const real = Math.random;
+    try {
+      Math.random = () => 0.5;
       const fr = ChaseEngine.resolveRound(footChase);
       const cr = ChaseEngine.resolveRound(carChase);
-      footAvgChange += fr.newDistance - (i === 0 ? 15 : footChase.distance);
-      carAvgChange += cr.newDistance - (i === 0 ? 15 : carChase.distance);
-    }
-    // 开车跑的应该平均比走路快
-    // 不一定每次都成立但长期趋势明显
-    // 这个测试可能因随机性偶尔失败，但大概率通过
+      // 追击方开车 → 距离**收得更近**，所以 newDistance 更小。
+      // （我第一版把方向写反了，断言 +2；实测 -2 才对 —— 车是用来追近的。）
+      expect(fr.newDistance - cr.newDistance).toBe(2);
+    } finally { Math.random = real; }
+  });
+
+  test("**错误行为的红线**：两边同载具时不得有系统性偏袒", () => {
+    // 原实现 `netDistanceChange += vehicle.baseSpeed` 用的是整场那一个载具类型，
+    // 于是双方都开车时距离每轮无条件 +2 —— **开车追人反而更难追上**。
+    // 载具影响的是速度差，同款车相抵，净影响必须是 0。
+    const real = Math.random;
+    try {
+      Math.random = () => 0.5;
+      const bothFoot = ChaseEngine.init(
+        [{ name: "追", skill: 50, vehicleType: "foot" }],
+        [{ name: "逃", skill: 50, vehicleType: "foot" }],
+        "urban",
+      );
+      const bothCar = ChaseEngine.init(
+        [{ name: "追", skill: 50, vehicleType: "car" }],
+        [{ name: "逃", skill: 50, vehicleType: "car" }],
+        "urban",
+      );
+      expect(ChaseEngine.resolveRound(bothCar).newDistance)
+        .toBe(ChaseEngine.resolveRound(bothFoot).newDistance);
+    } finally { Math.random = real; }
+  });
+
+  test("**干扰输入**：逃亡方载具更快时，距离该被拉开", () => {
+    // 只测「追方开车能追近」是不够的：一个把速度差符号写反的实现也能过那条。
+    const real = Math.random;
+    try {
+      Math.random = () => 0.5;
+      const footBoth = ChaseEngine.init(
+        [{ name: "追", skill: 50, vehicleType: "foot" }],
+        [{ name: "逃", skill: 50, vehicleType: "foot" }],
+        "urban",
+      );
+      const fugitiveDrives = ChaseEngine.init(
+        [{ name: "追", skill: 50, vehicleType: "foot" }],
+        [{ name: "逃", skill: 50, vehicleType: "car" }],
+        "urban",
+      );
+      expect(ChaseEngine.resolveRound(fugitiveDrives).newDistance
+        - ChaseEngine.resolveRound(footBoth).newDistance).toBe(2);
+    } finally { Math.random = real; }
   });
 });
 
