@@ -1,6 +1,6 @@
 {
-  "tests": 1896,
-  "files": 106,
+  "tests": 1928,
+  "files": 108,
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
     {
@@ -177,6 +177,11 @@
       "tests": 1896,
       "files": 106,
       "when": "接上神话生物目击 SAN（getSanCost 原先零调用方，遭遇修格斯和遭遇野狗一样）"
+    },
+    {
+      "tests": 1928,
+      "files": 108,
+      "when": "意图解析：ATTACK_VERBS 里写着「潜行」导致潜行被判成攻击；补 6 个 CoC 技能词；给 GameSession 也接上 LLM 意图解析，测试默认离线"
     }
   ]
 }

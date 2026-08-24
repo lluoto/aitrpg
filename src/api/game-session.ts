@@ -3,7 +3,10 @@ import { parse as parseYaml } from "yaml";
 import { loadConfig, type LLMConfig } from "../config";
 import { LLMClient, type LLMLike } from "../llm/client";
 import { MockLLMClient } from "../llm/mock-client";
-import { parseIntent } from "../llm/intent";
+import { parseIntent, setIntentLLM, intentLLMConfigured } from "../llm/intent";
+// llmEnabled 是「该不该打网络」的**唯一**判据，别在别处重写一份 ——
+// play-module.ts:101 记着上次抄第二份的代价。
+import { llmEnabled } from "../play-module";
 
 import { RuleEngine } from "../engine/rule-engine";
 // 状态定义库 + 时限口径。存储仍是 `status: string[]`，这里只提供定义与推进规则。
@@ -231,6 +234,23 @@ export class GameSession {
     this.llm = (apiKey && !apiKey.startsWith("sk-placeholder"))
       ? new LLMClient(config)
       : new MockLLMClient();
+
+    // ⚠ 意图解析的 LLM 原先**只有 CLI 会设**（`index.ts:54` 的 `setIntentLLM(llm)`），
+    //   GameSession 从不设，于是走服务器/网页的这条路 `_llmClient` 恒为 null，
+    //   **LLM 语义理解在这条路上从没启用过**，全靠 regex。
+    //   量过一次：24 条常见 CoC 动作，认对 10、认错 3、不认识 11。
+    //
+    //   三个刻意的选择：
+    //   1. **只在还没设过时设**。`_llmClient` 是模块级单例，多个会话共享一份；
+    //      每建一个会话就覆盖一次会让并发会话互相踩，也会让 CLI 显式设的那份被顶掉。
+    //   2. **走 `llmEnabled()` 这个唯一判据**，不在这里重写一份。
+    //      play-module.ts:101 记着为什么：曾经有两份判据，于是开发机上
+    //      只要 key 在环境里，`LLM_DISABLED=true` 拦不住打网络。
+    //   3. **MockLLMClient 不设**。它不是真客户端，设进去只会让每次解析
+    //      多绕一圈再回落 regex。
+    if (this.llm instanceof LLMClient && llmEnabled() && !intentLLMConfigured()) {
+      setIntentLLM(this.llm);
+    }
 
     this.ruleEngine = new RuleEngine();
     this.rules = new RulesEngine();

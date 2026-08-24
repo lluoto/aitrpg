@@ -13,7 +13,12 @@ import type { LLMClient } from "./client";
 const TARGET_PATTERNS = ["狼", "野狼", "哥布林", "地精", "熊", "蛇", "蜘蛛", "骷髅", "僵尸", "怪物", "敌人", "守卫", "法师", "骑士", "盗贼"];
 
 // 攻击动词检测
-const ATTACK_VERBS = /(?:攻击|砍|刺|射|劈|斩|偷袭|潜行|暗杀|狙击)/;
+// ⚠ 这里原先含「潜行」。潜行**不是**攻击动词 —— 裸的「潜行」因此被判成攻击，
+//   玩家想溜过去，系统让他动手。**做相反的事比不做事伤害大得多。**
+//   「潜行攻击」由上面 `(?:偷袭|潜行).*(?:攻击|砍|劈)` 那条单独接住并带 method=stealth，
+//   所以摘掉它不会影响潜行攻击。
+//   「偷袭」留着 —— 偷袭本身就是一次攻击。
+const ATTACK_VERBS = /(?:攻击|砍|刺|射|劈|斩|偷袭|暗杀|狙击)/;
 
 /** 从输入中提取瞄准部位 */
 function extractCalledShot(input: string): string | undefined {
@@ -59,14 +64,43 @@ const INTENT_PATTERNS: Array<{ verb: RegExp; intent: Partial<ActionIntent>; requ
   //     「使用 + 治疗」吃掉，喝药变成施法。
   { verb: /(?:施放|施展|释放|使用|吟唱|念咒|施法).*(?:魔法飞弹|燃烧之手|霜冻射线|火球术|闪电束|灼热射线|魔法弹)/, intent: { action: "cast" } },
   { verb: /(?:施放|施展|释放|使用|吟唱|念咒|施法).*(?:治疗伤势|治愈|治疗|魔法飞弹|火球术)/, intent: { action: "cast" } },
-  { verb: /(?:急救|包扎|止血|医疗|治疗).*(?:伤口|伤势|出血|伤)/, intent: { action: "first_aid" } },
+  // ⚠ 「急救」后面原先**必须**跟 伤口|伤势|出血|伤，裸词落到 unknown ——
+  //   而 `handleFirstAid` 就在派发表里，打「急救」够不着它。改成后缀可选。
+  { verb: /(?:急救|包扎|止血)|(?:医疗|治疗).*(?:伤口|伤势|出血|伤)/, intent: { action: "first_aid" } },
   { verb: /(?:和|跟|与|对).*(?:说话|交谈|对话|聊聊|询问|问)/, intent: { action: "talk" } },
   { verb: /(?:休息|休息一下|休整|休养|睡觉|睡眠|治疗|包扎)/, intent: { action: "rest" } },
-  { verb: /(?:环顾|环视|环顾四周|看看四周|周围|看.*环境|看.*场景|扫视|扫了一眼|查看|探索|搜查)/, intent: { action: "look" } },
+
+  // ⚠ 这一段的顺序是有意的，别按字母或手感重排。
+  //   这张表是**先匹配先赢**，宽模式压在窄模式前面就会把它吃掉：
+  //   look 里的 `查看` 原先排在 inventory 前面，于是「查看背包」看不到背包。
+  //   所以背包、以及带具体技能名的检定，都要排在 look 之前。
+  { verb: /(?:背包|物品栏|道具|查看.*物品|查看.*背包|我的.*东西|有什么.*东西)/, intent: { action: "inventory" } },
+
+  // CoC 技能。这些词原先一个都没有 —— 打「恐吓」「取悦」「聆听」全落 unknown，
+  // 而「恐吓」正是模组给贫民窟流浪汉编的唯一非暴力机制路径
+  //（barn-of-premier：「只认钱不接受除恐吓外的社交技能」）。
+  { verb: /(?:聆听|倾听|听一听|听听|侧耳)/, intent: { action: "skill_check", skill: "listen" } },
+  { verb: /(?:恐吓|威吓|吓唬|震慑)/, intent: { action: "skill_check", skill: "intimidate" } },
+  // ⚠ 不要往这里加「魅惑」。它在 CoC 里是技能名（=取悦），在 D&D 里是法术效果，
+  //   两套规则集撞词：加进来会截胡「魅力豁免对抗魅惑」，
+  //   而那条已有测试钉着（标题里就写明了这个关键字容易被截）。
+  { verb: /(?:取悦|讨好|奉承)/, intent: { action: "skill_check", skill: "charm" } },
+  { verb: /(?:话术|忽悠|唬弄|快speech)/, intent: { action: "skill_check", skill: "fast_talk" } },
+  { verb: /(?:图书馆|查资料|查阅|翻查资料|找资料)/, intent: { action: "skill_check", skill: "library_use" } },
+  { verb: /(?:精神分析|心理分析)/, intent: { action: "skill_check", skill: "psychoanalysis" } },
+
   { verb: /(?:潜行|躲藏|隐蔽|隐匿)/, intent: { action: "skill_check", skill: "stealth" } },
-  { verb: /(?:侦查|观察|搜索|寻找|环顾)/, intent: { action: "skill_check", skill: "perception" } },
+  // `环顾` 不在这里 —— 它归下面的 look。随便看一眼在 CoC 里是免费的，
+  // 掷侦查的是「翻找/搜查」这类花时间的动作。
+  // （原表里 `环顾` 两条都写了，靠 look 排在前面才没出事；
+  //   我把 look 移到后面时它就掉进了这条 —— 顺序一改就暴露的重复。）
+  { verb: /(?:侦查|观察|搜索|寻找|搜查)/, intent: { action: "skill_check", skill: "perception" } },
   { verb: /(?:说服|交涉|谈判|劝说|聊天|对话)/, intent: { action: "skill_check", skill: "persuasion" } },
   { verb: /(?:调查|检查|研究)/, intent: { action: "skill_check", skill: "investigation" } },
+
+  // look 放在上面这些之后：它是「什么都没说清时」的兜底观察。
+  // `搜查` 已移到 perception —— 在 CoC 里翻箱倒柜要掷侦查，不是免费看一眼。
+  { verb: /(?:环顾|环视|环顾四周|看看四周|周围|看.*环境|看.*场景|扫视|扫了一眼|查看|探索)/, intent: { action: "look" } },
   // 传承系统（先于 read/状态等模式，避免"读档"被"读"拦截）
   { verb: /(?:传承|继承角色|保存角色|读档|存档|save|load|传承增益)/i, intent: { action: "legacy" } },
   // CoC 创建角色（先于含"角色"的状态模式匹配）
@@ -347,6 +381,16 @@ let _llmClient: LLMClient | null = null;
 
 export function setIntentLLM(client: LLMClient | null) {
   _llmClient = client;
+}
+
+/**
+ * 是否已经设过意图解析用的 LLM。
+ *
+ * 给「只在还没设过时才设」用 —— `_llmClient` 是模块级单例，多个会话共享一份。
+ * 每建一个会话就覆盖一次，会让并发会话互相踩，也会把 CLI 显式设的那份顶掉。
+ */
+export function intentLLMConfigured(): boolean {
+  return _llmClient !== null;
 }
 
 /**

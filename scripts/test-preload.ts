@@ -15,3 +15,21 @@
 //
 // 留 `||=` 而不是硬写：想拿真实库复现问题时，`NPC_DB_PATH=data/npc.db` 仍然覆盖得了。
 process.env.NPC_DB_PATH ||= ":memory:";
+
+// ── 测试默认离线 ──
+//
+// 同一个理由的第二例：**测试不该依赖网络**。
+//
+// 暴露它的是「给 GameSession 也接上 LLM 意图解析」那次改动。接上之后，
+// 没有显式传 llmConfig 的测试会走 `loadConfig()` 读 `.env` 里的**真 key**，
+// 于是 `bun test` 开始真的往 ECNU 打请求：单条测试从毫秒级涨到 1.2~5 秒，
+// 并且开始超时变红。在此之前它只是没被触发，不是不存在 ——
+// KP 叙事那条路一直有同样的口子。
+//
+// `LLM_DISABLED` 是仓库里既有的开关，`llmEnabled()` 是它唯一的判据
+//（见 play-module.ts:101：曾经有两份判据，于是有 key 时这个开关拦不住打网络）。
+// 在这里统一关掉，比让每个测试文件各自 beforeAll 一次可靠 ——
+// 那种做法已经有过一份（module-loop.test.ts），而它只保护自己那个文件。
+//
+// 同样留 `||=`：要拿真 LLM 复现问题时，`LLM_DISABLED=false bun test` 覆盖得了。
+process.env.LLM_DISABLED ||= "true";
