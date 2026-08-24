@@ -1,5 +1,5 @@
 {
-  "tests": 1934,
+  "tests": 1939,
   "files": 109,
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
@@ -187,6 +187,16 @@
       "tests": 1934,
       "files": 109,
       "when": "网页端战斗是单向的：打十回合玩家一滴血不掉。接上敌人还手（走共用律书），并修 combatActive 永远为 false"
+    },
+    {
+      "tests": 1934,
+      "files": 108,
+      "when": "文件数 109→108：play-logs/_api_cap_test.mjs 被 bun test 当成测试跑，每次全量都真打 ECNU。bunfig 收敛 root=src 后快了 27%"
+    },
+    {
+      "tests": 1939,
+      "files": 109,
+      "when": "测试进程加了网络闸门：非本机地址一律拒绝，并写了 5 条验证闸门本身（防护不验就只是另一段没人跑过的代码）"
     }
   ]
 }

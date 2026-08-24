@@ -33,3 +33,36 @@ process.env.NPC_DB_PATH ||= ":memory:";
 //
 // 同样留 `||=`：要拿真 LLM 复现问题时，`LLM_DISABLED=false bun test` 覆盖得了。
 process.env.LLM_DISABLED ||= "true";
+
+// ── 测试里访问外网直接报错 ──
+//
+// `LLM_DISABLED` 只管住走 `llmEnabled()` 的那些路径。真正兜底的是这一条：
+// 任何指向非本机地址的 fetch 一律拒绝。
+//
+// 逼出它的事故：全量输出里混进了真实的 LLM 回复 ——
+//   play-logs\_api_cap_test.mjs  →  baseUrl: https://chat.ecnu.edu.cn/...
+// 那是手工跑局留下的脚本，目录在 .gitignore 里，但 `bun test` 不看 gitignore，
+// 文件名带 `_test` 就被当成测试执行了。**每一次全量测试都在拿真 key 打线上。**
+// 已经用 bunfig 的 `root = "src"` 把发现范围收敛掉，
+// 但那只解决「这一个文件」；这一条解决「任何一个」。
+//
+// 只放行本机：测试里连 127.0.0.1 是有意的（用「连不上」来验熔断、验降级）。
+// 要拿真网络复现时，`ALLOW_TEST_NETWORK=1 bun test` 放行。
+if (process.env.ALLOW_TEST_NETWORK !== "1") {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = ((input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const url = typeof input === "string" ? input
+      : input instanceof URL ? input.href
+      : (input as { url: string }).url;
+    let host = "";
+    try { host = new URL(url).hostname; } catch { /* 相对地址交给原实现 */ }
+    const local = host === "" || host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "0.0.0.0";
+    if (!local) {
+      throw new Error(
+        `测试里不许访问外网：${url}\n` +
+        `（要拿真网络复现时用 ALLOW_TEST_NETWORK=1 bun test）`,
+      );
+    }
+    return realFetch(input as never, init);
+  }) as typeof fetch;
+}

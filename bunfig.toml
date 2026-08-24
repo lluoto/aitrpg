@@ -2,3 +2,23 @@
 # 让测试与机器本地的 data/npc.db 隔开，保证「我这儿绿」等于「干净检出也绿」。
 [test]
 preload = ["./scripts/test-preload.ts"]
+
+# 只在 src 下找测试。
+#
+# ⚠ 起因是全量输出里混进了真实 LLM 返回：
+#
+#     play-logs\_api_cap_test.mjs:
+#     === API 配置 ===
+#     baseUrl: https://chat.ecnu.edu.cn/open/api/v1 | model: ecnu-plus
+#     === 1. 非流式 chat ===  OK: 明白
+#
+# `play-logs/` 是**手工跑局留下的日志目录，在 .gitignore 里**，
+# 但 `bun test` 不看 gitignore：它扫整个项目目录，`_api_cap_test.mjs`
+# 文件名带 `_test` 就被当成测试文件执行了。于是**每一次 `bun test`
+# 都在拿真 key 打 ECNU**——慢、烧 token、结果还不确定。
+#
+# 而且它不在仓库里，别人的检出上根本没有这个文件 ——
+# 「我这儿慢/我这儿打网络」是查不出来的那种差异。
+#
+# 收敛到 src 之后，任何散落在日志目录、临时目录里的脚本都不会再被当成测试。
+root = "src"
