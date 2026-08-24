@@ -1045,7 +1045,12 @@ export class GameSession {
     // 限时状态（流血/中毒/燃烧…）在这里推进一回合。
     // 这一句原先不存在 —— 状态被写上去之后再没人碰过它们。
     this.tickStatusEffects();
+    // 神话生物首次目击的 SAN 检定。原先 `getSanCost()` 零调用方，
+    // 于是遭遇修格斯和遭遇一条野狗对理智的影响完全一样。
+    const sightingMsgs: string[] = [];
+    this.checkMythosSighting((s) => sightingMsgs.push(s));
     const turnMessages: AgentMessage[] = [];
+    for (const s of sightingMsgs) turnMessages.push({ speaker: "系统", content: s, type: "system" });
     // 供模组宿主适配器把加载期产生的消息投进本回合，见 _turnMessages 的说明
     this._turnMessages = turnMessages;
 
@@ -1803,6 +1808,44 @@ export class GameSession {
 
     if (result.sanLost > 0) this.inflictSanLoss(result.sanLost, msg);
     return true;
+  }
+
+  /** 已经为之掷过目击 SAN 的生物种类。CoC 7e：同一种生物只在首次目击时掷。 */
+  private readonly sightedMythos = new Set<string>();
+
+  /**
+   * 神话生物首次目击 → SAN 检定。
+   *
+   * ⚠ `NPCCombatEngine.getSanCost()` 在此之前**零调用方**。
+   *   `coc-npc.yaml` 给每种生物都写了 `san_cost`（修格斯 `1d6/1d20`、
+   *   深潜者 `0/1d6`、米戈 `0/1d6`…），一条都没生效过 ——
+   *   遭遇修格斯和遭遇一条野狗，对理智的影响完全一样。
+   *
+   *   接线要定两件事，都按 CoC 7e：
+   *     · **在哪触发**：目击即掷，不必等到战斗。所以放在 `act()` 顶端
+   *       扫当前场景，而不是挂在攻击流程上 —— 看见就已经晚了。
+   *     · **重复遭遇扣不扣**：不扣。同一种生物只在首次目击时掷
+   *       （`sightedMythos` 按种类记，不按个体 —— 一群食尸鬼只掷一次）。
+   */
+  private checkMythosSighting(msg: (s: string) => void): void {
+    if (this.activeRuleset !== "cosmic-horror") return;
+    const state = this.world.getCurrentState();
+    for (const ent of Object.values(state.entities)) {
+      if (ent.type !== "monster" && ent.type !== "npc") continue;
+      if ((ent.hp ?? 0) <= 0) continue;              // 尸体不掷目击
+      if (ent.position && ent.position !== state.scene) continue; // 不在同一场景
+      const cost = this.npcCombat.getSanCost(ent.name, this.activeRuleset);
+      if (!cost) continue;                            // 不是神话生物
+      if (this.sightedMythos.has(cost + ":" + ent.name)) continue;
+      this.sightedMythos.add(cost + ":" + ent.name);
+      const r = this.sanity.sanityCheck(cost);
+      this.persistSanity(this.activePlayerId);
+      msg(`🧠 目击【${ent.name}】：d100=${r.roll} → ${r.passed ? "通过" : "失败"}！SAN -${r.sanLoss}（剩余 ${this.sanity.state.currentSAN}）`);
+      if (r.temporaryInsanityTriggered) msg(`⚠️ 临时疯狂触发！${r.boutOfMadness ?? ""}`);
+      if (r.indefiniteInsanityTriggered) {
+        msg(`⚠️ 不定性疯狂（${r.indefiniteLevel ?? ""}）——你已经不是进来时的那个人了。`);
+      }
+    }
   }
 
   /**
