@@ -681,14 +681,32 @@ export class SanityEngine {
     const roll = regularD100();
     const passed = roll <= this.state.currentSAN;
 
-    let sanLoss: number;
-    if (passed) {
-      sanLoss = passSanLoss;
-    } else {
-      sanLoss = failSanLoss;
-    }
+    const rolled = passed ? passSanLoss : failSanLoss;
+    const applied = this.applyLoss(rolled);
 
-    // 如果 SAN 降为 0 → 最大损失
+    return { ...applied, roll, passed };
+  }
+
+  /**
+   * 扣掉一次已经掷好的 SAN 损失，并跑完疯狂判定。
+   *
+   * ⚠ 抽出来是因为**有一条路绕过了它**。
+   *
+   *   `InvestigationEngine.investigateCoC()` 自己掷线索的 SAN 损失
+   *   （`CoCEngine.rollDice(costStr)`），然后把 `sanLost` 返回给调用方；
+   *   两个前端拿到之后都是**直接赋值** `state.currentSAN`：
+   *     · `api/game-session.ts` 的 setPlayerSan
+   *     · `index.ts:684`
+   *   而临时疯狂（单次 ≥5）、不定疯狂（累计 20%）、疯狂表、恐惧症/狂躁症
+   *   全都写在 `sanityCheck()` 里面 —— 绕过它就等于**掉了 SAN 但永远不疯**。
+   *
+   *   这不是边缘情况：`investigation.yaml` 里的 `1/1d6` 失败时有 1/3 概率
+   *   掷出 5 或 6，本该当场触发临时疯狂。而疯狂是 CoC 最标志性的机制。
+   *
+   *   所以扣血和疯狂判定必须是同一个动作，不能让调用方只拿走前一半。
+   */
+  applyLoss(sanLoss: number): Omit<SanityCheckResult, "roll" | "passed"> {
+    // SAN 不够扣时最多扣到 0
     if (sanLoss > this.state.currentSAN) {
       sanLoss = this.state.currentSAN;
     }
@@ -748,8 +766,6 @@ export class SanityEngine {
 
     return {
       sanLoss,
-      roll,
-      passed,
       temporaryInsanityTriggered,
       indefiniteInsanityTriggered,
       indefiniteLevel,

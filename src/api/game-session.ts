@@ -1707,6 +1707,11 @@ export class GameSession {
     if (result.temporaryInsanityTriggered) {
       msg(`⚠️ 临时疯狂触发！${result.boutOfMadness ?? ""}`);
     }
+    // 不定性疯狂原先**从不播报** —— 引擎算出来了、状态也置了，
+    // 玩家却看不到自己已经跨过那条线。
+    if (result.indefiniteInsanityTriggered) {
+      msg(`⚠️ 不定性疯狂（${result.indefiniteLevel ?? ""}）——你已经不是进来时的那个人了。`);
+    }
     this.lastNarrative = `SAN 检定结果: ${sanOutcomeLabel(passed)}, SAN -${loss}`;
     return true;
   }
@@ -1796,11 +1801,33 @@ export class GameSession {
     msg(result.revelation);
     this.lastNarrative = result.revelation;
 
-    if (result.sanLost > 0) {
-      const current = this.sanity.state.currentSAN;
-      this.setPlayerSan(this.activePlayerId, Math.max(0, current - result.sanLost));
-    }
+    if (result.sanLost > 0) this.inflictSanLoss(result.sanLost, msg);
     return true;
+  }
+
+  /**
+   * 施加一次**剧情造成的** SAN 损失：扣血 + 疯狂判定 + 播报。
+   *
+   * ⚠ 原先这里走的是 `setPlayerSan(pid, current - sanLost)`。
+   *   那是 KP 的管理操作 —— 设一个绝对值，**不跑疯狂判定**（合理：
+   *   KP 在改数字，不是角色见了恐怖）。于是调查线索掉的 SAN
+   *   永远不会让人发疯。
+   *
+   *   而临时疯狂（单次 ≥5）在这条路上是**够得着**的：
+   *   `investigation.yaml` 的 `1/1d6` 失败时有 1/3 概率掷出 5 或 6。
+   *   疯狂是 CoC 最标志性的机制，却从调查里一次都没触发过。
+   *
+   *   现在走 `applyLoss()`，和玩家主动 SAN 检定同一套判定。
+   */
+  private inflictSanLoss(amount: number, msg: (s: string) => number): void {
+    const r = this.sanity.applyLoss(amount);
+    this.persistSanity(this.activePlayerId);
+    if (r.temporaryInsanityTriggered) {
+      msg(`⚠️ 临时疯狂触发！${r.boutOfMadness ?? ""}`);
+    }
+    if (r.indefiniteInsanityTriggered) {
+      msg(`⚠️ 不定性疯狂（${r.indefiniteLevel ?? ""}）——你已经不是进来时的那个人了。`);
+    }
   }
 
   // ── 豁免检查──

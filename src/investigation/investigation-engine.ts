@@ -517,9 +517,19 @@ export class InvestigationEngine {
     if (clue.san_cost && !alreadyDiscovered) {
       const parts = clue.san_cost.split("/");
       if (parts.length === 2) {
-        const costStr = (sl === "fail" || sl === "fumble") ? parts[1] : parts[0];
-        const num = parseInt(costStr);
-        let baseLost = isNaN(num) ? CoCEngine.rollDice(costStr) : num;
+        const costStr = (parts[(sl === "fail" || sl === "fumble") ? 1 : 0] ?? "0").trim();
+        // ⚠ 原先是 `const num = parseInt(costStr); isNaN(num) ? rollDice(costStr) : num`。
+        //   **`parseInt("1d6") === 1`** —— 取前导数字，不是 NaN。
+        //   于是 `rollDice` 那一支永远到不了，所有线索的 SAN 损失恒等于骰子
+        //   表达式的首位数字：`1d6`→1、`1d3`→1、`2d6`→2。**骰子从来没掷过。**
+        //
+        //   后果不只是数值偏小：临时疯狂的阈值是单次损失 ≥5，而这样一来
+        //   调查永远掉 1 点，**这条路上的疯狂在数学上就不可能发生**。
+        //
+        //   判断顺序反过来：先认骰子表达式，认不出才当纯数字。
+        const baseLost = /\d*d\d+/i.test(costStr)
+          ? CoCEngine.rollDice(costStr)
+          : (Number.parseInt(costStr, 10) || 0);
         sanLost = Math.round(baseLost * profile.sanMultiplier);
       }
     }

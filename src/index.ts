@@ -681,8 +681,18 @@ async function handleInvestigation(
     console.log(`  🎲 ${result.skillValue}% → d100=${result.roll} → ${SUCCESS_LEVEL_LABELS[result.successLevel] ?? result.successLevel}`);
 
     if (result.sanLost > 0) {
-      sanity.state.currentSAN = Math.max(0, sanity.state.currentSAN - result.sanLost);
-      console.log(`  🧠 SAN -${result.sanLost} (当前 ${sanity.state.currentSAN}/${sanity.state.maxSAN})`);
+      // ⚠ 原先是 `sanity.state.currentSAN = Math.max(0, ... - result.sanLost)` ——
+      //   **直接赋值字段，绕过引擎**。而临时疯狂（单次 ≥5）、不定疯狂（累计 20%）、
+      //   疯狂表、恐惧症/狂躁症全都在引擎里，于是调查线索掉的 SAN 永远不会让人发疯。
+      //   `1/1d6` 失败时有 1/3 概率掷出 5 或 6，够得着。
+      const san = sanity.applyLoss(result.sanLost);
+      console.log(`  🧠 SAN -${san.sanLoss} (当前 ${sanity.state.currentSAN}/${sanity.state.maxSAN})`);
+      if (san.temporaryInsanityTriggered) {
+        console.log(`  ⚠️ 临时疯狂触发！${san.boutOfMadness ?? ""}`);
+      }
+      if (san.indefiniteInsanityTriggered) {
+        console.log(`  ⚠️ 不定性疯狂（${san.indefiniteLevel ?? ""}）——你已经不是进来时的那个人了。`);
+      }
     }
 
     // 信息层：即使失败也提供有限信息（YAML 中定义了 fail 文本）
