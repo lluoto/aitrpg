@@ -1483,8 +1483,11 @@ export class GameSession {
       const pow = attrs.power ?? attrs.POW ?? 50;
       const luck = c.luck ?? 60;
       const mp = Math.floor(pow / 5);
-      const db = calcDamageBonus(str, siz);
-      const build = (str + siz <= 64 ? -2 : str + siz <= 84 ? -1 : str + siz <= 124 ? 0 : str + siz <= 164 ? 1 : 2);
+      // ⚠ `calcDamageBonus` 返回的是 `{ db, build }` **对象**，原先直接插进
+      //   下面的模板串，玩家看到的是 `DB:[object Object]`。
+      //   而 build 又在这里按 STR+SIZ 手算了一遍 —— 同一件事两套算法，
+      //   一套还是没人看的（对象那份自带 build）。用返回值里的。
+      const { db, build } = calcDamageBonus(str, siz);
       const move = dex < siz && str < siz ? 7 : siz <= str && siz <= dex ? 9 : 8;
       lines.push(`职业: ${c.archetype?.label ?? c.archetype ?? "调查员"}`);
       lines.push(`HP: ${c.hp ?? 12}/${c.maxHp ?? 12}  SAN: ${san.currentSAN}/${san.maxSAN}`);

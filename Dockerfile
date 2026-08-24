@@ -13,8 +13,11 @@
 FROM oven/bun:1.2 AS frontend-build
 
 WORKDIR /app/frontend
-COPY frontend/package.json frontend/bun.lock* frontend/package-lock.json* ./
-RUN bun install
+# 锁文件统一成 bun.lock（根目录一直如此，frontend 以前跟踪的是 npm 的
+# package-lock.json —— 同一个项目两个包管理器的锁，迟早分叉）。
+# `bun install` 迁移时实测「no changes」：34 个安装、84 个包，版本一个没变。
+COPY frontend/package.json frontend/bun.lock ./
+RUN bun install --frozen-lockfile
 
 COPY frontend/ .
 RUN bun run build

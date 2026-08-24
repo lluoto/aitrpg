@@ -56,7 +56,45 @@ function mask(src: string): string {
   return out.join("");
 }
 
-const TRIVIAL = /\.\s*(toBeDefined|toBeTruthy)\s*\(\s*\)|not\s*\.\s*toThrow\s*\(\s*\)|expect\s*\(\s*true\s*\)\s*\.\s*toBe\s*\(\s*true\s*\)/;
+/**
+ * 「永真断言」判据。
+ *
+ * ⚠ 第一版把所有 `toBeDefined()` 都算永真，于是 46 条里大半是误报：
+ *   `expect(res.events.find(e => …)).toBeDefined()` 是**真断言** ——
+ *   找不到就是 undefined，它检查的正是「有没有这条事件」。
+ *   而 `expect(res.narrative).toBeDefined()` 才是永真：
+ *   那个字段本来就一直在。
+ *
+ *   区别在于**被断言的表达式会不会产出 undefined**。静态判不准，
+ *   但有个够用的近似：表达式里带 `.find(` / `.match(` / 下标 / `?.` / 别的调用，
+ *   就当它可能是 undefined；只有裸标识符或纯属性链才算永真。
+ */
+const MAYBE_UNDEFINED = /\.\s*(find|match|get|shift|pop|at)\s*\(|\[[^\]]*\]|\?\./;
+
+function trivialAssertion(stmt: string, maybeUndefinedVars: ReadonlySet<string>): boolean {
+  if (/expect\s*\(\s*true\s*\)\s*\.\s*toBe\s*\(\s*true\s*\)/.test(stmt)) return true;
+  if (/not\s*\.\s*toThrow\s*\(\s*\)/.test(stmt)) return true;
+  const m = stmt.match(/expect\s*\(([^;]*?)\)\s*\.\s*(?:toBeDefined|toBeTruthy)\s*\(\s*\)/);
+  if (!m) return false;
+  const arg = m[1]!.trim();
+  if (MAYBE_UNDEFINED.test(arg)) return false;
+  // ⚠ 真实写法多半分两行：
+  //     const event = res.events.find(…);
+  //     expect(event).toBeDefined();
+  //   参数是个裸标识符，光看这一行判不出来历 —— 判据第二版就卡在这儿，
+  //   46 条只降到 43。要往上追一步：这个变量是不是从可能返回 undefined 的表达式来的。
+  if (/^[A-Za-z_$][\w$]*$/.test(arg) && maybeUndefinedVars.has(arg)) return false;
+  return true;
+}
+
+/** 块内哪些局部变量来自「可能是 undefined」的表达式 */
+function undefinableVars(body: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of body.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;]+);/g)) {
+    if (MAYBE_UNDEFINED.test(m[2]!)) out.add(m[1]!);
+  }
+  return out;
+}
 
 type Hit = { file: string; line: number; title: string; why: string };
 const hits: Hit[] = [];
@@ -130,7 +168,8 @@ for (const f of files) {
     }
     // 全是永真式？逐条断言看
     const stmts = bodyRaw.split(/;\s*\n/).filter((s) => /expect\s*\(/.test(s));
-    if (stmts.length > 0 && stmts.every((s) => TRIVIAL.test(s))) {
+    const undefinable = undefinableVars(bodyRaw);
+    if (stmts.length > 0 && stmts.every((s) => trivialAssertion(s, undefinable))) {
       hits.push({ file: f, line: i + 1, title, why: "只有永真断言（toBeDefined / toBeTruthy / not.toThrow / true===true）" });
     }
   }

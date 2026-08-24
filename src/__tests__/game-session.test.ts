@@ -76,8 +76,11 @@ describe("基础交互", () => {
   });
 
   it("背包返回物品信息", async () => {
+    // 原先只断言 `narrative` 存在 —— 那个字段永远存在，等于没验。
+    // 实跑：空背包时叙述是「你的背包里空空如也」。
     const res = await session.act("背包");
-    expect(res.narrative).toBeDefined();
+    expect(res.narrative).toContain("背包");
+    expect(res.events.some((e) => e.content.includes("背包"))).toBe(true);
   });
 
   it("每回合 ID 递增", async () => {
@@ -209,10 +212,40 @@ describe("CoC 装填弹药", () => {
     expect(res).toBeDefined();
   });
 
-  it("装填后状态显示弹药", async () => {
+  // ⚠ 这条原先叫「装填后状态显示弹药」，断言只有 `expect(res.narrative).toBeDefined()`。
+  //   实跑之后发现**它许诺的事根本不存在**：
+  //     · 测试自己压根没执行「装填」
+  //     · `状态` 的输出只有 职业 / HP / SAN，没有任何弹药
+  //     · game-session 里**没有弹药状态** —— 全文只有两处提到弹药，
+  //       一处是帮助文本，一处是 handleReload 里那句「弹药已补满」。
+  //       也就是说 `装填` 只是打印一句话，什么都没记。
+  //
+  //   所以改成断言**真实发生的事**，标题也跟着改。要真做弹药，
+  //   得先有状态可记 —— 那是功能，不是这轮清理该顺手加的。
+  it("状态显示职业与 HP/SAN（弹药目前不在状态里）", async () => {
+    // 没角色时 `状态` 只会说「尚未创建角色」—— 前提得先建立，
+    // 否则断言的是另一条分支（这也是上一轮「休息触发成长」那条踩过的坑）。
+    // 名字别带「弹药」二字 —— 会把下面那条 not.toContain 绊倒。
+    // （第一版就是这么红的：角色名叫「弹药测试员」，状态里当然含「弹药」。）
+    await session.act("创建角色 investigator 周文");
     const res = await session.act("状态");
-    // 状态应包含弹药信息（新会话初始有满弹）
-    expect(res.narrative).toBeDefined();
+    const text = res.events.map((e) => e.content).join(" ");
+    expect(text).toContain("HP");
+    expect(text).toContain("SAN");
+    expect(text).not.toContain("弹药");
+  });
+
+  it("**错误行为的红线**：状态里不得出现 [object Object]", async () => {
+    // 把上面那条断言写实之后，实跑输出里看见了 `DB:[object Object]`。
+    // `calcDamageBonus(str, siz)` 返回的是 `{ db, build }` 对象，
+    // 而状态行直接把它插进了模板串 —— 玩家看到的就是这七个字。
+    // 顺带：build 在那儿又按 STR+SIZ 手算了一遍，同一件事两套算法，
+    // 而对象里本来就带着 build。删掉手算那份，用返回值。
+    await session.act("创建角色 investigator 周文");
+    const res = await session.act("状态");
+    const text = res.events.map((e) => e.content).join(" ");
+    expect(text).not.toContain("[object Object]");
+    expect(text).toMatch(/DB:\s*[+-]?\d*d?\d/); // 形如 DB:+1d4 / DB:0
   });
 });
 
@@ -331,8 +364,10 @@ describe("CoC 追逐", () => {
   });
 
   it("跑触发追逐行动", async () => {
+    // 原先只断言 res 存在。实跑：叙述是「追逐: 你成功拉开了距离！」——
+    // 「触发追逐」这件事是可判的，没有理由只验没崩。
     const res = await chaseSession.act("跑");
-    expect(res).toBeDefined();
+    expect(res.narrative).toContain("追逐");
   });
 
   it("追逐逃跑触发追逐启动（CoC 模式下如果有战斗）", async () => {
@@ -526,13 +561,20 @@ describe("CoC 商店购买/出售", () => {
     expect(event).toBeDefined();
   });
 
-  it("D&D 模式下购买提示不支持", async () => {
+  it("D&D 模式下购买同样落到「没有找到」——购买是桩实现", async () => {
     const dndSession = new GameSession("dnd-buy-test", "dnd5e", {
       apiKey: "sk-placeholder", baseUrl: "http://localhost:9999",
       model: "mock", maxTokens: 1024, temperature: 0.7,
     });
     const res = await dndSession.act("购买 手电筒");
-    expect(res).toBeDefined();
+    // ⚠ 这条原先叫「D&D 模式下购买提示不支持」。实跑回的是
+    //   「「手电筒」没有找到。当前商店可能没有此物品。」—— **不是「不支持」**。
+    //   看 handleBuy：它没有任何规则集判断，也没有商店，
+    //   无论买什么、什么模式，都回同一句「没有找到」。购买/出售都是桩。
+    //   （CoC 那套 CR 商店 SHOP_CATALOG / canBuyItem 从来没人调用，
+    //     在死导出清理里删掉了；要做商店得从 git 历史里捞回来接上。）
+    //   标题改成实情，别让它替一个不存在的行为背书。
+    expect(res.events.some((e) => e.content.includes("没有找到"))).toBe(true);
   });
 });
 
