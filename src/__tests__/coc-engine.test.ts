@@ -762,11 +762,16 @@ describe("checkMajorWound()", () => {
     expect(r.isMajorWound).toBe(false);
   });
 
-  it("重伤结果包含部位和流血", () => {
+  // ⚠ 这条原先叫「重伤结果包含部位和流血」，断言 `bleeding === true` ——
+  //   它钉住的是**旧的、比 CoC 7e 苛刻的口径**：重伤必定流血。
+  //   RAW 里重伤只掷一次 CON，持续掉血属于濒死（HP ≤ 0）。
+  //   规则改了，这条断言就该跟着改 —— 它记录的是当时的实现，不是规则本身。
+  //   现在流血只在这一击把人打昏时才给（见 bleeding-rules.test.ts）。
+  it("重伤结果包含部位，流血与否跟着昏迷走", () => {
     const r = checkMajorWound(8, 10, 10);
     expect(r.isMajorWound).toBe(true);
     expect(r.location).toBeTruthy();
-    expect(r.bleeding).toBe(true);
+    expect(r.bleeding).toBe(r.unconscious);
     expect(r.description).toContain("重伤");
   });
 });

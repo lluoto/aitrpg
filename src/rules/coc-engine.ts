@@ -173,33 +173,37 @@ export class CoCEngine {
     const luckAdjusted = Math.max(1, roll - luckSpend);
     roll = luckAdjusted;
 
-    // 确定目标值
-    let target: number;
-    switch (difficulty) {
-      case "hard": target = Math.floor(skillValue / 2); break;
-      case "extreme": target = Math.floor(skillValue / 5); break;
-      default: target = skillValue;
-    }
-
-    // 判定成功等级
-    let successLevel: CoCSuccessLevel;
+    // ⚠ 这一段原先是错的，而且只有 extreme 那一档错得出来。
+    //
+    //   原写法把「≤ 半值」那一支写成
+    //       successLevel = difficulty === "regular" ? "hard" : "regular";
+    //   ——**不看要求的难度**。于是 `skillCheck(25, "extreme")` 掷 6
+    //   （极难阈值只有 5）落进这一支，被判成 regular 成功。
+    //   也就是说**极难难度形同虚设**：25% 的技能在极难下本该只有 5% 通过，
+    //   实际有 12%。hard 没出事纯属**碰巧** —— 它的阈值正好等于半值。
+    //
+    //   CoC 7e 的模型是：掷一次得到一个**成功等级**（与难度无关，
+    //   只看骰值落在技能的哪一段），再拿这个等级去比**要求的难度**。
+    //   照这个模型重写，三档就都对了。
     const extremeTarget = Math.floor(skillValue / 5);
+    const hardTarget = Math.floor(skillValue / 2);
 
-    if (roll === 1) {
-      successLevel = "critical";
-    } else if (roll <= extremeTarget) {
-      successLevel = "extreme";
-    } else if (roll <= Math.floor(skillValue / 2)) {
-      successLevel = difficulty === "regular" ? "hard" : "regular";
-    } else if (roll <= target) {
-      successLevel = "regular";
-    } else if (roll === 100 || (skillValue < 50 && roll >= 96)) {
-      successLevel = "fumble";
-    } else {
-      successLevel = "fail";
-    }
+    let successLevel: CoCSuccessLevel;
+    if (roll === 1) successLevel = "critical";
+    else if (roll === 100 || (skillValue < 50 && roll >= 96)) successLevel = "fumble";
+    else if (roll <= extremeTarget) successLevel = "extreme";
+    else if (roll <= hardTarget) successLevel = "hard";
+    else if (roll <= skillValue) successLevel = "regular";
+    else successLevel = "fail";
 
-    const isSuccess = successLevel !== "fail" && successLevel !== "fumble";
+    // 成功与否 = 拿到的等级够不够要求的难度。
+    // 原先是 `level !== fail && level !== fumble` —— 那等于**任何难度都按常规算**，
+    // 与上面那个不看难度的等级链是同一个错的两面。
+    const RANK: Record<CoCSuccessLevel, number> = {
+      fumble: -1, fail: 0, regular: 1, hard: 2, extreme: 3, critical: 4,
+    };
+    const NEEDED = difficulty === "extreme" ? 3 : difficulty === "hard" ? 2 : 1;
+    const isSuccess = RANK[successLevel] >= NEEDED;
 
     return {
       roll,
@@ -1258,7 +1262,17 @@ export function checkMajorWound(
   const location = HIT_LOCATIONS[Math.floor(Math.random() * HIT_LOCATIONS.length)];
   const broken = Math.random() < 0.3;
   const unconscious = Math.random() < 0.4;
-  const bleeding = true;
+  // ⚠ 原先是 `const bleeding = true` —— **重伤必定流血**。这比 CoC 7e 苛刻：
+  //   RAW 里重伤（单次伤害 ≥ 最大 HP 一半）只要求掷一次 CON，失败则昏迷；
+  //   **持续掉血属于「濒死」**（HP ≤ 0），每轮 1 点直到急救成功。
+  //   重伤本身不带持续伤害。
+  //
+  //   照原样的话，12 点体力的调查员挨一次重伤（≥6）已经掉到 6 以下，
+  //   还要再被流血扣三轮 —— 一次重伤等于半条命再打个对折。
+  //
+  //   所以只在**这一击把人打昏**时才算流血：那已经接近 RAW 的「倒下之后还在失血」。
+  //   站着的人挨了重伤，掷 CON 就是全部代价。
+  const bleeding = unconscious;
   const desc = `重伤——${location}受到致命打击${broken ? "，骨折" : ""}${unconscious ? "，昏迷" : ""}。${bleeding ? "正在流血，每回合失去 1 HP 直到止血。" : ""}`;
   return { isMajorWound: true, location, unconscious, bleeding, broken, description: desc };
 }

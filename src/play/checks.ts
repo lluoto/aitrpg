@@ -91,7 +91,14 @@ export function check(
     : diff === "extreme" ? Math.floor(skillVal / 5)
     : skillVal;
   const diffNote = diff === "regular" ? "" : ` ${diff === "hard" ? "困难" : "极难"}→${threshold}`;
-  sayMech(`➜ ${pcName} 【${skillLabel}】 ${skillVal}%${diffNote}${penaltyNote} → d100=${r.roll} → ${SUCCESS_LEVEL_LABELS[r.successLevel]}`);
+  // ⚠ 这里印的是**成功等级**，而不是「够不够这次难度」。
+  //   困难检定掷出 55（阈值 35）时，等级是「常规成功」而判定是失败 ——
+  //   播报却写着「常规成功」，玩家以为过了。
+  //   等级要留（它决定伤害加成等后续），但**过没过**必须写清楚。
+  const verdict = r.isSuccess
+    ? SUCCESS_LEVEL_LABELS[r.successLevel]
+    : `${SUCCESS_LEVEL_LABELS[r.successLevel]}${diff !== "regular" && r.successLevel !== "fail" && r.successLevel !== "fumble" ? "（未达难度，失败）" : ""}`;
+  sayMech(`➜ ${pcName} 【${skillLabel}】 ${skillVal}%${diffNote}${penaltyNote} → d100=${r.roll} → ${verdict}`);
   emit({
     type: "check",
     actor: pcName,

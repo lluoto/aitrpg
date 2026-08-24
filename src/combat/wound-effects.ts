@@ -108,6 +108,58 @@ export function woundPenaltyDice(severity: WoundSeverity): number {
  * 规则本身很清楚：这一掷决定的是「会不会昏过去」，人已经躺下了就没什么可决定的。
  * 抽成一个函数而不是四处各写一遍，是因为口径漂移正是这么来的。
  */
+/** 致残效果：部位 + 一句功能障碍描写。只在本文件内用，不导出 */
+interface Disability {
+  location: HitLocation;
+  /** 功能障碍描述，直接播报给玩家 */
+  impairment: string;
+  /** 是否倒地 */
+  knockdown: boolean;
+  /** 是否脱手 */
+  disarmed: boolean;
+}
+
+/**
+ * 致命伤（≥75% 最大 HP）打在哪儿 → 具体致残。deep 及以下只扣 HP + 给惩罚骰。
+ *
+ * ⚠ 这段描写一直在仓库里，但**从来没有被调用过** —— 在「死导出清零」那轮
+ *   被当作死代码删掉了（全仓确实无人引用）。也就是说从项目开始到现在，
+ *   玩家一次都没见过「右臂遭受毁灭性打击……武器从无力手指中滑落」这种话，
+ *   致命伤和普通重伤在播报上长得一模一样，只有 HP 数字不同。
+ *
+ *   现在接上：`play/combat.ts` 的伤害结算里按伤势与部位取一句播出来。
+ *   文字从 git 历史里取回，一字未改 —— 它写得比我现编的好。
+ */
+export function getDisability(location: HitLocation, severity: WoundSeverity): Disability | null {
+  if (severity !== "grievous") return null;
+  switch (location) {
+    case "右臂":
+    case "左臂": {
+      const side = location === "右臂" ? "右" : "左";
+      return {
+        location,
+        impairment: `${side}臂遭受毁灭性打击，皮开肉绽，完全无法用力，武器从无力手指中滑落。`,
+        knockdown: false, disarmed: true,
+      };
+    }
+    case "右腿":
+    case "左腿": {
+      const side = location === "右腿" ? "右" : "左";
+      return {
+        location,
+        impairment: `${side}腿被彻底撕开一道深可见骨的伤口，无法承重。身体不受控制地向前倾倒。`,
+        knockdown: true, disarmed: false,
+      };
+    }
+    case "腹部":
+      return { location, impairment: "腹部被撕开裂口，温热的液体从指缝间涌出。视线开始模糊，意识在痛楚中摇摆。", knockdown: true, disarmed: false };
+    case "胸部":
+      return { location, impairment: "胸部遭受致命打击——呼吸带出血沫。每一次心跳都让鲜血从伤口喷涌更多。", knockdown: true, disarmed: false };
+    case "头部":
+      return { location, impairment: "头部遭到重击！视野瞬间变成一片白色，耳鸣淹没了所有声音。双腿失去力量，栽倒在地。", knockdown: true, disarmed: false };
+  }
+}
+
 export function needsMajorWoundCheck(
   severity: WoundSeverity,
   hpAfter: number,

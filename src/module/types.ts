@@ -567,4 +567,13 @@ export interface NPCInstanceState {
   isAlive: boolean;
   isConscious: boolean;
   knownByPlayers: boolean;
+  /**
+   * 碰面次数（首见记 1，之后每次回访 +1）。
+   *
+   * ⚠ 加这个字段是因为回访台词**每个 NPC 只有一句写死的**：
+   *   焦虑型永远是「你们回来了！怎么样？有消息吗？」。
+   *   实跑里玩家来回进同一个场景，那句就一字不差地重复。
+   *   想让它换着说，得先有个「这是第几次见」的依据 —— 之前一个都没有。
+   */
+  metCount: number;
 }

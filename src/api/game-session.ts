@@ -1195,7 +1195,10 @@ export class GameSession {
             //   现在带上 status-effects 定义库里的默认时限，由
             //   `tickStatusEffects()` 每回合推进。名字也从定义库取，
             //   免得「流血」这个字面量在两处各写一遍。
-            target.status.push(newStatus("bleeding"));
+            // 跟着 `checkMajorWound` 的判断走 —— 它现在只在这一击把人打昏时
+            // 才算流血（CoC 7e：重伤本身只掷 CON，持续掉血属于濒死）。
+            // 原先这里无条件推「流血」，等于把引擎的判断作废了。
+            if (mw.bleeding) target.status.push(newStatus("bleeding"));
             if (mw.unconscious) target.status.push(newStatus("stunned"));
             // 此处原为 msg(...)，但 msg 只是另外两个方法内部的局部箭头函数，
             // 在本方法作用域里不存在——重伤一旦触发就会 ReferenceError。
@@ -2561,13 +2564,21 @@ export class GameSession {
 
       // 每回合掉血的那几种。伤害口径放在这里而不是定义库里：
       // 定义库是**规则数据**，扣多少血要看实体的 maxHp，那是游戏层的信息。
-      const PER_TURN_DAMAGE: Record<string, (maxHp: number) => number> = {
-        bleeding: (m) => Math.max(1, Math.floor(m * 0.1)),
-        poisoned: (m) => Math.max(1, Math.floor(m * 0.05)),
-        burning:  (m) => Math.max(1, Math.floor(m * 0.15)),
+      // ⚠ 原先按最大 HP 的百分比扣（流血 10%、中毒 5%、燃烧 15%），
+      //   而 `checkMajorWound` 印给玩家的描述写的是
+      //   **「正在流血，每回合失去 1 HP 直到止血」** —— 文案与实现对不上：
+      //   20 点体力的人实际每轮掉 2，玩家照着那句话根本算不出自己的血。
+      //
+      //   CoC 7e 的濒死规则就是每轮 1 点，与那句文案一致。按文案改，
+      //   而不是改文案 —— 一句已经印出去的规则说明比一个拍脑袋的百分比更该被当真。
+      //   燃烧稍重一点（2 点），中毒与流血同为 1 点。
+      const PER_TURN_DAMAGE: Record<string, number> = {
+        bleeding: 1,
+        poisoned: 1,
+        burning: 2,
       };
       for (const s of active) {
-        const dmg = PER_TURN_DAMAGE[s.id]?.(e.maxHp ?? 10);
+        const dmg = PER_TURN_DAMAGE[s.id];
         if (dmg === undefined) continue;
         e.hp = Math.max(0, e.hp - dmg * s.stacks);
         this.addMessage("系统", `[${s.name}] ${e.name} 失去 ${dmg * s.stacks} HP (剩余 ${e.hp}/${e.maxHp})`, "system");

@@ -580,7 +580,10 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
     }
 
     const firstMeeting = !npcState.knownByPlayers;
-    if (firstMeeting) world.meetNpc(npc.id);
+    // ⚠ 原先只在首见时 `meetNpc` —— 于是「碰过几次面」永远停在 1，
+    //   回访台词没有依据换着说，同一句会一字不差地重复。每次碰面都记一笔。
+    world.meetNpc(npc.id);
+    const metCount = world.getNpcState(npc.id)?.metCount ?? 1;
     const speechProfile = classifySpeechStyle(npc.personality.speech);
 
     if (npc.llmExpanded) {
@@ -656,6 +659,20 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
           }
         }
       } else {
+        // ⚠ 回访台词**每个 NPC 只有一句写死的**（见 templateRevisitEncounter：
+        //   焦虑型永远是「你们回来了！怎么样？有消息吗？」）。玩家来回进同一个场景，
+        //   那句就一字不差地重复 —— 实跑里酒吧保镖连说四次就是这么来的。
+        //
+        //   一句话变不出花样，但**第几次见**是可以体现的：第三次之后加一句
+        //   「又见面了」这类的前缀，让重复看起来是人物在意识到你老来，
+        //   而不是程序在复读。真正的解法是给回访台词也做成池子（要改模组数据），
+        //   这里先把最刺眼的复读感压掉。
+        const againNote = metCount >= 4
+          ? `${displayName}显然已经认得你们了。`
+          : metCount === 3
+            ? `${displayName}又一次抬起头。`
+            : "";
+        if (againNote) say(`\n${againNote}`, "verbatim");
         // 同 firstMeeting：开头括号在源头切掉，三个分支拿到的都是干净台词
         const rawRevisit = stripDoorOpenPrefix(npc.llmExpanded.revisitEncounter ?? npc.llmExpanded.firstEncounter, lastTransitionText);
         const { action: leadAction, speech: dialogueText } = splitLeadingStageDirection(rawRevisit, displayName);

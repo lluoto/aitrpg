@@ -38,6 +38,7 @@ export class WorldState {
         isAlive: true,
         isConscious: true,
         knownByPlayers: false,
+      metCount: 0,
       });
     }
   }
@@ -303,7 +304,10 @@ export class WorldState {
   /** 标记 NPC 已被玩家认识 */
   meetNpc(npcId: string): void {
     const s = this.state.npcStates.get(npcId);
-    if (s) s.knownByPlayers = true;
+    if (!s) return;
+    s.knownByPlayers = true;
+    // 每次碰面都记一笔 —— 回访台词靠它换着说，否则同一句会一字不差地重复。
+    s.metCount += 1;
   }
 
   /** 导出完整状态快照 */

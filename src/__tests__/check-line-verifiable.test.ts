@@ -47,7 +47,11 @@ describe("检定行要能自洽", () => {
       const line = lines.join(" ");
       const p = parse(line);
       expect(p.roll).toBe(55);
-      expect(p.failed).toBe(true);
+      // ⚠ 这一行印的是**成功等级**（常规成功），而判定是失败 ——
+      //   困难检定要求「困难」级，55 只够常规。原先播报只写「常规成功」，
+      //   玩家以为过了。现在等级后面补一句「（未达难度，失败）」。
+      expect(line).toContain("常规成功");
+      expect(line).toContain("未达难度");
       // 关键：这一行里必须有一个数，能解释 55 为什么算失败
       expect(Number.isNaN(p.threshold)).toBe(false);
       expect(p.roll).toBeGreaterThan(p.threshold);

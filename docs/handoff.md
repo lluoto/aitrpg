@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-24 04:35  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-24 08:16  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：d5e92f8 test: hollow-test count 103 → 0  ·  **测试**：1839 条 / 97 文件，全绿（基线 1839，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：8f17c96 fix: three bugs a single real playthrough caught that 1836 tests didn't  ·  **测试**：1855 条 / 100 文件，全绿（基线 1855，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -108,6 +108,7 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 
 ## 最近做了什么
 
+- 8f17c96 fix: three bugs a single real playthrough caught that 1836 tests didn't
 - d5e92f8 test: hollow-test count 103 → 0
 - 5bb1103 test: encode "title promises N, body never counts" as a criterion
 - d4c20f6 test: "所有 8 个生物" — there are 40
@@ -119,7 +120,6 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 - 2620199 fix: a flaky SAN test that also wasn't testing what its name said
 - 60c7ed4 chore: dead exports 266 → 0 (net -1371 lines)
 - 37064a6 chore: unused-symbol count 250 → 0, and the checks are on for good now
-- 74c9ae5 feat: the resolve system's three methods were each referenced exactly once — by themselves
 
 ## 代码地图
 

@@ -8,10 +8,10 @@
 
 import type { ModuleData, Scene, ModuleSupport } from "../module/types";
 import type { WorldState } from "../world/state";
-import { CoCEngine, SUCCESS_LEVEL_LABELS } from "../rules/coc-engine";
+import { CoCEngine, SUCCESS_LEVEL_LABELS, rollHitLocation } from "../rules/coc-engine";
 import { say, sayMech, emit } from "./narration";
 import { sanCheck, check, applyDamage, woundPenaltyOf } from "./checks";
-import { needsMajorWoundCheck } from "../combat/wound-effects";
+import { needsMajorWoundCheck, getDisability } from "../combat/wound-effects";
 import { activeHooks } from "./ruleset";
 import { runChase, environmentFromScene } from "./chase";
 import { rollDice } from "./trap-util";
@@ -171,18 +171,27 @@ if (migoEncounter) {
     // 所以只把伤势那一份取过来，两者分别标注，上限仍是 CoC 7e 的 2 颗。
     const woundDice = woundPenaltyOf(name);
     const totalPenalty = Math.min(2, f.penaltyDice + woundDice);
-    // ⚠ 难度是 **hard** —— 实际阈值是技能的一半。而下面那行播报印的是技能原值，
-    //   于是玩家看到「71% → d100=55 → 失败」，按 CoC 规则怎么算都该是成功。
-    //   实跑一局就撞上了这一条，第一反应是「判定写错了」，查下来判定是对的、
-    //   **播报在说谎**。数值播报的意义就是让人能自己验算，
-    //   印一个算不出结果的数比不印更糟。
-    const diff = "hard" as const;
+    // ⚠ 这里原先写死 `"hard"`，**没有任何注释说明为什么**。
+    //   CoC 7e 里普通近战/射击掷的是**常规**难度（对手闪避/反击另掷，
+    //   构成对抗），hard 是留给特殊情况的。用 hard 等于把每个人的战斗技能砍半：
+    //   25% 的调查员实际只有 12%，实跑两局、十几次攻击**一次都没打中**。
+    //
+    //   这与「重伤必定流血」是同一类偏差：把规则改严了，却没在任何地方写明
+    //   这是有意的设定。改回常规难度；真要提高战斗难度，
+    //   该调的是敌人属性或环境惩罚骰，而不是偷偷把玩家的技能对折。
+    //
+    //   顺带：播报此前只印技能原值，玩家看到「71% → d100=55 → 失败」
+    //   按规则怎么算都该是成功 —— 数值播报的意义就是让人能自己验算，
+    //   印一个算不出结果的数比不印更糟。非常规难度时把实际阈值一并印出来。
+    const diff = "regular" as const;
     const r = CoCEngine.skillCheck(effectiveSkill, diff, 0, totalPenalty);
-    const threshold = Math.floor(effectiveSkill / 2);
+    const threshold = diff === "regular" ? effectiveSkill : Math.floor(effectiveSkill / 2);
     const penaltyNote = totalPenalty > 0
       ? ` [惩罚骰×${totalPenalty}${f.penaltyDice > 0 && woundDice > 0 ? "·疲劳+伤势" : woundDice > 0 ? "·伤势" : "·疲劳"}]`
       : "";
-    sayMech(`➜ ${name} 【${skillLabel}】 ${effectiveSkill}%${f.skillPenalty > 0 ? `(-${f.skillPenalty}疲劳)` : ""} 困难→${threshold}${penaltyNote} → d100=${r.roll} → ${SUCCESS_LEVEL_LABELS[r.successLevel]}`);
+    // 常规难度时技能值本身就是阈值，不必多印一个数；难度真变了再标出来。
+    const diffNote = diff === "regular" ? "" : ` 困难→${threshold}`;
+    sayMech(`➜ ${name} 【${skillLabel}】 ${effectiveSkill}%${f.skillPenalty > 0 ? `(-${f.skillPenalty}疲劳)` : ""}${diffNote}${penaltyNote} → d100=${r.roll} → ${SUCCESS_LEVEL_LABELS[r.successLevel]}`);
     emit({
       type: "check", actor: name, actorKind: "pc", skill: skillLabel,
       skillValue: effectiveSkill, envPenalty: f.penaltyDice, woundPenalty: woundDice,
@@ -245,6 +254,21 @@ if (migoEncounter) {
     const dmg = rollDice(enemyStats.damage);
     emit({ type: "enemy-attack", enemy: enemyName, target: name, outcome: "hit", damage: dmg });
     const severity = applyDamage(pc, name, dmg);
+
+    // ⚠ 致命伤（≥75% 最大 HP）的**致残描写一直没人播**。
+    //   `getDisability()` 里那几句（「右臂遭受毁灭性打击……武器从无力手指中滑落」）
+    //   写好了却从来没有调用方，玩家从项目开始到现在一次都没见过 ——
+    //   致命伤与普通重伤在播报上长得一模一样，只有 HP 数字不同。
+    //   命中部位就用 CoC 的命中部位表掷。
+    if (severity === "grievous") {
+      const loc = rollHitLocation();
+      const dis = getDisability(loc, severity);
+      if (dis) {
+        say(`  ${name}的${dis.impairment}`, "verbatim");
+        if (dis.disarmed) say(`  ${name}的武器脱手了。`);
+        else if (dis.knockdown) say(`  ${name}倒了下去。`);
+      }
+    }
 
     // 重伤要掷体质，跟陷阱那边同一套规则 —— 现在是字面意义上的同一个判据。
     // 阈值与「开不开重伤系统」由模组声明的规则集说了算（Pulp 之类可以整个关掉）。
