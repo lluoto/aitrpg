@@ -83,7 +83,15 @@ export function check(
   const r = CoCEngine.skillCheck(skillVal, diff, 0, total);
   const why = fromWound > 0 ? (penaltyDice > 0 ? "环境+伤势" : "伤势") : "";
   const penaltyNote = total > 0 ? ` [${total}惩罚骰${why ? "·" + why : ""}]` : "";
-  sayMech(`➜ ${pcName} 【${skillLabel}】 ${skillVal}%${penaltyNote} → d100=${r.roll} → ${SUCCESS_LEVEL_LABELS[r.successLevel]}`);
+  // ⚠ 难度不是 regular 时，实际阈值是技能的半值（hard）或五分之一（extreme）。
+  //   原先只印技能原值，玩家看到「71% → d100=55 → 失败」按规则算不出来，
+  //   第一反应是判定写错了。数值播报的意义就是让人能自己验算 ——
+  //   印一个算不出结果的数比不印更糟。把实际阈值标出来。
+  const threshold = diff === "hard" ? Math.floor(skillVal / 2)
+    : diff === "extreme" ? Math.floor(skillVal / 5)
+    : skillVal;
+  const diffNote = diff === "regular" ? "" : ` ${diff === "hard" ? "困难" : "极难"}→${threshold}`;
+  sayMech(`➜ ${pcName} 【${skillLabel}】 ${skillVal}%${diffNote}${penaltyNote} → d100=${r.roll} → ${SUCCESS_LEVEL_LABELS[r.successLevel]}`);
   emit({
     type: "check",
     actor: pcName,

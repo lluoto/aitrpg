@@ -1,6 +1,6 @@
 {
-  "tests": 1829,
-  "files": 94,
+  "tests": 1839,
+  "files": 97,
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
     {
@@ -142,6 +142,11 @@
       "tests": 1829,
       "files": 94,
       "when": "锁文件统一为 bun.lock；空心测试判据再校准两轮；修状态里的 DB:[object Object]"
+    },
+    {
+      "tests": 1839,
+      "files": 97,
+      "when": "实跑一局抓到三个显示/内容 bug：职业英文 id、回访台词被抹掉、检定阈值不印"
     }
   ]
 }

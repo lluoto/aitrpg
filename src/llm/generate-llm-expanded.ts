@@ -394,7 +394,21 @@ async function applyLlmExpandedWithLLM(
 
   const apiResult = await generateViaAPI(npc, client, scenes);
   if (apiResult) {
-    npc.llmExpanded = apiResult;
+    // ⚠ 原先是 `npc.llmExpanded = apiResult` —— **整个对象替换**。
+    //   而 `revisitEncounter` 是**可选**的：LLM 没吐这个字段时 apiResult 里就没有，
+    //   于是模板/模组原本准备好的那句回访台词被一并丢掉。
+    //   下游 `revisitEncounter ?? firstEncounter` 就永远回落到首见 ——
+    //   **玩家每次重进同一个场景，NPC 都把打招呼那句原样再说一遍**。
+    //
+    //   实跑一局抓到的：酒吧保镖那句「不想挨揍就老实点……」连说四次，
+    //   一字不差。（模组里本来写着「你们回来了。还有什么要问的吗？」）
+    //
+    //   已经有的字段不该被一次不完整的生成抹掉。
+    npc.llmExpanded = {
+      ...npc.llmExpanded,
+      ...apiResult,
+      revisitEncounter: apiResult.revisitEncounter ?? npc.llmExpanded?.revisitEncounter,
+    };
     return true;
   }
   // 降级模板（已有模板生成的 llmExpanded 时保持不变）

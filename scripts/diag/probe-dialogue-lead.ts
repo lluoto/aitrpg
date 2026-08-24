@@ -68,7 +68,21 @@ const seen = new Map<string, number>();
 for (const l of leads) seen.set(l, (seen.get(l) ?? 0) + 1);
 const repeated = [...seen.entries()].filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]);
 
-// ⑤ NPC 台词的收尾语复读（「……我知道的就这些了。」连着两句）
+// ⑤ 整句台词一字不差地重复。
+//
+// 实跑一局抓到的：酒吧保镖那句「不想挨揍就老实点……」连说四次 ——
+// 玩家每次重进维森酒吧都听同一句。原因是 LLM 生成不完整时把回访台词抹掉了，
+// 下游 `revisitEncounter ?? firstEncounter` 于是永远回落到首见。
+//
+// 之前的判据只看「引导句」重复，看不到这个：引导句重复只是症状，
+// **整句台词重复**才是玩家真正察觉到的那件事。
+const spokenLines = all.map((l) => l.trim())
+  .filter((l) => /^["“].+["”]$/.test(l) && l.length > 8);
+const lineCount = new Map<string, number>();
+for (const l of spokenLines) lineCount.set(l, (lineCount.get(l) ?? 0) + 1);
+const repeatedLines = [...lineCount.entries()].filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]);
+
+// ⑥ NPC 台词的收尾语复读（「……我知道的就这些了。」连着两句）
 //    引导句是「说话前」，这条量的是「说话本身」—— 同一个人每开口一次就总结一次，
 //    既是复读机，语义也错（第一条就说「就这些了」，可他还会接着说）。
 const CLOSINGS = ["我知道的就这些了", "就这些，别再问了", "我能想起来的就这么多", "案卷上就是这么记的", "我知道的就这么多啦"];
@@ -119,6 +133,20 @@ if (leads.length === 0) {
     for (const [l, c] of repeated.slice(0, 15)) out.push(`| ${c} | ${l} |`);
     out.push("");
   }
+  out.push(`## 整句台词重复（采到 ${spokenLines.length} 句带引号的台词）`);
+  out.push("");
+  if (spokenLines.length === 0) {
+    out.push("⚠ **一句台词都没抓到** —— 取样失败，不是「没问题」。");
+  } else if (repeatedLines.length === 0) {
+    out.push("没有整句重复。");
+  } else {
+    out.push("玩家最容易察觉的就是这个 —— 同一个人把同一句话又说一遍。");
+    out.push("");
+    out.push("| 次数 | 台词 |");
+    out.push("|---|---|");
+    for (const [l, c] of repeatedLines.slice(0, 10)) out.push(`| ${c} | ${l.slice(0, 70)} |`);
+  }
+  out.push("");
   out.push(`## NPC 台词的收尾语（采到 ${spoken.length} 句台词）`);
   out.push("");
   const totalClosings = [...closingCount.values()].reduce((a, b) => a + b, 0);
@@ -146,5 +174,6 @@ const path = await writeReport("probe-dialogue-lead.md", out.join("\n"));
 console.log(
   `引导句 ${leads.length}｜舞台指示 ${stageDirection.length}｜标签入正文 ${labelled.length}` +
   `｜同义反复 ${tautology.length}｜重复 ${repeated.length} 种` +
-  `｜台词 ${spoken.length} 句/收尾语复读 ${repeatedClosings.length} 种  -> ${path}`,
+  `｜台词 ${spoken.length} 句/收尾语复读 ${repeatedClosings.length} 种` +
+  `｜整句重复 ${repeatedLines.length} 种  -> ${path}`,
 );

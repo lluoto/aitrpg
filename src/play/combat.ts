@@ -171,11 +171,18 @@ if (migoEncounter) {
     // 所以只把伤势那一份取过来，两者分别标注，上限仍是 CoC 7e 的 2 颗。
     const woundDice = woundPenaltyOf(name);
     const totalPenalty = Math.min(2, f.penaltyDice + woundDice);
-    const r = CoCEngine.skillCheck(effectiveSkill, "hard", 0, totalPenalty);
+    // ⚠ 难度是 **hard** —— 实际阈值是技能的一半。而下面那行播报印的是技能原值，
+    //   于是玩家看到「71% → d100=55 → 失败」，按 CoC 规则怎么算都该是成功。
+    //   实跑一局就撞上了这一条，第一反应是「判定写错了」，查下来判定是对的、
+    //   **播报在说谎**。数值播报的意义就是让人能自己验算，
+    //   印一个算不出结果的数比不印更糟。
+    const diff = "hard" as const;
+    const r = CoCEngine.skillCheck(effectiveSkill, diff, 0, totalPenalty);
+    const threshold = Math.floor(effectiveSkill / 2);
     const penaltyNote = totalPenalty > 0
       ? ` [惩罚骰×${totalPenalty}${f.penaltyDice > 0 && woundDice > 0 ? "·疲劳+伤势" : woundDice > 0 ? "·伤势" : "·疲劳"}]`
       : "";
-    sayMech(`➜ ${name} 【${skillLabel}】 ${effectiveSkill}%${f.skillPenalty > 0 ? `(-${f.skillPenalty}疲劳)` : ""}${penaltyNote} → d100=${r.roll} → ${SUCCESS_LEVEL_LABELS[r.successLevel]}`);
+    sayMech(`➜ ${name} 【${skillLabel}】 ${effectiveSkill}%${f.skillPenalty > 0 ? `(-${f.skillPenalty}疲劳)` : ""} 困难→${threshold}${penaltyNote} → d100=${r.roll} → ${SUCCESS_LEVEL_LABELS[r.successLevel]}`);
     emit({
       type: "check", actor: name, actorKind: "pc", skill: skillLabel,
       skillValue: effectiveSkill, envPenalty: f.penaltyDice, woundPenalty: woundDice,

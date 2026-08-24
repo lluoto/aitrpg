@@ -6,6 +6,7 @@ import {
   COC_SKILLS,
   SKILL_NAME_MAP,
   getBaseSkillValue,
+  getCoCArchetypes,
 } from "../character/coc-character";
 
 const ATTR_LABELS: Record<string, string> = {
@@ -41,7 +42,11 @@ export function displayCharacterSheet(char: CoCGeneratedCharacter): string {
   // Header
   L("\u2501".repeat(60));
   L(`  ${char.name}`);
-  L(`  ${char.archetypeId}`);
+  // ⚠ 原先直接打 `archetypeId` —— 玩家在角色卡上看到的是 `nurse`、`accountant`
+  //   这样的英文内部 id。实跑一局就露在最显眼的地方（角色卡抬头第二行）。
+  //   职业表里一直带着中文 label（`getCoCArchetypes()` 的 `label` 字段），
+  //   只是没人用。查不到就退回 id，总比空着强。
+  L(`  ${getCoCArchetypes().find((a) => a.id === char.archetypeId)?.label ?? char.archetypeId}`);
   L("\u2501".repeat(60));
 
   // Core attributes
