@@ -1407,7 +1407,20 @@ export class GameSession {
       case "spell_list": msg("当前可用法术：暂无已知法术"); this.lastNarrative = "你回忆了一下已知的法术"; return true;
       case "shop": msg("商店功能尚未开放"); this.lastNarrative = "商店功能尚未开放"; return true;
       case "view_module": msg("模组详情功能"); this.lastNarrative = "模组详情"; return true;
-      case "insanity_guidance": msg("疯狂指引：当SAN大幅下降时，角色可能出现各种精神障碍…"); this.lastNarrative = "疯狂指引"; return true;
+      // ⚠ 这里原先是一句写死的套话：「疯狂指引：当SAN大幅下降时，角色可能出现
+      //   各种精神障碍…」——结尾那个省略号说明它本来就是个占位。
+      //   问「疯狂指引」的人想知道的是**自己现在什么样**，不是疯狂这个概念。
+      //   CLI 一直调 `sanity.getFullGuidance()`（index.ts:1136），
+      //   把临时疯狂表现、不定疯狂等级与惩罚、恐惧症、狂躁症逐条拼出来。
+      //   这条路却停在占位上 —— 又一处两个前端两套行为。
+      //   不再加「空了就回落到一句话」的兜底 —— `getFullGuidance()` 自己
+      //   已经处理了清醒这一支（`lines.length === 0` 时给「你的神智目前清醒。」），
+      //   再包一层就是够不到的死代码。
+      case "insanity_guidance": {
+        msg(this.sanity.getFullGuidance());
+        this.lastNarrative = "疯狂指引";
+        return true;
+      }
       case "allocate_skills": msg("技能分配功能"); this.lastNarrative = "技能分配"; return true;
       case "equip": case "unequip": msg(`执行${intent.action === "equip" ? "装备" : "卸下"}操作。`); this.lastNarrative = `${intent.action === "equip" ? "装备" : "卸下"}完成。`; return true;
       // ── 政治经济 ──
@@ -1515,6 +1528,17 @@ export class GameSession {
       lines.push(`EDU:${edu} INT:${intel} POW:${pow} 幸运:${luck}`);
       lines.push(`DB:${db}  Build:${build}  Move:${move}  MP:${mp}`);
       lines.push(`CR:${c.creditRating ?? 30}  燃运:${luck}`);
+      // ⚠ 疯狂状态原先**在角色卡上完全看不到**。实测：SAN 从 50 掉到 26
+      //   （48%，已经是中度不定疯狂），角色卡还是只印一行 `SAN: 26/50` ——
+      //   临时疯狂、不定疯狂等级、恐惧症、狂躁症一个都不显示。
+      //   玩家不知道自己已经跨过那条线，也就不知道该怎么演。
+      //
+      //   `SanityEngine.getSummary()` 拼的正是这些，但它**只有测试在调**。
+      //   两端都写好了，中间那根线没接 —— 又一处。
+      const sanSummary = this.sanity.getSummary();
+      // getSummary 开头就是 `SAN: x/y`，上面已经印过，这里只取后面的疯狂部分
+      const madness = sanSummary.replace(/^SAN:\s*\d+\/\d+/, "").trim();
+      if (madness) lines.push(`精神: ${madness}`);
       if (c.skills ?? c.skillValues) {
         const skills = c.skills ?? c.skillValues ?? {};
         const skillEntries = Object.entries(skills).slice(0, 10);

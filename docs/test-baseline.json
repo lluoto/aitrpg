@@ -1,6 +1,6 @@
 {
-  "tests": 1943,
-  "files": 110,
+  "tests": 1948,
+  "files": 111,
   "unwiredMethods": 90,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -204,6 +204,11 @@
       "tests": 1943,
       "files": 110,
       "when": "难度设了没人告诉调查引擎：setDifficultyProfile 零调用方，nightmare 的惩罚骰与 SAN 倍率一直按 medium 算"
+    },
+    {
+      "tests": 1948,
+      "files": 111,
+      "when": "疯了之后玩家看不见：角色卡不显示疯狂状态（getSummary 只有测试在调），疯狂指引返回写死的套话"
     }
   ]
 }
