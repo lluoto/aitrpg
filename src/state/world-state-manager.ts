@@ -469,7 +469,8 @@ export class WorldStateManager {
       id: row.id,
       name: row.name,
       description: row.description ?? "",
-      exits: this.parseExits(row.exits),
+      // 把 id 传进去 —— 告警是用来排障的，不说是哪个场景就得靠猜。
+      exits: this.parseExits(row.exits, row.id),
     };
   }
 

@@ -48,15 +48,44 @@ export function extractMessageContent(payload: unknown): string {
 
 export class LLMClient {
   private config: LLMConfig;
-  /** 全局熔断：首次连接失败后跳过所有后续调用 */
-  private static _defeated = false;
+  /**
+   * 全局熔断。**带冷却**，跳闸后到点自动进半开。
+   *
+   * ⚠ 原先是 `private static _defeated = false`，一旦置真就**永不恢复**：
+   *   没有冷却、没有半开，`resetDefeat()` 又只有两个诊断脚本在调
+   *   （注释写着「切换 API key 时调用」，可生产代码里一次都没调过）。
+   *
+   *   而 `server.ts` 是长期进程、这个标志又是 static ——
+   *   **一次网络抖动就让整个进程往后所有会话、所有玩家永久退回模板**，
+   *   直到有人手动重启。而且是跨会话的：一个会话连不上，
+   *   把其他所有人的 LLM 一起带走。
+   *
+   *   改成存「熔断到什么时候」：过了冷却就放一个调用过去探路，
+   *   成功即自愈，再失败就再跳闸一个冷却。
+   */
+  private static _defeatedUntil = 0;
+
+  /** 冷却时长。留成环境变量，便于诊断脚本调短了验证自愈。 */
+  private static cooldownMs(): number {
+    const raw = Number(process.env.LLM_BREAKER_COOLDOWN_MS);
+    return Number.isFinite(raw) && raw >= 0 ? raw : 60_000;
+  }
+
+  private static tripBreaker(): void {
+    LLMClient._defeatedUntil = Date.now() + LLMClient.cooldownMs();
+  }
+
+  /** 熔断是否仍然张开。到点自动转半开（返回 false，放行一次探路调用）。 */
+  private static breakerOpen(): boolean {
+    return Date.now() < LLMClient._defeatedUntil;
+  }
 
   constructor(config: LLMConfig) {
     this.config = config;
   }
 
   /** 重置熔断（切换 API key 时调用） */
-  static resetDefeat() { LLMClient._defeated = false; }
+  static resetDefeat() { LLMClient._defeatedUntil = 0; }
 
   /**
    * 兼容 ECNU/qwen 代理：多条 system 消息会触发 500。
@@ -82,7 +111,7 @@ export class LLMClient {
 
   /** Non-streaming chat — returns full response */
   async chat(messages: Message[], options: ChatOptions = {}): Promise<string> {
-    if (LLMClient._defeated) throw new Error("LLM 已熔断（之前连接失败）");
+    if (LLMClient.breakerOpen()) throw new Error("LLM 已熔断（之前连接失败）");
 
     const body: Record<string, unknown> = {
       model: this.config.model,
@@ -114,7 +143,7 @@ export class LLMClient {
       } catch (err: any) {
         clearTimeout(timeoutId);
         const isTimeout = err.name === "AbortError";
-        if (!isTimeout) LLMClient._defeated = true;
+        if (!isTimeout) LLMClient.tripBreaker();
         if (isTimeout && attempt === 0) continue; // 超时重试 1 次
         throw new Error(`LLM 连接失败: ${isTimeout ? "超时" : err.message}`);
       }
@@ -139,6 +168,9 @@ export class LLMClient {
     messages: Message[],
     options: ChatOptions = {}
   ): AsyncGenerator<string> {
+    // `chat()` 一开头就查熔断，这里原先不查 —— 同一个熔断，两条路两种待遇：
+    // 跳闸之后流式调用照样往外发请求，等 fetch 自己失败才知道。
+    if (LLMClient.breakerOpen()) throw new Error("LLM 已熔断（之前连接失败）");
     const body: Record<string, unknown> = {
       model: this.config.model,
       messages: this.normalizeMessages(messages),
@@ -168,8 +200,8 @@ export class LLMClient {
       });
     } catch (err: any) {
       clearTimeout(timeoutId);
-      // 超时 = 生成慢（非不可用），不触发永久熔断；仅真连接错误熔断
-      if (err.name !== "AbortError") LLMClient._defeated = true;
+      // 超时 = 生成慢（非不可用），不触发熔断；仅真连接错误熔断
+      if (err.name !== "AbortError") LLMClient.tripBreaker();
       throw new Error(`LLM 连接失败: ${err.name === "AbortError" ? "超时" : err.message}`);
     }
     clearTimeout(timeoutId);
