@@ -555,10 +555,14 @@ describe("CoC 角色创建", () => {
 // ============================================================
 
 describe("CoC 商店购买/出售", () => {
-  it("购买指令（无匹配物品）提示未找到", async () => {
+  it("购买要说清是「没做商店」，而不是「这家店碰巧没货」", async () => {
+    // ⚠ 原先断言的是「没有找到」，配套的实现回「当前商店可能没有此物品」。
+    //   那句话把「商店尚未实现」说成了「换一家也许有」—— 玩家会去别处找，
+    //   而哪儿都没有。桩可以「没做」，但不能报告一件没发生的事。
     const res = await session.act("购买 不存在的物品");
-    const event = res.events.find(e => e.content.includes("没有找到"));
-    expect(event).toBeDefined();
+    const text = res.events.map(e => e.content).join("\n");
+    expect(text).toContain("尚未实现");
+    expect(text).not.toContain("当前商店可能没有");
   });
 
   it("购买空指令提示指定物品", async () => {
@@ -579,7 +583,7 @@ describe("CoC 商店购买/出售", () => {
     expect(event).toBeDefined();
   });
 
-  it("D&D 模式下购买同样落到「没有找到」——购买是桩实现", async () => {
+  it("D&D 模式下购买落到同一句——购买没有任何规则集判断", async () => {
     const dndSession = new GameSession("dnd-buy-test", "dnd5e", {
       apiKey: "sk-placeholder", baseUrl: "http://localhost:9999",
       model: "mock", maxTokens: 1024, temperature: 0.7,
@@ -592,7 +596,9 @@ describe("CoC 商店购买/出售", () => {
     //   （CoC 那套 CR 商店 SHOP_CATALOG / canBuyItem 从来没人调用，
     //     在死导出清理里删掉了；要做商店得从 git 历史里捞回来接上。）
     //   标题改成实情，别让它替一个不存在的行为背书。
-    expect(res.events.some((e) => e.content.includes("没有找到"))).toBe(true);
+    //   现在那句谎话（「当前商店可能没有此物品」）已换成直说没做，
+    //   这条要钉的是**规则集不影响结果**这件事本身。
+    expect(res.events.some((e) => e.content.includes("尚未实现"))).toBe(true);
   });
 });
 

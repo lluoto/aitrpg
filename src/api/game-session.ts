@@ -1997,22 +1997,42 @@ export class GameSession {
       msg("你想买什么？请指定物品名称");
       this.lastNarrative = "你想买什么？";
     } else {
-      msg(`「${item}」没有找到。当前商店可能没有此物品。`);
-      this.lastNarrative = `没有找到「${item}」。`;
+      // 「当前商店可能没有此物品」把「没做商店」说成了「这家店碰巧没货」，
+      // 玩家会去别处找一家 —— 而哪儿都没有。直说。
+      msg(`这里没有可以交易的地方。（商店尚未实现）`);
+      this.lastNarrative = `附近没有能买到「${item}」的地方。`;
     }
     return true;
   }
 
   // ── 出售 ──
+  /**
+   * ⚠ 原先这里**从不查背包**，一律回「你的背包中没有「X」」——
+   *   哪怕你正拿着它。而 `world.getPlayerInventory()` 就在手边，
+   *   `handleInventory` 用的就是它。
+   *
+   *   「没做商店」和「骗玩家说他没有这东西」是两回事：
+   *   前者玩家能理解，后者会让他以为自己记错了、或者以为背包丢了东西。
+   *   没有商店就直说没有商店。
+   */
   private handleSell(intent: ActionIntent, msg: (s: string) => number): boolean {
-    const item = intent.item;
-    if (!item || item.trim() === "") {
+    const item = intent.item?.trim();
+    if (!item) {
       msg("你想卖什么？请指定物品名称");
       this.lastNarrative = "你想卖什么？";
-    } else {
-      msg(`你的背包中没有「${item}」。`);
-      this.lastNarrative = `没有「${item}」可出售。`;
+      return true;
     }
+    const inv = this.world.getPlayerInventory(this.activePlayerId);
+    const idx = inv.findIndex((i) => i === item || i.includes(item));
+    if (idx < 0) {
+      msg(`你的背包中没有「${item}」。当前背包：${inv.length ? inv.join("、") : "空"}`);
+      this.lastNarrative = `没有「${item}」可出售。`;
+      return true;
+    }
+    // 东西确实在背包里。这里**还没有商店**（没有商人、没有价格、没有钱袋），
+    // 所以不能假装卖掉 —— 但也绝不能说「你没有」。
+    msg(`你有「${inv[idx]}」，但这里没有人收货。`);
+    this.lastNarrative = `附近没有能出售「${item}」的地方。`;
     return true;
   }
 
@@ -2468,9 +2488,19 @@ export class GameSession {
   }
 
   // ── 装填 ──
+  /**
+   * ⚠ 原先这句是「弹药已补满」——**而这一侧根本没有弹药状态**。
+   *
+   *   弹药系统只存在于 CLI（`src/index.ts` 的 `cocAmmo`：开火递减、
+   *   打空拦截、`/reload` 补满）。走服务器/网页的这条路一格弹药都不记，
+   *   开枪不消耗、装填也无从补起。两个前端两套规则。
+   *
+   *   在把弹药搬过来之前，这里**不能报告一件没发生的事**：
+   *   玩家会据此决定要不要省子弹，而那个数字是假的。
+   */
   private handleReload(intent: ActionIntent, msg: (s: string) => number): boolean {
     const weaponName = intent.weapon ?? intent.target ?? "武器";
-    msg(`你重新装填了「${weaponName}」。弹药已补满。`);
+    msg(`你检查并重新装填了「${weaponName}」。（注：本模式暂不追踪弹药消耗）`);
     this.lastNarrative = `你装填了${weaponName}。`;
     return true;
   }
