@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-24 08:16  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-25 01:28  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：8f17c96 fix: three bugs a single real playthrough caught that 1836 tests didn't  ·  **测试**：1855 条 / 100 文件，全绿（基线 1855，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：62137da fix: "乙 joined the party" then "there is no 乙 in the party", one turn apart  ·  **测试**：1952 条 / 112 文件，全绿（基线 1952，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -108,18 +108,18 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 
 ## 最近做了什么
 
-- 8f17c96 fix: three bugs a single real playthrough caught that 1836 tests didn't
-- d5e92f8 test: hollow-test count 103 → 0
-- 5bb1103 test: encode "title promises N, body never counts" as a criterion
-- d4c20f6 test: "所有 8 个生物" — there are 40
-- 9c7baf8 fix: players were shown "DB:[object Object]"
-- 6771391 chore: 77.9 MB of build output, and six comments citing evidence nobody else can open
-- 3a546ad fix: tests that assert nothing 99% of the time — and the chase bug one of them was hiding
-- c41acca fix: "必定通关" was false as a spec — the party can legitimately be wiped
-- 4018dae test: tests were reading a 33k-row database that isn't in the repo
-- 2620199 fix: a flaky SAN test that also wasn't testing what its name said
-- 60c7ed4 chore: dead exports 266 → 0 (net -1371 lines)
-- 37064a6 chore: unused-symbol count 250 → 0, and the checks are on for good now
+- 62137da fix: "乙 joined the party" then "there is no 乙 in the party", one turn apart
+- 13cad76 fix: you could go insane and the character sheet wouldn't mention it
+- a141d6b chore: a probe for the bug class that kept getting past every existing check
+- bc4db90 fix: the difficulty setting never reached the investigation engine
+- d8bae0f fix: every `bun test` run was hitting the live LLM with a real key
+- adf64d1 fix: combat on the web path was one-sided — enemies never fought back
+- 1847cd2 fix: "潜行" was listed as an attack verb — stealth made you swing
+- 27163aa feat: mythos creatures now cost Sanity to look at
+- 336fdbf fix: investigation SAN loss could never drive anyone mad — two bugs stacked
+- 02485f9 docs: apply-action said it was not wired; it has been for a while
+- 21d3efc docs: correct a comment that undersold what a shop would take
+- 2c300b9 fix: three stubs were lying to the player, not just unimplemented
 
 ## 代码地图
 
