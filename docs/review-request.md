@@ -47,18 +47,19 @@
 
 ## 待审文件
 
-以下都在 `C:\aitrpg\poc\tools\`（这个目录被 .gitignore 排除，是诊断脚本区）：
+以下都在 `C:\aitrpg\poc\scripts\diag\`（早先放在被 .gitignore 排除的
+`tools\`，判据留在那里等于没人守——已经整批搬进 `scripts/diag/` 并入库）：
 
 | 文件 | 它声称在量什么 | 当前结论 |
 |---|---|---|
-| `_diag-phrasing.ts` | 玩家的自然语言说法能否匹配到目标场景 | 含完整地名 100%，否则 0~3% |
-| `_diag-downed.ts` | 昏迷的调查员是否还在掷骰 | 违规 0 次 |
-| `_diag-wounds.ts` | 伤势分级／重伤检定／惩罚骰是否生效 | 40 局 74 次伤害，≥50% 有 4 次 |
-| `_diag-combat.ts` | Boss 是否真的还手、玩家是否掉血 | 12 局挥击 46 次，打昏 2 次 |
-| `_diag-fuzz.ts` | 随机玩法能否通关、有无死循环 | 10/10 通关 |
-| `_audit-backup.ts` | 哪些数据丢了不可再生 | 500MB 不可再生 |
+| `scripts/diag/diag-phrasing.ts` | 玩家的自然语言说法能否匹配到目标场景 | 含完整地名 100%，否则 0~3% |
+| `scripts/diag/diag-downed.ts` | 昏迷的调查员是否还在掷骰 | 违规 0 次 |
+| `scripts/diag/diag-wounds.ts` | 伤势分级／重伤检定／惩罚骰是否生效 | 40 局 74 次伤害，≥50% 有 4 次 |
+| `scripts/diag/diag-combat.ts` | Boss 是否真的还手、玩家是否掉血 | 12 局挥击 46 次，打昏 2 次 |
+| `scripts/diag/diag-fuzz.ts` | 随机玩法能否通关、有无死循环 | 10/10 通关 |
+| `scripts/diag/audit-backup.ts` | 哪些数据丢了不可再生 | 500MB 不可再生 |
 
-以及 `C:\aitrpg\poc\scripts\preflight.ts`（改动前后的自检，含 6 项检查）。
+以及 `C:\aitrpg\poc\scripts\preflight.ts`（改动前后的自检）。
 
 ---
 

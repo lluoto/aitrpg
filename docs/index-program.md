@@ -23,9 +23,9 @@ bun scripts/docs-index.ts log failback      # 搜 log 正文，给出 file:line
 | 我想…… | 读这个 | 说明 |
 |---|---|---|
 | 看架构地图 / 某个模块在哪 | `docs/architecture.json` | 15 节。用 `arch <关键词>` 取，别整读（36KB） |
-| 看待办 / 已知的坑 | `docs/todo.json` | 16 条。`severity=warn` 的 9 条是踩过的坑 |
-| 查某个问题查过没有 | `docs/notes/index.json` | 53 条元数据（标题/日期/状态/摘要/行号） |
-| 读某条记录的正文 | `docs/notes/<组>.md` | ingest 40 条 · engine 11 条 · rules 2 条 |
+| 看待办 / 已知的坑 | `docs/todo.json` | 条数跑 `bun scripts/docs-index.ts todo warn` 看，`severity=warn` 的是踩过的坑 |
+| 查某个问题查过没有 | `docs/notes/index.json` | 元数据（标题/日期/状态/摘要/行号）；这份索引本身就是给脚本查的，别在这里写死条数 |
+| 读某条记录的正文 | `docs/notes/<组>.md` | 按组分文件（ingest/engine/rules…），条数跑 `bun scripts/docs-index.ts log <关键词>` 现查 |
 
 放 `docs/` 不放 `.opencode/`：后者被 `.gitignore` 排除，
 而架构与待办是**项目知识**不是会话状态，clone 下来必须还在。

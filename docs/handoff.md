@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-25 01:28  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-25 03:42  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：62137da fix: "乙 joined the party" then "there is no 乙 in the party", one turn apart  ·  **测试**：1952 条 / 112 文件，全绿（基线 1952，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：c4d9c41 fix: combat narration tiering was built but only the CLI path used it, and even that had maxHp hardcoded to 10  ·  **测试**：1985 条 / 114 文件，全绿（基线 1985，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -70,7 +70,8 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 ⚠ **这些判据本身出过六次错**（详见 `docs/review-request.md`）。已做的返工：
 
 1. **判据与脚本分开**。判断逻辑抽成纯函数放 `src/diagnostics/`（入库、可测），
-   `tools/*` 只负责跑局和排版。`tools/` 是 .gitignore 的，判据留在那里等于没人守。
+   `scripts/diag/*` 只负责跑局和排版。早先脚本本体放在 `tools/`（.gitignore
+   排除），判据留在那里等于没人守——后来整批搬进了 `scripts/diag/` 并入库。
 2. **每条判据三种输入都有测试**：行为正确 → 通过；目标行为错误 → 失败；
    文本相似但合法 → 不误报。少了第二种就是「永远通过」，少了第三种就是「永远报警」。
 3. **不再猜自然语言**。诊断读 `src/play/events.ts` 的结构化事件流，
@@ -78,13 +79,13 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
    `➜ 米戈 【格斗】` 看不出攻击者是敌是我。补正则只会补出下一个假阳性。
 4. **seed 现在控制整局**（`src/diagnostics/run-harness.ts` 接管 `Math.random`）。
    实测：同 seed 的事件流与播报文本**都可复现**，可作确定性回归依据。
-   `_diag-fuzz.ts` 每次都把这条自检的结果打出来 —— 它是量出来的，不是声称的。
+   `scripts/diag/diag-fuzz.ts` 每次都把这条自检的结果打出来 —— 它是量出来的，不是声称的。
 
 用它们之前仍然先确认能区分对错两种情形，别信「全绿」。
 判据自己会说明三种「不算通过」的情形：
 样本数为 0（没有可判的样本）、身份不可分辨（两名调查员重名）、以及本轮有异常局。
 
-**这套判据上线后立刻报出四个真缺陷，都已修**（各带正/反/干扰三侧测试 + 变异检验）：
+**这套判据上线后立刻报出真缺陷，都已修**（各带正/反/干扰三侧测试 + 变异检验）：
 
 | 缺陷 | 谁报出来的 | 旧判据为什么看不见 |
 |---|---|---|
@@ -108,6 +109,8 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 
 ## 最近做了什么
 
+- c4d9c41 fix: combat narration tiering was built but only the CLI path used it, and even that had maxHp hardcoded to 10
+- 1fd96d2 docs: a content-development brief that says which mechanics actually fire
 - 62137da fix: "乙 joined the party" then "there is no 乙 in the party", one turn apart
 - 13cad76 fix: you could go insane and the character sheet wouldn't mention it
 - a141d6b chore: a probe for the bug class that kept getting past every existing check
@@ -118,8 +121,6 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 - 27163aa feat: mythos creatures now cost Sanity to look at
 - 336fdbf fix: investigation SAN loss could never drive anyone mad — two bugs stacked
 - 02485f9 docs: apply-action said it was not wired; it has been for a while
-- 21d3efc docs: correct a comment that undersold what a shop would take
-- 2c300b9 fix: three stubs were lying to the player, not just unimplemented
 
 ## 代码地图
 

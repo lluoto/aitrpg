@@ -438,15 +438,38 @@ export function findShellRisks(file: string, src: string): Finding[] {
  *   都是在给接手的人指错路。
  *
  * 裸文本（不带反引号、不在命令里）仍旧不算 —— 那才是真的「顺口提一句」。
+ *
+ * ⚠ 第二次做变异检验又露馅：`RUN_CMD` / `CODE_PATH` 都要求路径以
+ *   `src|scripts|tools/` 开头，于是三类真实引用完全不被检查 ——
+ *   裸文件名（`_diag-fuzz.ts`）、src 内部相对路径（`play/clue-check.ts`、
+ *   `api/game-session.ts`）、带行号的路径（`coc-engine.test.ts:131`）。
+ *   反引号本身就是「这是一段代码/路径」的标记，不该再额外要求目录前缀——
+ *   `BARE_CODE_PATH` 只锚定反引号，允许可选的 `:行号` 后缀。
  */
 const RUN_CMD = /\bbun\s+(?:run\s+)?((?:src|scripts|tools)\/[\w./-]+\.(?:ts|mjs|cjs|js))/g;
 const CODE_PATH = /`((?:src|scripts|tools)\/[\w./-]+\.(?:ts|mjs|cjs|js))`/g;
+const BARE_CODE_PATH = /`([\w.-][\w./-]*\.(?:ts|mjs|cjs|js))(?::\d+)?`/g;
 
 export function referencedScripts(markdown: string): string[] {
   const out = new Set<string>();
   for (const m of markdown.matchAll(RUN_CMD)) out.add(m[1]!);
   for (const m of markdown.matchAll(CODE_PATH)) out.add(m[1]!);
+  for (const m of markdown.matchAll(BARE_CODE_PATH)) out.add(m[1]!);
   return [...out];
+}
+
+/**
+ * 文档里引用的相对/裸路径要落到磁盘上的哪个真实文件，得靠候选列表比对——
+ * 文档里写的是 `play/clue-check.ts`，磁盘上是 `src/play/clue-check.ts`，
+ * 字符串不相等，但确实是同一个文件。
+ *
+ * 判法：完全相等，或者候选路径以 `"/" + ref` 结尾（`ref` 是候选路径的
+ * 末尾一段）。调用方要保证候选列表统一用正斜杠——`path.join()` 在
+ * Windows 上产出反斜杠，不归一化的话 `endsWith("/" + ref)` 永远是假，
+ * 会把「文档引用的脚本是否入库」这条检查变成全量假阳性。
+ */
+export function resolveRef(ref: string, candidates: readonly string[]): boolean {
+  return candidates.some((c) => c === ref || c.endsWith("/" + ref));
 }
 
 /**

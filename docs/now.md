@@ -1,23 +1,28 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-08-22 02:14
+> 生成于 2026-08-25 03:43
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 06d796c chore: backup tiering shows only 500mb is irreplaceable |
-| 测试 | （本次未跑） |
-| 工作树 | **5 个文件未提交** |
+| HEAD | c4d9c41 fix: combat narration tiering was built but only the CLI path used it, and even that had maxHp hardcoded to 10 |
+| 测试 | 1985 条 / 114 文件  全绿 |
+| 工作树 | **10 个文件未提交** |
 
 未提交：
-- `M docs/notes/engine.md`
-- `M docs/notes/index.json`
-- `M src/play/move-util.ts`
-- `M src/play/scene-pipeline.ts`
-- `?? src/__tests__/forced-move-disclosure.test.ts`
+- `M docs/handoff.md`
+- `M docs/index-program.md`
+- `M docs/now.md`
+- `M docs/review-bundle.md`
+- `M docs/review-request.md`
+- `M docs/test-baseline.json`
+- `M scripts/handoff.ts`
+- `M scripts/preflight.ts`
+- `M src/__tests__/diag-preflight-checks.test.ts`
+- `M src/diagnostics/source-scan.ts`
 
 ## 开工前
 
@@ -53,14 +58,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
-- 06d796c chore: backup tiering shows only 500mb is irreplaceable
-- ea62ae0 docs: workdir audit confirms archival is complete, flags backup risk
-- 307fbae docs: mark stale conclusions in the player-agency notes
-- 8c82675 fix: pass remaining investigable clues to move decision
-- 9960c14 chore: preflight checks, session state file, working rules
-- 38f83b1 merge: coc 7e unconscious rules
-- 32d578e feat: unconscious investigators cannot act, first aid revives
-- 511c575 merge: boss actually fights back
+- c4d9c41 fix: combat narration tiering was built but only the CLI path used it, and even that had maxHp hardcoded to 10
+- 1fd96d2 docs: a content-development brief that says which mechanics actually fire
+- 62137da fix: "乙 joined the party" then "there is no 乙 in the party", one turn apart
+- 13cad76 fix: you could go insane and the character sheet wouldn't mention it
+- a141d6b chore: a probe for the bug class that kept getting past every existing check
+- bc4db90 fix: the difficulty setting never reached the investigation engine
+- d8bae0f fix: every `bun test` run was hitting the live LLM with a real key
+- adf64d1 fix: combat on the web path was one-sided — enemies never fought back
 
 ## 找东西
 

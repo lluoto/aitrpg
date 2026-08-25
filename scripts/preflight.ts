@@ -4,9 +4,9 @@
 //   bun scripts/preflight.ts            全查
 //   bun scripts/preflight.ts --quick    只查快的（跳过测试）
 //
-// 九项检查：切割残渣 / 占位注释 / 反向 import / PowerShell 读中文 /
-//           丢掉的成功与否返回值 / 无声吞错的 catch /
-//           文档引用的脚本是否入库 / typecheck / 测试条数基线
+// 检查项：切割残渣 / 占位注释 / 反向 import / PowerShell 读中文 / typecheck /
+//         测试条数基线 / 文档引用的脚本是否入库 / 丢掉的成功与否返回值 /
+//         无声吞错的 catch / 源码引用的证据文件是否存在 / 断线的公开方法
 //
 // ⚠ 这份脚本自己返工过一次。上一版六项检查里，**五项能被同一段坏代码骗过**：
 //   1. 切割残渣：只认 `return|await|赋值` 四种起手式 → 函数头被删后留下
@@ -30,7 +30,7 @@ import { spawnSync } from "child_process";
 import {
   findTruncatedBlocks, findPlaceholderResidue, findReverseImports, findShellRisks,
   judgeProcess, parseTestOutput, judgeTestCount,
-  referencedScripts, judgeScriptRefs, generatedDocs,
+  referencedScripts, judgeScriptRefs, generatedDocs, resolveRef,
   boolReturningNames, findDroppedReturns, findSilentCatches,
   type Finding, type TestBaseline,
 } from "../src/diagnostics/source-scan";
@@ -139,18 +139,27 @@ for (const f of [...srcFiles, ...walk("scripts", [".ts"])]) {
 // 不收窄的话第一次跑就是 43 个报告，其中 42 个来自 notes —— 又一次假阳性淹没真问题。
 {
   const tracked = spawnSync("git", ["ls-files"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-  const trackedSet = new Set(
-    (tracked.stdout ?? "").split("\n").map((l) => l.trim()).filter(Boolean),
-  );
+  // git ls-files 出来的就是正斜杠，不用归一化。
+  const trackedPaths = (tracked.stdout ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
   const gitOk = !tracked.error && tracked.status === 0;
+  // 磁盘候选：文档里可能写裸文件名/相对路径（`play/clue-check.ts`），
+  // 得拿真实文件树去反查它落在哪个完整路径上。
+  // ⚠ join() 在 Windows 上产出反斜杠，resolveRef 的 endsWith("/"+ref) 靠正斜杠
+  //   分隔，不归一化这里会让「存在性」判断全量假阳性（永远判不存在）。
+  const diskCandidates = [
+    ...walk("src", [".ts", ".js", ".mjs", ".cjs"]),
+    ...walk("scripts", [".ts", ".js", ".mjs", ".cjs"]),
+    ...walk("tools", [".ts", ".js", ".mjs", ".cjs"]),
+    ...walk("frontend", [".ts", ".js", ".mjs", ".cjs"]),
+  ].map((p) => p.replace(/\\/g, "/"));
   const generated = generatedDocs(walk("scripts", [".ts"]).map(read));
   for (const doc of generated) {
     if (!existsSync(doc)) continue; // 还没生成过，不是这条检查的事
     const refs = referencedScripts(read(doc)).map((p) => ({
       path: p,
-      exists: existsSync(p),
+      exists: resolveRef(p, diskCandidates),
       // git 拿不到时不冤枉人：只查存在性，并在 notes 里说清楚
-      tracked: gitOk ? trackedSet.has(p) : true,
+      tracked: gitOk ? resolveRef(p, trackedPaths) : true,
     }));
     push(judgeScriptRefs(refs, doc));
   }
@@ -181,7 +190,7 @@ for (const f of [...srcFiles, ...walk("scripts", [".ts"])]) {
       const line = text.slice(0, m.index).split("\n").length;
       if (!existsSync(ref)) {
         push([{ file: f, line, rule: "evidence-missing", message: `引用的证据文件不存在：${ref}` }]);
-      } else if (gitOk && !trackedSet.has(ref)) {
+      } else if (gitOk && !trackedPaths.includes(ref)) {
         push([{
           file: f, line, rule: "evidence-untracked",
           message: `证据没入库，别人克隆下来打不开：${ref}`

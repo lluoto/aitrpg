@@ -50,18 +50,19 @@
 
 ## 待审文件
 
-以下都在 `C:\aitrpg\poc\tools\`（这个目录被 .gitignore 排除，是诊断脚本区）：
+以下都在 `C:\aitrpg\poc\scripts\diag\`（早先放在被 .gitignore 排除的
+`tools\`，判据留在那里等于没人守——已经整批搬进 `scripts/diag/` 并入库）：
 
 | 文件 | 它声称在量什么 | 当前结论 |
 |---|---|---|
-| `_diag-phrasing.ts` | 玩家的自然语言说法能否匹配到目标场景 | 含完整地名 100%，否则 0~3% |
-| `_diag-downed.ts` | 昏迷的调查员是否还在掷骰 | 违规 0 次 |
-| `_diag-wounds.ts` | 伤势分级／重伤检定／惩罚骰是否生效 | 40 局 74 次伤害，≥50% 有 4 次 |
-| `_diag-combat.ts` | Boss 是否真的还手、玩家是否掉血 | 12 局挥击 46 次，打昏 2 次 |
-| `_diag-fuzz.ts` | 随机玩法能否通关、有无死循环 | 10/10 通关 |
-| `_audit-backup.ts` | 哪些数据丢了不可再生 | 500MB 不可再生 |
+| `scripts/diag/diag-phrasing.ts` | 玩家的自然语言说法能否匹配到目标场景 | 含完整地名 100%，否则 0~3% |
+| `scripts/diag/diag-downed.ts` | 昏迷的调查员是否还在掷骰 | 违规 0 次 |
+| `scripts/diag/diag-wounds.ts` | 伤势分级／重伤检定／惩罚骰是否生效 | 40 局 74 次伤害，≥50% 有 4 次 |
+| `scripts/diag/diag-combat.ts` | Boss 是否真的还手、玩家是否掉血 | 12 局挥击 46 次，打昏 2 次 |
+| `scripts/diag/diag-fuzz.ts` | 随机玩法能否通关、有无死循环 | 10/10 通关 |
+| `scripts/diag/audit-backup.ts` | 哪些数据丢了不可再生 | 500MB 不可再生 |
 
-以及 `C:\aitrpg\poc\scripts\preflight.ts`（改动前后的自检，含 6 项检查）。
+以及 `C:\aitrpg\poc\scripts\preflight.ts`（改动前后的自检）。
 
 ---
 
@@ -1021,9 +1022,9 @@ console.log(
 //   bun scripts/preflight.ts            全查
 //   bun scripts/preflight.ts --quick    只查快的（跳过测试）
 //
-// 九项检查：切割残渣 / 占位注释 / 反向 import / PowerShell 读中文 /
-//           丢掉的成功与否返回值 / 无声吞错的 catch /
-//           文档引用的脚本是否入库 / typecheck / 测试条数基线
+// 检查项：切割残渣 / 占位注释 / 反向 import / PowerShell 读中文 / typecheck /
+//         测试条数基线 / 文档引用的脚本是否入库 / 丢掉的成功与否返回值 /
+//         无声吞错的 catch / 源码引用的证据文件是否存在 / 断线的公开方法
 //
 // ⚠ 这份脚本自己返工过一次。上一版六项检查里，**五项能被同一段坏代码骗过**：
 //   1. 切割残渣：只认 `return|await|赋值` 四种起手式 → 函数头被删后留下
@@ -1047,7 +1048,7 @@ import { spawnSync } from "child_process";
 import {
   findTruncatedBlocks, findPlaceholderResidue, findReverseImports, findShellRisks,
   judgeProcess, parseTestOutput, judgeTestCount,
-  referencedScripts, judgeScriptRefs, generatedDocs,
+  referencedScripts, judgeScriptRefs, generatedDocs, resolveRef,
   boolReturningNames, findDroppedReturns, findSilentCatches,
   type Finding, type TestBaseline,
 } from "../src/diagnostics/source-scan";
@@ -1156,23 +1157,66 @@ for (const f of [...srcFiles, ...walk("scripts", [".ts"])]) {
 // 不收窄的话第一次跑就是 43 个报告，其中 42 个来自 notes —— 又一次假阳性淹没真问题。
 {
   const tracked = spawnSync("git", ["ls-files"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-  const trackedSet = new Set(
-    (tracked.stdout ?? "").split("\n").map((l) => l.trim()).filter(Boolean),
-  );
+  // git ls-files 出来的就是正斜杠，不用归一化。
+  const trackedPaths = (tracked.stdout ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
   const gitOk = !tracked.error && tracked.status === 0;
+  // 磁盘候选：文档里可能写裸文件名/相对路径（`play/clue-check.ts`），
+  // 得拿真实文件树去反查它落在哪个完整路径上。
+  // ⚠ join() 在 Windows 上产出反斜杠，resolveRef 的 endsWith("/"+ref) 靠正斜杠
+  //   分隔，不归一化这里会让「存在性」判断全量假阳性（永远判不存在）。
+  const diskCandidates = [
+    ...walk("src", [".ts", ".js", ".mjs", ".cjs"]),
+    ...walk("scripts", [".ts", ".js", ".mjs", ".cjs"]),
+    ...walk("tools", [".ts", ".js", ".mjs", ".cjs"]),
+    ...walk("frontend", [".ts", ".js", ".mjs", ".cjs"]),
+  ].map((p) => p.replace(/\\/g, "/"));
   const generated = generatedDocs(walk("scripts", [".ts"]).map(read));
   for (const doc of generated) {
     if (!existsSync(doc)) continue; // 还没生成过，不是这条检查的事
     const refs = referencedScripts(read(doc)).map((p) => ({
       path: p,
-      exists: existsSync(p),
+      exists: resolveRef(p, diskCandidates),
       // git 拿不到时不冤枉人：只查存在性，并在 notes 里说清楚
-      tracked: gitOk ? trackedSet.has(p) : true,
+      tracked: gitOk ? resolveRef(p, trackedPaths) : true,
     }));
     push(judgeScriptRefs(refs, doc));
   }
   notes.push(`文档引用校验覆盖 ${generated.length} 份生成文档：${generated.join("、") || "(无)"}`);
   if (!gitOk) notes.push("git ls-files 不可用 —— 只校验了文档引用脚本是否存在，没校验是否入库");
+
+  // ── 10. 源码拿来当证据的文件，仓库里得真有 ──
+  //
+  // 第 7 项管的是「文档叫人跑的脚本」，这一项管的是「代码引用的证据」。
+  // 同一个病，另一层皮：四处注释写着「实跑原文见 play-logs/run-….txt」，
+  // 而 `play-logs/` 在 .gitignore 里 —— **克隆下来的人根本打不开那个文件**。
+  // 一句指向不存在之物的证据，读起来像有据可查，实际等于没有。
+  //
+  // 只认「路径样子的引用」：带目录分隔符且有扩展名。散文里提一句
+  // 「见跑局日志」不算，那没许诺具体哪一份。
+  //
+  // ⚠ **不查 `analysis/`**。判据第一版把它算进来，报出 4 条全是误报：
+  //   那是各个探针在 console.log 里声明自己的产物路径。
+  //   `analysis/` 的东西都能由一个点得出名字的脚本重跑再生，
+  //   引用它不算「指向不存在之物」。真正查不回来的是
+  //   `play-logs/`（一次性跑局原文）、`tools/`（历史草稿）、`data/`（本机库）。
+  const EVIDENCE_REF = /(?:^|[\s(（「`])((?:play-logs|data|tools)\/[\w./-]+\.(?:txt|md|json|jsonl))/g;
+  const srcFiles = [...walk("src", [".ts"]), ...walk("scripts", [".ts"])];
+  for (const f of srcFiles) {
+    const text = read(f);
+    for (const m of text.matchAll(EVIDENCE_REF)) {
+      const ref = m[1]!;
+      const line = text.slice(0, m.index).split("\n").length;
+      if (!existsSync(ref)) {
+        push([{ file: f, line, rule: "evidence-missing", message: `引用的证据文件不存在：${ref}` }]);
+      } else if (gitOk && !trackedPaths.includes(ref)) {
+        push([{
+          file: f, line, rule: "evidence-untracked",
+          message: `证据没入库，别人克隆下来打不开：${ref}`
+            + `（要么拷进 docs/evidence/ 并改引用，要么别在注释里点具体文件名）`,
+        }]);
+      }
+    }
+  }
 }
 
 // ── 5. typecheck ──
@@ -1221,6 +1265,50 @@ if (!quick) {
   }
 } else {
   notes.push("--quick：跳过测试与条数基线检查");
+}
+
+// ── 11. 断线：类的公开方法没有调用方 ──
+//
+// 这一轮反复撞见同一个病：**两端都写好了，中间那根线没接**。
+//   · `NPCCombatEngine.getSanCost()`               遭遇修格斯 = 遭遇野狗
+//   · `InvestigationEngine.setDifficultyProfile()` 难度按钮按下去什么都没变
+// 数据在、实现在，只差一句调用。不报错、不让测试变红，
+// 只让「本该发生的事」安静地不发生。
+//
+// 现有的 `probe-dead-code` 抓不到 —— 它量的是**模块级导出**，
+// 而这些是**类的公开方法**：类本身在用，只有那一个方法没人调。
+// tsc 也不管（`noUnusedLocals` 不看公开方法）。
+//
+// ⚠ 判法是「**不许增长**」而不是「必须为 0」。
+//   当前有 90 处，绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案）——
+//   要求清零等于要求现在把它们全删掉或全接上，那不是这一条该做的决定。
+//   能守住的是：**别再新增**。哪天有人又写了一个没人调的 setter，这里会变红。
+{
+  const p = spawnSync("bun", ["scripts/diag/probe-unwired.ts"], { encoding: "utf8", shell: true });
+  const out = (p.stdout ?? "") + (p.stderr ?? "");
+  const m = /没调用方\s*(\d+)/.exec(out);
+  if (!m) {
+    problems.push("断线判据没跑起来（probe-unwired 的输出里解析不到条数）—— 判据自己坏了也要变红");
+  } else {
+    const now = Number(m[1]);
+    const base = existsSync(BASELINE_PATH)
+      ? (JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as { unwiredMethods?: number }).unwiredMethods
+      : undefined;
+    if (base === undefined) {
+      problems.push(`${BASELINE_PATH} 里缺 unwiredMethods 基线 —— 没有基线就没有回归检查；当前是 ${now}`);
+    } else if (now > base) {
+      problems.push(
+        `没有调用方的公开方法从 ${base} 涨到 ${now} —— 新写的能力没接上，` +
+        `或者接线被改掉了。看 analysis/diag/probe-unwired.md`,
+      );
+    } else {
+      notes.push(
+        now < base
+          ? `断线 ${base} → ${now}（少了 ${base - now} 处，记得把基线调下来）`
+          : `断线 ${now} 处，与基线一致（判法是不许增长，不是必须为 0 —— 理由见 preflight 第 11 项）`,
+      );
+    }
+  }
 }
 
 // ── 输出 ──

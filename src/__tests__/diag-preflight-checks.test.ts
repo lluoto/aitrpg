@@ -9,7 +9,7 @@ import {
   maskSource, findTruncatedBlocks, findPlaceholderResidue,
   scanImports, importPointsTo, findReverseImports,
   findShellRisks, judgeProcess, parseTestOutput, judgeTestCount,
-  referencedScripts, judgeScriptRefs, generatedDocs,
+  referencedScripts, judgeScriptRefs, generatedDocs, resolveRef,
   boolReturningNames, findDroppedReturns, findSilentCatches,
 } from "../diagnostics/source-scan";
 
@@ -393,6 +393,37 @@ describe("检查 7 · 文档叫人跑的脚本", () => {
 
   test("干扰：非脚本扩展名不算（`bun test` / `bun install`）", () => {
     expect(referencedScripts("```\nbun test\nbun install\nbun run typecheck\n```")).toEqual([]);
+  });
+
+  // ── 第二次变异检验：RUN_CMD / CODE_PATH 都要求 src|scripts|tools/ 前缀，
+  //   于是裸文件名、src 内部相对路径、带行号的路径完全不被检查。
+  //   preflight.ts 拿真实文件树当候选反查这三种写法，这里测反查本身。
+  describe("resolveRef —— 裸路径/相对路径/带行号都要能反查到真实文件", () => {
+    test("**不应报**：src 内部相对路径，候选里有完整 src 前缀", () => {
+      expect(resolveRef("play/clue-check.ts", ["src/play/clue-check.ts"])).toBe(true);
+    });
+
+    test("**不应报**：__tests__ 目录同样靠候选反查", () => {
+      expect(resolveRef("diag-fuzz.test.ts", ["src/__tests__/diag-fuzz.test.ts"])).toBe(true);
+    });
+
+    test("**不应报**：带 :行号 的引用——referencedScripts 先剥掉行号，resolveRef 再反查", () => {
+      const refs = referencedScripts("参见 `coc-engine.test.ts:131`");
+      expect(refs).toEqual(["coc-engine.test.ts"]);
+      expect(resolveRef(refs[0]!, ["src/__tests__/coc-engine.test.ts"])).toBe(true);
+    });
+
+    test("**应报**：裸文件名在候选列表里没有任何后缀匹配", () => {
+      // 就是本轮抓到的真事：docs/handoff.md 里的 `_diag-fuzz.ts`，
+      // 磁盘上没有任何路径以 "/_diag-fuzz.ts" 结尾。
+      expect(resolveRef("_diag-fuzz.ts", ["src/diagnostics/fuzz.ts", "scripts/other.ts"])).toBe(false);
+    });
+
+    test("干扰：不能只做子串匹配——同名但不同目录层级的文件不该互相冒认", () => {
+      // "clue-check.ts" 不该被 "old-clue-check.ts" 之类的候选顶替；
+      // resolveRef 要求 "/" + ref 精确收尾，不是随便包含。
+      expect(resolveRef("clue-check.ts", ["src/play/old-clue-check.ts"])).toBe(false);
+    });
   });
 });
 

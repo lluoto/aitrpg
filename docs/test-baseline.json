@@ -1,5 +1,5 @@
 {
-  "tests": 1980,
+  "tests": 1985,
   "files": 114,
   "unwiredMethods": 90,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。",
@@ -219,6 +219,11 @@
       "tests": 1980,
       "files": 114,
       "when": "战斗叙述分级三缺二：llm/narrator.ts 早有五档比例分级+LLM 叙事，但只有 CLI 接了，且传参漏了 maxHp 导致分档基数永远是 10；剧本杀（play/combat.ts）另有一套按绝对值分档、与伤势系统口径不一致的本地文案，网页端（GameSession）干脆没有。统一到 narrator.ts：maxHp 改必传，文案池抽成 narrator-pools.ts，剧本杀/网页两条路都接上"
+    },
+    {
+      "tests": 1985,
+      "files": 114,
+      "when": "preflight 第 7 项的两条正则（RUN_CMD/CODE_PATH）都要求 src|scripts|tools/ 前缀，裸文件名、src 内部相对路径、带行号的引用完全不被检查。加 BARE_CODE_PATH 正则 + resolveRef() 拿真实文件树反查，找出 7 条真缺失（docs/handoff.md 1 条、docs/review-bundle.md 6 条，全是过期的 tools/_diag-*.ts 引用）"
     }
   ]
 }
