@@ -1149,11 +1149,37 @@ export class GameSession {
       [...this.companionManager.getAllStates().entries()]
         .find(([id, c]) => c.config.name === name || id === name)?.[0];
 
+    /**
+     * 找不到同伴时说清楚为什么。
+     *
+     * ⚠ 原先四条指令共用一句「队伍里没有「X」」，而这句话会和上一回合的播报
+     *   **直接打架**：
+     *
+     *     > 创建队友 乙 investigator    👤 乙(investigator) 加入了队伍
+     *     > 接管 乙                     队伍里没有「乙」。
+     *
+     *   因为这里有**两套并行的「队伍」**：
+     *     · `创建队友` 加进 `this.characters` —— 那是第二个**玩家角色**
+     *     · 邀请/告别/接管/自动 操作的是 `CompanionManager` —— NPC 同伴
+     *   两者互不相通，而报错只说「没有」，不说是哪一种没有。
+     *
+     *   （另：`CompanionManager.recruit()` 生产代码里零调用方，
+     *     实际对局中同伴名册**永远是空的**。这四条指令目前只可能走到这个分支。）
+     */
+    const notFoundLine = (name: string): string => {
+      const isPc = [...this.characters.values()].some(
+        (c) => (c as { name?: string }).name === name,
+      );
+      return isPc
+        ? `「${name}」是你的队友（玩家角色），不是可指挥的 NPC 同伴 —— 邀请/告别/接管 这几条只对 NPC 同伴有效。`
+        : `队伍里没有「${name}」。`;
+    };
+
     if (inviteMatch) {
       const who = inviteMatch[1].trim();
       const c = findCompanion(who);
       if (!c) {
-        turnMessages.push({ speaker: "系统", content: `队伍里没有「${who}」。`, type: "system" });
+        turnMessages.push({ speaker: "系统", content: notFoundLine(who), type: "system" });
       } else {
         this.companionManager.markInvited(c);
         turnMessages.push({ speaker: "系统", content: `你向 ${who} 发出了邀请`, type: "system" });
@@ -1164,7 +1190,7 @@ export class GameSession {
       const who = farewellMatch[1].trim();
       const c = findCompanion(who);
       if (!c) {
-        turnMessages.push({ speaker: "系统", content: `队伍里没有「${who}」。`, type: "system" });
+        turnMessages.push({ speaker: "系统", content: notFoundLine(who), type: "system" });
       } else {
         const line = this.companionManager.handleDeparture(c, this.world, "player-farewell");
         turnMessages.push({ speaker: "系统", content: line ?? `${who} 离开了队伍`, type: "system" });
@@ -1175,7 +1201,7 @@ export class GameSession {
       const who = controlMatch[1].trim();
       const c = findCompanion(who);
       if (!c) {
-        turnMessages.push({ speaker: "系统", content: `队伍里没有「${who}」。`, type: "system" });
+        turnMessages.push({ speaker: "系统", content: notFoundLine(who), type: "system" });
       } else {
         this.companionManager.setControl(c, `player:${this.activePlayerId}`);
         turnMessages.push({ speaker: "系统", content: `你接管了 ${who} 的控制权`, type: "system" });
@@ -1186,7 +1212,7 @@ export class GameSession {
       const who = autoMatch[1].trim();
       const c = findCompanion(who);
       if (!c) {
-        turnMessages.push({ speaker: "系统", content: `队伍里没有「${who}」。`, type: "system" });
+        turnMessages.push({ speaker: "系统", content: notFoundLine(who), type: "system" });
       } else {
         this.companionManager.setControl(c, "auto");
         turnMessages.push({ speaker: "系统", content: `${who} 恢复自主行动。`, type: "system" });
