@@ -9,6 +9,7 @@
 
 import { describe, test, expect, afterEach, beforeEach } from "bun:test";
 import { setIntentLLM, intentLLMConfigured } from "../llm/intent";
+import { setNarratorLLM } from "../llm/narrator";
 import { GameSession } from "../api/game-session";
 
 const REAL_LOOKING = {
@@ -30,9 +31,11 @@ const saved: Record<string, string | undefined> = {};
 beforeEach(() => {
   for (const k of ENV_KEYS) saved[k] = process.env[k];
   setIntentLLM(null);
+  setNarratorLLM(null); // GameSession 构造时会顺带设这个模块级单例，同样要清
 });
 afterEach(() => {
   setIntentLLM(null); // 还原单例，别影响别的测试文件
+  setNarratorLLM(null);
   for (const k of ENV_KEYS) {
     if (saved[k] === undefined) delete process.env[k];
     else process.env[k] = saved[k];

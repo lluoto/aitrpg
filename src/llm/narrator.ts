@@ -2,83 +2,47 @@
 // LLM 驱动（有 API Key） + 模板 fallback（无 API Key）
 // 根据伤害/总HP比例决定伤势描述等级
 //
-// 严重度分级（与 wound-effects.ts 同步）：
-//   scratch  ≤10%  擦伤
-//   flesh    10-25% 轻伤
-//   deep     25-50% 重伤
-//   grievous 50-75% 致命伤
-//   lethal   >75%   斩杀
+// 文案池在同目录 narrator-pools.ts（纯数据，内容开发只改那个文件）。
+//
+// 严重度分级 —— 与 combat/wound-effects.ts 的 calcSeverity **实测对齐**
+// （之前这里写的阈值和真实代码整体错开一档，已订正）：
+//   scratch  ≤25%   擦伤（无惩罚骰）
+//   flesh    25~49% 轻伤
+//   deep     ≥50%   CoC 重伤（Major Wound）
+//   grievous ≥75%   致残级重伤
+//   lethal   ——     HP 归零，不是比例算出来的（calcSeverity 从不返回
+//                    "lethal"），由调用方传入 outcome.result === "kill" 决定。
 
-import type { CombatResult } from "../types";
 import type { LLMClient } from "./client";
 import { calcSeverity } from "../combat/wound-effects";
 import { checkDialogueText } from "../world/world-constraint";
+import {
+  SCRATCH_TEMPLATES, FLESH_TEMPLATES, DEEP_TEMPLATES, GRIEVOUS_TEMPLATES,
+  LETHAL_TEMPLATES, MISS_TEMPLATES, FUMBLE_TEMPLATES, CRIT_PREFIX,
+} from "./narrator-pools";
 
-// ============================================================
-// 克苏鲁风格叙事模板
-//
-// 基调：冷静、细节化、旁观者视角
-// 避免"剑光闪过"等武侠/奇幻式表达
-// 专注：伤口形态、血液、骨骼、声音、目标的反应
-// ============================================================
-
-/** 擦伤 — 几乎无影响，但带出恐惧氛围 */
-const SCRATCH_TEMPLATES = [
-  "{weapon}擦过{defender}的体表，留下一道浅浅的血痕。暗红色的液体沿着伤口边缘缓缓渗出。",
-  "{defender}被{weapon}蹭破了皮——伤口不深，但血珠已经沿着皮肤滚落。",
-  "一声钝响后，{defender}的手臂上多了一道细长的划口。皮肉翻开处露出粉红色的嫩肉。",
-  "{weapon}掠过{defender}的侧肋，带起一串细小的血珠。",
-];
-
-/** 轻伤 — 流血，痛楚 */
-const FLESH_TEMPLATES = [
-  "{weapon}切入{defender}的手臂，皮肉翻开，鲜血立刻涌出。{defender}闷哼一声，咬紧了牙关。",
-  "猩红的液体从{defender}的肋部淌下——{weapon}在那里留下了一道不浅的伤口。",
-  "{weapon}击中了{defender}的身体。温热的血浸透了衣物，在布料上洇开一片深色。",
-  "{defender}的肩头被{weapon}撕开一道口子。可以看见筋膜在伤口深处泛着苍白的光。",
-];
-
-/** 重伤 — 明显影响行动能力 */
-const DEEP_TEMPLATES = [
-  "{weapon}深深嵌入{defender}的身体，抽出时带出一股温热黏腻的液体。{defender}踉跄后退，呼吸变得粗重。",
-  "骨肉被撕裂的闷响。{weapon}在{defender}的躯干上留下了一道狰狞的创口——鲜血正从那里汩汩涌出。",
-  "这一击几乎贯穿了{defender}的防御。伤口深可见骨，暗红的血液正沿着{defender}的身体流到地面上。",
-  "{weapon}重重击中了{defender}——可以听到骨头发出不妙的声响。{defender}的脸色瞬间变得煞白。",
-];
-
-/** 致命伤 — 濒死，意识模糊 */
-const GRIEVOUS_TEMPLATES = [
-  "{weapon}穿透了{defender}的身体。露出的刃尖上挂着温热的血液，一滴滴落在地上。{defender}发出一声不似人声的哀嚎。",
-  "毁灭性的一击。{defender}的身体被{weapon}撕开巨大的创口——透过翻卷的皮肉，可以看到内部的骨骼与脏器。",
-  "{defender}遭受了致命创伤。鲜血以可怕的速率喷涌而出，{defender}的双腿开始发软，视线涣散。",
-  "空气中弥漫着铁锈般的血腥味。{defender}低头看了一眼自己胸前的伤口——那一眼中充满了不可置信。",
-];
-
-/** 斩杀 — HP归零 */
-const LETHAL_TEMPLATES = [
-  "{weapon}精准地没入{defender}的要害部位。{defender}甚至没能发出声音——只是无声地瘫软下去，像一具被剪断提线的木偶。",
-  "致命一击。{defender}发出一声短促的气音，然后向后倒去。鲜血迅速在身下汇聚成一滩深色的水洼。",
-  "{weapon}斩断了{defender}的生命线。身体倒地的声音沉闷而沉重，仿佛某种容器被打翻。",
-  "战斗结束了。{defender}以一种不自然的角度瘫倒在地上，{weapon}造成的创口仍在缓缓渗出暗红色的液体。",
-];
-
-/** 未命中 */
-const MISS_TEMPLATES = [
-  "{weapon}划破空气，在{defender}身侧掠过——只差不到一寸。",
-  "{defender}侧身闪避，{weapon}几乎擦着皮肤飞过。",
-  "攻击落空。{weapon}击中了一旁的墙壁/地面，溅起碎片与尘土。{defender}已经移动到了另一个位置。",
-  "{attacker}的突击被{defender}一个后撤步化解。{weapon}在空气中挥了个空。",
-];
-
-const CRIT_PREFIX = ["致命的暴击！", "精准命中！", ""];
+/**
+ * 战斗一击的结果 —— 只取叙事需要的字段，不绑定某一套规则引擎的
+ * `CombatResult` 类型。D&D 侧的 `CombatResult`（types.ts）结构上超集这个
+ * 接口，原调用点不用改；CoC 侧（play/combat.ts、GameSession）不必先拼出
+ * 一个完整的 D&D 战斗结果对象才能叫这个函数。
+ */
+export interface NarrativeOutcome {
+  hit: boolean;
+  crit?: boolean;
+  damage: number;
+  result: "kill" | "wound" | "miss";
+}
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-/** 取 UnifiedCombatResult 的 critical 字段（兼容 crit/critical 命名） */
-function isCritical(result: any): boolean {
-  return !!(result.critical ?? result.crit ?? false);
+function fillTemplate(t: string, attacker: string, defender: string, weapon: string): string {
+  return t
+    .replace(/\{attacker\}/g, attacker)
+    .replace(/\{defender\}/g, defender)
+    .replace(/\{weapon\}/g, weapon);
 }
 
 // ============================================================
@@ -89,46 +53,38 @@ function templateNarrative(
   attackerName: string,
   defenderName: string,
   weaponName: string,
-  damage: number,
+  outcome: NarrativeOutcome,
   maxHp: number,
-  hit: boolean,
-  isKill: boolean,
-  isCrit: boolean,
+  fumble: boolean,
 ): string {
   const weapon =
     weaponName === "shortsword" ? "短刀"
     : weaponName === "longsword" ? "长刀"
-    : weaponName === "greatsword" ? "巨剑"
     : weaponName === "dagger" ? "匕首"
     : weaponName === "longbow" ? "长弓"
-    : weaponName === "shortbow" ? "短弓"
-    : weaponName === "club" ? "棍棒"
     : weaponName === "spear" ? "长矛"
     : weaponName === "fist" ? "拳头"
     : weaponName;
 
   let template: string;
-  if (!hit) {
-    template = pick(MISS_TEMPLATES);
-  } else if (isKill) {
+  if (!outcome.hit) {
+    template = pick(fumble ? FUMBLE_TEMPLATES : MISS_TEMPLATES);
+  } else if (outcome.result === "kill") {
     template = pick(LETHAL_TEMPLATES);
   } else {
-    const severity = calcSeverity(damage, maxHp);
+    const severity = calcSeverity(outcome.damage, maxHp);
     switch (severity) {
-      case "scratch":   template = pick(SCRATCH_TEMPLATES); break;
-      case "flesh":     template = pick(FLESH_TEMPLATES); break;
-      case "deep":      template = pick(DEEP_TEMPLATES); break;
-      case "grievous":  template = pick(GRIEVOUS_TEMPLATES); break;
-      default:          template = pick(FLESH_TEMPLATES); break;
+      case "scratch":  template = pick(SCRATCH_TEMPLATES); break;
+      case "flesh":    template = pick(FLESH_TEMPLATES); break;
+      case "deep":     template = pick(DEEP_TEMPLATES); break;
+      case "grievous": template = pick(GRIEVOUS_TEMPLATES); break;
+      default:         template = pick(FLESH_TEMPLATES); break;
     }
   }
 
-  let narrative = template
-    .replace(/\{attacker\}/g, attackerName)
-    .replace(/\{defender\}/g, defenderName)
-    .replace(/\{weapon\}/g, weapon);
+  let narrative = fillTemplate(template, attackerName, defenderName, weapon);
 
-  if (isCrit && hit) {
+  if (outcome.crit && outcome.hit) {
     narrative = pick(CRIT_PREFIX) + narrative;
   }
 
@@ -157,7 +113,7 @@ async function generateNarrativeLLM(
   attackerName: string,
   defenderName: string,
   weaponName: string,
-  result: CombatResult,
+  outcome: NarrativeOutcome,
   maxHp: number,
   llm: LLMClient
 ): Promise<string> {
@@ -168,18 +124,18 @@ async function generateNarrativeLLM(
     : weaponName === "longbow" ? "长弓"
     : weaponName;
 
-  const severity = result.hit ? calcSeverity(result.damage, maxHp) : null;
+  const severity = outcome.hit ? calcSeverity(outcome.damage, maxHp) : null;
 
   const userPrompt = [
     `攻击者: ${attackerName}`,
     `目标: ${defenderName}`,
     `武器: ${weapon}`,
-    `命中: ${result.hit ? "是" : "否"}`,
-    `暴击: ${result.crit ? "是" : "否"}`,
-    `伤害: ${result.damage} 点 (${result.damage_type})`,
+    `命中: ${outcome.hit ? "是" : "否"}`,
+    `暴击: ${outcome.crit ? "是" : "否"}`,
+    `伤害: ${outcome.damage} 点`,
     `目标最大HP: ${maxHp}`,
     `伤势严重度: ${severity ?? "无"}`,
-    `结果: ${result.result === "kill" ? "击杀" : result.result === "wound" ? "受伤" : "未命中"}`,
+    `结果: ${outcome.result === "kill" ? "击杀" : outcome.result === "wound" ? "受伤" : "未命中"}`,
   ].join("\n");
 
   const raw = await llm.chat(
@@ -218,29 +174,39 @@ export function setNarratorLLM(client: LLMClient | null) {
   _narratorLLM = client;
 }
 
+/** 供调用方判断「要不要设」，避免多个会话互相顶掉彼此设的客户端（同 intent.ts 的做法）。 */
+export function narratorLLMConfigured(): boolean {
+  return _narratorLLM !== null;
+}
+
 /**
- * 生成战斗叙事文本
- * @param maxHp 目标最大生命值（用于计算伤势严重度）
+ * 生成战斗叙事文本。
+ *
+ * @param maxHp 目标最大生命值（用于计算伤势严重度）—— **必传**。
+ *   原先这里有默认值 10，而唯一接了这个函数的调用点（CLI）没传，
+ *   于是分档基数永远是 10：打 30 HP 的怪物造成 6 点伤害会被算成
+ *   deep（重伤），实际只是 flesh（皮肉伤）。改成必传，让编译器堵住这条路。
+ * @param opts.fumble CoC 规则下「大失败」比普通落空更狼狈（攻击者自己
+ *   出丑），走单独的文案池。不传則按普通落空处理。
  */
 export async function generateNarrative(
   attackerName: string,
   defenderName: string,
   weaponName: string,
-  result: CombatResult,
-  maxHp: number = 10,
+  outcome: NarrativeOutcome,
+  maxHp: number,
+  opts?: { fumble?: boolean },
 ): Promise<string> {
   if (_narratorLLM) {
     try {
       return await generateNarrativeLLM(
-        attackerName, defenderName, weaponName, result, maxHp, _narratorLLM
+        attackerName, defenderName, weaponName, outcome, maxHp, _narratorLLM
       );
     } catch (err) {
       // console.warn(`  ⚠ LLM 叙事失败，退化到模板: ${(err as Error).message.slice(0, 80)}`);
     }
   }
   return templateNarrative(
-    attackerName, defenderName, weaponName,
-    result.damage, maxHp,
-    result.hit, result.result === "kill", isCritical(result),
+    attackerName, defenderName, weaponName, outcome, maxHp, opts?.fumble ?? false,
   );
 }

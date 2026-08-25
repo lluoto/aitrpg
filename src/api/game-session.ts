@@ -4,6 +4,7 @@ import { loadConfig, type LLMConfig } from "../config";
 import { LLMClient, type LLMLike } from "../llm/client";
 import { MockLLMClient } from "../llm/mock-client";
 import { parseIntent, setIntentLLM, intentLLMConfigured } from "../llm/intent";
+import { generateNarrative, setNarratorLLM, narratorLLMConfigured } from "../llm/narrator";
 // llmEnabled 是「该不该打网络」的**唯一**判据，别在别处重写一份 ——
 // play-module.ts:101 记着上次抄第二份的代价。
 import { llmEnabled } from "../play-module";
@@ -250,6 +251,12 @@ export class GameSession {
     //      多绕一圈再回落 regex。
     if (this.llm instanceof LLMClient && llmEnabled() && !intentLLMConfigured()) {
       setIntentLLM(this.llm);
+    }
+    // 战斗叙述同理：`llm/narrator.ts` 的 `_narratorLLM` 也是模块级单例，
+    // 原先只有 CLI 会设（`index.ts:55`），网页端战斗只印
+    // 「造成 N 点伤害」，没有画面。守卫逻辑与上面 intent 那份一致。
+    if (this.llm instanceof LLMClient && llmEnabled() && !narratorLLMConfigured()) {
+      setNarratorLLM(this.llm);
     }
 
     this.ruleEngine = new RuleEngine();
@@ -2048,7 +2055,7 @@ export class GameSession {
     );
   }
 
-  private npcCounterAttack(intent: ActionIntent, msg: (s: string) => number): void {
+  private async npcCounterAttack(intent: ActionIntent, msg: (s: string) => number): Promise<void> {
     if (!this.combatActive) return;
     const state = this.world.getCurrentState();
     const enemies = this.aliveEnemies();
@@ -2073,10 +2080,25 @@ export class GameSession {
       Math.floor((this.activeCharacter?.attributes?.dexterity ?? 50) / 2), // 闪避 = DEX/2
     );
 
+    // 武器写死"拳头"：下面这次 adjudicateAttack 传的是 NPC_UNARMED_SKILL，
+    // 判定口径本身就是徒手，叙述不该暗示对方拿着武器。
     if (!result.hit) {
-      msg(`${attacker.name} 向你扑来，被你躲开了。`);
+      const narrative = await generateNarrative(
+        attacker.name, "你", "拳头",
+        { hit: false, damage: 0, result: "miss" },
+        player.maxHp,
+      );
+      msg(`${attacker.name} 向你扑来，被你躲开了。📖 ${narrative}`);
       return;
     }
+    // result 恒为 "wound"：CoC 里 HP 归零是昏迷/濒死，不是死亡（还能被急救
+    // 拉回来），LETHAL 文案池写的是"倒下"场景，不该用在这里让玩家误以为角色死了。
+    const narrative = await generateNarrative(
+      attacker.name, "你", "拳头",
+      { hit: true, crit: false, damage: result.damage, result: "wound" },
+      player.maxHp,
+    );
+    msg(`📖 ${narrative}`);
     this.resolveHit(player, result.damage, msg);       // 玩家也吃重伤/流血/致残
     if (this.activeCharacter) this.activeCharacter.hp = player.hp;
     msg(`${attacker.name} 击中了你，造成 ${result.damage} 点伤害（你剩余 ${player.hp}/${player.maxHp}）`);
@@ -2086,7 +2108,7 @@ export class GameSession {
     }
   }
 
-  private handleAttack(intent: ActionIntent, msg: (s: string) => number): boolean {
+  private async handleAttack(intent: ActionIntent, msg: (s: string) => number): Promise<boolean> {
     const skill = 50;
     let effectiveRoll = Math.floor(Math.random() * 100) + 1;
     let luckSpendMsg = "";
@@ -2113,20 +2135,35 @@ export class GameSession {
     const hitMsg = isFumble ? "大失败！" : isCrit ? "暴击" : success ? "命中" : "未命";
 
     msg(`⚔️ 攻击检查d100=${effectiveRoll} (目标=${skill}%)${luckSpendMsg} → ${hitMsg}${dmg > 0 ? `，造成 ${dmg} 点伤害` : ""}`);
-    if (dmg > 0) {
-      const state = this.world.getCurrentState();
-      const enemies = Object.values(state.entities).filter(e => (e.type === "monster" || e.type === "npc") && e.hp > 0);
-      const target = this.pickTarget(intent, enemies);
-      if (target) {
+    const state = this.world.getCurrentState();
+    const enemies = Object.values(state.entities).filter(e => (e.type === "monster" || e.type === "npc") && e.hp > 0);
+    const target = this.pickTarget(intent, enemies);
+    if (target) {
+      const weapon = intent.weapon || "拳头";
+      if (dmg > 0) {
+        const narrative = await generateNarrative(
+          "你", target.name, weapon,
+          { hit: true, crit: isCrit, damage: dmg, result: target.hp - dmg <= 0 ? "kill" : "wound" },
+          target.maxHp,
+        );
+        msg(`📖 ${narrative}`);
         this.resolveHit(target, dmg, msg);
         msg(`${target.name} 剩余 HP: ${target.hp}/${target.maxHp}`);
+      } else {
+        const narrative = await generateNarrative(
+          "你", target.name, weapon,
+          { hit: false, damage: 0, result: "miss" },
+          target.maxHp,
+          { fumble: isFumble },
+        );
+        msg(`📖 ${narrative}`);
       }
     }
     // ⚠ `combatActive = true` 原先**只写在 `act()` 里那段被遮死的代码**（L1199），
     //   而意图派发抢在它前面 return —— 于是这面旗在真实路径上**永远是 false**。
     //   看得见的症状：`getSuggestions()` 打起来了还在提示「调查四周 / 与 NPC 交流」。
     this.combatActive = this.aliveEnemies().length > 0;
-    this.npcCounterAttack(intent, msg);
+    await this.npcCounterAttack(intent, msg);
     // 打完最后一个敌人就退出战斗，否则这面旗立起来就再也放不下
     if (this.aliveEnemies().length === 0) this.combatActive = false;
     this.lastDiceRoll = { expr: `d100${luckSpendMsg}`, total: effectiveRoll };

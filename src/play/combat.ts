@@ -17,13 +17,16 @@ import { runChase, environmentFromScene } from "./chase";
 import { rollDice } from "./trap-util";
 import { isDowned } from "./run-state";
 import type { Cast } from "./run-state";
+import { generateNarrative } from "../llm/narrator";
 
 /**
  * Boss 遭遇战（本模组是 Mi-Go）。条件不满足就直接返回，不产生任何播报。
  *
- * ⚠ 已知缺口：**这场战斗不扣玩家 HP**。调查员轮流攻击、敌人只会掉血或逃走，
- * 玩家这边只有疲劳惩罚骰，没有受伤路径 —— `applyDamage` 的调用点全在陷阱段。
- * 后果是伤势/惩罚骰那套机制在战斗里完全用不上。这是搬运时发现的，不在本次改动范围。
+ * ⚠ 过期注释更正：这里原先写着「玩家这边没有受伤路径，`applyDamage`
+ * 调用点全在陷阱段」——那是敌人还手功能接线**之前**的状态。现在
+ * `enemyAttack()`（本文件下方）真的会调 `applyDamage` 打玩家，伤势/惩罚骰
+ * 那套机制在战斗里也生效了。旧注释留到现在没人更新，本身就是本仓库
+ * 反复在修的那类病：写了后续修复，却没回头改前面说「没做」的话。
  */
 /**
  * 从 NPC 描述里读战斗数值。模组 mi_go 那行原文：
@@ -113,22 +116,13 @@ if (migoEncounter) {
       "双手握枪对准{enemy}的翼膜扣动扳机！",
     ],
   };
-  const dmgFlavors: Record<string, string[]> = {
-    graze: ["只是擦破了甲壳表层，几乎没有实质伤害。", "子弹在甲壳上弹开，留下一道浅痕。"],
-    light: ["命中了！在甲壳上留下了一道裂痕。", "打击奏效，{enemy}的甲壳出现了细纹。"],
-    medium: ["有力的打击！甲壳出现明显裂纹，荧光绿的血液渗了出来！", "重击！{enemy}的身体猛地一震，体液渗出！"],
-    heavy: ["一记重击！{enemy}发出一声痛苦的嘶叫，墨绿色的体液喷溅而出！", "猛烈的攻击！{enemy}的甲壳碎裂，体液横流！"],
-  };
-  const missTexts: Record<string, string[]> = {
-    normal: ["的攻击被{enemy}灵巧地躲开了。", "的攻击落空了——{enemy}以不符合体型的速度闪避了。", "的攻击划过空气，没能碰到{enemy}。"],
-    fumble: ["的攻击落空，反而一个踉跄差点摔倒！", "用力过猛失去平衡，差点扑倒在地！"],
-  };
-  const enemyAttackFlavors = [
-    "猛地探出一只覆着细毛的钳肢，朝你们抓来！",
-    "膜翼一振，整个身体贴地扑了上来！",
-    "发出一声刺耳的鸣叫，钳肢劈头砸下！",
-    "以不符合体型的速度欺近，钳肢横扫过来！",
-  ];
+  // 战斗叙述原先在这里另有一套本地文案池（dmgFlavors/missTexts/
+  // enemyAttackFlavors），按伤害**绝对值**分四档，与伤势系统按
+  // **比例**分档（combat/wound-effects.ts 的 calcSeverity）口径不一致——
+  // 同样 6 点伤害，打 12 HP 和打 20 HP 的目标文案相同，但机制上一个是
+  // 重伤一个是皮肉伤。已整体移除，统一改走 `llm/narrator.ts`
+  // （CLI 那边一直在用的同一套：五档比例分级 + LLM 生成 + 模板兜底）。
+  const enemyWeapon = "钳肢"; // 本文件是 Mi-Go 专属遭遇战，武器名不从模组数据读
   function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
 
   // ── 疲劳系统 ──
@@ -142,7 +136,7 @@ if (migoEncounter) {
   const fatigue: Record<string, number> = { [p0.shortName]: 0, [p1.shortName]: 0 };
 
   // 单名调查员攻击一次
-  function pcAttack(combatant: typeof pcCombatants[0]): number {
+  async function pcAttack(combatant: typeof pcCombatants[0]): Promise<number> {
     const { name, pc, fightingKey, firearmsKey } = combatant;
     const fightVal = (pc.skillValues as Record<string, number>)[fightingKey] ?? 25;
     const gunVal = (pc.skillValues as Record<string, number>)[firearmsKey] ?? 20;
@@ -205,13 +199,23 @@ if (migoEncounter) {
       let dmg = 1 + Math.floor(Math.random() * dieMax);
       if (r.successLevel === "critical") dmg += dieMax;
       else if (r.successLevel === "extreme") dmg += Math.floor(dieMax / 2);
-      const dmgTier = dmg >= 7 ? "heavy" : dmg >= 4 ? "medium" : dmg >= 2 ? "light" : "graze";
-      say(`  ${fmt(pick(dmgFlavors[dmgTier]))}（${dmg}点伤害）`);
+      const willKill = migoHp - dmg <= 0;
+      const narrative = await generateNarrative(
+        name, enemyName, usingGun ? "左轮手枪" : "拳头",
+        { hit: true, crit: r.successLevel === "critical", damage: dmg, result: willKill ? "kill" : "wound" },
+        migoMaxHp,
+      );
+      say(`  ${narrative}（${dmg}点伤害）`);
       emit({ type: "pc-attack", actor: name, skill: skillLabel, success: true, damage: dmg });
       return dmg;
     } else {
-      const missPool = r.successLevel === "fumble" ? missTexts.fumble : missTexts.normal;
-      say(`  ${name}${fmt(pick(missPool))}`);
+      const narrative = await generateNarrative(
+        name, enemyName, usingGun ? "左轮手枪" : "拳头",
+        { hit: false, damage: 0, result: "miss" },
+        migoMaxHp,
+        { fumble: r.successLevel === "fumble" },
+      );
+      say(`  ${narrative}`);
       emit({ type: "pc-attack", actor: name, skill: skillLabel, success: false, damage: 0 });
       return 0;
     }
@@ -226,11 +230,11 @@ if (migoEncounter) {
    * 伤害走 `applyDamage` —— 这样伤势分级、重伤体质检定、惩罚骰
    * 那一整套才会在战斗里生效。原先这套只在陷阱段跑得到。
    */
-  function enemyAttack(target: typeof pcCombatants[0]): void {
+  async function enemyAttack(target: typeof pcCombatants[0]): Promise<void> {
     const { name, pc } = target;
     if (pc.hp <= 0) return; // 已经倒下的不再挨打
 
-    say(`\n${enemyName}${pick(enemyAttackFlavors)}`);
+    say(`\n${enemyName}扑向了${name}！`);
     // actorKind="enemy"：播报出来是「➜ 米戈 【格斗】」，与玩家的
     // 「➜ 李默 【格斗(肉搏)】」只差技能名。把攻击者身份写进事件，
     // 判据就不必再从技能名反推——敌人技能改叫「触手」也不会漏。
@@ -253,6 +257,12 @@ if (migoEncounter) {
 
     const dmg = rollDice(enemyStats.damage);
     emit({ type: "enemy-attack", enemy: enemyName, target: name, outcome: "hit", damage: dmg });
+    const narrative = await generateNarrative(
+      enemyName, name, enemyWeapon,
+      { hit: true, crit: atk.successLevel === "critical", damage: dmg, result: "wound" },
+      pc.maxHp,
+    );
+    say(`  ${narrative}`);
     const severity = applyDamage(pc, name, dmg);
 
     // ⚠ 致命伤（≥75% 最大 HP）的**致残描写一直没人播**。
@@ -295,7 +305,7 @@ if (migoEncounter) {
     for (const combatant of pcCombatants) {
       if (migoHp <= 0) break;
       if (isDowned(combatant.pc)) continue;
-      migoHp -= pcAttack(combatant);
+      migoHp -= await pcAttack(combatant);
     }
     if (migoHp <= 0) break;
 
@@ -321,7 +331,7 @@ if (migoEncounter) {
       // 打谁：优先还站着的，都站着就随机 —— 不刻意集火倒下的人
       const standing = pcCombatants.filter(x => x.pc.hp > 0);
       if (standing.length === 0) break;
-      enemyAttack(pick(standing));
+      await enemyAttack(pick(standing));
     }
 
     say("");

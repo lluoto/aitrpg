@@ -561,7 +561,7 @@ async function handleCombat(
   }
 
   // 叙事生成
-  const narrative = await generateNarrative(playerCharacter.name, target.name, weapon, toCombatResult(result));
+  const narrative = await generateNarrative(playerCharacter.name, target.name, weapon, toCombatResult(result), target.maxHp);
   console.log(`  📖 ${narrative}`);
   addMessage("旁白", narrative, "narration");
   turnMessages.push({ speaker: "旁白", content: narrative, type: "narration" });
@@ -800,7 +800,7 @@ async function resolveNPCAction(
   }
 
   // 叙事
-  const narrative = await generateNarrative(npc.name, target.name, weapon, toCombatResult(result));
+  const narrative = await generateNarrative(npc.name, target.name, weapon, toCombatResult(result), target.maxHp);
   console.log(`  ⚔ ${narrative}`);
   addMessage("旁白", narrative, "narration");
   turnMessages.push({ speaker: "旁白", content: narrative, type: "narration" });
