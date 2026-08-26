@@ -1,5 +1,9 @@
-// 律书路由器 — 根据 activeRuleset 分发到对应引擎
+// 规则集路由器 — 根据 activeRuleset 分发到对应引擎
 // 统一接口，玩家/NPC 战斗都走这条路
+//
+// ⚠ 术语订正（docs/todo.json 的 todo-17）：这里原先叫"律书路由器"。
+// 按契约，"律书"是玩家向 KP 提出规则解释/适用请求的**制度**，不是规则
+// 执行器的名字——这个类才是规则执行器（读已提交状态、判定、不受 LLM 支配）。
 
 import { RuleEngine } from "../engine/rule-engine";
 import { CoCEngine, getCalledShotPenalty } from "./coc-engine";

@@ -4,6 +4,23 @@ Date: 2026-08-09
 
 This is a technical risk review, not a legal opinion. Final release decisions should be reviewed by counsel in the intended distribution jurisdictions.
 
+## Remediation status (added after the fact — the audit below is left as a point-in-time record)
+
+Commit `2cea4db` created this document **and executed most of its own remediation list in the same commit**. Read the findings below as "what the risk looked like before the fix," not current state — the risk direction from here is over-caution (this doc reads worse than the repo currently is), not under-caution.
+
+Completed in `2cea4db`:
+
+- Remediation item 2 (remove non-SRD subclasses): `src/character/subclasses-extra.ts` deleted (-83 lines).
+- Remediation item 3 (replace/remove Chaosium-derived concrete content): `src/character/coc-reference.ts` deleted (-76 lines); Pulp Cthulhu variant rules removed (-227 lines).
+- Remediation item 4 (rename the product-facing ruleset to a neutral identifier): `coc7e` renamed to `cosmic-horror` across ~130 sites / 24 files.
+- Remediation item 1 (attribution notice): `NOTICE.md` added (72 lines), with verbatim SRD 5.1 CC-BY-4.0 attribution.
+- A structural guard was added: `src/__tests__/rule-content-boundary.test.ts` asserts the deleted content stays deleted and isn't reintroduced, scanning both `src/` and `tools/` (the latter with an explicit allowlist).
+
+Still open / undecided (not addressed by `2cea4db`, not addressed since):
+
+- Remediation item 5: no written licensing guidance has been obtained from Chaosium for retained Call of Cthulhu compatibility or app features.
+- Remediation item 6's full condition: `NOTICE.md` exists, but "map the retained content line-by-line to an applicable license before treating attribution as sufficient" has not been independently re-verified since the deletions above — the guard test checks that removed content stays removed, not that everything remaining is licensed.
+
 ## Executive conclusion
 
 Free distribution does not automatically avoid copyright or trademark infringement. The repository currently contains a mixture of:

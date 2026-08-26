@@ -99,6 +99,18 @@ interface ConstraintContext {
   text?: string;
   /** 匹配物品名（ItemCheck 时传入） */
   itemName?: string;
+  /**
+   * 当前规则集——先把它传下去，是分流的前置条件（PLAN.md:868-887：
+   * 同一个检索/约束层在 CoC 侧要收紧、在 D&D 侧要放开，调用方必须先
+   * 知道当前规则集才谈得上分流）。
+   *
+   * ⚠ 本轮只做到"传下去"，不做"按它分流"——`ConstraintEngine` 的匹配
+   * 逻辑（`matchesYear`/`matchesScene`）目前不读这个字段，
+   * `DEFAULT_CONSTRAINTS` 里也没有任何一条按规则集区分行为。
+   * 真要分流，得先决定哪些约束该按规则集拆，这是内容决策，不是这次
+   * 接线的范围——这次只保证调用方想读的时候，这个字段已经在场景里。
+   */
+  ruleset?: import("../rules/rules-engine").RulesetId;
 }
 
 // ============================================================
@@ -159,8 +171,11 @@ export class ConstraintEngine {
    * 检查物品名是否命中任何约束。
    * 返回最高优先级命中的 action，或 null（无命中）。
    */
-  checkItem(itemName: string, year?: number, sceneId?: string): ConstraintAction | null {
-    const ctx: ConstraintContext = { year, sceneId, itemName };
+  checkItem(
+    itemName: string, year?: number, sceneId?: string,
+    ruleset?: import("../rules/rules-engine").RulesetId,
+  ): ConstraintAction | null {
+    const ctx: ConstraintContext = { year, sceneId, itemName, ruleset };
     for (const c of this.constraints) {
       if (!this.matchesYear(c, ctx)) continue;
       if (!this.matchesScene(c, ctx)) continue;
@@ -178,8 +193,11 @@ export class ConstraintEngine {
    * 检查对话文本是否命中任何约束。
    * 返回最高优先级命中的 action，或 null（无命中）。
    */
-  checkDialogue(text: string, sceneId?: string): ConstraintAction | null {
-    const ctx: ConstraintContext = { text, sceneId };
+  checkDialogue(
+    text: string, sceneId?: string,
+    ruleset?: import("../rules/rules-engine").RulesetId,
+  ): ConstraintAction | null {
+    const ctx: ConstraintContext = { text, sceneId, ruleset };
     for (const c of this.constraints) {
       if (!this.matchesScene(c, ctx)) continue;
       if (c.matchText) {
@@ -299,7 +317,10 @@ export const DEFAULT_CONSTRAINTS: WorldConstraint[] = [
  * 共享对话安全校验 — 供各 LLM 文本输出点（叙事/开场/对话扩展）统一使用。
  * 命中任一对话约束（meta 词汇 / 时代科技黑名单）时返回处置结果，未命中返回 null。
  */
-export function checkDialogueText(text: string, sceneId?: string): ConstraintAction | null {
+export function checkDialogueText(
+  text: string, sceneId?: string,
+  ruleset?: import("../rules/rules-engine").RulesetId,
+): ConstraintAction | null {
   const engine = new ConstraintEngine(DEFAULT_CONSTRAINTS);
-  return engine.checkDialogue(text, sceneId);
+  return engine.checkDialogue(text, sceneId, ruleset);
 }

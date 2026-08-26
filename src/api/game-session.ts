@@ -1086,8 +1086,11 @@ export class GameSession {
     // 于是遭遇修格斯和遭遇一条野狗对理智的影响完全一样。
     const sightingMsgs: string[] = [];
     this.checkMythosSighting((s) => sightingMsgs.push(s));
+    const economyMsgs: string[] = [];
+    this.tickEconomy((s) => economyMsgs.push(s));
     const turnMessages: AgentMessage[] = [];
     for (const s of sightingMsgs) turnMessages.push({ speaker: "系统", content: s, type: "system" });
+    for (const s of economyMsgs) turnMessages.push({ speaker: "系统", content: s, type: "system" });
     // 供模组宿主适配器把加载期产生的消息投进本回合，见 _turnMessages 的说明
     this._turnMessages = turnMessages;
 
@@ -1932,6 +1935,88 @@ export class GameSession {
       if (r.indefiniteInsanityTriggered) {
         msg(`⚠️ 不定性疯狂（${r.indefiniteLevel ?? ""}）——你已经不是进来时的那个人了。`);
       }
+    }
+  }
+
+  /** 经济回合每 N 个玩家回合推进一次，太密会把纯对话/纯观察也变成经济事件洪流。 */
+  private static readonly ECONOMY_TICK_INTERVAL = 10;
+
+  /**
+   * 政经引擎的时钟。`PoliticoEconomyEngine.advanceRound()` 本身早就是对的
+   * 形状（四个子系统各自推进、汇总成 `EconomyEvent[]`），**缺的只是没人调它**
+   * ——生产代码零调用方，世界装好了但不会自己往前走。
+   *
+   * ⚠ 时钟挂在哪、为什么：三个候选里选了「回合推进」，具体是这个类自己的
+   *   `this.round`（`act()` 顶部 `this.round++`），不是 `world/state.ts` 那个
+   *   同名不同物的 `WorldState.advanceRound()`（那个在 `play/scene-pipeline.ts`
+   *   里，服务的是完全不同的一条入口——剧本杀，不是这个类所在的网页/API 路）。
+   *
+   *   - **选它的理由**：`this.round` 已经在驱动其它周期性子系统
+   *     （`tickStatusEffects()`、`companionManager.newRound()`、
+   *     `advanceTime()`），确定性、每回合必然触发一次，不需要新造一个触发器；
+   *     经济时钟接进同一个位置是复用既有模式，不是另开一条平行的路。
+   *     驱动它的是 `act()` 的调度本身，不是 LLM——LLM 就算参与了意图解析，
+   *     那一步在这之前已经跑完了。
+   *   - **否掉「场景切换」**：太不规律。一场战斗、一串对话、一次纯调查
+   *     可能整场都不换场景，经济会停摆；反过来场景来回跳又会短时间内
+   *     连续触发。世界演化的节奏不该被玩家在场景图上走了几步决定。
+   *   - **否掉「显式 KP 动作」**：需要人记得去点，大多数会话里根本不会有人
+   *     触发，「会自己演化的世界」这句设计初衷就落空了——那是被动挂件，
+   *     不是时钟。
+   *
+   *   节流到每 `ECONOMY_TICK_INTERVAL` 回合一次：势力/市场/政策这层模拟的
+   *   时间尺度是天/周级别，每个玩家动作都推进会把没有剧情实质进展的纯
+   *   对话/观察也算成经济时间，事件噪音与格局漂移速度都会不像话。
+   */
+  private tickEconomy(msg: (s: string) => void): void {
+    if (this.round % GameSession.ECONOMY_TICK_INTERVAL !== 0) return;
+
+    // 经济回合号本身先过闸门——「派生事件必须经规则执行器结算」落在
+    // "要不要推进这一次"这一层：单调递增的整数域，正常情况下闸门总会
+    // 批准，但让经济时钟和 HP/SAN/难度用同一套结算纪律（同一个 applyAction
+    // 入口、同一种 Result<StateDelta, RejectReason> 形状），而不是自己
+    // 另开一条直写的口子——这正是 apply-action.ts 头注释说的「未过闸门的
+    // 域比没有域更糟：它看起来在校验」反过来的那一半：**能过闸门的域，
+    // 就不该绕过闸门直写**。
+    const variable = "economy:round";
+    const currentRound = this.politicoEconomy.round;
+    const nextRound = currentRound + 1;
+    const gateResult = applyAction(
+      boundedIntegerScenario(variable, currentRound, Number.MAX_SAFE_INTEGER),
+      boundedIntegerGateState(variable, currentRound),
+      {
+        kind: "freeform",
+        actor: "system",
+        description: "advance economy round",
+        effects: [{ variable, to: nextRound }],
+      },
+    );
+    if (!gateResult.ok) return; // 结构上不该发生（单调整数域），闸门说不行就不推进
+
+    // causationId 绑定「这一次 GameSession 回合」，不是「这一次经济回合」——
+    // 与 this.round 一一对应，天然防止同一个玩家回合被重复推进两次经济时钟
+    // （例如某处误把 tickEconomy 调用了两遍）：第二次传同一个 causationId，
+    // `advanceRound()` 直接返回空数组，不产生第二批事件。
+    const causationId = `eco:${this.id}:round:${this.round}`;
+    const events = this.politicoEconomy.advanceRound(causationId);
+
+    // 只读已提交状态、只写具名方法——不碰 getCurrentState() 的返回值，
+    // 那是新对象，赋值会静默丢弃（kp-tool-surface-assessment.md §八 记录过
+    // 两次这类事故）。这里全程只调用 world.logEvent()，不做任何赋值。
+    for (const e of events) {
+      this.world.logEvent({
+        round: this.round,
+        timestamp: Date.now(),
+        event_type: "system",
+        description: `[经济] ${e.description}`,
+      });
+    }
+    // 叙述：只把已结算的事件原文报出来，不经过 LLM——这里没有生成、
+    // 没有裁决，纯粹是把 EconomyEvent.description（子系统算好的确定性文本）
+    // 转成一条系统消息。LLM 要参与只能是"把这些事件写得更好看"，不能是
+    // "决定发生了什么"——本轮没有接那一层，就没有这个风险。
+    if (events.length > 0) {
+      msg(`🌍 世界继续运转（经济回合第 ${this.politicoEconomy.round} 轮）：${events.length} 件大事发生了。`);
     }
   }
 

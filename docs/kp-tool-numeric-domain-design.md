@@ -61,15 +61,17 @@ credit rating is also an integer range. Inventory, weapons, armor, and scene
 selection remain different work: they are open collections or dynamically
 registered identifiers, not numeric domains.
 
-## Sequencing
+## Sequencing — done
 
-`setDifficulty` is the enum pilot (Phase 3.1). Until this numeric design is
-implemented and its RED/GREEN tests pass, `setPlayerHp`, `setPlayerSan`, and
-`applyDamage` remain direct writes and bypass the gate. This is intentional:
-Rule 7 requires surfacing the boundary rather than pretending the enum gate
-validates numeric state.
+> This section originally said `setPlayerHp`, `setPlayerSan`, and `applyDamage`
+> still bypass the gate and described the numeric-domain work as "the next
+> slice." That was true when this doc was written but is stale now: all three
+> are wired. `StateDomain` (the tagged union above) lives in `apply-action.ts`
+> (around lines 42-44); `game-session.ts` calls the gate at the three sites
+> for `setPlayerHp`, `setPlayerSan`, and `applyDamage` (around lines 894, 917,
+> 991). `apply-action.ts`'s own header comment was corrected for this in
+> commit `02485f9` — this doc was the one file that didn't get updated
+> alongside it.
 
-The next slice is: add the tagged domain/value union to `apply-action.ts`, add
-numeric table tests (bounds, fractional values, projection), then route
-`setPlayerHp` before SAN/damage. HP is first because its authoritative state
-already lives in `WorldStateManager`; SAN still has the `SanityEngine` cache.
+`setDifficulty` was the enum pilot (Phase 3.1); the integer domain above
+followed the same shape once it landed.

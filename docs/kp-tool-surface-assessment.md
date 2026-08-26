@@ -73,7 +73,7 @@ BFCL-V4 数据（Qwen3.5-4B 50.3 / 9B 66.1，用户提供）指向的判断成�
 1. **真相源存在，但不被强制。** `WorldStateManager` 已声明为唯一真相源，实际只有 HP 与伤害写入它；SAN、物品、武器停留在进程内 Map——重启即失，KP 与规则引擎都看不到。校验层必须先有一个「所有写入都必须经过的地方」，才谈得上校验转移是否合法。
 2. **没有统一写入口。** 9 个 mutation 方法 + 6 个 HTTP KP 操作各自直写，`apply_action` 没有落点。
 3. **没有幂等/重复触发防护。** 备忘录 §三.2 明确要求「事件是否已发生，避免重复触发」「SAN 奖励是否已经结算」，当前无对应记录。
-4. **`game-session.ts` 已 2022 行。** 25 个 handler 与 9 个 mutator 同处一文件，是上述三点的物理成因。`apply_action` 收敛与该文件拆分是同一件事。
+4. **`game-session.ts` 已 2920 行。** 25 个 handler 与 9 个 mutator 同处一文件，是上述三点的物理成因。`apply_action` 收敛与该文件拆分是同一件事。
 
 ---
 
@@ -98,7 +98,7 @@ BFCL-V4 数据（Qwen3.5-4B 50.3 / 9B 66.1，用户提供）指向的判断成�
 ### 阶段 3：把写入路径收束到闸门后
 - 逐个改写 mutation 方法与 HTTP KP 操作，使其经由 `applyAction()`。
 - 每改一个跑一次全量测试，单独提交，便于二分回滚。
-- 顺带把 `game-session.ts` 中相关 handler 按职责迁出，缓解 2022 行问题。
+- 顺带把 `game-session.ts` 中相关 handler 按职责迁出，缓解 2920 行问题。
 
 **验收标准（已按实跑修订）**：初稿写的是「`git grep` 确认无绕过闸门的直写」。
 实跑后这条不成立——它会逼出伪造的取值域，反而制造新的静默失效。修订为：
@@ -145,23 +145,17 @@ BFCL-V4 数据（Qwen3.5-4B 50.3 / 9B 66.1，用户提供）指向的判断成�
 
 排查闸门迁移时顺带发现的。这些不是缺陷，是**未完成的接线**——代码、数据、测试都在，只是没有任何生产路径调用它们。记在这里是为了避免两种误判：以为它们在工作，或者以为它们不存在而重新造一遍。
 
-**1. 调查子系统（`InvestigationEngine`）**
+**1. 调查子系统（`InvestigationEngine`）— 已接线**
 
-14 个公开方法，生产代码只调用 2 个：`getSceneClues()` 与 `registerSceneClue()`（均在 `game-session.ts`）。核心的 `investigate()` 与 `investigateCoC()` 在生产代码里没有调用方，随之未接线的还有 `markDiscovered` / `isDiscoveredBy` / `getDiscoveredBy` / `resetAttempts` / `getUndiscoveredSceneClues` / `setDifficultyProfile` / `addClueType` 等。
+> 此条最初写作「核心的 `investigate()` 与 `investigateCoC()` 在生产代码里没有调用方」，是错的，且是本文写完之后的多轮修复陆续接上的——`investigate()` 在 `index.ts:722`、`investigateCoC()` 在 `index.ts:678` 与 `game-session.ts:1891` 都有调用方。同一轮里 `setDifficultyProfile()` 也接上了（`game-session.ts:1049`），不再恒为 null。
 
-注意区分「没接线」与「没写完」：`investigateCoC()` 有专门的 `investigation-coc.test.ts` 覆盖（9 处调用，含成功层级、SAN 扣减、重复发现、失败重试），逻辑是完整且验证过的。缺的只是从游戏流程调用它这一步——不要当成死代码删掉。
+注意区分「没接线」与「没写完」：`investigateCoC()` 有专门的 `investigation-coc.test.ts` 覆盖（9 处调用，含成功层级、SAN 扣减、重复发现、失败重试），逻辑是完整且验证过的，接线之前就已经是这样。
 
-后果：技能检定、线索发现判定、难度缩放全部不参与实际游戏；线索目前只被注册和列出用于显示。
+一个连带事实（接线时一并修的）：`investigateCoC()` 里 `sanLost` 算完后被直接拼进给玩家看的叙述（`【SAN -N】`）并随结果返回，一度没有任何消费方把它扣到 SanityEngine 上——「叙述说掉了理智、数值没动」，与 §八 记录的「返回 success 却什么都没做」同一族，现已随接线一起修。
 
-一个连带事实：`investigateCoC()` 里 `sanLost` 算完后被直接拼进给玩家看的叙述（`【SAN -N】`）并随结果返回，但**没有任何消费方把它扣到 SanityEngine 上**。一旦接线，必须同时接上扣除，否则就是「叙述说掉了理智、数值没动」——与 §八 记录的「返回 success 却什么都没做」同一族。
+**2. 神话生物的 SAN 消耗（`NPCCombatEngine.getSanCost`）— 已接线**
 
-另注：`setDifficultyProfile()` 无人调用，所以 `difficultyProfile` 恒为 null。但这不构成崩溃——`investigateCoC()` 读的是私有 getter `effectiveProfile`，它在 null 时回落到一份完整的 medium 画像。后果只是难度倍率与惩罚骰恒为默认值，接线时补上 `setDifficultyProfile()` 即可让模组难度真正生效。
-
-**2. 神话生物的 SAN 消耗（`NPCCombatEngine.getSanCost`）**
-
-`coc-npc.yaml` 为每种生物定义了 `san_cost`（修格斯 `1d6/1d20`、深潜者 `0/1d6` 等），`getSanCost()` 读它——但该方法零调用方。
-
-后果：遭遇神话生物从不触发它自己的 SAN 值。当前实际生效的 SAN 路径只有三条：玩家主动 `san_check`（固定默认 `1/1d6`，与看到什么无关）、阅读魔法书、以及调查线索（而调查本身未接线，见上条）。
+> 此条最初写作「该方法零调用方」，同样是本文写完之后的修复接上的：`getSanCost()` 现在在 `game-session.ts:1924` 有调用方，遭遇 `coc-npc.yaml` 里定义了 `san_cost` 的神话生物（修格斯 `1d6/1d20`、深潜者 `0/1d6` 等）会触发对应的 SAN 检定。
 
 **3. CoC 角色创建系统（`coc-character.ts`）— 已接线**
 
@@ -179,7 +173,7 @@ BFCL-V4 数据（Qwen3.5-4B 50.3 / 9B 66.1，用户提供）指向的判断成�
 
 `MythosModuleLoader` 的宿主契约声明 `skills?: Record<string, number>`，模组也确实传了进来，但 `entities` 表**没有 skills 列**，`upsertEntity` 的 SQL 里也没有它——整份技能数据在落库时被丢弃。
 
-与 §八 的关系：这三条都不会报错、不会让测试变红，只会让「本该发生的事」安静地不发生。第 1、2 条的接线点都在 `game-session.ts`，且都需要先做玩法决定（多久检定一次、遭遇即扣还是首次遭遇才扣），不属于纯接线工作。
+与 §八 的关系：本节最初记的四条都属于「不会报错、不会让测试变红，只会让『本该发生的事』安静地不发生」——现在只剩第 4 条（NPC 技能字段）还是这个状态；第 1、2、3 条都已在本文之后的多轮修复里接上。
 
 ---
 
@@ -202,10 +196,10 @@ BFCL-V4 数据（Qwen3.5-4B 50.3 / 9B 66.1，用户提供）指向的判断成�
 
 ## 八、一条来自本次实跑的经验
 
-本轮修复中出现过一次真实回归：`MythosModuleLoader` 通过 `(host.world as any).getDatabase()` 依赖了宿主契约里从未声明的能力，宿主换成窄适配器后运行时变为 `undefined`，被 `catch` 降级成一行警告，模组场景出口整段失效。类型检查与 710 个测试全绿，只有真实跑团暴露了它。
+本轮修复中出现过一次真实回归：`MythosModuleLoader` 通过 `(host.world as any).getDatabase()` 依赖了宿主契约里从未声明的能力，宿主换成窄适配器后运行时变为 `undefined`，被 `catch` 降级成一行警告，模组场景出口整段失效。类型检查与全量测试全绿（本文写于 2026-08-12，早于 `docs/test-baseline.json` 开始记基线，具体条数已不可考——条数只会继续变，不再写死），只有真实跑团暴露了它。
 
 这对 `apply_action` 设计的直接含义：**闸门的能力面必须显式声明并被类型约束，任何 `as any` 形式的隐式依赖都会在替换实现时静默断裂**。同时，闸门内的失败必须结构化上报，而不是降级成一行文本警告——否则与当前 `catch` 吞异常是同一类问题。
 
-写完本文后立即发现同类的第二例，且更严重：`setScene()` 与 `handleGenerateStory()` 都用 `world.getCurrentState().scene = id` 表达「切换场景」，而 `getCurrentState()` 每次都新建并返回一个对象，赋值全部落在临时对象上随即被丢弃。数据库中的 `scenes.is_active` 从未变更，KP 面板的「切换场景」按钮完全无效，后端却仍返回 `success: true`。类型检查与 710 个测试同样全绿。
+写完本文后立即发现同类的第二例，且更严重：`setScene()` 与 `handleGenerateStory()` 都用 `world.getCurrentState().scene = id` 表达「切换场景」，而 `getCurrentState()` 每次都新建并返回一个对象，赋值全部落在临时对象上随即被丢弃。数据库中的 `scenes.is_active` 从未变更，KP 面板的「切换场景」按钮完全无效，后端却仍返回 `success: true`。类型检查与全量测试同样全绿。
 
 两例合起来指向同一条设计约束：**真相源只应暴露「写入方法」，不应暴露「看起来能写的快照」**。`getCurrentState()` 返回可变对象，本身就在邀请这类错误。因此 `apply_action` 的返回值应当是不可变的 `StateDelta`，对它的任何赋值都应被类型系统拒绝，而不是静默丢弃；写入能力只经由具名方法暴露。

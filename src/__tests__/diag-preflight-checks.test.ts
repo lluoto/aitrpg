@@ -10,6 +10,7 @@ import {
   scanImports, importPointsTo, findReverseImports,
   findShellRisks, judgeProcess, parseTestOutput, judgeTestCount,
   referencedScripts, judgeScriptRefs, generatedDocs, resolveRef,
+  referencedRepoPaths, LIVE_DOCS,
   boolReturningNames, findDroppedReturns, findSilentCatches,
 } from "../diagnostics/source-scan";
 
@@ -423,6 +424,51 @@ describe("检查 7 · 文档叫人跑的脚本", () => {
       // "clue-check.ts" 不该被 "old-clue-check.ts" 之类的候选顶替；
       // resolveRef 要求 "/" + ref 精确收尾，不是随便包含。
       expect(resolveRef("clue-check.ts", ["src/play/old-clue-check.ts"])).toBe(false);
+    });
+  });
+
+  // ── tier-2：preflight 第 7 项扩到手写但载荷的文档 ──
+  //
+  // 起因：手写文档（不是脚本生成的）也在被当成设计依据引用，但没有
+  // `generatedDocs()` 那层保护——docs/index-world-model.md、
+  // docs/kp-tool-surface-assessment.md 等 8 份。收窄规则：只认带仓库
+  // 前缀（poc/、src/、scripts/、docs/、frontend/、tools/）**且带脚本
+  // 扩展名**的反引号路径——第一版只做前缀收窄，把「目录」「历史对比用的
+  // .md/.txt 数据文件」也当成引用检查，15 条报告里 14 条是这类噪声。
+  describe("referencedRepoPaths —— tier-2 手写载荷文档的收窄规则", () => {
+    test("**不应报**：poc/ 前缀能反查到仓库内真实文件", () => {
+      const refs = referencedRepoPaths("参见 `poc/src/api/game-session.ts:1049`");
+      expect(refs).toEqual(["src/api/game-session.ts"]);
+      expect(resolveRef(refs[0]!, ["src/api/game-session.ts"])).toBe(true);
+    });
+
+    test("**不应报**：无前缀的裸文件名被跳过——这是收窄规则的核心", () => {
+      // 跟 tier-1 的 referencedScripts 不一样：tier-1 里裸文件名要报
+      // （`_diag-fuzz.ts` 就是这么抓到的），tier-2 反过来要跳过它——
+      // 依据是 index-world-model.md:7 自己声明「非 poc/ 开头的路径
+      // 跨出了 git 仓库」，没有前缀就不保证在仓库里，不该假装能验它。
+      expect(referencedRepoPaths("参见 `_diag-fuzz.ts` 与 `some-random-name.ts`")).toEqual([]);
+    });
+
+    test("**应报**：带前缀但文件已不存在——本轮抓到的真事", () => {
+      const refs = referencedRepoPaths("旧路径见 `tools/_audit-backup.ts`");
+      expect(refs).toEqual(["tools/_audit-backup.ts"]);
+      // 磁盘上真实存在的候选里没有任何一个以 "/tools/_audit-backup.ts" 结尾
+      expect(resolveRef(refs[0]!, ["scripts/diag/audit-backup.ts"])).toBe(false);
+    });
+
+    test("干扰：目录引用（结尾是 /，没有扩展名）不算——那是在描述目录布局，不是文件是否存在", () => {
+      expect(referencedRepoPaths("产物写到 `tools/modules/raw/` 目录下")).toEqual([]);
+    });
+
+    test("干扰：非脚本扩展名（.md/.txt）不算——历史对比记录本身就在断言\"这份不存在\"", () => {
+      expect(referencedRepoPaths("对比 `src/module/calibration-report.md` 与 `src/module/raw/section_18.txt`")).toEqual([]);
+    });
+
+    test("LIVE_DOCS 清单齐了 8 份，且不含 rules-licensing-audit.md（那份按时点审计豁免）", () => {
+      expect(LIVE_DOCS.length).toBe(8);
+      expect(LIVE_DOCS).not.toContain("docs/rules-licensing-audit.md");
+      expect(LIVE_DOCS).toContain("docs/index-world-model.md");
     });
   });
 });

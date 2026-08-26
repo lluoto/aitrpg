@@ -32,7 +32,7 @@ describe("PoliticoEconomyEngine", () => {
   });
 
   it("should advance round without error", () => {
-    const events = engine.advanceRound();
+    const events = engine.advanceRound("test-tick-1");
     expect(Array.isArray(events)).toBe(true);
     const state = engine.getBriefState();
     expect(state).toBeDefined();
@@ -77,7 +77,7 @@ describe("PoliticoEconomyEngine", () => {
   it("should generate economic events after multiple rounds", () => {
     const allEvents: any[] = [];
     for (let i = 0; i < 5; i++) {
-      const events = engine.advanceRound();
+      const events = engine.advanceRound(`test-multi-tick-${i}`);
       allEvents.push(...events);
     }
     expect(allEvents.length).toBeGreaterThanOrEqual(0);

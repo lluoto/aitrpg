@@ -42,7 +42,9 @@ cp ../世界模型/cthulhu_extracted/cthulhu_world_model.jsonl assets/
 | `CTHULHU_MODEL_PATH` | `/app/assets/cthulhu_world_model.jsonl` |
 | `FRONTEND_DIR` | `/app/frontend/dist` |
 
-这三处此前散在 6 个文件里硬编码，现已收口到 `world-model-loader.ts` 的两个常量。
+这三处此前散在 6 处 / 4 个文件里硬编码。`WORLD_MODEL_PATH` 与 `CTHULHU_MODEL_PATH`
+两处已收口到 `world-model-loader.ts` 的常量；`FRONTEND_DIR` 收口在
+`src/api/server.ts:597`，不在 `world-model-loader.ts`——三个变量不是同一处收口的。
 
 **缺失时不会崩**，只 warn。但 KP 上下文注入、幻觉风险评分、规则映射都会失效，等于少了大半判断依据。
 

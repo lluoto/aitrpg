@@ -248,6 +248,30 @@ export interface EconomyEvent {
   description: string;
   affectedFactions: string[];
   data?: Record<string, unknown>;
+  /**
+   * 这一批事件是被**哪一次触发**产出的（docs/todo.json 的 todo-17：
+   * "全链应有 causation_id 防止重复触发"）。
+   *
+   * ⚠ 传播规则——不是随便加个字段：
+   *   1. **可选**是故意的。四个子系统（factions/trades/policies/finances）
+   *      各自的 `advanceRound()` 完全不知道 causationId 这回事，构造事件时
+   *      不填它——它们是内部产出，还没离开引擎边界。
+   *   2. 同一次 `PoliticoEconomyEngine.advanceRound(causationId)` 调用里，
+   *      四个子系统汇总出的**所有**事件在离开引擎前被统一盖上**同一个**
+   *      causationId——它们是同一次时钟触发的结果，不是互相触发的因果链。
+   *      causationId 标的是"这次推进"这件事，不是"这条事件"本身
+   *      （那是 `id` 的职责）。
+   *   3. 幂等保护发生在盖章**之前**：同一个 causationId 第二次传入会被
+   *      `advanceRound()` 直接拒绝（返回空数组、不产生新事件、不推进
+   *      round、子系统的 `advanceRound()` 根本不会被调用），而不是产生事件之后
+   *      再去重——去重晚了就已经有副作用了（round 已经推进、子系统状态
+   *      已经变了）。
+   *   4. **不变式（由 `causation-id.test.ts` 钉住）**：任何从
+   *      `PoliticoEconomyEngine.advanceRound()` 返回、或进了 `this.events`
+   *      的事件，`causationId` 一定已经被盖上，不会是 `undefined`。
+   *      可选只是给子系统内部用的宽松，不是允许它在引擎边界外缺失。
+   */
+  causationId?: string;
 }
 
 // ── 引擎状态（对外暴露） ──

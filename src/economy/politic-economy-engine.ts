@@ -24,6 +24,12 @@ export class PoliticoEconomyEngine {
   events: EconomyEvent[];
   round: number;
 
+  /**
+   * 已经结算过的 causationId 集合，供 `advanceRound()` 做幂等检查。
+   * 见 economy/types.ts 里 `EconomyEvent.causationId` 的传播规则注释。
+   */
+  private consumedCausationIds = new Set<string>();
+
   constructor() {
     this.factions = new FactionSystem();
     this.trades = new TradeSystem();
@@ -167,14 +173,35 @@ export class PoliticoEconomyEngine {
 
   // ── 回合推进 ──
 
-  advanceRound(): EconomyEvent[] {
+  /**
+   * 推进一个经济回合。**必须传 causationId**——这不是可选的审计字段，
+   * 是幂等保护本身依赖的键。
+   *
+   * 同一个 causationId 重复传入：直接返回 `[]`，不推进 `round`、不调用任何
+   * 子系统的 `advanceRound()`、不产生新事件。这是"防重复触发"要求的字面
+   * 实现——重复投递必须是纯粹的空操作，而不是"产生了但去重掉了"（那样
+   * round 已经推进、子系统状态已经变了，只是不告诉调用方而已，一样是
+   * 重复结算）。
+   *
+   * 谁负责生成 causationId、多久调一次：见 `api/game-session.ts` 的
+   * `tickEconomy()`——那里是唯一的生产调用方，设计理由写在那边。
+   */
+  advanceRound(causationId: string): EconomyEvent[] {
+    if (this.consumedCausationIds.has(causationId)) {
+      return [];
+    }
+    this.consumedCausationIds.add(causationId);
+
     this.round++;
-    const newEvents: EconomyEvent[] = [
+    const rawEvents: EconomyEvent[] = [
       ...this.factions.advanceRound(),
       ...this.trades.advanceRound(),
       ...this.policies.advanceRound(),
       ...this.finances.advanceRound(),
     ];
+    // 离开引擎边界前统一盖章——子系统产出时不知道 causationId，
+    // 见 EconomyEvent.causationId 的传播规则注释。
+    const newEvents: EconomyEvent[] = rawEvents.map((e) => ({ ...e, causationId }));
     for (const e of newEvents) {
       this.events.push(e);
       if (this.events.length > 200) this.events.shift();

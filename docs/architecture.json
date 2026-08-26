@@ -163,7 +163,7 @@
             ],
             [
               "src/rules/rules-engine.ts",
-              "律书路由器：按 activeRuleset 分发到 CoC / dnd5e / grail 三个引擎",
+              "规则集路由器：按 activeRuleset 分发到 CoC / dnd5e / grail 三个引擎（术语订正：\"律书\"是玩家向 KP 提出规则解释/适用请求的制度，不是这个类的名字，见 docs/todo.json 的 todo-17）",
               "RulesEngine, RulesetId, UnifiedCombatResult"
             ],
             [
@@ -565,7 +565,7 @@
     },
     {
       "id": "sec-13",
-      "title": "测试（42 个）",
+      "title": "测试（114 个文件，见 docs/test-baseline.json）",
       "prose": [
         "分两簇。**规则纯逻辑单测**：coc-character / coc-engine / coc-combat / coc-equipment / coc-chase / coc-spells / coc-mythos-module / investigation-* / rule-engine / grail-ruleset / story-generator / politico-economy / trap-mechanics。",
         "**回归测试**（更值得读）——每个都锁着一次\"类型说一套、数据是另一套、类型检查全绿\"的静默失效：",
@@ -624,7 +624,7 @@
     },
     {
       "id": "sec-14",
-      "title": "工具脚本（`tools/` 整个目录被 .gitignore 排除）",
+      "title": "工具脚本（大部分仍在 `tools/`，被 .gitignore 排除；诊断脚本已搬进 `scripts/diag/`、摄取入口已搬进 `scripts/ingest/` 并入库）",
       "prose": [],
       "tables": [
         {
@@ -754,8 +754,8 @@
               "取证脚本：把 p1→p2 那处错接手工补回去，与修好的输出逐块比标题/正文/`sourceRef`。产物 `tools/ingest-out/diag-blocks.txt`。**它推翻了一个推理出来的说法**（原以为缺陷会让块数从 44 掉到 43，实测两边都是 44、行号一行没挪，唯一差别是一块的正文被污染）——所以那个缺陷躲过了所有按计数做的验收"
             ],
             [
-              "tools/_run-ingest.ts",
-              "**摄取管线的端到端实跑器**（约 250 行）：读 PDF → 清洗 → 切分 → **块分类 → 建场景骨架 → 条目分类 → 建 ModuleItem** → 对基准 diff。含 `RecordingClient`，把**每一次** LLM 调用的 prompt 与原始响应都落盘（两次调用，单组字段会让后一次覆盖前一次，而那是「模型到底答没答」的唯一证据）。**清洗那一段的组合是 `joinPages(raw.map(cleanPageText))`，两段都要**——本文件被 `.gitignore` 排除，这个组合唯一进版本库的记录是 `docs/superpowers/plans/2026-08-19-ingest-scene-skeleton.md` 的 Step 2 代码块（已订正）。照着重建 runner 时漏掉 `joinPages`，跨页续行就悄悄停摆，而单测全绿——`joinPages` 的测试直接调它，不经过这条组合。下面 §模组摄取 里所有实跑数**全部出自它**——`身份覆盖 20/20`、`物品覆盖 9/10`、`精确率 9/19`、`差异 179 处`（先前这里写的 `9/17` 与 `178 处` 与下面的表对不上，实测是后者），以及上一轮的 `命中 20 / 误报 7 / 漏报 0`。重跑它是唯一能复现这些数的途径。它还印三样光看 diff 看不出来的：口径对账（覆盖+误报 是否等于生成数，防重名两边同时吃掉）、悬空引用（`item.sceneId` 是否都指得到人）、以及逐条目的分类结果"
+              "scripts/ingest/run.ts",
+              "**摄取管线的端到端实跑器**（约 250 行）：读 PDF → 清洗 → 切分 → **块分类 → 建场景骨架 → 条目分类 → 建 ModuleItem** → 对基准 diff。含 `RecordingClient`，把**每一次** LLM 调用的 prompt 与原始响应都落盘（两次调用，单组字段会让后一次覆盖前一次，而那是「模型到底答没答」的唯一证据）。**清洗那一段的组合是 `joinPages(raw.map(cleanPageText))`，两段都要**——照着重建 runner 时漏掉 `joinPages`，跨页续行就悄悄停摆，而单测全绿——`joinPages` 的测试直接调它，不经过这条组合。⚠ 这个文件原先是 `tools/_run-ingest.ts`（`tools/` 被 `.gitignore` 排除，新克隆下来唯一的入口根本不在仓库中，扫依赖图看到的是「整个子系统没人调用」）——是上一轮把 `tools/_diag-*.ts` 搬进 `scripts/diag/` 时漏掉的一处，本轮已搬进 `scripts/ingest/` 并入库。下面 §模组摄取 里所有实跑数**全部出自它**——`身份覆盖 20/20`、`物品覆盖 9/10`、`精确率 9/19`、`差异 179 处`（先前这里写的 `9/17` 与 `178 处` 与下面的表对不上，实测是后者），以及上一轮的 `命中 20 / 误报 7 / 漏报 0`。重跑它是唯一能复现这些数的途径。它还印三样光看 diff 看不出来的：口径对账（覆盖+误报 是否等于生成数，防重名两边同时吃掉）、悬空引用（`item.sceneId` 是否都指得到人）、以及逐条目的分类结果"
             ],
             [
               "src/ingest/scoring-key.ts",

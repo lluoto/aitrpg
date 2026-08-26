@@ -473,6 +473,52 @@ export function resolveRef(ref: string, candidates: readonly string[]): boolean 
 }
 
 /**
+ * 手写但**载荷**的文档 —— 不是脚本生成的（`generatedDocs()` 抓不到），
+ * 但里面的路径引用是设计依据/验收标准，读者会真的照着它去找文件。
+ * 跟 `docs/notes/*.md` 的区别：notes 是 append-only 的工作记录，
+ * 「当时」为真就够了；这几份是活文档，读者拿它当**现在**的事实。
+ *
+ * ⚠ `docs/rules-licensing-audit.md` **不进这份清单**：它带 `Date:` 头，
+ * 是法务性质的时点审计，跟 notes 一样只需要「当时为真」。
+ */
+export const LIVE_DOCS = [
+  "docs/index-world-model.md",
+  "docs/kp-tool-surface-assessment.md",
+  "docs/kp-tool-numeric-domain-design.md",
+  "docs/voice-readiness.md",
+  "docs/deploy.md",
+  "docs/scene-visuals.md",
+  "docs/content-brief.md",
+  "docs/index-program.md",
+] as const;
+
+/**
+ * tier-2 的收窄规则：只认**带仓库前缀、带脚本扩展名**的反引号路径 ——
+ * `poc/`（读作仓库根，匹配时直接剥掉这一段）、`src/`、`scripts/`、`docs/`、
+ * `frontend/`、`tools/`，且必须是 `.ts`/`.mjs`/`.cjs`/`.js`。
+ *
+ * 前缀收窄的依据可推导：`docs/index-world-model.md:7` 自己声明
+ * 「路径跨出 git 仓库，非 `poc/` 开头的相对 `C:\aitrpg\`」——
+ * 没有仓库前缀的路径根本不保证落在仓库里，检查不该假装能验它。
+ *
+ * ⚠ 扩展名收窄同样是必须的，不是照抄 tier-1 偷懒：这几份手写文档里
+ * 大量反引号路径是**目录**（`tools/modules/raw/`）或**历史对比用的
+ * 数据文件**（`calibration-report.md`、`section_18.txt`）——那些是在
+ * 记录「哪份副本已删除、哪份是保留侧」，本身就在断言"这份不存在"，
+ * 不是接线错误。第一版没做这层收窄，混进了一堆目录/数据文件噪声，
+ * 报了 15 条而不是 1 条。只查脚本扩展名，是因为
+ * 这条检查的初衷本来就是"叫人去读的代码路径对不对"，不是通用的
+ * "文档里提到的每个文件名都要存在"。
+ */
+const LIVE_DOC_PATH = /`(?:poc\/)?((?:src|scripts|docs|frontend|tools)\/[\w./-]+\.(?:ts|mjs|cjs|js))(?::\d+)?`/g;
+
+export function referencedRepoPaths(markdown: string): string[] {
+  const out = new Set<string>();
+  for (const m of markdown.matchAll(LIVE_DOC_PATH)) out.add(m[1]!);
+  return [...out];
+}
+
+/**
  * 哪些文档是**脚本生成的**。
  *
  * 这条检查只对生成的文档生效，理由是可推导的而不是拍脑袋定的：

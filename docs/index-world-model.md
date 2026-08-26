@@ -11,7 +11,13 @@
 
 ## 一句话现状
 
-素材远多于接进去的。模组的**真正源头是 PDF**，但从 PDF 到运行模组这一步**从来没有程序做过**——现有模组数据是人/LLM 手写的产物。上层目录另有约 120KB 成套的规则原材料一行未接。
+素材远多于接进去的。模组的**真正源头是 PDF**。现有《普瑞米尔的谷仓》模组数据
+（`barn-of-premier.ts`）仍是人/LLM 手写产物，但「从 PDF 到运行模组这一步从来没有
+程序做过」这句话已经不对——`src/ingest/`（17 个模块 / 2401 行）+ 入口
+`scripts/ingest/run.ts` 现在真的会跑 PDF → 清洗 → 切分 → 分类 → 建场景骨架 →
+对基准 diff 这条链路（详见 `docs/notes/ingest.md`），只是它产出的是结构化候选与
+对比报告，**还没有自动写出最终提交的 `ModuleData` .ts 文件**这一步——那一步仍是
+人工/LLM 组装。上层目录另有约 120KB 成套的规则原材料一行未接。
 
 ---
 
@@ -21,7 +27,7 @@
 
 | 层 | 文件 | 职责 |
 |---|---|---|
-| **原著世界模型** | `poc/src/rules/mythos-expansion.ts`（1603 行） | 洛夫克拉夫特原著内容（公共领域）：神话生物/典籍/法术/场景模板。**跨模组可复用**，与具体模组无关 |
+| **原著世界模型** | `poc/src/rules/mythos-expansion.ts`（1427 行） | 洛夫克拉夫特原著内容（公共领域）：神话生物/典籍/法术（曾计划过第四类「场景模板」，从未实现，文件里没有这个导出）。**跨模组可复用**，与具体模组无关 |
 | **摄取目标（中间表示）** | `poc/src/module/types.ts` 的 `ModuleData` | 文件头原文：「用于将原始模组 PDF 文本解析为结构化数据」。**这就是读取模块该产出的类型** |
 | **运行期导入容器** | `poc/src/rules/mythos-module.ts` 的 `MythosModule` | 「剧本杀式模组导入系统」：activation 条件、loader、hooks、initialEffects。是消费者，不是世界模型 |
 
@@ -55,12 +61,12 @@ PDF ──[读取模块 + LLM + 世界模型约束]──> ModuleData（权威�
 | 路径 | 职责 | 状态 |
 |---|---|---|
 | poc/src/module/types.ts | 模组类型契约（523 行，23 个 interface）：ModuleData / Scene / Clue / ModuleItem / TrapMechanics / Provenance / ModuleSupport / ModuleState | 已接入 |
-| poc/src/module/barn-of-premier.ts | 《普瑞米尔的谷仓》ver1.03 结构化数据本体（1500 行） | 已接入 |
+| poc/src/module/barn-of-premier.ts | 《普瑞米尔的谷仓》ver1.03 结构化数据本体（1524 行） | 已接入 |
 | poc/src/module/threat-analyzer.ts | 从模组反推难度并据此发枪：敌对 NPC 数、最大伤害、陷阱数、困难/极限检定数、最大 SAN 损失、有无 Boss | 已接入 |
 | poc/src/rules/custom-modules/premiers_barn.ts | 同模组的 MythosModule 版，2026-07-06 由 extract-module.ts 自动提取 | 已接入（另一条路径） |
 | poc/src/rules/custom-modules/index.ts | 社区模组注册表与查询入口 | 已接入 |
 | poc/src/rules/mythos-module.ts | MythosModule 类型契约 + 导入器 + 三个内联模组（印斯茅斯 / 阿卡姆图书馆 / 谷仓简版） | 已接入 |
-| poc/src/rules/mythos-expansion.ts | 原著世界内容数据库：MYTHOS_CREATURES / TOMES / SPELLS / LOCATIONS | **仅 LLM prompt 层引用；剧本引擎零引用** |
+| poc/src/rules/mythos-expansion.ts | 原著世界内容数据库：MYTHOS_CREATURES / TOMES / SPELLS（曾计划过第四类 LOCATIONS「场景模板」，从未实现，该文件没有这个导出） | **仅 LLM prompt 层引用；剧本引擎零引用** |
 
 ## 世界模型运行时（仓库内）
 
@@ -116,8 +122,10 @@ PDF ──[读取模块 + LLM + 世界模型约束]──> ModuleData（权威�
 
 意义：这批 raw 切片可以当作**已知正确的基准**——重建摄取时，第一段的输出应当与它逐字相同。
 
-> 抽取怎么做（依赖版本、API 调用、清洗）属于工程实现，见 `docs/index-program.md` 的
-> 「模组摄取」一节。这份文档只管内容与素材。
+> 抽取怎么做（依赖版本、API 调用、清洗）属于工程实现，见 `docs/notes/ingest.md`
+> （原指向 `docs/index-program.md` 的「模组摄取」一节——那一节其实是
+> `docs-index.ts:27` 的切分标记 `RECORDS_START`，内容早已迁入这里，
+> 死指针没跟着一起改）。这份文档只管内容与素材。
 
 ### 摄取相关脚本（均在 `poc/tools/`，整个目录被 .gitignore 排除）
 
@@ -130,7 +138,13 @@ PDF ──[读取模块 + LLM + 世界模型约束]──> ModuleData（权威�
 
 > `poc/src/module/extract-tools/` 曾有这批脚本的第二份副本，且因 `BASE = resolve(__dirname, "..")` 在搬家后失效（解析成不存在的 `src/module/src/rules/...`）整体不可运行，已于 2026-08-19 删除。`src/module/` 现在只剩三个 .ts。
 
-**结论：不存在从原文端到端产出完整模组 .ts 的自动化路径。** 15 个字段里 14 个靠手工维护。
+**结论（就上面这批 `tools/*.mjs` 遗留脚本而言）：不存在从原文端到端产出完整模组
+.ts 的自动化路径。** 15 个字段里 14 个靠手工维护。
+
+⚠ 这不代表整个仓库都没有更自动化的路径——`src/ingest/` + `scripts/ingest/run.ts`
+是后来另起的一套（见 `docs/notes/ingest.md`），已经在做 PDF → 结构化数据 →
+对基准 diff，但同样止步于「产出可对比的候选」，还没有自动写出最终
+`ModuleData` .ts 的一步。
 
 ---
 
@@ -221,7 +235,13 @@ cp ../世界模型/cthulhu_extracted/cthulhu_world_model.jsonl assets/
 
 ### 备份分层：不必全备，只有 ~500MB 是不可再生的
 
-`tools/_audit-backup.ts` 按「丢了怎么办」分了层：
+⚠ 下面这份是**只扫 `poc/` 自身范围**的旧结果。后来另跑过一次**全 `C:\aitrpg`**
+范围的审计，产物在 `analysis/diag/audit-backup.md`——但那份自己声明
+「审计未完成，不给精确总量」，数字比下面这份更粗，不能拿它的总量替换
+下面的结论；两份的范围本来就不同（下面这份只看 poc/，那份连世界模型原始
+素材所在的父目录都扫了）。谁需要更全的口径去看那份，日常判断仍以下表为准。
+
+`scripts/diag/audit-backup.ts` 按「丢了怎么办」分了层：
 
 | 类别 | 文件数 | 大小 | 丢了怎么办 |
 |---|---|---|---|
@@ -292,7 +312,7 @@ poc 目录（不含 node_modules 与 .git）从 409MB 降到 **179.6MB**。
 
 ## 遗物母版工程（`relics/`，URF v0.5）
 
-独立的遗物提取与框架化工程。已产出 7 本书的母版，正在推进 worldmodel 管道化。
+独立的遗物提取与框架化工程。已产出 56 本书的母版，正在推进 worldmodel 管道化。
 
 ### 核心文档
 

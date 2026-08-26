@@ -7,13 +7,14 @@
  * 数值设计基于原著小说中的描述推断，与实际 TRPG 规则书的数值无关。
  *
  * 使用方式：
- *   import { MYTHOS_CREATURES, MYTHOS_TOMES, MYTHOS_SPELLS, MYTHOS_LOCATIONS } from "./rules/mythos-expansion";
+ *   import { MYTHOS_CREATURES, MYTHOS_TOMES, MYTHOS_SPELLS } from "./rules/mythos-expansion";
  *
- * 包含四类数据：
+ * 包含三类数据（⚠ 曾计划过第四类 MYTHOS_LOCATIONS「经典场景模板」，
+ * 这里和 docs/index-world-model.md 都一度照抄了这个计划，但从未实现——
+ * 本文件没有任何这个名字的导出）：
  *   1. MYTHOS_CREATURES — 神话生物完整属性块（HP/STR/CON/DEX/POW/伤害/护甲/技能/SAN损失/描述）
  *   2. MYTHOS_TOMES      — 神话典籍（SAN消耗/研读时间/教授法术/描述）
  *   3. MYTHOS_SPELLS     — 神话法术（SAN消耗/MP消耗/效果/描述）——扩展 GameSession 中的 MythosSpell
- *   4. MYTHOS_LOCATIONS  — 经典洛夫克拉夫特场景模板（场景ID/描述/连接/实体）
  */
 
 // ============================================================

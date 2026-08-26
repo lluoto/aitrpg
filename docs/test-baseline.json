@@ -1,6 +1,6 @@
 {
-  "tests": 1985,
-  "files": 114,
+  "tests": 2032,
+  "files": 119,
   "unwiredMethods": 90,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -224,6 +224,21 @@
       "tests": 1985,
       "files": 114,
       "when": "preflight 第 7 项的两条正则（RUN_CMD/CODE_PATH）都要求 src|scripts|tools/ 前缀，裸文件名、src 内部相对路径、带行号的引用完全不被检查。加 BARE_CODE_PATH 正则 + resolveRef() 拿真实文件树反查，找出 7 条真缺失（docs/handoff.md 1 条、docs/review-bundle.md 6 条，全是过期的 tools/_diag-*.ts 引用）"
+    },
+    {
+      "tests": 1991,
+      "files": 114,
+      "when": "preflight 第 7 项只守脚本生成的 3 份文档；另有 8 份手写但载荷的文档（index-world-model.md 等）没有任何机器判据。加 LIVE_DOCS 允许清单 + referencedRepoPaths()（前缀收窄 poc|src|scripts|docs|frontend|tools/ + 脚本扩展名收窄，排掉目录引用与历史对比用的 .md/.txt），找出 1 条真缺失：index-world-model.md 里的 tools/_audit-backup.ts（上一批搬迁的漏网）"
+    },
+    {
+      "tests": 2001,
+      "files": 116,
+      "when": "给政经引擎装时钟：PoliticoEconomyEngine.advanceRound() 形状早就对（四子系统汇总成 EconomyEvent[]），但生产代码零调用方，世界装好了不会自己演化。EconomyEvent 加 causationId（子系统内部产出时不知道，离开引擎边界前统一盖章；同一个 causationId 重复投递直接返回空数组、不推进 round）；时钟挂在 GameSession.round（每 10 回合一次，复用既有的周期性 tick 位置，否掉场景切换与显式 KP 动作两个候选）；推进前先过 applyAction 闸门（economy:round 有界整数域），结算过的事件写回 world.logEvent()（SQLite），narration 只搬运 EconomyEvent.description 原文，不经 LLM。顺带订正 rules-engine.ts 头注释的过期术语「律书路由器」（律书是玩家向 KP 提规则解释请求的制度，不是规则执行器的名字）"
+    },
+    {
+      "tests": 2032,
+      "files": 119,
+      "when": "世界属性注册表 + 尺度门（PLAN.md「A 推演引擎」缺的第三块）。先做证伪：四档尺度（personal/local/regional/world）在已读素材（德鲁伊/战士能力体系、职业与战斗表现总图谱）里确实存在但从不是分类维度，且与「位阶」是两个独立的轴（传奇阶终极剑技可以是纯局部效果，非最高位阶的存在也可能有区域级背景效应）——docs/world-property-falsification.md。据此实现 world-property.ts：composePropertyValues()（幂等/可加/取极值/互斥，机器判据而非约定）+ calcScaleSuppression()（推广 grail-engine 的 TierSuppressionResult 到尺度轴，跨尺度不掷骰）。C3 摄取 forensic_rules.yaml §八「用眼过度」的调查疲劳惩罚属性，验证 N×1 来源表（8 个独立来源）不需要 N² 交互特判即可正确合并。world-constraint.ts 的 ConstraintContext 加 ruleset 字段（分流前置，不含分流逻辑本身）"
     }
   ]
 }

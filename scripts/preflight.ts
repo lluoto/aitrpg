@@ -31,6 +31,7 @@ import {
   findTruncatedBlocks, findPlaceholderResidue, findReverseImports, findShellRisks,
   judgeProcess, parseTestOutput, judgeTestCount,
   referencedScripts, judgeScriptRefs, generatedDocs, resolveRef,
+  referencedRepoPaths, LIVE_DOCS,
   boolReturningNames, findDroppedReturns, findSilentCatches,
   type Finding, type TestBaseline,
 } from "../src/diagnostics/source-scan";
@@ -165,6 +166,35 @@ for (const f of [...srcFiles, ...walk("scripts", [".ts"])]) {
   }
   notes.push(`文档引用校验覆盖 ${generated.length} 份生成文档：${generated.join("、") || "(无)"}`);
   if (!gitOk) notes.push("git ls-files 不可用 —— 只校验了文档引用脚本是否存在，没校验是否入库");
+
+  // ── 7b. 手写但载荷的文档：同一个病，换一批文档 ──
+  //
+  // 上面那截只查脚本生成的 3 份。另有 8 份手写文档被当成设计依据/验收标准
+  // 引用（生产代码、测试注释都指着它们），但没有脚本重写过，路径一样会漂。
+  //
+  // 只查存在性、不查入库（tracked）—— tier-1 是叫人去"跑"的脚本，新克隆
+  // 必须有；这几份是清单/评估文档，"里面写的东西还在不在"才是它的断言，
+  // 跟入不入库无关。候选范围比 tier-1 多一个 docs/ 目录（引用范围也多了
+  // docs/ 前缀），但同样只认脚本扩展名——见 referencedRepoPaths 的注释。
+  const docCandidates = [
+    ...walk("src", [".ts", ".js", ".mjs", ".cjs"]),
+    ...walk("scripts", [".ts", ".js", ".mjs", ".cjs"]),
+    ...walk("tools", [".ts", ".js", ".mjs", ".cjs"]),
+    ...walk("frontend", [".ts", ".js", ".mjs", ".cjs"]),
+    ...walk("docs", [".ts", ".js", ".mjs", ".cjs"]),
+  ].map((p) => p.replace(/\\/g, "/"));
+  let liveDocsChecked = 0;
+  for (const doc of LIVE_DOCS) {
+    if (!existsSync(doc)) continue;
+    liveDocsChecked++;
+    const refs = referencedRepoPaths(read(doc)).map((p) => ({
+      path: p,
+      exists: resolveRef(p, docCandidates),
+      tracked: true, // tier-2 不判入库
+    }));
+    push(judgeScriptRefs(refs, doc));
+  }
+  notes.push(`手写载荷文档校验覆盖 ${liveDocsChecked} 份（只判存在性，不判入库）：${LIVE_DOCS.join("、")}`);
 
   // ── 10. 源码拿来当证据的文件，仓库里得真有 ──
   //

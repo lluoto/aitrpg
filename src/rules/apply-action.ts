@@ -36,10 +36,15 @@
 // 剧本声明：状态变量与允许的转移
 // ============================================================
 
-type StateValue = string | number;
+export type StateValue = string | number;
 
-/** 状态值域：枚举走显式转移图，整数走闭区间与整数性校验。 */
-type StateDomain =
+/**
+ * 状态值域：枚举走显式转移图，整数走闭区间与整数性校验。
+ *
+ * ⚠ 导出这个类型是给 `world-property.ts` 复用的——`WorldProperty.domain`
+ * 沿用同一套值域声明，不另造一份。别的地方新建值域声明前先看这里够不够。
+ */
+export type StateDomain =
   | { readonly kind: "enum"; readonly values: readonly string[] }
   | { readonly kind: "integer"; readonly min: number; readonly max: number };
 
