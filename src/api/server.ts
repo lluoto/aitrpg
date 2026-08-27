@@ -12,6 +12,7 @@ import { createWsClient, removeWsClient, broadcastToSession, wsStats, isWsRole, 
 import { listSavedModules, loadModuleFile, saveModuleFile, deleteModuleFile, parseMythosModule } from "./module-editor";
 import { CharacterFactory } from "../character/character-factory";
 import { createScriptedSession, getScriptedSession } from "./scripted-session";
+import { worldModelStatus } from "./world-model-status";
 import { log } from "../log";
 
 // ============================================================
@@ -123,6 +124,10 @@ async function handleRequest(req: Request): Promise<Response> {
       llm: { baseUrl: config.baseUrl, model: config.model, maxTokens: config.maxTokens, temperature: config.temperature, hasKey: !!config.apiKey && !config.apiKey.startsWith("sk-placeholder") },
       server: { port: parseInt(process.env.PORT || "3099"), env: process.env.NODE_ENV || "development", sessionTimeoutMinutes: parseInt(process.env.SESSION_TIMEOUT_MINUTES || "30") },
       sessionCount: sessions.size,
+      // 世界模型是否已加载的机器可判定出口——不触发加载，只读既有状态。
+      // 见 world-model-status.ts 头注释：默认路径找不到时此前只静默降级，
+      // 一条 warn 滚过日志没人看见，整局叙述质量相关的观察全部作废。
+      ...worldModelStatus(),
     });
   }
 

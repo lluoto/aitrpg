@@ -1,6 +1,6 @@
 {
-  "tests": 2070,
-  "files": 123,
+  "tests": 2077,
+  "files": 124,
   "unwiredMethods": 90,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -264,6 +264,16 @@
       "tests": 2070,
       "files": 123,
       "when": "P1：自由跑团「和 NPC 说话」接线。case \"talk\" 此前是纯桩，不管玩家说什么、跟谁说，永远回一句「你试图与周围的人交流…」——MythosModuleLoader 早就把模组 NPC 内联人格通过 registerNPCPersonality 注册进 NPC Agent 系统（this.registry），/npc-chat 端点（server.ts:470）也已经在消费它，只是自由跑团这条路没接上同一个消费者。加 handleTalk()：不新造对话生成，直接复用 /npc-chat 的消费逻辑（registry.findAgentByName → npcAgent.respond → 记一条 dialogue 消息，情绪在生成时刻固定）。找不到人时分三种情况说清楚（参照既有 notFoundLine() 的分辨方式）：没指定对象 / 这里没这个人（列出在场都有谁）/ 人在场但没有可用人格数据。加 npc-talk-wiring.test.ts（7 条）。变异检验：临时还原成桩实现，7 条全部精确变红"
+    },
+    {
+      "tests": 2074,
+      "files": 124,
+      "when": "世界模型加载状态的机器可判定出口。世界模型目录搬到另一个盘后，默认相对路径找不到文件，world-model-loader.ts 只 log.warn 后 return——按 log.ts 自己的分类，降级继续跑本来就该是 warn，级别没错，但一条 warn 滚过日志没人看见，整局叙述质量相关的观察全部作废，没有任何人发现（这次核实：本机 ../世界模型/ 目录本身就是空的，同一故事正在这台开发机上发生）。抽出 src/api/world-model-status.ts 的 worldModelStatus()：只读 sharedWorldModel(path).isLoaded()/getStats()，不触发加载（229MB/1.2s，/api/config 必须保持廉价），接进 GET /api/config 响应，与既有的 llm.hasKey 同类先例对称。抽成独立模块是因为 server.ts 导入即执行 Bun.serve()，本仓测试全部刻意不起真实服务实例；worldModelStatus() 不依赖 server.ts，可直接单测，也是 /api/config 实际调用的同一份代码。加 world-model-status.test.ts（4 条，用测试自建的小 JSONL 夹具而非仓库外 229MB 真实文件，可移植）：路径不存在两个 loaded 都报 false、文件存在但未 load() 过时不会被自己偷偷加载、显式 load() 后 loaded 为 true 且 entryCount 反映真实条目数、v18/克苏鲁两个字段能独立区分状态。变异检验：硬编码 loaded:true、加自动触发 load()，分别精确变红。另做手动服务器级验证（WORLD_MODEL_PATH 分别指向不存在路径/合成小夹具，实际起 bun run src/api/server.ts 用真实 HTTP 打 GET /api/config，两种状态在真实响应里都得到确认，非仅单测层面）。顺带：.env.example 补齐 WORLD_MODEL_PATH/CTHULHU_MODEL_PATH/FRONTEND_DIR 三个部署路径变量（此前零命中，docs/deploy.md 有表但 .env.example 没抄），以及把 npc-talk-wiring.test.ts 一条测试标题从「不该逐字复读同一句」（未验证，MockLLM 离线模式造不出这个差异）改成「两次都拿到真实回复」（标题与断言对齐，不加假的离线去重断言）"
+    },
+    {
+      "tests": 2077,
+      "files": 124,
+      "when": "worldModelStatus() 补 exists 字段：loaded 是懒加载的运行时状态（game-session.ts:591「懒加载：首次注入时才加载世界模型」），开跑前查它必然是 false，拿它当事前门禁是先有鸡还是先有蛋——上一版只报 loaded，等于没给出「需要时能不能加载成功」这个真正想问的问题的答案。加 exists（existsSync，廉价，不触发加载），loaded 保留作事后观测（开跑几回合、建过会话后应翻成 true）。头注释写明两个字段的分工：exists:true 且 loaded:false 是完全正常的状态，不是 bug。核实过程中发现本机 ../世界模型/ 目录本身是空的，用测试自建的合成小夹具走真实 HTTP 验证。新增 3 条测试（worldModelStatus 测试文件从 4 条扩到 7 条）：exists 随磁盘文件真实存在与否变化、exists:false 时 loaded 必然也是 false、exists:true 但 loaded:false 的状态被显式钉住（这正是本次的坑，不钉住下次还会有人拿 loaded 当门禁）。变异检验：硬编码 exists:true，3 条精确变红，Copy-Item 还原后回归 7/7。手动服务器级验证：WORLD_MODEL_PATH 分别指向不存在路径与合成小夹具，两次真实起 bun run src/api/server.ts 打 GET /api/config，分别报 exists:false 与 exists:true（后者同时 loaded:false，因为没建会话触发懒加载，进一步印证 exists 与 loaded 互不干扰）"
     }
   ]
 }

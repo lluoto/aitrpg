@@ -76,7 +76,12 @@ describe("和 NPC 说话 — 真实对话应该走到 NPC Agent", () => {
     expect(res.narrative).toBe(dialogueEvent!.content);
   });
 
-  it("连续问两次同一个 NPC，不该逐字复读同一句", async () => {
+  it("连续问两次同一个 NPC，两次都应该拿到真实回复（不是桩文案）", async () => {
+    // ⚠ 这条不验证「逐字不复读」——MockLLMClient 离线模式没有对话轮替记忆时
+    //   会给同一句默认回复，Mock 造不出两次不同的差异，硬加 not.toBe 断言
+    //   在离线测试环境下只会是一条假绿（Mock 本身就复读，断言测不出真实
+    //   LLM 会不会复读）。逐字去重需要带真 LLM 的实跑验证，见 sim30 一类
+    //   跑模拟脚本；这里只锁住「桩没有被绕过、respond() 真的被调用了」。
     await session.act("加载模组 普瑞米尔的谷仓");
     (session as any).movePlayerToScene("特里坎家");
 
@@ -86,8 +91,6 @@ describe("和 NPC 说话 — 真实对话应该走到 NPC Agent", () => {
     const c2 = res2.events.find((e) => e.speaker === "菲碧·特里坎")?.content;
     expect(c1).toBeDefined();
     expect(c2).toBeDefined();
-    // MockLLMClient 离线模式没有对话轮替记忆时会给同一句默认回复——
-    // 这里只断言两次都拿到了真实回复（不是桩文案），逐字去重留给 NPC Agent 自己的记忆机制。
     expect(c1).not.toMatch(/你试图与周围的人交流/);
     expect(c2).not.toMatch(/你试图与周围的人交流/);
   });
