@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-26",
+  "generated": "2026-08-27",
   "note": "问题记录索引。按 file+line 取正文，不必整份读。正文只追加，改动请重跑 bun scripts/docs-index.ts",
   "statusLegend": {
     "fixed": "已修，有实测数",
@@ -13,7 +13,7 @@
       "id": "engine",
       "name": "运行引擎 / 主循环",
       "file": "docs/notes/engine.md",
-      "count": 18
+      "count": 19
     },
     {
       "id": "ingest",
@@ -226,6 +226,17 @@
       "line": 612,
       "lines": 24,
       "summary": "第一次是 `kp-tool-surface-assessment.md` 把四个已经接上线的子系统写成"
+    },
+    {
+      "id": "engine-19",
+      "title": "改了被判据观测的行为，没同步检查观测者的失败分类——这是第三次（2026-08-27）",
+      "date": "2026-08-27",
+      "status": "warn",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 636,
+      "lines": 46,
+      "summary": "前两次是\"文档说的和代码不符\"，去看一眼代码就能发现："
     },
     {
       "id": "ingest-01",
