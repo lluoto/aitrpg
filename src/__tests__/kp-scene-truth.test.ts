@@ -29,10 +29,16 @@ beforeEach(() => {
   session.world.registerScene("docks", "码头");
   session.world.registerScene("church", "教堂");
   session.setScene("docks");
-  // 玩家先正常移动过一次：移动流程会留下一个 id 为 "player" 的 PC 实体
+  // 玩家先正常移动过一次：移动流程会留下一个 PC 实体钉住玩家位置
   // （movePlayerToScene 的写法，scene-bgm.test.ts 同样这么造）。
   // 分叉正是从这时起——在此之前 getPlayerPosition() 没有实体可读，
   // 会回落到显示的场景，看不出问题。
+  //
+  // ⚠ id 这里手写成 "player" 只是这条测试自己的道具，不代表真实实体
+  // id——真实实体 id 是 activePlayerId（单人局默认 "p1"）。这份测试只
+  // 断言"在场判定跟着 getDisplayedScene() 走"，不读这个实体的 id，
+  // 写成什么字符串都不影响结论，但别被这个字面量误导成"player"是
+  // 真实约定。
   session.world.upsertEntity({
     id: "player", name: "调查员", type: "pc",
     hp: 10, maxHp: 10, ac: 10, status: [], position: "docks",

@@ -23,6 +23,7 @@ type Ent = { id: string; name: string; type: string; hp: number; maxHp: number; 
 type S = {
   world: { upsertEntity: (e: unknown) => void; getCurrentState: () => { scene: string; entities: Record<string, Ent> } };
   activeCharacter: { hp: number; maxHp: number };
+  activePlayerId: string;
   combatActive: boolean;
 };
 
@@ -61,7 +62,10 @@ describe("战斗要有来有回", () => {
     try {
       for (let i = 0; i < 5; i++) await s.act("攻击 食尸鬼");
     } finally { Math.random = real; }
-    const playerEnt = a.world.getCurrentState().entities["player"];
+    // 世界实体的真实 id 是 activePlayerId（单人局默认 "p1"），不是
+    // "player"——那是本轮修的 bug，读写不一致时这条断言曾经悄悄测的是
+    // 一个空对象。
+    const playerEnt = a.world.getCurrentState().entities[a.activePlayerId];
     expect(playerEnt).toBeDefined();
     // 先确认「确实挨过打」—— 否则两边都是满血，这条断言在
     // 「根本没人还手」的实现下也成立，等于没测。（变异检验就是这么发现的。）

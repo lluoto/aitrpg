@@ -41,6 +41,7 @@ import { MythosModuleLoader, type MythosModuleHost } from "../rules/mythos-modul
 import { PoliticoEconomyEngine } from "../economy/politic-economy-engine";
 import { PREMIERS_BARN_MODULE, ARKHAM_LIBRARY_MODULE, INNSMOUTH_MODULE } from "../rules/mythos-module";
 import { getModule as getCustomModule } from "../rules/custom-modules/index";
+import { BARN_OF_PREMIER } from "../module/barn-of-premier";
 import { resolveSceneTarget, type SceneRow } from "../play/scene-resolve";
 
 import type { WorldEntity, ActionIntent, CombatPersonalityTraits } from "../types";
@@ -563,7 +564,7 @@ export class GameSession {
 
   getPlayerPosition(): string {
     const state = this.world.getCurrentState();
-    return state.entities["player"]?.position ?? state.scene ?? "tavern";
+    return state.entities[this.activePlayerId]?.position ?? state.scene ?? "tavern";
   }
 
   /**
@@ -1439,7 +1440,7 @@ export class GameSession {
       case "push": return this.handlePush(msg);
       case "chase": return this.handleChase(msg);
       case "use_item": case "pickup": msg(`你尝试${intent.action === "pickup" ? "捡起" : "使用"}物品。`); this.lastNarrative = `你${intent.action === "pickup" ? "捡起" : "使用"}物品。`; return true;
-      case "talk": msg("你试图与周围的人交流…"); this.lastNarrative = "你试图与周围的人交流"; return true;
+      case "talk": return this.handleTalk(intent, input, messages, msg);
       case "spell_list": msg("当前可用法术：暂无已知法术"); this.lastNarrative = "你回忆了一下已知的法术"; return true;
       case "shop": msg("商店功能尚未开放"); this.lastNarrative = "商店功能尚未开放"; return true;
       case "view_module": msg("模组详情功能"); this.lastNarrative = "模组详情"; return true;
@@ -1645,12 +1646,12 @@ export class GameSession {
   private movePlayerToScene(sceneId: string): boolean {
     if (!this.setScene(sceneId)) return false;
     const state = this.world.getCurrentState();
-    const player = state.entities["player"];
+    const player = state.entities[this.activePlayerId];
     if (player) {
       player.position = sceneId;
       this.world.upsertEntity(player);
     } else {
-      this.world.upsertEntity({ id: "player", name: this.activeCharacter?.name ?? "调查员", type: "pc", hp: 12, maxHp: 12, ac: 10, status: [], position: sceneId });
+      this.world.upsertEntity({ id: this.activePlayerId, name: this.activeCharacter?.name ?? "调查员", type: "pc", hp: 12, maxHp: 12, ac: 10, status: [], position: sceneId });
     }
     return true;
   }
@@ -1686,12 +1687,12 @@ export class GameSession {
     }
     // 更新玩家位置
     const state = this.world.getCurrentState();
-    const player = state.entities["player"];
+    const player = state.entities[this.activePlayerId];
     if (player) {
       player.position = sceneId;
       this.world.upsertEntity(player);
     } else {
-      this.world.upsertEntity({ id: "player", name: this.activeCharacter?.name ?? "调查员", type: "pc", hp: 12, maxHp: 12, ac: 10, status: [], position: sceneId });
+      this.world.upsertEntity({ id: this.activePlayerId, name: this.activeCharacter?.name ?? "调查员", type: "pc", hp: 12, maxHp: 12, ac: 10, status: [], position: sceneId });
     }
     msg(`你移动到了场景: ${this.sceneDisplayNames[sceneId] ?? sceneId}`);
     this.lastNarrative = `你走向了${target}。`;
@@ -1723,7 +1724,7 @@ export class GameSession {
   private handleRest(messages: AgentMessage[], msg: (s: string) => number): boolean {
     // 获取角色 HP（优先从世界实体读取，回退到 activeCharacter）
     const state = this.world.getCurrentState();
-    const playerEnt = state.entities["player"];
+    const playerEnt = state.entities[this.activePlayerId];
     let currentHp = playerEnt?.hp ?? this.activeCharacter?.hp ?? 12;
     let maxHp = playerEnt?.maxHp ?? this.activeCharacter?.maxHp ?? 12;
 
@@ -1812,8 +1813,21 @@ export class GameSession {
   }
 
   // ── 技能检查──
-  /** 会去解析场景线索的技能。潜行、说服等不属于调查，不该触发线索判定。 */
-  private static readonly INVESTIGATIVE_SKILLS = new Set(["investigation", "perception"]);
+  /**
+   * 会去解析场景线索的技能。潜行、说服等不属于调查，不该触发线索判定。
+   *
+   * investigation/perception 是通用兜底；其余键是 BARN_OF_PREMIER 32 条线索
+   * findMethods 里实际用到的技能（侦查/取悦/社交/图书馆/信誉/精神分析/医学/
+   * 急救/母语，译名见 SKILL_NAME_MAP），加上 luck/strength 两个属性代理
+   * （幸运/力量——见 bridgeBarnOfPremierClues 的注释）。不在这个集合里的技能
+   * 即使 ClueDef 已经注册好，也不会走到 investigateCoC，线索还是查不到。
+   */
+  private static readonly INVESTIGATIVE_SKILLS = new Set([
+    "investigation", "perception",
+    "spot_hidden", "charm", "fast_talk", "library_use", "credit_rating",
+    "psychoanalysis", "medicine", "first_aid", "language_own",
+    "luck", "strength",
+  ]);
 
   /**
    * 取技能值。
@@ -1897,6 +1911,87 @@ export class GameSession {
     this.lastNarrative = result.revelation;
 
     if (result.sanLost > 0) this.inflictSanLoss(result.sanLost, msg);
+    return true;
+  }
+
+  /**
+   * 处理"和 XX 说话/交谈"。
+   *
+   * ⚠ 此前这里是纯桩：不管玩家说什么、跟谁说，永远回一句
+   *   「你试图与周围的人交流…」——`MythosModuleLoader` 早就把模组 NPC
+   *   的内联人格通过 `registerNPCPersonality` 注册进了 NPC Agent 系统
+   *   （`this.registry`，见 registerModuleNPCPersonality 的注释），
+   *   `/npc-chat` 端点（server.ts:470）也已经在消费它——只是这条从自由跑团
+   *   进来的路从来没有接上同一个消费者。
+   *
+   *   不新造对话生成：直接复用 `/npc-chat` 的消费逻辑
+   *   （`registry.findAgentByName` → `npcAgent.respond` → 记一条 dialogue
+   *   消息，情绪在生成时刻固定）。
+   *
+   *   找不到人时分清楚三种情况（参照 notFoundLine() 的分辨方式，不用万金油）：
+   *   没指定对象 / 这里没这个人 / 这个人在场但没有可用人格数据。
+   */
+  private async handleTalk(
+    intent: ActionIntent,
+    input: string,
+    messages: AgentMessage[],
+    msg: (s: string) => number,
+  ): Promise<boolean> {
+    const pos = this.getDisplayedScene();
+    const presentNpcEntities = this.world
+      .getEntitiesInScene(pos)
+      .filter((e) => e.type === "npc" || e.type === "monster");
+    const presentNames = presentNpcEntities.map((e) => e.name);
+    const want = (intent.target ?? "").trim();
+
+    if (!want) {
+      msg(
+        presentNames.length > 0
+          ? `要跟谁说话？在场的有：${presentNames.join("、")}。`
+          : "这里没有人可以交谈。",
+      );
+      this.lastNarrative = "要跟谁说话？";
+      return true;
+    }
+
+    const target = presentNpcEntities.find((e) => e.name === want)
+      ?? presentNpcEntities.find((e) => e.name.includes(want) || want.includes(e.name));
+
+    if (!target) {
+      msg(
+        presentNames.length > 0
+          ? `这里没有「${want}」。在场的有：${presentNames.join("、")}。`
+          : `这里没有「${want}」，这里也没有别人。`,
+      );
+      this.lastNarrative = `这里没有「${want}」`;
+      return true;
+    }
+
+    const npcAgent = this.registry.findAgentByName(target.name);
+    if (!npcAgent) {
+      // NPC 在场、但没有注册人格（模组没写内联人格、也没能从 npcs.yaml 兜底）——
+      // 明说缺的是什么，不要用一句放之四海而皆准的套话糊弄过去。
+      msg(`${target.name}没有可用的人格数据，暂时无法对话。`);
+      this.lastNarrative = `${target.name}没有可用的人格数据`;
+      return true;
+    }
+
+    try {
+      const history = this.getHistory(10);
+      const reply = await npcAgent.respond(input, history.messages);
+      const mood = npcAgent.getMood();
+      messages.push({
+        speaker: target.name,
+        content: reply,
+        type: "dialogue",
+        ...(mood ? { mood } : {}),
+      });
+      this.lastNarrative = reply;
+    } catch (e: any) {
+      log.warn("session", `NPC 对话失败: ${target.name} — ${e?.message ?? e}`);
+      msg(`${target.name}欲言又止，一时没能回应。`);
+      this.lastNarrative = `${target.name}没有回应`;
+    }
     return true;
   }
 
@@ -2148,7 +2243,7 @@ export class GameSession {
     const attacker = this.pickTarget(intent, enemies); // 谁被打就谁还手
     if (!attacker) return;
 
-    const player = state.entities["player"];
+    const player = state.entities[this.activePlayerId];
     if (!player || player.hp <= 0) return;            // 已经倒下的人不再挨打
 
     const result = this.rules.adjudicateAttack(
@@ -2278,8 +2373,16 @@ export class GameSession {
         this.session.switchActive("p1");
       }
       // 创建世界实体
+      //
+      // ⚠ 这里原先写死 id: "player"，而这个函数上面几行把角色卡存进
+      // characters.set("p1", ch) —— activePlayerId 默认也是 "p1"。两者从
+      // 建号那一刻就是两个不同的实体：世界状态（HP/位置/status）全部写
+      // 到了 "player" 这个没人读的实体上，getState() 面板读的是
+      // activePlayerId（"p1"），永远读不到战斗/移动写的东西。
+      // 这是"创建角色"命令的路径——不是构造函数那条冷门路径，是每一局
+      // 实际使用的入口，之前这条谎报了整场战斗和移动。
       this.world.upsertEntity({
-        id: "player", name: charName, type: "pc",
+        id: this.activePlayerId, name: charName, type: "pc",
         hp: ch.hp, maxHp: ch.maxHp, ac: CharacterFactory.computeAC(ch),
         status: [], position: this.world.getCurrentState().scene ?? "tavern",
       });
@@ -2602,6 +2705,9 @@ export class GameSession {
       const lines = loader.import(mod);
       loaded.set(mod.id, true);
       this.registeredModules.push(mod);
+      // premiers_barn.ts 自带的 10 条线索有 2 条 scene 字段填的是 NPC 名，
+      // 且合成的 ClueDef 没有技能/难度梯度——见 bridgeBarnOfPremierClues 注释。
+      if (mod.id === "premiers_barn") this.bridgeBarnOfPremierClues();
       if (mod.sceneBgm) Object.assign(this.sceneBgm, mod.sceneBgm);
       // 填充模组场景显示名/别名（scenes 表已由 registerScene 写入，含模组原文描写）
       try {
@@ -2627,6 +2733,69 @@ export class GameSession {
       this.lastNarrative = `模组加载失败。`;
     }
     return true;
+  }
+
+  /**
+   * 幸运/力量是 CoC 属性，不在 skillValues 里（见 coc-character.ts 的
+   * ATTRIBUTE_NAME_MAP）。BARN_OF_PREMIER 里两条线索的唯一 findMethod 恰好是
+   * 这两个属性；investigateCoC 按 skillValues[key] ?? 20 处理，查不到时退回
+   * 20% 默认值——不精确，但两条都是 bonus/非核心线索，好过完全查不到。
+   */
+  private static readonly BARN_CLUE_ATTRIBUTE_SKILLS: Record<string, string> = {
+    "幸运": "luck",
+    "力量": "strength",
+  };
+
+  /**
+   * 把 BARN_OF_PREMIER（32 条完整线索，带 findMethods/revelation/importance）
+   * 桥接进 InvestigationEngine，只在加载"普瑞米尔的谷仓"时调用一次。
+   *
+   * 背景：premiers_barn.ts 自带的 10 条线索走 host.registerSceneClue（见
+   * mythos-module.ts:634），其中 clue_0/clue_1 的 scene 字段填的是 NPC 名
+   * "菲碧_特里坎"、clue_8/clue_9 填的是事件名"与艾德里安的会面"——都不是玩家
+   * 能走到的场景 id，这两条线索永远进不了 sceneClues 索引。而且
+   * registerSceneClue 四参版合成的 ClueDef 全走 spot_hidden + 单一描述文本，
+   * 没有技能/难度梯度。
+   *
+   * BARN_OF_PREMIER 是同一模组更完整的数据源（32 条，带 findMethods/
+   * revelation/importance），与原有 10 条 id 命名空间不重叠
+   * （clue_0.. vs clue_pistol_in_bag..），按场景名并存注册，不覆盖、不删除
+   * 原有 10 条。
+   *
+   * 场景名桥接：BARN_OF_PREMIER 的 Scene.name 是原始 PDF 提取的展示名，3 个
+   * 带「（备注）」后缀（如"农场外围（陷阱区）"）；而 mythos-module.ts:461
+   * 的 registerScene(sid, sid, ...) 用不带后缀的短名（"农场外围"）——
+   * state.scene 运行时存的正是这个短名。去掉尾部「（…）」即可对齐，
+   * 20 个场景全部核对过能对上。
+   */
+  private bridgeBarnOfPremierClues(): void {
+    const stripBracketSuffix = (name: string) => name.replace(/（[^）]*）$/, "");
+    for (const scene of BARN_OF_PREMIER.scenes) {
+      const sceneName = stripBracketSuffix(scene.name);
+      for (const clue of scene.clues) {
+        // 优先挑一条真正的技能路径；只有属性（幸运/力量）可用时才退回属性名。
+        const skillMethods = clue.findMethods.filter((f) => f.type === "skill" && f.skillName);
+        const nonAttribute = skillMethods.find((f) => SKILL_NAME_MAP[f.skillName!]);
+        const chosen = nonAttribute ?? skillMethods[0];
+        const skillKey = chosen
+          ? (SKILL_NAME_MAP[chosen.skillName!] ?? GameSession.BARN_CLUE_ATTRIBUTE_SKILLS[chosen.skillName!] ?? "spot_hidden")
+          : "spot_hidden";
+        // ModuleData 只给一句 revelation，没有分层文本——四档共用同一句是
+        // 如实反映数据颗粒度，不是偷懒（registerSceneClue 的合成版也是这么做的）。
+        this.investigation.addClueType(clue.id, {
+          description: clue.description,
+          scene: sceneName,
+          coc_primary: {
+            skill: skillKey,
+            regular: clue.revelation,
+            hard: clue.revelation,
+            extreme: clue.revelation,
+            critical: clue.revelation,
+            fail: "你没有找到有用的信息。",
+          },
+        });
+      }
+    }
   }
 
   // ── 模组结算/技能成长 ──

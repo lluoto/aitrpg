@@ -652,22 +652,23 @@ describe("CoC 休息（RAW 周结算）", () => {
     }, undefined, "调查员");
     await restSession.act("创建角色 investigator 张三");
 
-    // 获取玩家当前 HP
+    // 获取玩家当前 HP —— 世界实体的真实 id 是 activePlayerId（单人局默认
+    // "p1"），不是 "player"：那是本轮修的 bug，写/读都得用同一个 id。
     const state = restSession.world.getCurrentState();
-    const player = state.entities["player"];
+    const player = state.entities[restSession.activePlayerId];
     const maxHp = player.maxHp;
 
     // 直接降低 HP
     restSession.world.getDatabase()
-      .prepare("UPDATE entities SET hp = ? WHERE id = 'player'")
-      .run(Math.floor(maxHp / 2));
+      .prepare("UPDATE entities SET hp = ? WHERE id = ?")
+      .run(Math.floor(maxHp / 2), restSession.activePlayerId);
 
     // 休息（未接受治疗 → 不应恢复 HP）
     const res = await restSession.act("休息");
 
     // 验证 HP 没有增加
     const afterState = restSession.world.getCurrentState();
-    const afterPlayer = afterState.entities["player"];
+    const afterPlayer = afterState.entities[restSession.activePlayerId];
     expect(afterPlayer.hp).toBe(Math.floor(maxHp / 2));
 
     // 应提示需要治疗
@@ -683,14 +684,14 @@ describe("CoC 休息（RAW 周结算）", () => {
     await restSession.act("创建角色 investigator 张三");
 
     const state = restSession.world.getCurrentState();
-    const player = state.entities["player"];
+    const player = state.entities[restSession.activePlayerId];
     const maxHp = player.maxHp;
     const halfHp = Math.floor(maxHp / 2);
 
     // 直接降低 HP
     restSession.world.getDatabase()
-      .prepare("UPDATE entities SET hp = ? WHERE id = 'player'")
-      .run(halfHp);
+      .prepare("UPDATE entities SET hp = ? WHERE id = ?")
+      .run(halfHp, restSession.activePlayerId);
 
     // 标记已接受治疗
     restSession["_woundsTreated"] = true;
@@ -700,7 +701,7 @@ describe("CoC 休息（RAW 周结算）", () => {
 
     // 验证 HP 增加了
     const afterState = restSession.world.getCurrentState();
-    const afterPlayer = afterState.entities["player"];
+    const afterPlayer = afterState.entities[restSession.activePlayerId];
     expect(afterPlayer.hp).toBeGreaterThan(halfHp);
     expect(afterPlayer.hp).toBeLessThanOrEqual(maxHp);
 

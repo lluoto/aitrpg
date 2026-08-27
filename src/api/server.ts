@@ -422,8 +422,10 @@ async function handleRequest(req: Request): Promise<Response> {
         if (creditRating !== undefined) ch.creditRating = creditRating;
         const attributes = bodyRecord(body, "attributes");
         if (attributes) Object.assign(ch.attributes ?? (ch.attributes = {}), attributes);
-        // 同步世界实体
-        const ent = session.world.getEntity("player");
+        // 同步世界实体——用 activePlayerId，不要写死 "player"：
+        // 世界实体的真实 id 是 GameSession.activePlayerId（单人局默认
+        // "p1"），写死 "player" 会同步到一个没人读的幽灵实体上。
+        const ent = session.world.getEntity(session.activePlayerId);
         if (ent) { ent.hp = ch.hp; session.world.upsertEntity(ent); }
         return respondJson({ success: true, character: ch });
       } catch (err: any) {
