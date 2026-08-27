@@ -52,6 +52,47 @@ describe("matchSceneClues — 命中多条：问，不猜", () => {
   });
 });
 
+describe("matchSceneClues — 无位置信号的裸动词：该问不该猜", () => {
+  // 背景（真实案例，非构造）：diag-clue-phrasing.ts 实跑抓到——"艾德里安的
+  // 卧室"场景裸的"侦查"精确命中了 clue_bedroom_diary，只因为它唯一的
+  // findMethods 描述恰好写的是"侦查或挪开床头柜"，同场景另一条线索
+  // （母语检定日记本）的描述完全不含任何调查动词——于是"侦查"这个词单靠
+  // 子串包含就"碰巧"只命中了一条，看着像精确匹配，实际玩家等于什么都
+  // 没说。这里复刻这个精确形状（一条候选的描述以调查动词开头，另一条
+  // 不含任何调查动词），而不是两条描述都用同一个动词开头——那样两条会
+  // 一起命中变成"两条都沾边"的歧义，反而测不出"看着唯一、实为虚假"这种
+  // 更隐蔽的错误。
+  const candidates = [
+    { id: "clue_diary", texts: ["日记本与老旧文件", "侦查或挪开床头柜"] },
+    { id: "clue_old_doc", texts: ["老旧文件（米-戈联络术）", "困难的母语来对照日记本观看文件"] },
+  ];
+
+  it.each(["侦查", "检查", "搜索", "搜查", "观察", "调查", "翻找"])(
+    "裸动词「%s」（没有位置/对象信号）→ 不精确命中任何一条，报歧义",
+    (verb) => {
+      const r = matchSceneClues(verb, candidates);
+      expect(r.hit).toBeNull();
+    },
+  );
+
+  it("裸动词场景下 ambiguous 列出全部候选，供调用方原样转述给玩家", () => {
+    const r = matchSceneClues("侦查", candidates);
+    expect(r.ambiguous.sort()).toEqual(["clue_diary", "clue_old_doc"]);
+  });
+
+  it("**干扰**：动词后面跟了真实内容时不受影响，照常精确命中", () => {
+    // 防止"矫枉过正"：不能因为句子里出现了调查动词，就连带内容一起否掉。
+    expect(matchSceneClues("挪开床头柜", candidates).hit).toBe("clue_diary");
+    expect(matchSceneClues("对照日记本观看文件", candidates).hit).toBe("clue_old_doc");
+  });
+
+  it("**干扰**：多个动词叠在一起但仍然没有实质内容 → 依旧歧义", () => {
+    // "调查侦查搜索"去掉所有动词后剩不下东西，不该因为词多了就侥幸算出内容。
+    const r = matchSceneClues("调查侦查搜索", candidates);
+    expect(r.hit).toBeNull();
+  });
+});
+
 describe("matchSceneClues — 一条不中：如实说没有，不是给下一条", () => {
   it("玩家的话跟任何候选都不沾边 → hit 和 ambiguous 都是空", () => {
     const candidates = [

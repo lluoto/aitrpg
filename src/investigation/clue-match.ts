@@ -18,6 +18,8 @@ import { isRejectedMention, uniqueAbbrevs } from "../play/move-util";
 
 /** 调查类动词：紧跟在关键词前面时才算"确实在找这个"，不是随口提了一嘴。 */
 const SEARCH_VERB = /(侦查|检查|查看|搜索|搜查|寻找|翻找|翻阅|观察|查探|调查|询问|打听)$/;
+/** 同一份动词表，不锚定位置——用来从整句话里把动词都抠掉，看看还剩不剩内容。 */
+const SEARCH_VERB_ANY = /侦查|检查|查看|搜索|搜查|寻找|翻找|翻阅|观察|查探|调查|询问|打听/g;
 
 /** 这个关键词前面紧挨着调查类动词吗——"侦查**卫生间**"比单纯提一嘴更像是要搜这里。 */
 export function hasSearchIntent(said: string, key: string): boolean {
@@ -78,14 +80,31 @@ export function splitKeys(texts: string[]): string[] {
 /**
  * 把玩家的一句话对到场景里的一条线索上。
  *
- * `said` 太短（去掉技能动词后不剩什么）时不尝试匹配——那是"没给提示"，
- * 不是"提示对不上"，调用方应该回落到旧行为（唯一候选直接给，多候选给
- * 第一条），不应该报"这里没什么特别的"。这个判断留给调用方做
- * （resolveSceneClueMatch），这里只管"给了提示之后怎么对"。
+ * ⚠ 没有位置/对象信号的输入要老实报"该问不该猜"（歧义），不能因为凑巧
+ * 撞上某条描述的动词前缀就精确命中一个——`diag-clue-phrasing.ts` 实跑真的
+ * 抓到过一例："艾德里安的卧室"场景里裸的"侦查"精确命中了
+ * clue_bedroom_diary，只因为它的 findMethods 描述恰好写的是"侦查或挪开
+ * 床头柜"，玩家等于什么都没说，引擎却擅自挑了一个。
+ *
+ * 判据必须通用，不能列"侦查"的黑名单——那样"观察""搜查""检查"会一个个
+ * 再犯一遍。做法：把 `said` 里所有调查类动词（复用 hasSearchIntent 那份
+ * 动词表 SEARCH_VERB_ANY，不新开一份）都抠掉，看看还剩不剩够长的内容。
+ * 剩下的才是"位置/对象信号"；一个字都不剩，就是纯动词、没有信号，
+ * 老实报"候选是这些，问不该猜"（ambiguous = 全部候选），不往下走匹配。
+ *
+ * 这与调用方 resolveSceneClueMatch 的"没给提示→回落旧行为"是两件不同的
+ * 事：那边处理的是"入口就该不该走到这里"，这里处理的是"就算真走到了
+ * 这个函数，输入本身有没有实质信号"——matchSceneClues 作为可以被直接
+ * 调用的通用匹配器，不能依赖调用方一定先做过这层判断。
  */
 export function matchSceneClues(said: string, candidates: ClueMatchCandidate[]): ClueMatchResult {
   const trace: ClueMatchTrace = { candidates: [], matched: [] };
   if (candidates.length === 0) return { hit: null, ambiguous: [], trace };
+
+  const contentOnly = said.replace(SEARCH_VERB_ANY, "").trim();
+  if (contentOnly.length < 2) {
+    return { hit: null, ambiguous: candidates.map((c) => c.id), trace };
+  }
 
   const allKeys = candidates.map((c) => splitKeys(c.texts));
   const hits: { id: string; key: string }[] = [];

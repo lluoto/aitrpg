@@ -631,16 +631,44 @@ export function judgeScriptRefs(refs: readonly ScriptRefVerdict[], doc: string):
  *
  * ⚠ 要排掉**接口成员声明** —— `isSceneVisited(id: string): boolean;` 长得跟
  * 调用很像（标识符 + 括号 + 分号结尾），第一版扫出来两个假阳性就是它。
- * 判据：声明后面跟 `{`（有函数体）才算实现；跟 `;` 的是签名。
+ * 判据：声明后面跟 `{`（有函数体）才算实现；跟 `;` 的是签名——`)\s*:\s*
+ * boolean\s*\{` 要求紧跟花括号，天然排掉分号结尾的签名，不用额外判断。
+ *
+ * ⚠ 参数列表不能假设不嵌套。原先是 `\([^()]*\)`（单层），而本仓的处理器
+ * 签名普遍带回调类型参数——`handleMove(intent: ActionIntent, msg: (s:
+ * string) => number): boolean {` 这类，`(s: string)` 一层嵌套就让整条匹配
+ * 失败。实测 game-session.ts 28 个真正返回 boolean 的方法里，单层正则只
+ * 认得出 3 个（93% 漏判）——`findDroppedReturns` 判"返回值被丢掉"全靠
+ * `boolNames.has(name)`，认不出名字，判据对这些方法形同虚设。
+ *
+ * 改用从 `): boolean {` 反向做括号配平扫描，不设嵌套深度上限（不是"允许
+ * 一层嵌套"这种换个数字的补丁——本仓已经因为"看着够用"的单层假设漏了
+ * 93%，没理由再赌一次"两层应该够了"）。方法名是紧挨在配平后那个 `(`
+ * 前面的标识符。
  */
-const BOOL_IMPL = /\b([A-Za-z_$][\w$]*)\s*\([^()]*\)\s*:\s*boolean\s*\{/g;
-
 export function boolReturningNames(source: string): string[] {
+  const { masked } = maskSource(source);
   const out = new Set<string>();
-  for (const m of maskSource(source).masked.matchAll(BOOL_IMPL)) {
-    const n = m[1]!;
-    if (["if", "while", "for", "switch", "catch", "function"].includes(n)) continue;
-    out.add(n);
+  const tailRe = /\)\s*:\s*boolean\s*\{/g;
+  let m: RegExpExecArray | null;
+  while ((m = tailRe.exec(masked)) !== null) {
+    const closeParenIdx = m.index; // 匹配本身就是从这个 `)` 开始的
+    let depth = 0;
+    let openParenIdx = -1;
+    for (let i = closeParenIdx; i >= 0; i--) {
+      const ch = masked[i];
+      if (ch === ")") depth++;
+      else if (ch === "(") {
+        depth--;
+        if (depth === 0) { openParenIdx = i; break; }
+      }
+    }
+    if (openParenIdx < 0) continue; // 括号配不平（不该发生，防御性跳过）
+    const nameMatch = masked.slice(0, openParenIdx).match(/([A-Za-z_$][\w$]*)\s*$/);
+    if (!nameMatch) continue;
+    const name = nameMatch[1]!;
+    if (["if", "while", "for", "switch", "catch", "function"].includes(name)) continue;
+    out.add(name);
   }
   return [...out];
 }

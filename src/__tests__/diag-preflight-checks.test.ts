@@ -5,6 +5,8 @@
 // 两种都等于没检查。
 
 import { describe, test, expect } from "bun:test";
+import { readFileSync } from "fs";
+import { join } from "path";
 import {
   maskSource, findTruncatedBlocks, findPlaceholderResidue,
   scanImports, importPointsTo, findReverseImports,
@@ -628,6 +630,100 @@ describe("检查 8 · 丢掉的 boolean 返回值", () => {
       "}",
     ].join("\n");
     expect(findDroppedReturns("move-util.ts", iface, new Set(["isSceneVisited", "sceneExists"]))).toEqual([]);
+  });
+});
+
+describe("检查 8 · 参数列表带嵌套括号（回调类型参数）——原判据的假绿来源", () => {
+  // ⚠ 原正则是 `\([^()]*\)`（单层），本仓的处理器签名普遍带回调类型参数：
+  //   `handleMove(intent: ActionIntent, msg: (s: string) => number): boolean {`
+  // `(s: string)` 一层嵌套就让整条匹配失败——实测 game-session.ts 28 个真正
+  // 返回 boolean 的方法里，单层正则只认得出 3 个（93% 漏判）。
+  // findDroppedReturns 判"返回值被丢掉"全靠 boolNames.has(name)，认不出
+  // 名字，判据对这些方法形同虚设——preflight 第 8 项报「0 处」是假绿。
+
+  test("**错误行为的红线**：带回调类型参数的签名必须认得出", () => {
+    const src = [
+      "class S {",
+      "  handleMove(intent: X, msg: (s: string) => number): boolean {",
+      "    return true;",
+      "  }",
+      "}",
+    ].join("\n");
+    expect(boolReturningNames(src)).toContain("handleMove");
+  });
+
+  test("**正确**：两层嵌套（回调参数里还有回调）也认得出——不是换个数字的补丁", () => {
+    const src = [
+      "class S {",
+      "  register(cb: (done: (ok: boolean) => void) => void): boolean {",
+      "    return true;",
+      "  }",
+      "}",
+    ].join("\n");
+    expect(boolReturningNames(src)).toContain("register");
+  });
+
+  test("**干扰**：接口成员里带回调类型参数仍然不算实现（分号收尾）", () => {
+    const iface = [
+      "export interface Host {",
+      "  tryResolveModuleScene(targetOrInput: string, msg?: (s: string) => void): boolean;",
+      "}",
+    ].join("\n");
+    expect(boolReturningNames(iface)).toEqual([]);
+  });
+
+  test("**干扰**：if/while 这类控制流关键字不会被认成方法名", () => {
+    const src = [
+      "class S {",
+      "  ok(cb: (x: string) => number): boolean { return true; }",
+      "  run() {",
+      "    if (this.ok((x) => x.length)) { return; }",
+      "    while (this.ok((x) => x.length)) { break; }",
+      "  }",
+      "}",
+    ].join("\n");
+    const names = boolReturningNames(src);
+    expect(names).toEqual(["ok"]);
+    expect(names).not.toContain("if");
+    expect(names).not.toContain("while");
+  });
+
+  test("端到端：game-session.ts 真实源码必须认出 ≥28 个返回 boolean 的方法", () => {
+    // 用真实文件而不是构造夹具——单层正则在构造的小例子上也能看着对，
+    // 本仓这次的假绿就是在真实、复杂签名上才现形的。
+    const src = readFileSync(join(import.meta.dir, "..", "api", "game-session.ts"), "utf8");
+    const names = boolReturningNames(src);
+    expect(names.length).toBeGreaterThanOrEqual(28);
+
+    // ⚠ 名单核实结果：题面给的 26 个名字里有 2 个经核实是错的，不是本次
+    // 修复的问题——boolReturningNames 只扫 game-session.ts 这一份源码，
+    // 扫不出定义在别处的方法：
+    //   setActiveScene    —— 定义在 src/state/world-state-manager.ts:411，
+    //                        game-session.ts 里只有调用点 `this.world.setActiveScene(...)`
+    //   getPlayerInventory —— 同样定义在 world-state-manager.ts:213，
+    //                        而且它返回 `string[]`，根本不是 boolean
+    // 这两个不放进下面的断言列表，放了就是断言一件不成立的事。
+    const verified26 = [
+      "handleHelp", "tryResolveModuleScene", "handleMove", "handleInventory",
+      "handleFlee", "handleRest", "handleSanCheck", "handleSkillCheck",
+      "resolveSceneClue", "handleSavingThrow", "handleCreateCharacter",
+      "handleListOccupations", "handleBuy", "handleLegacy", "handleGenerateStory",
+      "handleLoadModule", "handleSkillAdvancement", "handleCast", "handleRead",
+      "handleFirstAid", "handleReload", "handlePush", "handleChase",
+      "handlePoliticoEconomy",
+    ];
+    expect(verified26.length).toBe(24); // 26 减掉核实有误的 2 个
+    for (const name of verified26) {
+      expect(names).toContain(name);
+    }
+  });
+
+  test("端到端：setActiveScene 在它真正定义的文件（world-state-manager.ts）里能被认出——判据的原型案例本身要立得住", () => {
+    // source-scan.ts 用 setActiveScene 当第 8 项判据的立案理由（"失败时会把
+    // 世界弄成一个活动场景都不剩"），但判据从未在任何真实文件上验证过认得出
+    // 它自己的原型案例。这里补上。
+    const src = readFileSync(join(import.meta.dir, "..", "state", "world-state-manager.ts"), "utf8");
+    expect(boolReturningNames(src)).toContain("setActiveScene");
   });
 });
 
