@@ -1,6 +1,6 @@
 {
-  "tests": 2077,
-  "files": 124,
+  "tests": 2128,
+  "files": 128,
   "unwiredMethods": 90,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -274,6 +274,16 @@
       "tests": 2077,
       "files": 124,
       "when": "worldModelStatus() 补 exists 字段：loaded 是懒加载的运行时状态（game-session.ts:591「懒加载：首次注入时才加载世界模型」），开跑前查它必然是 false，拿它当事前门禁是先有鸡还是先有蛋——上一版只报 loaded，等于没给出「需要时能不能加载成功」这个真正想问的问题的答案。加 exists（existsSync，廉价，不触发加载），loaded 保留作事后观测（开跑几回合、建过会话后应翻成 true）。头注释写明两个字段的分工：exists:true 且 loaded:false 是完全正常的状态，不是 bug。核实过程中发现本机 ../世界模型/ 目录本身是空的，用测试自建的合成小夹具走真实 HTTP 验证。新增 3 条测试（worldModelStatus 测试文件从 4 条扩到 7 条）：exists 随磁盘文件真实存在与否变化、exists:false 时 loaded 必然也是 false、exists:true 但 loaded:false 的状态被显式钉住（这正是本次的坑，不钉住下次还会有人拿 loaded 当门禁）。变异检验：硬编码 exists:true，3 条精确变红，Copy-Item 还原后回归 7/7。手动服务器级验证：WORLD_MODEL_PATH 分别指向不存在路径与合成小夹具，两次真实起 bun run src/api/server.ts 打 GET /api/config，分别报 exists:false 与 exists:true（后者同时 loaded:false，因为没建会话触发懒加载，进一步印证 exists 与 loaded 互不干扰）"
+    },
+    {
+      "tests": 2086,
+      "files": 125,
+      "when": "实跑证据（会话 bhklwkwu，34 回合）暴露的三个耦合问题，同一轮修完。定位结论（先查后改）：intent 解析本身是对的（parseIntent 探针实测「去特里坎家」→action:move、target:特里坎家），根因全在 handleIntent 与 act() 的控制流，没有动 intent 解析范围。① handleIntent 的 case \"move\"/\"look\" 在模块模式下无视 tryResolveModuleScene() 的返回值、一律 return false——那句 docstring 早就写着「返回值在两个调用点都被丢掉」，写了没改，移动成功了也被报成没处理，继续往下走到战斗检测；两处改成如实转发返回值。② act() 里 `this.combatActive || 攻击词` 的判断把「战斗还没结束」和「这句话是攻击」混成一件事，非攻击输入（移动解析失败、纯叙述、聊天）只要没被 handleIntent 接住就被判成打人；改成只看输入本身是否像攻击，combatActive 不再单独构成理由——但 combatActive 本身不在这里被清掉，不产生攻击判定不等于战斗结束，落点仍是 LLM 叙事分支。③ aliveEnemies()（战斗旗/还手/退出战斗/自由行动战斗判定四处共用）原先不按场景过滤，加 `(scene_id ?? position) === 当前场景` 判断（pos===\"unknown\" 时不过滤，避免大量约定俗成用占位场景名、从未真正注册场景的测试夹具整批消失）；同时把 act() 里的自由行动战斗块与 handleAttack() 各自的内联敌人过滤都换成复用 aliveEnemies()，消灭三处重复实现。加 combat-escape-and-scene-scope.test.ts（9 条，三个症状各三条：正确行为/目标行为错误的对照/文本相似但合法不误报）。变异检验：三处分别还原成 bug 版本，对应测试精确变红（第一次测试设计漏了两个盲区又补上——症状 2/3 的场景里有真实模组 NPC，泛指攻击的伤害可能落在未被断言追踪的 NPC 身上让 mutation 白测，改用「压根没有攻击判定发生」和挑一个模组未安排 NPC 的场景来消除歧义），Copy-Item 还原后回归 9/9。顺带发现并保留：aliveEnemies() 的 scene_id/position 双轨兜底与 pos===\"unknown\" 豁免都是运行中发现的真实测试夹具兼容性问题，不是猜的"
+    },
+    {
+      "tests": 2128,
+      "files": 128,
+      "when": "线索按玩家输入匹配。实跑：「侦查卫生间」返回休息区的手枪线索，「侦查餐厅」返回卫生间的毒品线索——不是偏移一位，是玩家输入从未被读取。handleSkillCheck 只取 getUndiscoveredSceneClues(pos,playerId).find(hasClueType) 的第一条，intent.target/input 一眼都不看。数据其实都在：BARN_OF_PREMIER 32/32 条线索的 findMethods[].description 里就是位置/动作提示，但 bridgeBarnOfPremierClues 桥接时整个丢了，只取 skillName 映射技能、拿 revelation 填四档文本。① ClueDef 加 matchTexts/displayName/importance 三个可选字段（importance 只存不消费，留给后续新手辅助）；bridgeBarnOfPremierClues 把 [clue.name, ...findMethods.map(f=>f.description)] 存进 matchTexts。② 新增 src/investigation/clue-match.ts：matchSceneClues() 按 / 、，,：:+ 切词（32 条里只有 5 条带 /，其余 27 条是自由文本，不能只切 /），复用 move-util.ts 的 isRejectedMention/uniqueAbbrevs（hasMoveIntent 是移动专用动词，换成新写的 hasSearchIntent 认「侦查/检查/搜索」这类调查动词；matchKeys/chooseConnection 类型绑死 SceneConnection，另写轻量版）。命中唯一→解析；命中多条→报 ask 选项，不擅自选；一条不中→deny（如实说「这里没什么特别的」，不是给下一条——比拒绝更糟的正是「不看输入给下一条」这类病）；没给提示（去掉动词后不剩什么）→ fallback 回落旧行为，这是「没说要找什么」不是「说了没对上」，两回事。handleSkillCheck 加 input 参数接 resolveSceneClueMatch() 的判定。③ 判据：照 phrasing.ts 的形状做 src/diagnostics/clue-phrasing.ts（PhraseCase 三类正例/反例/歧义，failKind 四类 no-key/rival-only/ambiguous/forced-hit），配 scripts/diag/diag-clue-phrasing.ts 拿 BARN_OF_PREMIER 真实数据（10 个多线索场景×124 条用例）跑分：目标命中率 106/124=85.5%、反例 25/25=100%、歧义「不擅自选一个」9/10=90%，三类失败都有真实非零样本（不是全 0 的假完美）。判据本身在实跑中被抓到一次假红并修正：ambiguous 类判据原先要求 ambiguousIds.length>=2 才算过，但「没给任何位置提示」（裸「侦查」）合法的诚实结果是「压根没命中」，不是「必须报出两个候选」——把判据错拿去考匹配器没有的职责，是判据自己的设计错误，改成只要求 chosenClueId===null。新增测试：clue-match.test.ts（8 条，matchSceneClues/hasSearchIntent 单测）、scene-clue-input-match.test.ts（6 条，GameSession 端到端，实跑症状原句复现+对照+歧义构造）、diag-clue-phrasing.test.ts（28 条，判据校准+端到端真实数据+「退回取第一条」变异检验）。变异检验（生产代码）：还原成「取候选第一条」的旧行为，2/6 端到端测试精确变红（另两条巧合仍对，符合预期）；clue-match.ts 内部拆两处分别验证 isRejectedMention 在完整键/简称两条路径各自的贡献。Copy-Item 还原后回归全绿"
     }
   ]
 }

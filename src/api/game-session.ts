@@ -22,6 +22,7 @@ import { NPCCombatEngine, NPC_UNARMED_SKILL } from "../combat/npc-combat";
 import { CompanionManager } from "../combat/companion-manager";
 import { PlayerSession, type VisibilityRule } from "../session/player-session";
 import { InvestigationEngine } from "../investigation/investigation-engine";
+import { matchSceneClues } from "../investigation/clue-match";
 import { SpellEngine } from "../spell/spell-engine";
 import { WorldModelLoader, sharedWorldModel, DEFAULT_CTHULHU_PATH } from "../world/world-model-loader";
 import { WorldModelIntegrator, type SceneContext, type NPCPresentProfile } from "../world/world-model-integrator";
@@ -1238,13 +1239,33 @@ export class GameSession {
       if (handled) return this.buildActionResponse(turnMessages);
     }
 
-    // 战斗检测：如果包含攻击关键词且 combatActive
-    if (this.combatActive || /^(攻击|射击|挥砍|向.+攻击|对.+使用)/.test(input)) {
-      const state = this.world.getCurrentState();
-      const enemies = Object.values(state.entities).filter(e => (e.type === "monster" || e.type === "npc") && e.hp > 0);
+    // 战斗检测：只有输入本身看起来像"攻击"才会走这条自动检定分支——
+    // `combatActive` 单独为真不再是进这个分支的理由。
+    //
+    // ⚠ 此前是 `this.combatActive || 攻击词`：只要还在打，随便说什么、
+    //   移动去哪、想跟谁说话，只要没被上面的 handleIntent 接住，一律被判成
+    //   打人。实跑抓到过两种触发方式：
+    //   · 「去特里坎家」（移动，但 case "move" 在模块模式下无视
+    //     tryResolveModuleScene() 的返回值、一律回 false，见 handleIntent
+    //     的 case "move"/"look" 修复）落进这里，打中了艾德里安。
+    //   · 「我点燃酒吧，夺走所有登记簿，宣布整个小镇现在归我统治」这类纯
+    //     叙述、intent.action 解析不出来（"unknown"），combatActive 为真时
+    //     照样被判成攻击酒吧保镖。
+    //
+    //   combatActive 本身不在这里被清掉——不是攻击判定不等于战斗结束，
+    //   敌人仍在场上，下一回合玩家还能打；「说一句话就完全脱战」同样不对。
+    //   落点仍是下面的 LLM 叙事分支，战斗状态原样保留，只是这一回合没有
+    //   产生攻击判定。
+    if (/^(攻击|射击|挥砍|向.+攻击|对.+使用)/.test(input)) {
+      // 场景内、hp>0 的敌人——复用 aliveEnemies()，不再自己单开一份不按
+      // 场景过滤的 filter（那是「人在拖车房，酒吧保镖还在扑过来」的根因：
+      // 换了场景，旧场景里的敌人还留在这份名单里）。
+      const enemies = this.aliveEnemies();
       if (enemies.length > 0) {
         this.combatActive = true;
-        const target = enemies[Math.floor(Math.random() * enemies.length)];
+        // 打 intent.target 指定的目标，不再从全场景随机挑——随机挑会打中
+        // 无关 NPC（实跑里出现过打「爱莉·埃斯特鲁姆」这种旁观者）。
+        const target = this.pickTarget(intent, enemies)!;
 
         // 检定（简化版"
         const skill = 50;
@@ -1283,9 +1304,9 @@ export class GameSession {
             const cRoll = Math.floor(Math.random() * 100) + 1;
             const cSkill = c.config.skills?.fight ?? 30;
             if (cRoll <= cSkill && enemies.length > 0) {
-              const aliveEnemies = Object.values(state.entities).filter(e => (e.type === "monster" || e.type === "npc") && e.hp > 0);
-              if (aliveEnemies.length > 0) {
-                const cTarget = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+              const remaining = this.aliveEnemies();
+              if (remaining.length > 0) {
+                const cTarget = remaining[Math.floor(Math.random() * remaining.length)];
                 const cDmg = Math.floor(Math.random() * 4) + 1;
                 cTarget.hp = Math.max(0, cTarget.hp - cDmg);
                 this.world.upsertEntity(cTarget);
@@ -1296,8 +1317,7 @@ export class GameSession {
         }
 
         // 检查战斗结"
-        const aliveEnemies = Object.values(state.entities).filter(e => (e.type === "monster" || e.type === "npc") && e.hp > 0);
-        if (aliveEnemies.length === 0) {
+        if (this.aliveEnemies().length === 0) {
           this.combatActive = false;
           turnMessages.push({ speaker: "系统", content: "✋ 所有敌人已被击败，战斗结束", type: "system" });
         }
@@ -1405,24 +1425,30 @@ export class GameSession {
       case "help": return this.handleHelp(msg);
       case "status": return this.handleStatus(messages);
       case "move":
-        // 模块模式：先解析目标场景名（匹配模组已注册场景并更新玩家位置），再回落 LLM 叙事
+        // 模块模式：先解析目标场景名（匹配模组已注册场景并更新玩家位置），
+        // 解析不出来才回落 LLM 叙事。
+        //
+        // ⚠ 这里原先不管 tryResolveModuleScene() 的返回值，一律 `return false`
+        //   ——那句 docstring 自己写着"返回值在两个调用点都被丢掉"，写是写了
+        //   但两个调用点从没真的改过来。后果：移动**成功**了也被 handleIntent
+        //   报成"没处理"，act() 里 `if (handled) return ...` 落空，继续往下
+        //   走到战斗检测/LLM 叙事——combatActive 为真时，移动直接变成一次
+        //   攻击判定（实跑：「去特里坎家」打中了艾德里安）。
         if (this.registeredModules.length > 0) {
-          this.tryResolveModuleScene(intent.target ?? input, msg);
-          return false;
+          return this.tryResolveModuleScene(intent.target ?? input, msg);
         }
         return this.handleMove(intent, msg);
       case "look":
-        // 模块模式：同样先尝试解析目标场景名，再回落 LLM 叙事
+        // 同上：只有解析失败（返回 false）才回落 LLM 叙事。
         if (this.registeredModules.length > 0) {
-          this.tryResolveModuleScene(intent.target ?? input, msg);
-          return false;
+          return this.tryResolveModuleScene(intent.target ?? input, msg);
         }
         msg("你环顾四周，观察着周围的环境…"); this.lastNarrative = "你仔细观察了周围的环境"; return true;
       case "inventory": return this.handleInventory(msg);
       case "flee": return this.handleFlee(msg);
       case "rest": return this.handleRest(messages, msg);
       case "san_check": return this.handleSanCheck(intent, msg);
-      case "skill_check": return this.handleSkillCheck(intent, msg);
+      case "skill_check": return this.handleSkillCheck(intent, input, msg);
       case "saving_throw": return this.handleSavingThrow(intent, msg);
       case "attack": return this.handleAttack(intent, msg);
       case "create_character": return this.handleCreateCharacter(input, msg);
@@ -1609,10 +1635,13 @@ export class GameSession {
    * 没认准也静默移动，玩家一个字都看不到 ——「比菜单更糟」说的就是这个。
    */
   private tryResolveModuleScene(targetOrInput: string, msg?: (s: string) => void): boolean {
-    // 解析逻辑抽到了 `play/scene-resolve.ts` —— 原先它埋在这个 private 方法里，
-    // 返回值在两个调用点都被丢掉，全仓只有一条 happy-path 测试。
-    // 也就是说**真人那条路的移动匹配几乎没有判据**，而剧本杀那条路的
-    // 同类毛病（否定、顺序依赖、静默替选）已经查出来一串。
+    // 解析逻辑抽到了 `play/scene-resolve.ts`。
+    //
+    // ⚠ 这条 docstring 曾经写着"返回值在两个调用点都被丢掉"——诊断是对的，
+    //   但两个调用点（handleIntent 的 case "move"/"look"）当时没有真的改
+    //   过来，一律 `return false`。诊断写了不代表修了：实跑因此出现过
+    //   「移动成功了，却因为 combatActive 为真被顺手判成一次攻击」。
+    //   两个调用点现在改成如实转发这个方法的返回值。
     let rows: SceneRow[] = [];
     try {
       rows = this.world.listScenes().map((r) => ({ id: r.id, name: r.name }));
@@ -1830,6 +1859,14 @@ export class GameSession {
   ]);
 
   /**
+   * 供 resolveSceneClueMatch 剥掉输入开头的调查类动词，剩下的才是要匹配的
+   * "提示"。剥完不剩什么（长度<2）视为"没给提示"，回落旧行为——那是
+   * "玩家没说要找什么"，不是"说了但没对上"，两种要分开处理。
+   */
+  private static readonly SEARCH_VERB_PREFIX_RAW =
+    /^(?:侦查|观察|搜索|寻找|搜查|调查|检查|查看|翻找|翻阅|询问|打听|使用|尝试)\s*/;
+
+  /**
    * 取技能值。
    *
    * intent 用的是通用词汇（perception / investigation / persuasion），CoC 角色卡的键却是
@@ -1848,7 +1885,7 @@ export class GameSession {
     return this.activeCharacter?.skills?.[skill] ?? 50;
   }
 
-  private handleSkillCheck(intent: ActionIntent, msg: (s: string) => number): boolean {
+  private handleSkillCheck(intent: ActionIntent, input: string, msg: (s: string) => number): boolean {
     const skill = intent.skill ?? "investigation";
 
     // 调查类检定优先交给 InvestigationEngine 解析场景线索。
@@ -1868,10 +1905,25 @@ export class GameSession {
       // 描述，没有 ClueDef（技能、成功层级文本、san_cost 都没有），送进
       // investigateCoC 只会拿到「你没有找到有用的线索」这个兜底失败——
       // 比原来的裸检定更糟。这类线索继续走下面的通用检定。
-      const next = this.investigation
+      const candidates = this.investigation
         .getUndiscoveredSceneClues(pos, this.activePlayerId)
-        .find((c) => this.investigation.hasClueType(c));
-      if (next !== undefined) return this.resolveSceneClue(next, msg);
+        .filter((c) => this.investigation.hasClueType(c));
+      if (candidates.length > 0) {
+        const decision = this.resolveSceneClueMatch(input, candidates);
+        if (decision.kind === "resolve") return this.resolveSceneClue(decision.clueId, msg);
+        if (decision.kind === "fallback") return this.resolveSceneClue(candidates[0]!, msg);
+        if (decision.kind === "ask") {
+          msg(`你想找什么？这里可能有：${decision.options.map((o) => `「${o}」`).join("、")}——说清楚一点。`);
+          this.lastNarrative = "需要说清楚具体想搜哪里/什么";
+          return true;
+        }
+        // kind === "deny"：玩家给了具体提示，但对不上场景里任何一条未发现
+        // 线索——如实说找不到，不能不看输入直接给下一条线索。那正是本仓
+        // 反复修的一类病：报告了一件玩家没做的事，比拒绝更糟。
+        msg("你仔细找了找，这里没什么特别的。");
+        this.lastNarrative = "这里没什么特别的";
+        return true;
+      }
     }
 
     const skillDisplay = SKILL_DISPLAY_NAMES[skill] ?? skill;
@@ -1891,6 +1943,45 @@ export class GameSession {
     msg(`🎲 ${skillDisplay}检查 d100=${roll} (目标=${skillValue}%) → ${resultText}`);
     this.lastNarrative = `${skillDisplay}检查 ${resultText}。`;
     return true;
+  }
+
+  /**
+   * 场景内一句"侦查XX"该解析成哪条线索。
+   *
+   * ⚠ 此前场景里不管有几条未发现线索，一律给**第一条**——玩家的话从没被
+   * 读取过，「侦查卫生间」拿到休息区的手枪，「侦查餐厅」拿到卫生间的毒品。
+   * 不是偏移一位，是输入从未被读取。
+   *
+   * 三种结果对应三种处理，别替玩家决定该找哪个：
+   *   命中唯一 → 解析那一条
+   *   命中多条 → 问清楚，不猜
+   *   一条不中 → 如实说"没什么特别的"（不能不看输入直接给下一条——
+   *              那会报告一件玩家没做的事，比拒绝更糟）
+   *   没给提示（去掉动词后不剩什么）→ 回落旧行为：唯一/首条候选直接给。
+   *   这不是"匹配失败"，是玩家压根没说要找什么，跟"目标不存在"是两回事。
+   */
+  private resolveSceneClueMatch(
+    input: string,
+    candidates: string[],
+  ): { kind: "resolve"; clueId: string } | { kind: "ask"; options: string[] } | { kind: "deny" } | { kind: "fallback" } {
+    const said = input.replace(GameSession.SEARCH_VERB_PREFIX_RAW, "").trim();
+    if (said.length < 2) return { kind: "fallback" };
+
+    // 只有带 matchTexts 的线索参与按文本匹配——YAML 手写线索/
+    // registerSceneClue 合成的旧线索没有这份数据，不是"匹配失败"，是这条
+    // 线索压根没参与匹配这件事。全场景候选都没有 matchTexts 时整体回落。
+    const matchable = candidates
+      .map((id) => ({ id, info: this.investigation.getClueMatchInfo(id) }))
+      .filter((c): c is { id: string; info: { matchTexts: string[]; displayName: string } } => c.info !== null);
+    if (matchable.length === 0) return { kind: "fallback" };
+
+    const result = matchSceneClues(said, matchable.map((c) => ({ id: c.id, texts: c.info.matchTexts })));
+    if (result.hit) return { kind: "resolve", clueId: result.hit };
+    if (result.ambiguous.length > 0) {
+      const options = result.ambiguous.map((id) => matchable.find((c) => c.id === id)!.info.displayName);
+      return { kind: "ask", options };
+    }
+    return { kind: "deny" };
   }
 
   /**
@@ -2227,12 +2318,37 @@ export class GameSession {
    *   只写在 index.ts 里，现在两处都要用，所以提成常量放在这里，
    *   并在 CLI 侧注明出处，免得哪天一边改了另一边不知道。
    */
-  /** 当前场上还活着的敌人。战斗旗、还手、退出战斗三处共用一份判断。 */
+  /**
+   * 当前场景里还活着的敌人。战斗旗、还手、退出战斗、自由行动战斗判定
+   * 四处共用一份判断。
+   *
+   * ⚠ 此前不按场景过滤，只看 hp>0——玩家换了场景，上一个场景的敌人还会
+   *   继续应战/被选为攻击目标。实跑症状：人已经在「加比的拖车房」，还在
+   *   连续播报「酒吧保镖 向你扑来」。
+   *
+   *   场景归属的权威字段是 `scene_id`（见 types.ts 对 WorldEntity.position
+   *   的注释：position 语义不唯一，同伴系统会往里写战斗距离而不是场景），
+   *   但历史数据和部分测试夹具的实体只设置了 `position`、没设置
+   *   `scene_id`。`scene_id ?? position` 兜底，不让这批老数据整批从
+   *   "当前敌人"里消失——两个字段在正常写入路径下取值一致
+   *   （mythos-module.ts 的 NPC/生物放置两个字段一起写）。
+   *
+   *   `pos === "unknown"` 时不过滤：没加载模组、没显式切过场景的会话，
+   *   `getDisplayedScene()` 恒为 "unknown"（`scenes` 表里没有 `is_active=1`
+   *   的行），而大量既有测试夹具把敌人放在约定俗成的占位场景名（如
+   *   "tavern"）却从没真的注册/激活那个场景——如果这里强制按场景比对，
+   *   这批实体会在"场景系统压根没启动"的情况下被误判成"不在当前场景"，
+   *   整批从敌人名单里消失。场景系统真正在用（模组加载、显式移动过）时，
+   *   `pos` 不会是 "unknown"，过滤照常生效。
+   */
   private aliveEnemies(): WorldEntity[] {
     const state = this.world.getCurrentState();
-    return Object.values(state.entities).filter(
-      (e) => (e.type === "monster" || e.type === "npc") && (e.hp ?? 0) > 0,
-    );
+    const pos = this.getDisplayedScene();
+    return Object.values(state.entities).filter((e) => {
+      if (!((e.type === "monster" || e.type === "npc") && (e.hp ?? 0) > 0)) return false;
+      if (pos === "unknown") return true;
+      return (e.scene_id ?? e.position) === pos;
+    });
   }
 
   private async npcCounterAttack(intent: ActionIntent, msg: (s: string) => number): Promise<void> {
@@ -2315,8 +2431,9 @@ export class GameSession {
     const hitMsg = isFumble ? "大失败！" : isCrit ? "暴击" : success ? "命中" : "未命";
 
     msg(`⚔️ 攻击检查d100=${effectiveRoll} (目标=${skill}%)${luckSpendMsg} → ${hitMsg}${dmg > 0 ? `，造成 ${dmg} 点伤害` : ""}`);
-    const state = this.world.getCurrentState();
-    const enemies = Object.values(state.entities).filter(e => (e.type === "monster" || e.type === "npc") && e.hp > 0);
+    // 复用 aliveEnemies()（场景内、hp>0）而不是自己单开一份不按场景过滤的
+    // filter——否则玩家在拖车房，"攻击"命令还能打中酒吧那边的保镖。
+    const enemies = this.aliveEnemies();
     const target = this.pickTarget(intent, enemies);
     if (target) {
       const weapon = intent.weapon || "拳头";
@@ -2782,9 +2899,20 @@ export class GameSession {
           : "spot_hidden";
         // ModuleData 只给一句 revelation，没有分层文本——四档共用同一句是
         // 如实反映数据颗粒度，不是偷懒（registerSceneClue 的合成版也是这么做的）。
+        //
+        // ⚠ 这里此前把 findMethods[].description 整个丢了，只取 skillName
+        // 映射了技能。而这些描述里恰恰是位置/动作提示（"侦查休息区/仔细检查
+        // 床底""侦查卫生间/仔细检查洗漱用具"）——同一个场景三条线索都靠
+        // spot_hidden 一个技能触发时，选取层（resolveSceneClueMatch）只能
+        // 靠这份文本区分玩家具体想搜哪儿，不然「侦查卫生间」和「侦查餐厅」
+        // 拿到的都是场景里第一条未发现线索。存进 matchTexts，不在这一层做
+        // 匹配（匹配逻辑见 clue-match.ts + resolveSceneClueMatch）。
         this.investigation.addClueType(clue.id, {
           description: clue.description,
           scene: sceneName,
+          matchTexts: [clue.name, ...clue.findMethods.map((f) => f.description)],
+          displayName: clue.name,
+          importance: clue.importance,
           coc_primary: {
             skill: skillKey,
             regular: clue.revelation,

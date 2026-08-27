@@ -52,6 +52,22 @@ interface ClueDef {
   san_cost?: string;
   /** 该线索关联的场景（进入场景时自动提示可调查） */
   scene?: string;
+  /**
+   * 供玩家输入匹配用的候选文本（线索名 + 各条 findMethods 的位置/动作描述，
+   * 如"侦查卫生间/仔细检查洗漱用具"）。桥接层（bridgeBarnOfPremierClues）
+   * 从原始模组数据里取，同场景多条未发现线索时用它区分玩家具体想找哪个——
+   * 见 game-session.ts 的 resolveSceneClueMatch()。不设置时（YAML 里手写的
+   * 线索、registerSceneClue 合成的旧线索）该线索不参与按文本匹配，回落到
+   * 旧行为（同场景只有它一条候选时直接给出，多条候选时排在最后）。
+   */
+  matchTexts?: string[];
+  /** 线索的展示名（如"毒品"），供消歧提示"你是指 A 还是 B"里给出人话名字 */
+  displayName?: string;
+  /**
+   * 线索优先级（core=主线必得/bonus=加分/color=氛围向）。当前只存起来，
+   * 未消费——留给后续"新手辅助"功能用（如提示玩家优先查 core 线索）。
+   */
+  importance?: "core" | "bonus" | "color";
 }
 
 interface ClueTypesYAML {
@@ -186,6 +202,9 @@ export class InvestigationEngine {
       coc_secondary: def.coc_secondary ?? [],
       san_cost: def.san_cost,
       scene: def.scene,
+      matchTexts: def.matchTexts,
+      displayName: def.displayName,
+      importance: def.importance,
     });
     if (def.scene) {
       const list = this.sceneClues.get(def.scene) ?? [];
@@ -199,6 +218,17 @@ export class InvestigationEngine {
   /** 是否有匹配的线索类型 */
   hasClueType(type: string): boolean {
     return this.clueTypes.has(type);
+  }
+
+  /**
+   * 取线索的匹配信息（供玩家输入按文本匹配用，见 clue-match.ts）。
+   * 没有 matchTexts 的线索（YAML 手写/registerSceneClue 合成）返回 null——
+   * 调用方据此知道这条线索不参与按文本匹配，不是"匹配失败"。
+   */
+  getClueMatchInfo(id: string): { matchTexts: string[]; displayName: string } | null {
+    const clue = this.clueTypes.get(id);
+    if (!clue || !clue.matchTexts || clue.matchTexts.length === 0) return null;
+    return { matchTexts: clue.matchTexts, displayName: clue.displayName ?? id };
   }
 
   /**
