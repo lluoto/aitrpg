@@ -1,5 +1,5 @@
 {
-  "tests": 2041,
+  "tests": 2048,
   "files": 120,
   "unwiredMethods": 90,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。",
@@ -244,6 +244,11 @@
       "tests": 2041,
       "files": 120,
       "when": "P0-2：WorldProperty.domain 声明了但从不校验——resolvePropertyEffects() 合并完直接返回，越界的值悄悄流出去，是 apply-action.ts 自己写的反模式「这类域比没有域更糟：它看着在校验」。加结构化拒绝（value_out_of_domain，不抛异常，同文件其它失败路径都是返回值）+ enum 域显式拒绝（composePropertyValues 返回 number，enum 域是 string，两者不兼容，没决定过怎么走就不默默放行）。变异检验：注释掉校验，4 条测试变红，Copy-Item 还原确认恢复。顺带订正 P0-1（npc-dialogue-prompts.ts 提示词第 7 条在 41a8e66 被反转，voice-readiness.md/speech-plan.ts/speech-plan.test.ts 三处仍引用反转前的旧文本——第二次同一失效模式，记进 notes/engine.md）+ P1/P2/P3 一批文档订正 + 两份〔未复核〕的确认修复（npc-text.ts 三处 docblock 挂错函数、NPCTraits 越界于自己声明的 1-10 域且有真实下游影响）"
+    },
+    {
+      "tests": 2048,
+      "files": 120,
+      "when": "把 docs/architecture.json 纳入路径判据（tier-3）。它是 JSON，generatedDocs() 只匹配 docs/*.md 的 writeFileSync 目标、LIVE_DOC_PATH 只认反引号包裹的路径，两条现有判据都够不到它，107 个路径引用曾经无人守。加 architecturePathRefs()：按结构取 sections[].tables[].rows[][0]（不对全文跑正则，不扫 prose），跳过标题以「工具脚本」开头的节（记录一次性取证脚本历史，跟 notes/*.md 同理豁免）。变异检验：插入假路径确认变红，Copy-Item 还原。精确报出预期的 1 条真缺失：src/state/game-state-manager.ts（该文件已被 8ca53fa 删除，导出全仓零命中）。顺带修 architecture.json 另外 2 处内容（tools/_followup-prompts.ts 已迁入并入库的 classify-followup.ts、§13 标题冗余数字）+ 删掉 4 处本仓守不住的写死行数（content-brief.md ×2、index-world-model.md、PLAN.md ×2）"
     }
   ]
 }

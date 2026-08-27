@@ -27,7 +27,7 @@
 
 | 层 | 文件 | 职责 |
 |---|---|---|
-| **原著世界模型** | `poc/src/rules/mythos-expansion.ts`（1427 行） | 洛夫克拉夫特原著内容（公共领域）：神话生物/典籍/法术（曾计划过第四类「场景模板」，从未实现，文件里没有这个导出）。**跨模组可复用**，与具体模组无关 |
+| **原著世界模型** | `poc/src/rules/mythos-expansion.ts` | 洛夫克拉夫特原著内容（公共领域）：神话生物/典籍/法术（曾计划过第四类「场景模板」，从未实现，文件里没有这个导出）。**跨模组可复用**，与具体模组无关 |
 | **摄取目标（中间表示）** | `poc/src/module/types.ts` 的 `ModuleData` | 文件头原文：「用于将原始模组 PDF 文本解析为结构化数据」。**这就是读取模块该产出的类型** |
 | **运行期导入容器** | `poc/src/rules/mythos-module.ts` 的 `MythosModule` | 「剧本杀式模组导入系统」：activation 条件、loader、hooks、initialEffects。是消费者，不是世界模型 |
 

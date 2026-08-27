@@ -32,8 +32,8 @@
 ## 三、内容长什么样
 
 模组是**一个 TypeScript 文件导出的数据结构**，不是 JSON、不是 YAML。
-样板：`src/module/barn-of-premier.ts`（1525 行，20 个场景，32 条线索）。
-类型定义：`src/module/types.ts`（580 行）。
+样板：`src/module/barn-of-premier.ts`（20 个场景，32 条线索）。
+类型定义：`src/module/types.ts`。
 
 ```
 ModuleData    id, title, version, ruleset, era, summary, scenes, npcs, meta,

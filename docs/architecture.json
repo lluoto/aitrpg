@@ -449,11 +449,6 @@
               "GameEvent, StateChange, SnapshotSummary"
             ],
             [
-              "src/state/game-state-manager.ts",
-              "会话存档 JSON 读写，与 SQLite 真相源相互独立",
-              "saveGameState, loadGameState"
-            ],
-            [
               "src/db/index.ts",
               "NPC 的 SQLite 持久化：人格卡、记忆、关系值、情绪",
               "NPCStore"
@@ -565,7 +560,7 @@
     },
     {
       "id": "sec-13",
-      "title": "测试（114 个文件，见 docs/test-baseline.json）",
+      "title": "测试（文件数见 docs/test-baseline.json）",
       "prose": [
         "分两簇。**规则纯逻辑单测**：coc-character / coc-engine / coc-combat / coc-equipment / coc-chase / coc-spells / coc-mythos-module / investigation-* / rule-engine / grail-ruleset / story-generator / politico-economy / trap-mechanics。",
         "**回归测试**（更值得读）——每个都锁着一次\"类型说一套、数据是另一套、类型检查全绿\"的静默失效：",
@@ -727,7 +722,7 @@
             ],
             [
               "tools/_followup-prompts.ts",
-              "两次追问的 prompt，**只此一份**。抽出来是因为两个实验各自重打过一遍然后漂了——删掉例子就掉 2 分。prompt 的字面内容是测量条件的一部分，两处各写一份等于两台不同的秤"
+              "两次追问的 prompt。⚠ 原写「只此一份」已不成立——该能力已迁入并入库的 `src/ingest/classify-followup.ts`（157 行，文件头完整记录了两次追问的实验数据：22/33 → 31/33）。prompt 的字面内容是测量条件的一部分，两处各写一份等于两台不同的秤，这条道理仍然成立，只是现在只此一份的那份在 `src/ingest/` 里"
             ],
             [
               "tools/_exp-line-attribution.ts",

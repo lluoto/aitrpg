@@ -32,6 +32,7 @@ import {
   judgeProcess, parseTestOutput, judgeTestCount,
   referencedScripts, judgeScriptRefs, generatedDocs, resolveRef,
   referencedRepoPaths, LIVE_DOCS,
+  architecturePathRefs, ARCHITECTURE_DOCS,
   boolReturningNames, findDroppedReturns, findSilentCatches,
   type Finding, type TestBaseline,
 } from "../src/diagnostics/source-scan";
@@ -195,6 +196,26 @@ for (const f of [...srcFiles, ...walk("scripts", [".ts"])]) {
     push(judgeScriptRefs(refs, doc));
   }
   notes.push(`手写载荷文档校验覆盖 ${liveDocsChecked} 份（只判存在性，不判入库）：${LIVE_DOCS.join("、")}`);
+
+  // ── 7c. 结构化的手写载荷文档：architecture.json ──
+  //
+  // 同一个病的第三层皮：这份是 JSON，tier-1/tier-2 的正则（要么找
+  // writeFileSync 目标、要么找反引号包裹的路径）都够不到它。按结构取
+  // sections[].tables[].rows[][0]，跳过"工具脚本"节——见
+  // architecturePathRefs 的注释。候选/存在性判法与 tier-2 一致，
+  // 复用同一份 docCandidates，不用为多一份文档单独扫一次磁盘。
+  let architectureDocsChecked = 0;
+  for (const doc of ARCHITECTURE_DOCS) {
+    if (!existsSync(doc)) continue;
+    architectureDocsChecked++;
+    const refs = architecturePathRefs(read(doc)).map((p) => ({
+      path: p,
+      exists: resolveRef(p, docCandidates),
+      tracked: true, // 同 tier-2：只判存在性，不判入库
+    }));
+    push(judgeScriptRefs(refs, doc));
+  }
+  notes.push(`结构化载荷文档校验覆盖 ${architectureDocsChecked} 份（只判存在性，跳过"工具脚本"节）：${ARCHITECTURE_DOCS.join("、")}`);
 
   // ── 10. 源码拿来当证据的文件，仓库里得真有 ──
   //

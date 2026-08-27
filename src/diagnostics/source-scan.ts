@@ -519,6 +519,63 @@ export function referencedRepoPaths(markdown: string): string[] {
 }
 
 /**
+ * 结构化的手写载荷文档——目前只有 `docs/architecture.json` 一份。
+ *
+ * 跟 `LIVE_DOCS`（tier-2，反引号 markdown）不是同一类：这份是 JSON，
+ * `docs/index-program.md:30-31` 自己写着它是"项目知识不是会话状态，
+ * clone 下来必须还在"——完全符合"活文档"的定义，但 `generatedDocs()`
+ * 只匹配 `docs/*.md` 写入、`LIVE_DOC_PATH` 只认反引号包裹的路径，
+ * 两条现有判据都够不到它：107 个路径引用曾经无人守。
+ */
+export const ARCHITECTURE_DOCS = ["docs/architecture.json"] as const;
+
+const ARCHITECTURE_PATH_SHAPE = /^(?:poc\/)?((?:src|scripts|docs|frontend|tools)\/[\w./-]+\.(?:ts|mjs|cjs|js))$/;
+
+/**
+ * `architecture.json` 的路径提取器：按结构取 `sections[].tables[].rows[][0]`，
+ * 不对全文跑正则。
+ *
+ * 两条收窄，都可推导，不是拍脑袋：
+ *
+ * 1. **只取每行第 0 列**。第 1 列是职责描述、第 2 列是导出符号，
+ *    路径散文式地出现在描述文字里的情况不算——那是在说这个东西，
+ *    不是在断言"这份文件在这个路径"。`prose` 字段同理不扫：
+ *    里面是大段历史叙述，混着已经不存在的旧路径当参照物提。
+ * 2. **跳过标题以"工具脚本"开头的节**。该节标题自己写着
+ *    "大部分仍在 `tools/`，被 .gitignore 排除"——记录的是一次性取证
+ *    脚本的历史存在，跟 `docs/notes/*.md` 的豁免是同一个理由
+ *    （见上面 `generatedDocs()` 的注释）：那批脚本"当时"存在过，
+ *    现在没了不代表这条记录错了。不跳过的话第一版报了 3 条，
+ *    其中 2 条（`tools/_cmp-raw.ts`、`tools/_followup-prompts.ts`）
+ *    是这类历史记录，不是真的路径失效。
+ *
+ * 只判存在性，不判入库——跟 tier-2 一致：`tools/` 是 gitignored 的，
+ * 判 tracked 会把"工具脚本"节里本来就该跳过的条目又从另一条路报回来。
+ *
+ * ⚠ JSON 解析失败直接抛错，不吞掉：这是判据脚本自己的输入，
+ * 输入损坏就该在这里炸出来，不该悄悄跳过整份检查变成"没报=没问题"。
+ */
+export function architecturePathRefs(jsonText: string): string[] {
+  const parsed = JSON.parse(jsonText) as {
+    sections?: Array<{ title?: string; tables?: Array<{ rows?: unknown[][] }> }>;
+  };
+  const out = new Set<string>();
+  for (const section of parsed.sections ?? []) {
+    if (/^工具脚本/.test(section.title ?? "")) continue;
+    for (const table of section.tables ?? []) {
+      for (const row of table.rows ?? []) {
+        const cell = row?.[0];
+        if (typeof cell !== "string") continue;
+        const stripped = cell.replace(/^`|`$/g, "");
+        const m = ARCHITECTURE_PATH_SHAPE.exec(stripped);
+        if (m) out.add(m[1]!);
+      }
+    }
+  }
+  return [...out];
+}
+
+/**
  * 哪些文档是**脚本生成的**。
  *
  * 这条检查只对生成的文档生效，理由是可推导的而不是拍脑袋定的：

@@ -11,6 +11,7 @@ import {
   findShellRisks, judgeProcess, parseTestOutput, judgeTestCount,
   referencedScripts, judgeScriptRefs, generatedDocs, resolveRef,
   referencedRepoPaths, LIVE_DOCS,
+  architecturePathRefs, ARCHITECTURE_DOCS,
   boolReturningNames, findDroppedReturns, findSilentCatches,
 } from "../diagnostics/source-scan";
 
@@ -469,6 +470,89 @@ describe("检查 7 · 文档叫人跑的脚本", () => {
       expect(LIVE_DOCS.length).toBe(8);
       expect(LIVE_DOCS).not.toContain("docs/rules-licensing-audit.md");
       expect(LIVE_DOCS).toContain("docs/index-world-model.md");
+    });
+  });
+
+  // ── tier-3：architecture.json 是 JSON，tier-1/tier-2 的正则都够不到它 ──
+  //
+  // generatedDocs() 只匹配 docs/*.md 的 writeFileSync 目标，LIVE_DOC_PATH
+  // 只认反引号包裹的路径——architecture.json 是 JSON，路径是结构化字段
+  // 里的裸字符串，两条判据都扫不到它，107 个路径引用曾经无人守。
+  describe("architecturePathRefs —— 按结构取 row[0]，不对全文跑正则", () => {
+    function doc(sections: unknown[]): string {
+      return JSON.stringify({ sections });
+    }
+
+    test("**应报**：活跃节里的坏路径——按结构取到 row[0]", () => {
+      const refs = architecturePathRefs(doc([
+        {
+          title: "存储与状态",
+          tables: [{ rows: [["src/state/game-state-manager.ts", "职责描述", "导出符号"]] }],
+        },
+      ]));
+      expect(refs).toEqual(["src/state/game-state-manager.ts"]);
+    });
+
+    test("**不应报**：活跃节里的好路径", () => {
+      const refs = architecturePathRefs(doc([
+        {
+          title: "存储与状态",
+          tables: [{ rows: [["src/state/world-state-manager.ts", "真相源", "WorldStateManager"]] }],
+        },
+      ]));
+      // 提取本身不判存在性（那是 preflight.ts 拿 resolveRef 做的事），
+      // 这里只验证提取到了正确的路径，存在性判断在别处的测试覆盖。
+      expect(refs).toEqual(["src/state/world-state-manager.ts"]);
+    });
+
+    test("**不应报**：「工具脚本」节里的坏路径——这是收窄规则的核心，必须有", () => {
+      // 跳过依据可推导：该节标题自己写着"大部分仍在 tools/，被 .gitignore
+      // 排除"——记录的是一次性取证脚本的历史存在，跟 docs/notes/*.md 的
+      // 豁免同理。不跳过的话，tools/_cmp-raw.ts、tools/_followup-prompts.ts
+      // 这类历史记录会被误报成路径失效。
+      const refs = architecturePathRefs(doc([
+        {
+          title: "工具脚本（大部分仍在 `tools/`，被 .gitignore 排除）",
+          tables: [{ rows: [["tools/_this-was-deleted-long-ago.ts", "历史记录", "无"]] }],
+        },
+      ]));
+      expect(refs).toEqual([]);
+    });
+
+    test("**不应报**：散文里出现的路径——只取 row[0]，不扫 prose", () => {
+      const refs = architecturePathRefs(JSON.stringify({
+        sections: [
+          {
+            title: "存储与状态",
+            prose: ["这一层原本是 src/state/deleted-long-ago.ts，后来拆成了现在这几个文件"],
+            tables: [{ rows: [["src/state/world-state-manager.ts", "真相源", "WorldStateManager"]] }],
+          },
+        ],
+      }));
+      expect(refs).toEqual(["src/state/world-state-manager.ts"]);
+    });
+
+    test("干扰：第 1/2 列（职责描述、导出符号）里出现路径形状的文本不算，只取第 0 列", () => {
+      const refs = architecturePathRefs(doc([
+        {
+          title: "某节",
+          tables: [{
+            rows: [["src/real/path.ts", "参见 src/other/mentioned-in-description.ts 的实现", "foo"]],
+          }],
+        },
+      ]));
+      expect(refs).toEqual(["src/real/path.ts"]);
+    });
+
+    test("干扰：反引号包裹的 row[0] 要先剥掉反引号再匹配（有的节这样写、有的节不这样写）", () => {
+      const refs = architecturePathRefs(doc([
+        { title: "某节", tables: [{ rows: [["`src/play-module.ts`", "跑一局剧本", "runModule"]] }] },
+      ]));
+      expect(refs).toEqual(["src/play-module.ts"]);
+    });
+
+    test("ARCHITECTURE_DOCS 清单目前只有 architecture.json 一份", () => {
+      expect(ARCHITECTURE_DOCS).toEqual(["docs/architecture.json"]);
     });
   });
 });
