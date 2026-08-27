@@ -1,6 +1,6 @@
 {
-  "tests": 2032,
-  "files": 119,
+  "tests": 2041,
+  "files": 120,
   "unwiredMethods": 90,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -239,6 +239,11 @@
       "tests": 2032,
       "files": 119,
       "when": "世界属性注册表 + 尺度门（PLAN.md「A 推演引擎」缺的第三块）。先做证伪：四档尺度（personal/local/regional/world）在已读素材（德鲁伊/战士能力体系、职业与战斗表现总图谱）里确实存在但从不是分类维度，且与「位阶」是两个独立的轴（传奇阶终极剑技可以是纯局部效果，非最高位阶的存在也可能有区域级背景效应）——docs/world-property-falsification.md。据此实现 world-property.ts：composePropertyValues()（幂等/可加/取极值/互斥，机器判据而非约定）+ calcScaleSuppression()（推广 grail-engine 的 TierSuppressionResult 到尺度轴，跨尺度不掷骰）。C3 摄取 forensic_rules.yaml §八「用眼过度」的调查疲劳惩罚属性，验证 N×1 来源表（8 个独立来源）不需要 N² 交互特判即可正确合并。world-constraint.ts 的 ConstraintContext 加 ruleset 字段（分流前置，不含分流逻辑本身）"
+    },
+    {
+      "tests": 2041,
+      "files": 120,
+      "when": "P0-2：WorldProperty.domain 声明了但从不校验——resolvePropertyEffects() 合并完直接返回，越界的值悄悄流出去，是 apply-action.ts 自己写的反模式「这类域比没有域更糟：它看着在校验」。加结构化拒绝（value_out_of_domain，不抛异常，同文件其它失败路径都是返回值）+ enum 域显式拒绝（composePropertyValues 返回 number，enum 域是 string，两者不兼容，没决定过怎么走就不默默放行）。变异检验：注释掉校验，4 条测试变红，Copy-Item 还原确认恢复。顺带订正 P0-1（npc-dialogue-prompts.ts 提示词第 7 条在 41a8e66 被反转，voice-readiness.md/speech-plan.ts/speech-plan.test.ts 三处仍引用反转前的旧文本——第二次同一失效模式，记进 notes/engine.md）+ P1/P2/P3 一批文档订正 + 两份〔未复核〕的确认修复（npc-text.ts 三处 docblock 挂错函数、NPCTraits 越界于自己声明的 1-10 域且有真实下游影响）"
     }
   ]
 }

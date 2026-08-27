@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-22",
+  "generated": "2026-08-26",
   "note": "问题记录索引。按 file+line 取正文，不必整份读。正文只追加，改动请重跑 bun scripts/docs-index.ts",
   "statusLegend": {
     "fixed": "已修，有实测数",
@@ -13,7 +13,7 @@
       "id": "engine",
       "name": "运行引擎 / 主循环",
       "file": "docs/notes/engine.md",
-      "count": 17
+      "count": 18
     },
     {
       "id": "ingest",
@@ -215,6 +215,17 @@
       "line": 590,
       "lines": 22,
       "summary": "这一条是做活化时顺手查出来的，比文案问题严重得多。`play-module.ts:2925-2949`："
+    },
+    {
+      "id": "engine-18",
+      "title": "载荷文档陈述反向传播进生产代码——这是第二次（2026-08-26）",
+      "date": "2026-08-26",
+      "status": "warn",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 612,
+      "lines": 24,
+      "summary": "第一次是 `kp-tool-surface-assessment.md` 把四个已经接上线的子系统写成"
     },
     {
       "id": "ingest-01",

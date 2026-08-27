@@ -11,7 +11,7 @@ Commit `2cea4db` created this document **and executed most of its own remediatio
 Completed in `2cea4db`:
 
 - Remediation item 2 (remove non-SRD subclasses): `src/character/subclasses-extra.ts` deleted (-83 lines).
-- Remediation item 3 (replace/remove Chaosium-derived concrete content): `src/character/coc-reference.ts` deleted (-76 lines); Pulp Cthulhu variant rules removed (-227 lines).
+- Remediation item 3 (replace/remove Chaosium-derived concrete content): `src/rules/coc-reference.ts` deleted (-76 lines); Pulp Cthulhu variant rules removed (-227 lines).
 - Remediation item 4 (rename the product-facing ruleset to a neutral identifier): `coc7e` renamed to `cosmic-horror` across ~130 sites / 24 files.
 - Remediation item 1 (attribution notice): `NOTICE.md` added (72 lines), with verbatim SRD 5.1 CC-BY-4.0 attribution.
 - A structural guard was added: `src/__tests__/rule-content-boundary.test.ts` asserts the deleted content stays deleted and isn't reintroduced, scanning both `src/` and `tools/` (the latter with an explicit allowlist).

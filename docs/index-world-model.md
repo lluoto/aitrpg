@@ -60,7 +60,7 @@ PDF ──[读取模块 + LLM + 世界模型约束]──> ModuleData（权威�
 
 | 路径 | 职责 | 状态 |
 |---|---|---|
-| poc/src/module/types.ts | 模组类型契约（523 行，23 个 interface）：ModuleData / Scene / Clue / ModuleItem / TrapMechanics / Provenance / ModuleSupport / ModuleState | 已接入 |
+| poc/src/module/types.ts | 模组类型契约（579 行，23 个 interface）：ModuleData / Scene / Clue / ModuleItem / TrapMechanics / Provenance / ModuleSupport / ModuleState | 已接入 |
 | poc/src/module/barn-of-premier.ts | 《普瑞米尔的谷仓》ver1.03 结构化数据本体（1524 行） | 已接入 |
 | poc/src/module/threat-analyzer.ts | 从模组反推难度并据此发枪：敌对 NPC 数、最大伤害、陷阱数、困难/极限检定数、最大 SAN 损失、有无 Boss | 已接入 |
 | poc/src/rules/custom-modules/premiers_barn.ts | 同模组的 MythosModule 版，2026-07-06 由 extract-module.ts 自动提取 | 已接入（另一条路径） |
@@ -127,7 +127,7 @@ PDF ──[读取模块 + LLM + 世界模型约束]──> ModuleData（权威�
 > `docs-index.ts:27` 的切分标记 `RECORDS_START`，内容早已迁入这里，
 > 死指针没跟着一起改）。这份文档只管内容与素材。
 
-### 摄取相关脚本（均在 `poc/tools/`，整个目录被 .gitignore 排除）
+### 摄取相关脚本（这批遗留脚本均在 `poc/tools/`，整个目录被 .gitignore 排除——不是「全部摄取相关脚本」，见下表后的限定语；新的入口 `scripts/ingest/run.ts` 已入库，不在这批里）
 
 | 脚本 | 作用 | 状态 |
 |---|---|---|
@@ -306,7 +306,10 @@ cp ../世界模型/cthulhu_extracted/cthulhu_world_model.jsonl assets/
 `.gitignore` 里 `src/module/raw/` 与 `src/module/*.md` 两条失效条目。
 
 结果：`src/module/` 只剩 `barn-of-premier.ts` / `threat-analyzer.ts` / `types.ts` 三个源码文件；
-poc 目录（不含 node_modules 与 .git）从 409MB 降到 **179.6MB**。
+poc 目录体积从 409MB 降了下来——具体数字会随依赖/构建产物变化持续漂移
+（实测过一次是 303.6MB，含 node_modules，与本节写的 179.6MB 口径不同，
+按 `index-program.md:27` 的规矩不再写死数字），要精确值现测：
+`du`/`Get-ChildItem -Recurse | Measure-Object -Property Length -Sum`。
 
 ---
 

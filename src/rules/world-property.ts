@@ -212,7 +212,9 @@ export interface AbilityPropertyEffect {
 export type ResolvePropertyResult =
   | { readonly ok: true; readonly value: number; readonly composition: PropertyComposition }
   | { readonly ok: false; readonly reason: "unknown_property" | "empty_effects" }
-  | { readonly ok: false; readonly reason: "cross_scale"; readonly suppression: ScaleSuppressionResult };
+  | { readonly ok: false; readonly reason: "cross_scale"; readonly suppression: ScaleSuppressionResult }
+  | { readonly ok: false; readonly reason: "enum_domain_not_supported"; readonly domain: StateDomain }
+  | { readonly ok: false; readonly reason: "value_out_of_domain"; readonly value: number; readonly domain: StateDomain };
 
 /**
  * 把一组来源对同一个属性的效果合并成最终值。
@@ -220,12 +222,28 @@ export type ResolvePropertyResult =
  * 流程：
  *   1. 属性必须已注册，否则拒绝——不允许对着一个没声明 composition 的
  *      属性瞎合并数值（那正是判据①要堵的后门）。
- *   2. 所有来源必须同尺度。出现跨尺度的来源，先走尺度门判定
+ *   2. `domain.kind === "enum"` 显式拒绝，不默默放行。
+ *      `composePropertyValues` 的合并结果永远是 `number`，而 enum 域的
+ *      取值是 `string`——两者从根上不兼容。"多个来源该怎么投票选出一个
+ *      枚举值"这件事没有决定过，宁可显式拒绝也不要放行：放行了会让
+ *      调用方以为拿到的是能直接和 `domain.values` 比对的东西，实际上
+ *      永远比对失败，且不会有任何报错指出原因——比"根本不支持"更差。
+ *   3. 所有来源必须同尺度。出现跨尺度的来源，先走尺度门判定
  *      （calcScaleSuppression），不直接把跨尺度的数字加在一起——
  *      永远不做乘法/加法跨尺度混算，这是尺度门存在的意义。
  *      调用方拿到 suppression 结果后自己决定怎么处理（本函数只负责
  *      在探测到跨尺度时报出来，不替调用方做判定之外的决定）。
- *   3. 同尺度时，按属性声明的 composition 合并所有来源的数值。
+ *   4. 同尺度时，按属性声明的 composition 合并所有来源的数值。
+ *   5. **合并完必须校验值域，越界返回结构化拒绝**——`apply-action.ts`
+ *      头注释自己写的反模式："这类域比没有域更糟：它看起来在校验"。
+ *      `investigation-fatigue-property.ts` 现有 8 个来源已经能拼出 -90，
+ *      再加一行数据就可能越过声明的 -100 下限；不校验的话不会有任何
+ *      报错，只会安静地产出一个域外的数字。
+ *
+ * ⚠ 失败一律走返回值，不抛异常——同文件 `composePropertyValues` 对
+ *   "幂等/互斥违规"这类内部不一致用异常（那是编程错误，不是正常输入），
+ *   但这里的 unknown_property / cross_scale / value_out_of_domain 都是
+ *   "正常输入下会发生的情形"，跟本文件其它失败路径统一走返回值。
  */
 export function resolvePropertyEffects(
   effects: readonly AbilityPropertyEffect[],
@@ -235,6 +253,10 @@ export function resolvePropertyEffects(
   const propertyId = effects[0]!.propertyId;
   const property = getWorldProperty(propertyId);
   if (!property) return { ok: false, reason: "unknown_property" };
+
+  if (property.domain.kind === "enum") {
+    return { ok: false, reason: "enum_domain_not_supported", domain: property.domain };
+  }
 
   const scales = new Set(effects.map((e) => e.scale));
   if (scales.size > 1) {
@@ -248,5 +270,10 @@ export function resolvePropertyEffects(
 
   const values = effects.map((e) => e.value);
   const value = composePropertyValues(property.composition, values);
+
+  if (!Number.isInteger(value) || value < property.domain.min || value > property.domain.max) {
+    return { ok: false, reason: "value_out_of_domain", value, domain: property.domain };
+  }
+
   return { ok: true, value, composition: property.composition };
 }

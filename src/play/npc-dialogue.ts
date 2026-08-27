@@ -595,7 +595,19 @@ function buildFollowUp(npc: ModuleNPC, profile: SpeechProfile): string[] {
   ])];
 }
 
-/** Data-driven tone bridge — uses NPC speech description to build action narration */
+/**
+ * Data-driven tone bridge — uses NPC speech description to build action narration.
+ *
+ * ⚠ 下面这段说明原先躺在 `src/play/npc-text.ts` 里、挂在完全不相关的函数上
+ * （本轮订正，见 docs/notes/engine.md）。挪过来是因为它描述的正是这个函数：
+ *
+ * 数据驱动（按 NPC 特质分派"接着说"类引导），避免"裸引号/名字：内容"机械
+ * 直出。每个桶只有三四条、又是纯随机，一局里同一句必然撞好几次 ——
+ * 实跑中菲碧连着两次"垂下眼帘，声音低沉下来："。generic 兜底桶（见下方
+ * 最后一个 `return pick(...)`）另外扩了容：不匹配任何人格的角色
+ * （缸中脑、Mi-Go）全都落在这里，原先三条让一个濒死的人和一个外星生物
+ * 共用了同一句"想了想，开口道："。
+ */
 export function buildToneBridge(npc: ModuleNPC, profile: SpeechProfile): string {
   const s = analyseNpcData(npc);
   const speech = npc.personality.speech || "";

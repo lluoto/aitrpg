@@ -1,3 +1,24 @@
+> ⚠ **不可复现，保留为时点记录**。生成器 `tools/calibrate.mjs` 被
+> `.gitignore` 排除（`.gitignore:14`），原始输入
+> `src/rules/custom-modules/premiers_barn_raw.txt` 已经不存在（磁盘没有、
+> git 历史里也没有）——没有脚本，也没有输入，这份报告没法重跑。
+> 校准的是 `src/rules/custom-modules/premiers_barn.ts`，**不是**
+> `src/module/barn-of-premier.ts`（结构可证：本报告检查的 `source`/
+> `introNarration`/`difficulty` 三个字段 `barn-of-premier.ts` 都没有；
+> §3 报的物品叫「钱包」，`barn-of-premier.ts` 里同一件物品叫「黑色钱包」，
+> `premiers_barn.ts:189` 才写的是「钱包」）。
+>
+> §6「法术对比」列了 8 条，实际只有 4 个法术
+> （`僵尸创造术`/`纳克-提特障壁创建术`/`帕祖祖之息`/`Mi-Go 修改版`，
+> 见 `premiers_barn.ts:156-185`）——生成脚本 `tools/calibrate.mjs:215-226`
+> 用 `match()` 对每个法术名做了两次匹配，每条打印了两遍。数下面的行数
+> 前先知道这件事。
+>
+> §6「Mi-Go 修改版」这个名字本身也不准：`premiers_barn.ts:179` 的
+> `name` 字段实际是 `"Mi-Go \t修改版"`——中间是一个**字面 tab 字符**，
+> 不是普通空格。这份报告在打印时被某处的空白归一化处理掉了，读起来
+> 完全看不出来。这是模组源数据本身的缺陷，不是这份报告的问题，记在
+> 这里是因为报告的输出恰好把它藏起来了。
 
 ## 1. 元数据对比
   ✅ name: 普瑞米尔的谷仓

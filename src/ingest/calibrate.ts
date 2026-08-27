@@ -1,8 +1,13 @@
 // 摄取管线 · 校准器
 //
 // 读取模块的产出不覆盖现有模组文件，并排放着做逐字段对比。
-// 现有的 barn-of-premier.ts 是被实跑校准过的（docs/evidence/CALIBRATION_REPORT.md），
-// 拿它当基准，差异清单就是"读取模块还差多少"的度量。
+// ⚠ `docs/evidence/CALIBRATION_REPORT.md` 校准的是
+// `src/rules/custom-modules/premiers_barn.ts`，**不是这里说的
+// `barn-of-premier.ts`**——那份报告检查的 `source`/`introNarration`/
+// `difficulty` 三个字段 `barn-of-premier.ts` 都没有，报告里的物品叫
+// 「钱包」而 `barn-of-premier.ts` 里同一件叫「黑色钱包」，两者对不上。
+// `premiers_barn.ts` 才是被实跑校准过的那份，拿它当基准，差异清单就是
+// "读取模块还差多少"的度量。
 //
 // 反过来也成立：如果生成物在某个字段上比基准更准，那说明该改的是基准。
 // 校准器只报告事实，不判断谁对——判断留给人。
