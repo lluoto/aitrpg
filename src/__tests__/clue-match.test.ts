@@ -93,6 +93,33 @@ describe("matchSceneClues — 无位置信号的裸动词：该问不该猜", ()
   });
 });
 
+describe("matchSceneClues — 无信号阈值：剥完动词剩几个字才算有信号", () => {
+  // 阈值定在 2 字（见 clue-match.ts 里 contentOnly 判断处的注释，
+  // 那里解释了为什么不是 1 也不是 3）。这里只钉边界本身，不重复解释理由。
+  const candidates = [{ id: "a", texts: ["随便什么线索", "任意描述"] }];
+
+  it("剥完动词剩 1 字 → 判定无信号，noSignal=true 且不精确命中", () => {
+    const r = matchSceneClues("侦查间", candidates); // "侦查"被剥掉，剩"间"（1 字）
+    expect(r.trace.noSignal).toBe(true);
+    expect(r.hit).toBeNull();
+  });
+
+  it("剥完动词剩 0 字（纯动词）→ 同样判定无信号", () => {
+    const r = matchSceneClues("侦查", candidates);
+    expect(r.trace.noSignal).toBe(true);
+  });
+
+  it("**边界**：剥完动词剩 2 字 → 判定有信号，正常参与匹配（noSignal=false）", () => {
+    const r = matchSceneClues("侦查卫生", candidates); // 剩"卫生"（2 字）
+    expect(r.trace.noSignal).toBe(false);
+  });
+
+  it("**干扰**：没有调查动词、原始输入本身就只有 1 字 → 同样判定无信号", () => {
+    const r = matchSceneClues("间", candidates);
+    expect(r.trace.noSignal).toBe(true);
+  });
+});
+
 describe("matchSceneClues — 一条不中：如实说没有，不是给下一条", () => {
   it("玩家的话跟任何候选都不沾边 → hit 和 ambiguous 都是空", () => {
     const candidates = [

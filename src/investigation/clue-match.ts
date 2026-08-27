@@ -21,6 +21,18 @@ const SEARCH_VERB = /(侦查|检查|查看|搜索|搜查|寻找|翻找|翻阅|�
 /** 同一份动词表，不锚定位置——用来从整句话里把动词都抠掉，看看还剩不剩内容。 */
 const SEARCH_VERB_ANY = /侦查|检查|查看|搜索|搜查|寻找|翻找|翻阅|观察|查探|调查|询问|打听/g;
 
+/**
+ * 把一句话里所有调查类动词抠掉，剩下的才是"位置/对象信号"。
+ *
+ * 导出这个函数是为了让 matchSceneClues 内部与外部调用方（比如
+ * scripts/diag/diag-clue-phrasing.ts 生成缩写用例时）共用同一份"什么算
+ * 动词"的认定，不重复抄一份 SEARCH_VERB_ANY 出去——那样两份列表迟早会
+ * 走岔，判据说的"通用"就成了两套各自为政的"通用"。
+ */
+export function stripSearchVerbs(said: string): string {
+  return said.replace(SEARCH_VERB_ANY, "").trim();
+}
+
 /** 这个关键词前面紧挨着调查类动词吗——"侦查**卫生间**"比单纯提一嘴更像是要搜这里。 */
 export function hasSearchIntent(said: string, key: string): boolean {
   let from = 0;
@@ -47,6 +59,18 @@ export interface ClueMatchCandidate {
 export interface ClueMatchTrace {
   candidates: { id: string; keys: string[] }[];
   matched: { id: string; key: string }[];
+  /**
+   * 早退在"没有位置/对象信号"这条路径上触发的（见 matchSceneClues 里
+   * `contentOnly.length < 2` 那支）——不是"切词/简称方式太窄没找到同义词"
+   * 的 no-key，是玩家压根没给可区分的信号，这是**正确行为**，不需要加
+   * 同义词去"修"。
+   *
+   * 判据（clue-phrasing.ts 的 classifyClueFailure）必须读这个结构化标记，
+   * 不能靠 `matched.length === 0` 去猜——早退发生在 `matched` 被填充之前，
+   * 两条完全不同的路径殊途同归到同一个空数组，猜的话会把"正确拒绝猜测"
+   * 误诊成"匹配方式太窄"，两者的修法（不修 vs 加同义词）截然相反。
+   */
+  noSignal: boolean;
 }
 
 export interface ClueMatchResult {
@@ -98,11 +122,22 @@ export function splitKeys(texts: string[]): string[] {
  * 调用的通用匹配器，不能依赖调用方一定先做过这层判断。
  */
 export function matchSceneClues(said: string, candidates: ClueMatchCandidate[]): ClueMatchResult {
-  const trace: ClueMatchTrace = { candidates: [], matched: [] };
+  const trace: ClueMatchTrace = { candidates: [], matched: [], noSignal: false };
   if (candidates.length === 0) return { hit: null, ambiguous: [], trace };
 
-  const contentOnly = said.replace(SEARCH_VERB_ANY, "").trim();
+  // 阈值定为 2 字，不是随手写的：
+  //   · 定太低（0/1 字）：抠完动词剩一个字（"搜查二"剩"二"、"检查杂"剩
+  //     "杂"）几乎不携带任何位置信号，单字满大街都是——splitKeys() 自己
+  //     也是按这条线划的（见上面 splitKeys 的注释"单字满大街都是"），
+  //     这里跟它对齐，不是另开一套标准。
+  //   · 定太高（3 字以上）：会误伤真实存在的 2 字位置名词。"床底"、
+  //     "卫生间"里最短的可用简称就是 2 字（"床底"本身就是 2 字），
+  //     实测调高到 3 会让"侦查床底"这类已验证过的正例反过来变成误判的
+  //     "无信号"——这不是假设，是本轮之前跑真实数据时踩过的坑。
+  // 边界钉在测试里：剩 1 字 → 无信号；剩 2 字 → 正常参与匹配。
+  const contentOnly = stripSearchVerbs(said);
   if (contentOnly.length < 2) {
+    trace.noSignal = true;
     return { hit: null, ambiguous: candidates.map((c) => c.id), trace };
   }
 

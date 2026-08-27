@@ -151,6 +151,50 @@ describe("classifyClueFailure — 说得出为什么没对上", () => {
     };
     expect(classifyClueFailure(want, o)).toBe("forced-hit");
   });
+
+  // ⚠ 这四条是本轮要修的重点：no-signal 与 no-key 结构上都长成
+  // `matched.length === 0`，原判据只能靠这个猜，把"输入没给信号"（正确
+  // 行为，不用修）误诊成"匹配方式太窄"（no-key，暗示该加同义词）——
+  // 实测 26 条失败里 14 条带着这个错误处方。必须靠结构化标记
+  // `noSignal` 分开，不能靠 matched 是否为空去猜。
+  test("noSignal=true 且 matched 为空 → no-signal（不是 no-key，不用加同义词）", () => {
+    const o: CluePhraseOutcome = {
+      chosenClueId: null, ambiguousIds: ["clue_drugs", "clue_pistol"],
+      matched: [], noSignal: true,
+    };
+    expect(classifyClueFailure(want, o)).toBe("no-signal");
+  });
+
+  test("**干扰**：matched 同样为空，但 noSignal 没置位 → 仍然是 no-key（真的没找到同义词）", () => {
+    // 两条用例的 matched 字段长得一模一样（都是空数组），唯一的区别是
+    // noSignal 有没有显式置位——判据必须靠这个结构化标记分开，不能靠
+    // matched.length === 0 本身去猜，猜的话这两条会被判成同一类。
+    const o: CluePhraseOutcome = {
+      chosenClueId: null, ambiguousIds: [],
+      matched: [], noSignal: false,
+    };
+    expect(classifyClueFailure(want, o)).toBe("no-key");
+  });
+
+  test("**干扰**：noSignal 字段压根没给（老代码路径、undefined）→ 回落到 no-key，不当成 no-signal", () => {
+    // noSignal 是可选字段——旧的/别的匹配器实现可能压根不填它。
+    // undefined 不该被当成"true"处理，否则每一条没接入这个字段的调用方
+    // 都会被误判成"正确行为不用修"，把真实的 no-key 缺口悄悄盖住。
+    const o: CluePhraseOutcome = { chosenClueId: null, ambiguousIds: [], matched: [] };
+    expect(classifyClueFailure(want, o)).toBe("no-key");
+  });
+
+  test("noSignal=true 但命中了自己（理论上不该发生）→ 仍然按 no-signal 报，不误判成别的", () => {
+    // noSignal 早退发生在 matchSceneClues 填充 matched 之前，真实实现里
+    // noSignal=true 时 matched 必然为空——但判据的分类逻辑本身要稳：
+    // 只要调用方诚实转发了 noSignal，判据就该无条件先认它，不去纠结
+    // matched 里有没有东西（那是给"没有 noSignal"的情形准备的判断）。
+    const o: CluePhraseOutcome = {
+      chosenClueId: null, ambiguousIds: ["clue_drugs"],
+      matched: [{ clueId: "clue_drugs", key: "卫生间" }], noSignal: true,
+    };
+    expect(classifyClueFailure(want, o)).toBe("no-signal");
+  });
 });
 
 // ── 端到端：真的过一遍 matchSceneClues ──────────────────────────
@@ -167,6 +211,8 @@ function run(said: string, candidates: ClueMatchCandidate[]): CluePhraseOutcome 
     chosenClueId: r.hit,
     ambiguousIds: r.ambiguous,
     matched: r.trace.matched.map((m) => ({ clueId: m.id, key: m.key })),
+    // 原样转发，不能自己编——见 clue-phrasing.ts 对 noSignal 字段的注释。
+    noSignal: r.trace.noSignal,
   };
 }
 
@@ -248,5 +294,36 @@ describe("变异检验 — 判据能不能抓住「退回取第一条」这种�
     const pickFirstOnAmbiguity = (): CluePhraseOutcome => ({ chosenClueId: "clue_pistol", ambiguousIds: [] });
     const c: CluePhraseCase = { id: "amb", kind: "ambiguous", desc: "没说具体位置", said: "侦查", wantClueId: null };
     expect(judgeCluePhrase(c, pickFirstOnAmbiguity()).verdict).toBe("fail");
+  });
+
+  // ⚠ 判据自身的变异检验（本轮新增要求）：模拟"裸动词也擅自挑一条"这种
+  // 改坏——如果 matchSceneClues 的 no-signal 早退被删掉、退回到"正常匹配
+  // 流程随便碰上什么就精确命中"，判据必须报出来，而且分类必须落在
+  // forced-hit 或 other，绝不能是 no-signal——no-signal 这个分类本身
+  // 只应该出现在"引擎诚实报了没信号"这种正确行为上；如果分类结果是
+  // no-signal，那就是判据自己被这个改坏骗了，等于说"这是正确行为不用管"，
+  // 而真相是引擎在擅自挑人。
+  test("模拟「删掉 no-signal 早退，裸动词也精确命中」的改坏 → 判据报失败，且分类不是 no-signal", () => {
+    // matched 非空、chosenClueId 精确指向某一条、noSignal 没置位——
+    // 这正是"信号被删除后，一次擅自精确命中"长的样子。
+    //
+    // 走真实管线（addCluePhraseResult），不是直接单独调 classifyClueFailure：
+    // 生产代码里 ambiguous 类用例的失败分类由 addCluePhraseResult 里的
+    // `c.kind === "ambiguous" ? "other" : classifyClueFailure(...)` 短路
+    // 决定，压根不会走到 classifyClueFailure——直接调它测的是另一件事，
+    // 不是报告里实际会出现的分类。
+    const forcedPick: CluePhraseOutcome = {
+      chosenClueId: "clue_bedroom_diary",
+      ambiguousIds: [],
+      matched: [{ clueId: "clue_bedroom_diary", key: "侦查" }],
+      // noSignal 故意不给——模拟"早退逻辑被删掉了，压根没机会置位"
+    };
+    const c: CluePhraseCase = { id: "amb", kind: "ambiguous", desc: "没说具体位置", said: "侦查", wantClueId: null };
+    expect(judgeCluePhrase(c, forcedPick).verdict).toBe("fail");
+
+    const report = newCluePhraseReport();
+    addCluePhraseResult(report, c, forcedPick);
+    expect(report.failKinds.has("no-signal")).toBe(false);
+    expect(report.failKinds.get("other")).toBe(1);
   });
 });

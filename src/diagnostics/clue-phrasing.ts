@@ -47,21 +47,44 @@ export interface CluePhraseOutcome {
    * 抢先，是完全不同的三种毛病。
    */
   matched?: { clueId: string; key: string }[];
+  /**
+   * matchSceneClues 是不是在"输入本身没有位置/对象信号"这条路径上早退的
+   * （见 clue-match.ts 的 ClueMatchTrace.noSignal）。这条早退发生在
+   * `matched` 被填充**之前**，所以 `matched.length === 0` 既可能是"真的
+   * 一个键都没命中"（no-key，缺同义词），也可能是"压根没打算找键"
+   * （no-signal，正确行为）——两件事结构上长得一样，只能靠这个显式标记
+   * 分开，不能靠猜。调用方（跑分脚本/测试）必须把
+   * matchSceneClues() 返回的 `trace.noSignal` 原样转发到这里，不能自己
+   * 编一个 —— 编的话这个字段就没有意义了。
+   */
+  noSignal?: boolean;
 }
 
 /**
  * 一条用例没通过，是哪一类没通过。
  *
- * 四类的修法完全不同，混在一个"命中率"里等于知道有病不知道病在哪：
- *   no-key      一个键都没命中 → 切词/简称方式太窄，缺同义词
+ * 五类的修法完全不同，混在一个"命中率"里等于知道有病不知道病在哪：
+ *   no-signal   输入本身没有可区分的位置/对象信号（裸动词一类）→
+ *               **不用修**——这是正确行为，matchSceneClues 老实报了
+ *               "该问不该猜"，用例本身就不该指望它精确命中（应该改标成
+ *               ambiguous 用例，见 diag-clue-phrasing.ts 的用例生成）
+ *   no-key      给了信号但一个键都没命中 → 切词/简称方式太窄，缺同义词
  *   rival-only  只命中了别的候选的键 → 子串比对认错了人
  *   ambiguous   自己和别处都命中 → 靠候选顺序抢先（本判据设计上不该有这类，
  *               matchSceneClues 命中多个时诚实报 ambiguous 而不是抢一个）
  *   forced-hit  选对了但引擎把它标成了"多个候选之一"，不是精确命中
+ *
+ * ⚠ no-signal 必须先判——它和 no-key 结构上都长成 `matched.length === 0`，
+ * 唯一的区别是 matchSceneClues 有没有走到"尝试找键"这一步。原先没有这个
+ * 显式标记时，判据只能靠 `matched.length === 0` 猜，把"输入没给信号"
+ * （正确行为）误诊成"匹配方式太窄"（no-key，暗示该加同义词）——实测 26
+ * 条失败里 14 条带着这个错误处方，照它去"修"正好会把上一轮刚加上的
+ * 拒绝猜测行为改回去。
  */
-type CluePhraseFailKind = "no-key" | "rival-only" | "ambiguous" | "forced-hit" | "other";
+type CluePhraseFailKind = "no-signal" | "no-key" | "rival-only" | "ambiguous" | "forced-hit" | "other";
 
 export function classifyClueFailure(c: CluePhraseCase, o: CluePhraseOutcome): CluePhraseFailKind {
+  if (o.noSignal) return "no-signal";
   const matched = o.matched;
   if (!matched) return "other";
   const want = c.wantClueId;

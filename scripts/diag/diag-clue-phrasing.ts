@@ -13,7 +13,7 @@
 process.env.LLM_DISABLED = "true";
 
 import { BARN_OF_PREMIER } from "../../src/module/barn-of-premier";
-import { matchSceneClues, splitKeys, type ClueMatchCandidate } from "../../src/investigation/clue-match";
+import { matchSceneClues, splitKeys, stripSearchVerbs, type ClueMatchCandidate } from "../../src/investigation/clue-match";
 import {
   addCluePhraseResult, newCluePhraseReport, pct,
   type CluePhraseCase, type CluePhraseOutcome,
@@ -43,16 +43,25 @@ function buildCases(target: ClueMatchCandidate, group: ClueMatchCandidate[]): Cl
     cases.push({ id: `p-${seg.length <= 6 ? "短语" : "长句"}`, kind: "positive", desc: `照说线索自身描述片段（${seg.length}字）`, said: seg, wantClueId: target.id });
   }
 
-  // 正例（更难）：只说自己最长那个描述片段的前 2/3 字——玩家不太可能照念
-  // 整句，更常见的是掐一小段。这类比"原样照说"难，专门用来暴露
-  // no-key/rival-only 这两类失败——27/32 条自由文本里，很多根本没有
-  // 干净的位置名词可摘，缩写之后大概率连自己都对不上，那正是真实的
-  // 匹配缺口，不该被"原样照说"这种最简单的用例盖过去。
-  const longest = [...mySegments].sort((a, b) => b.length - a.length)[0];
-  if (longest && longest.length >= 4) {
+  // 正例（更难）：只说自己描述片段"剥掉调查动词之后"那部分内容的前 2/3
+  // 字——玩家不太可能照念整句，更常见的是掐一小段。这类比"原样照说"难，
+  // 专门用来暴露 no-key/rival-only 这两类失败——27/32 条自由文本里，很多
+  // 根本没有干净的位置名词可摘，缩写之后大概率连自己都对不上，那正是真实
+  // 的匹配缺口，不该被"原样照说"这种最简单的用例盖过去。
+  //
+  // ⚠ 必须先用 stripSearchVerbs() 剥掉动词再取前缀，不能直接切原始片段。
+  // 很多 findMethods 描述以调查动词开头（"搜查二层杂物室""检查杂物室中的
+  // 婴儿车"），直接掐前 2/3 字掐出来的是"搜查""检查"这类裸动词本身——
+  // 按 matchSceneClues 的设计，裸动词没有位置/对象信号，理应报歧义，
+  // 拿它当"正例"（要求精确命中）用例本身就是错的，这类用例注定失败，
+  // 把命中率往下拉的同时又不提供任何真实的匹配质量信息。剥完动词再切，
+  // 缩写用例才是在测"内容部分缩写后还认不认得出"，这才是真正想量的东西。
+  const contentSegments = mySegments.map((s) => stripSearchVerbs(s)).filter((s) => s.length >= 2);
+  const longestContent = [...contentSegments].sort((a, b) => b.length - a.length)[0];
+  if (longestContent && longestContent.length >= 4) {
     for (const len of [2, 3]) {
-      const abbr = longest.slice(0, len);
-      cases.push({ id: `p-掐前${len}字`, kind: "positive", desc: `只说最长片段的前 ${len} 字`, said: abbr, wantClueId: target.id });
+      const abbr = longestContent.slice(0, len);
+      cases.push({ id: `p-掐前${len}字`, kind: "positive", desc: `只说内容部分（剥掉调查动词）的前 ${len} 字`, said: abbr, wantClueId: target.id });
     }
   }
 
@@ -91,21 +100,21 @@ for (const scene of BARN_OF_PREMIER.scenes) {
         chosenClueId: r.hit,
         ambiguousIds: r.ambiguous,
         matched: r.trace.matched.map((m) => ({ clueId: m.id, key: m.key })),
+        noSignal: r.trace.noSignal, // 原样转发，供 classifyClueFailure 分清 no-signal 与 no-key
       };
       addCluePhraseResult(report, c, outcome, `${scene.name}·${target.id}`);
     }
   }
 
-  // 歧义：场景内裸调查动词，不给任何位置提示——理应"没法唯一确定"，
-  // 但 matchSceneClues() 本身不看"有没有提示"这件事（那是调用方
-  // resolveSceneClueMatch 的职责），所以这里只测"没提示"时不应该精确命中，
-  // 报出的应该是 0 命中或多命中，不该是某一条被蒙对。
+  // 歧义：场景内裸调查动词，不给任何位置提示——matchSceneClues() 会走
+  // ClueMatchTrace.noSignal 那条早退路径，报出全部候选而不是精确命中。
   const bare: CluePhraseCase = { id: "a-裸动词", kind: "ambiguous", desc: "不带任何位置提示的裸调查动词", said: "侦查", wantClueId: null };
   caseIds.add(`${bare.kind}/${bare.id}`);
   const r = matchSceneClues(bare.said, group);
   addCluePhraseResult(report, bare, {
     chosenClueId: r.hit,
     ambiguousIds: r.ambiguous,
+    noSignal: r.trace.noSignal,
     matched: r.trace.matched.map((m) => ({ clueId: m.id, key: m.key })),
   }, `${scene.name}`);
 }
@@ -139,10 +148,12 @@ for (const [id, v] of [...report.byId.entries()].sort()) {
 out.push("");
 out.push("## 失败按成因分类");
 out.push("");
-out.push("四类的修法完全不同，混在一个「命中率」里等于知道有病不知道病在哪。");
+out.push("五类的修法完全不同，混在一个「命中率」里等于知道有病不知道病在哪。");
+out.push("`no-signal` 不需要修——那是用例本身写错了（该标成歧义用例），不是匹配器的缺口。");
 out.push("");
 const FAIL_LABEL: Record<string, string> = {
-  "no-key": "一个键都没命中 —— 切词方式太窄（缺同义词/简称）",
+  "no-signal": "输入本身没有位置/对象信号（裸动词一类）—— 不用修，用例该改标成 ambiguous",
+  "no-key": "给了信号但一个键都没命中 —— 切词方式太窄（缺同义词/简称）",
   "rival-only": "只命中了别处的键 —— 子串比对认错了人",
   "ambiguous": "自己和别处都命中 —— 靠候选顺序抢先或真的有歧义",
   "forced-hit": "目标在候选里但没被精确选中 —— 是蒙对的，不是听懂的",
