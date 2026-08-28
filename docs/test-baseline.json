@@ -1,6 +1,6 @@
 {
-  "tests": 2268,
-  "files": 140,
+  "tests": 2273,
+  "files": 141,
   "unwiredMethods": 87,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -354,6 +354,11 @@
       "tests": 2268,
       "files": 140,
       "when": "五项开发（第二轮）·任务2：NPC 整句台词重复（早就记在探针注释里，一直没修）。npc-dialogue.ts:742 与 scene-pipeline.ts 各自有一份 `revisitEncounter ?? firstEncounter`——LLM 没生成 revisitEncounter 时，再遇就逐字重复首见台词。探针 probe-dialogue-lead.ts §⑤ 实跑抓到过酒吧保镖那句连说四次。⚠ 重复引导句不是本任务目标（提交 a4fdb58 已判定不是病），本任务只管整句台词。改法：两处都不再回落到 firstEncounter，改落到程序化模板系统（buildDialogueForRel 等，本来就是 npc.llmExpanded 整体不存在时的路径）——按关系值分层、按性格特质选池子、pick() 随机取一条，不会逐字重复。scene-pipeline.ts 的调用点直接复用 generateNpcDialogue（npc-dialogue.ts），不重复实现一遍变化逻辑。判断用 `!= null` 不是真值判断：沉默型 NPC 的 revisitEncounter 可能是显式空字符串（templateRevisitEncounter 的 isSilent 分支），原 `??` 对空串不生效，真值判断会把它误判成缺失，让一个该沉默的 NPC 被程序化路径生成出台词来——这是实现过程中发现并顺带修正的一个边界，两处都改了。已知的复查发现：barn-of-premier.ts 在模块定义时就无条件跑 applyAllLlmExpanded()（模板），每个 NPC 的 llmExpanded 落地时 revisitEncounter 就已经有值（非沉默必为非空文本，沉默为空串）；再叠加更早一次提交（revisit-line-kept.test.ts 记录的合并保留修复）让 LLM 部分响应不会抹掉已有的 revisitEncounter——两者叠加后，'revisitEncounter 真正缺失（undefined）' 这个触发条件在 barn 模组 + LLM_DISABLED（纯模板）路径下已经很难复现，探针跑前跑后的聚合『整句台词重复』数字因此没有直接可见的变化（用一个临时的『局内去重』脚本核实过：唯一出现的重复是合法的、本就该逐字复用的手写/模板回访句，不是 bug 触发）。因此本任务的验证以确定性单测为准（与旁边 revisit-line-kept.test.ts 用 mock 的部分响应 LLM 客户端做单测验证是同一策略），不依赖探针的聚合指标。新增 npc-revisit-line-not-verbatim.test.ts（5条）：revisitEncounter 缺失时不与 firstEncounter 相同（红线）；连续 20 次调用同一 NPC 都不撞见逐字重复（覆盖 pick() 随机性）；revisitEncounter 存在时仍原样使用（对照，不被误伤）；首次见面不受影响；无 llmExpanded 的纯模板 NPC（含沉默判定）行为不变。变异检验：两处都改回 `?? firstEncounter`，5 条里 2 条精确变红；revert 后 5/5 回归绿，两处 Copy-Item 分别还原。typecheck exit 0；bun test 2263→2268（+5）、139→140 文件。"
+    },
+    {
+      "tests": 2273,
+      "files": 141,
+      "when": "五项开发（第二轮）·任务3：检定失败要能被玩家读出来。问题A：线索路（resolveSceneClueMatch 的 resolve/fallback/ask/deny 四个分支）全部提前 return，够不到通用检定路 handleSkillCheck 裸检定分支的骰子播报（🎲 …d100=…→…）——同一句「侦查X」，走哪条路决定了看不看得见骰子（run1「侦查餐桌」走通用路有骰子，run2「侦查床底」走线索路无骰子）。问题B：上一轮把「匹配不上」（这里没什么特别的）与「检定失败」（你仔细搜查了一番，但这次没能看出什么名堂）改成两句不同的话，单测断言「两句话不同」通过了，但实跑报告仍判「玩家不知道是场景无物还是检定失败」——单测测的是字符串不同，实跑测的是读者分不分得清，两者不一致时以读者为准，这条算没修完。方案①+②：线索路检定失败时也播一条骰子（格式与通用路一致：🎲 ${skillDisplay}检定 d100=${roll} (目标=${skillValue}%) → 失败），骰子播报本身就是「检定结果」的明确表述，不依赖玩家记住两句话哪句代表哪种含义（比起单纯改措辞更稳健：不管命中的是哪个 fail 文案分支——通用兜底还是模组手写的 primary.fail，骰子这条播报都会出现，结构性保证可分辨，不依赖记住某句特定措辞）。investigateCoC 的返回类型加 skillId 字段（这次检定用的技能 id），resolveSceneClue 失败时用它查 SKILL_DISPLAY_NAMES 拼出骰子行，通过 msg() 推入 events（与通用路同一机制），并折进 lastNarrative（很多客户端只读这个字段，不逐条看 events，通用路的骰子只在 events 里、lastNarrative 不含，线索路这次两处都给，更稳）。只在失败（!result.success）时加这一行，成功路径的输出一个字不变——判定逻辑（成功率、目标值、线索归属）一律不动。顺带清理：investigation-engine.ts 里此前一次编辑意外把一段注释复制了两遍，这次一并删掉重复的那份。新增 clue-check-failure-visible.test.ts（5条）：线索路检定失败输出含 d100 骰子信息（🎲/失败/d100=数字）；检定成功时输出一个字不变（不多骰子行，措辞不变）；通用检定路与线索路失败两条路都能看见骰子（红线，通用路骰子在 events 不在 narrative——既有行为，不因这次改动而变）；检定失败与匹配不上两种「没找到」现在能用「是否含区分性信息（d100 或检定字样）」这个判据分辨，不再只断言字符串不同；两句话本身仍然不同（上一轮的判据是加强不是被推翻）。变异检验：去掉骰子行的生成与 msg() 调用，5 条里 2 条精确变红；revert 后 5/5 回归绿。typecheck exit 0；bun test 2268→2273（+5）、140→141 文件。"
     }
   ]
 }

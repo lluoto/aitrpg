@@ -2403,18 +2403,35 @@ export class GameSession {
    * （ws-handler.ts 的 broadcastToSession）不按玩家过滤，server.ts 把完整
    * narrative 广播给该 session 全部连接——线索私密目前只在"回看历史"这个
    * 维度成立，不是"实时全程保密"。这是 L6/L7b 的正题，本轮不碰。
+   *
+   * 检定失败时补一条骰子播报（🎲 …d100=…→失败），格式与通用检定路
+   * （handleSkillCheck 的裸检定分支）一致——此前线索路 resolve/fallback/
+   * ask/deny 四个分支全部提前 return，够不到通用路那句骰子播报，玩家看到
+   * 的只有一句"没找到"，分不清是掷骰子输了还是这里压根没东西（实跑报告
+   * 抄了两句不同措辞的失败文案，仍然判"不知道是场景无物还是检定失败"——
+   * 单测断言"两个字符串不同"通过了，读者的疑问没通过，以读者为准）。
+   * 骰子播报把"检定结果"这件事摆到明面上，不依赖玩家记住两句话哪句代表
+   * 哪种含义。只在失败时加这一条——成功路径的输出一个字不变。
    */
   private resolveSceneClue(clueType: string, msg: (s: string) => number): boolean {
     const skills = this.activeCharacter?.skillValues ?? this.activeCharacter?.skills ?? {};
     const result = this.investigation.investigateCoC(clueType, skills, this.activePlayerId);
 
+    let diceLine = "";
+    if (!result.success) {
+      const skillDisplay = SKILL_DISPLAY_NAMES[result.skillId] ?? result.skillId ?? "调查";
+      diceLine = `🎲 ${skillDisplay}检定 d100=${result.roll} (目标=${result.skillValue}%) → 失败`;
+      msg(diceLine);
+    }
     const newLength = msg(result.revelation);
     const idx = newLength - 1;
     if (this._turnMessages && this._turnMessages[idx]) {
       this._turnMessages[idx].visibility = "discoverer_only";
       this._turnMessages[idx].discoverer = this.activePlayerId;
     }
-    this.lastNarrative = result.revelation;
+    // lastNarrative 是很多客户端唯一读的字段（不逐条看 events）——失败时把
+    // 骰子播报也折进去，不能只靠 events 里的另一条消息才看得到"掷过骰子"。
+    this.lastNarrative = diceLine ? `${diceLine}\n${result.revelation}` : result.revelation;
 
     if (result.sanLost > 0) this.inflictSanLoss(result.sanLost, msg);
     return true;

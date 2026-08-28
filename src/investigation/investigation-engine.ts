@@ -510,10 +510,18 @@ export class InvestigationEngine {
     clue: ClueDef | null;
     roll: number;
     skillValue: number;
+    /**
+     * 这次检定用的技能 id（如 "spot_hidden"）。调用方（resolveSceneClue）
+     * 失败时要播一条"🎲 xx检定 d100=61 (目标=25%) → 失败"——线索路此前
+     * 四个分支全部提前 return，够不到通用检定路的那句骰子播报，玩家看不出
+     * "这次没找到"是掷骰子输了还是这里压根没东西。播报要报"哪个技能"，
+     * 单靠 roll/skillValue 报不出来，加这个字段。
+     */
+    skillId: string;
   } {
     const clue = this.clueTypes.get(clueType);
     if (!clue) {
-      return { success: false, successLevel: "fail", revelation: "你没有找到有用的线索。", sanLost: 0, sanCost: "", clue: null, roll: 0, skillValue: 0 };
+      return { success: false, successLevel: "fail", revelation: "你没有找到有用的线索。", sanLost: 0, sanCost: "", clue: null, roll: 0, skillValue: 0, skillId: "" };
     }
 
     // 如果已发现，返回重看但不重复 SAN
@@ -544,9 +552,6 @@ export class InvestigationEngine {
     else if (sl === "hard" && primary.hard) revelation = primary.hard;
     else if (sl === "regular" && primary.regular) revelation = primary.regular;
     else if (sl === "regular" || sl === "hard" || sl === "extreme" || sl === "critical") revelation = primary.regular || clue.primary.success || "你发现了一些线索。";
-    // 同上：这是真掷过骰子且没过（"检定失败"），与游戏会话层「这里没什么特别
-    // 的」（玩家的措辞对不上任何一条未发现线索——压根没进检定）是两种不同的
-    // "没找到"，措辞要能分辨，判定逻辑不变。
     // 同上：这是真掷过骰子且没过（"检定失败"），与游戏会话层「这里没什么特别
     // 的」（玩家的措辞对不上任何一条未发现线索——压根没进检定）是两种不同的
     // "没找到"，措辞要能分辨，判定逻辑不变。
@@ -586,6 +591,7 @@ export class InvestigationEngine {
       clue,
       roll: check.roll,
       skillValue,
+      skillId: skillName,
     };
   }
 
