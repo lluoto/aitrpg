@@ -476,7 +476,11 @@ export class InvestigationEngine {
             hard: description,
             extreme: description,
             critical: description,
-            fail: "你没有找到有用的信息。",
+            // 只改措辞，不改判定：这是"检定失败"（找对了地方，骰子没过），要和
+            // "匹配不上"（game-session.ts 的「这里没什么特别的」——玩家说的
+            // 提示压根对不上场景里任何一条线索）分开，别让两种不同的"没找到"
+            // 读起来一模一样。
+            fail: "你仔细搜查了一番，但这次没能看出什么名堂。",
           },
         });
       }
@@ -540,7 +544,13 @@ export class InvestigationEngine {
     else if (sl === "hard" && primary.hard) revelation = primary.hard;
     else if (sl === "regular" && primary.regular) revelation = primary.regular;
     else if (sl === "regular" || sl === "hard" || sl === "extreme" || sl === "critical") revelation = primary.regular || clue.primary.success || "你发现了一些线索。";
-    else revelation = primary.fail || clue.primary.fail || "你没有找到有用的信息。";
+    // 同上：这是真掷过骰子且没过（"检定失败"），与游戏会话层「这里没什么特别
+    // 的」（玩家的措辞对不上任何一条未发现线索——压根没进检定）是两种不同的
+    // "没找到"，措辞要能分辨，判定逻辑不变。
+    // 同上：这是真掷过骰子且没过（"检定失败"），与游戏会话层「这里没什么特别
+    // 的」（玩家的措辞对不上任何一条未发现线索——压根没进检定）是两种不同的
+    // "没找到"，措辞要能分辨，判定逻辑不变。
+    else revelation = primary.fail || clue.primary.fail || "你仔细搜查了一番，但这次没能看出什么名堂。";
 
     // SAN 处理 —— 应用难度倍率
     let sanLost = 0;

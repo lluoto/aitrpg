@@ -34,7 +34,7 @@ import type { DifficultyProfile } from "../rules/module-difficulty";
 import { applyAction, type GateState, type RejectReason, type Result, type StateDelta } from "../rules/apply-action";
 import { boundedIntegerGateState, boundedIntegerScenario, buildDifficultyGateState, COC_SESSION_SCENARIO, isDifficultyLabel } from "../rules/coc-session-scenario";
 import { CharacterFactory, getArchetype, type LegendaryAction } from "../character/character-factory";
-import { buildCoCCharacter, SKILL_NAME_MAP } from "../character/coc-character";
+import { buildCoCCharacter, SKILL_NAME_MAP, getCoCArchetypes } from "../character/coc-character";
 import { StoryGenerator } from "../rules/story-generator";
 import { CareerFileStore } from "../character/career-file";
 import { createGameTime, advanceTime, formatGameTime, periodAtmosphere, type GameTime } from "../rules/game-time";
@@ -86,8 +86,17 @@ export interface ActionResponse {
      * 让"谁能行动"对客户端可见——此前 getState 只暴露 companions（NPC 队友），
      * 玩家自己（party 成员）无从得知有哪些 pcId 可选，路由能力拿到也用不上。
      * control 只读不写：本轮不加设置入口（那是 L4 接管/交还的事）。
+     *
+     * hp/maxHp/status/san/maxSan：实跑三个 PC 轮流行动 30 回合，party 里
+     * 始终看不到任何人的状态——state.player 只反映当前 active PC，「谁受伤
+     * 了」在多 PC 局里无从判断。hp/maxHp/status 取 world.getEntity(pcId)（与
+     * `player` 单数字段同一份数据源，不另建一条真相）；san/maxSan 取
+     * PartyMember.san（与 sanityEngines 同一引用）。
      */
-    party: { pcId: string; name: string; control: "auto" | `player:${string}` }[];
+    party: {
+      pcId: string; name: string; control: "auto" | `player:${string}`;
+      hp: number; maxHp: number; status: string[]; san: number; maxSan: number;
+    }[];
   };
   dead?: boolean;
   sanity?: { currentSAN: number; maxSAN: number; temporaryInsanity: boolean; indefiniteInsanity: boolean; phobias: string[] };
@@ -193,6 +202,18 @@ const COC_SKILL_ALIASES: Record<string, string> = {
 
 /** 克苏鲁神话世界模型路径。共享 loader 按路径分桶，因此这里必须是同一个常量。 */
 const CTHULHU_MODEL_PATH = DEFAULT_CTHULHU_PATH;
+
+/**
+ * 剥掉字符串首尾的中英文标点（不动中间）。
+ *
+ * 自然语言输入抽 target 时经常带着标点尾巴——「附近店铺，」「维森酒吧。」——
+ * `.trim()` 只管空白，标点会原样进 key，回显因此打出「这里没有「附近店铺，」」
+ * 这种一眼看出是解析层没收干净的输出。
+ */
+const EDGE_PUNCTUATION = /^[，。！？；：、,.!?;:"'“”‘’()（）《》「」【】\s]+|[，。！？；：、,.!?;:"'“”‘’()（）《》「」【】\s]+$/g;
+function stripEdgePunctuation(s: string): string {
+  return s.replace(EDGE_PUNCTUATION, "");
+}
 
 /**
  * 按规则集建卡。
@@ -521,17 +542,48 @@ export class GameSession {
   }
 
   /**
+   * 把"职业"输入解析成 archetypeId —— 只在 cosmic-horror 规则集下生效。
+   * `buildCharacterForRuleset` 只认英文 id（如 "journalist_coc"），中文
+   * 显示名（"记者"）原样传进去会被判成未知职业——但"创建队友"这条文本命令
+   * 只有中文语境，玩家没有理由知道内部 id。先按 id 精确匹配，查不到再按
+   * `getCoCArchetypes()` 的 label 精确匹配；两者都查不到就原样返回，交给
+   * 调用方的兜底判空处理。
+   */
+  private resolveOccupationId(input: string): string {
+    if (this.activeRuleset !== "cosmic-horror") return input;
+    if (getArchetype(input)) return input;
+    const byLabel = getCoCArchetypes().find((a) => a.label === input);
+    return byLabel ? byLabel.id : input;
+  }
+
+  /**
    * 为队伍新增一个 PC —— web 的 `POST /api/sessions/:id/party` 与文本命令
    * 「创建队友」共用（不掰成两套做法）。必须走到 createPartyMember（单一入口，
    * 八件事一次做齐）；meta 经 resolveMeta 兜底链解析后挂到 PartyMember.meta，
    * 供后续把 PlayerAgent 接进 web 会话时读。
+   *
+   * ⚠ `buildCharacterForRuleset` 对未知职业会抛。原先这里没接，异常一路
+   * 冒到 runAction 的外层 catch，变成裸 500——实跑「创建队友 记者 林娜」
+   * （中文职业名不认）与「创建队友 林娜 记者」（参数顺序写反）两次都中。
+   * 接住它，走 `{ rejected }` 这个已有形状（server.ts 已经把它翻成 400），
+   * 消息里把正确用法与写反了怎么办都说清楚，不是只丢一句"未知职业: X"。
    */
   addPartyMember(
     name: string,
     archetypeId: string,
     meta?: PlayerMeta,
   ): { member: PartyMember; warning?: string } | { rejected: string } {
-    const ch = buildCharacterForRuleset(name, archetypeId, this.activeRuleset);
+    const resolvedArchetypeId = this.resolveOccupationId(archetypeId);
+    let ch: any;
+    try {
+      ch = buildCharacterForRuleset(name, resolvedArchetypeId, this.activeRuleset);
+    } catch {
+      return {
+        rejected: `未知职业「${archetypeId}」。用法：创建队友 <姓名> <职业>（先姓名后职业——`
+          + `如果把这两个写反了就会看到这条报错）。用「职业列表」查看全部可用职业`
+          + `（也可以直接用中文职业名，如"记者""侦探""医生"）。`,
+      };
+    }
     const pid = this.nextFreePcId();
     const result = this.createPartyMember(pid, ch, { control: "auto" });
     if ("rejected" in result) return result;
@@ -690,11 +742,19 @@ export class GameSession {
       npcs: npcs.map(e => ({ name: e.name, hp: e.hp, maxHp: e.maxHp, status: e.status })),
       monsters: monsters.map(e => ({ name: e.name, hp: e.hp, maxHp: e.maxHp, status: e.status })),
       companions: comps,
-      party: [...this.party.entries()].map(([pcId, m]) => ({
-        pcId,
-        name: m.sheet?.name ?? "调查员",
-        control: m.control,
-      })),
+      party: [...this.party.entries()].map(([pcId, m]) => {
+        const ent = this.world.getEntity(pcId);
+        return {
+          pcId,
+          name: m.sheet?.name ?? "调查员",
+          control: m.control,
+          hp: ent?.hp ?? m.sheet?.hp ?? 12,
+          maxHp: ent?.maxHp ?? m.sheet?.maxHp ?? 12,
+          status: ent?.status ?? [],
+          san: m.san.state.currentSAN,
+          maxSan: m.san.state.maxSAN,
+        };
+      }),
     };
   }
 
@@ -1964,6 +2024,14 @@ export class GameSession {
       const name = this.sceneDisplayNames[hit.sceneId] ?? hit.sceneId;
       msg?.(`（没太确定你要去哪，先按最接近的理解带你到了「${name}」。说个更完整的地名可以纠正。）`);
     }
+    // 移动成功却不设 lastNarrative，响应就沿用上一轮内容 —— 实跑：输入
+    // 「周明回特里坎家」，narrative 写的是特里坎家，但 state.scene 却仍是
+    // 移动前的场景（这个方法早不早于 handleMove 那条"你移动到了场景:X"的
+    // 老路径），下一回合还在提移动前场景里的 NPC。移动成功时如实设一句。
+    if (moved) {
+      const name = this.sceneDisplayNames[hit.sceneId] ?? hit.sceneId;
+      this.lastNarrative = `你来到了「${name}」。`;
+    }
     return moved;
   }
 
@@ -2336,7 +2404,10 @@ export class GameSession {
       .getEntitiesInScene(pos)
       .filter((e) => e.type === "npc" || e.type === "monster");
     const presentNames = presentNpcEntities.map((e) => e.name);
-    const want = (intent.target ?? "").trim();
+    // .trim() 只剥空白，不剥标点——实跑「顺便问问附近店铺，有没有见过这人」
+    // 一类输入，intent.target 抽出来的是「附近店铺，」，尾随的逗号原样进了
+    // key，回显打出「这里没有「附近店铺，」」。剥掉首尾中英文标点，不动中间。
+    const want = stripEdgePunctuation((intent.target ?? "").trim());
 
     if (!want) {
       msg(
@@ -3211,7 +3282,9 @@ export class GameSession {
             hard: clue.revelation,
             extreme: clue.revelation,
             critical: clue.revelation,
-            fail: "你没有找到有用的信息。",
+            // 只改措辞，不改判定：与 :2282 附近「这里没什么特别的」（措辞对不上，
+            // 没进检定）是两种不同的"没找到"，这里是真掷过骰子没过。
+            fail: "你仔细搜查了一番，但这次没能看出什么名堂。",
           },
         });
       }
