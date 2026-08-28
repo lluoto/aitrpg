@@ -5,6 +5,7 @@
 import type { ActionIntent } from "../types";
 import type { LLMClient } from "./client";
 import { log } from "../log";
+import { llmEnabled } from "./enabled";
 
 // ============================================================
 // 硬编码 fallback（regex 模式匹配）
@@ -394,6 +395,37 @@ export function setIntentLLM(client: LLMClient | null) {
  */
 export function intentLLMConfigured(): boolean {
   return _llmClient !== null;
+}
+
+/**
+ * 起手声明：一次性说清楚这一局的意图解析走哪条路，不是每次调用都打。
+ *
+ * ⚠ 「零条 [intent] warn」曾经同时符合两种状态——LLM 接上了且全对，
+ * 或者 LLM 根本没接、全程 regex——日志上完全一样。上一轮加的两处
+ * warn（LLM 抛错/返回非法 JSON 时）解决的是"LLM 失败"的可观测性，
+ * 但 `_llmClient` 为 null 时 `parseIntent()` 连 try 都不进，两处 warn
+ * 都摸不到，"没接"本身反而是最沉默的那种状态。
+ *
+ * 同类前科：世界模型门禁不能断言 `loaded`，因为懒加载时 false 是正常态——
+ * 「静默 = 健康」的假设在这仓库已经错过一次。这次同样不能靠"没打印"
+ * 反推"一切正常"，得有一条明确的、能唯一反推走哪条路的声明。
+ *
+ * 调用时机：GameSession 构造函数里，在决定"要不要 setIntentLLM"那段代码
+ * 之后调一次——不是每回合调，一局一次。
+ */
+export function declareIntentPath(): void {
+  if (intentLLMConfigured()) {
+    log.info("intent", "本局意图解析走 LLM（LLMClient 接缝已配置）");
+    return;
+  }
+  // `_llmClient` 为 null 有两种截然不同的原因，日志得能分清是哪种：
+  //   · llmEnabled() 为假——没 key，或被 LLM_DISABLED/LLM_MODE 显式关掉
+  //   · llmEnabled() 为真但接缝仍未配置——这局的 this.llm 不是真正的
+  //     LLMClient（MockLLMClient/占位 key），且此前也没有别的会话/CLI 设过
+  const reason = !llmEnabled()
+    ? "llmEnabled() 为 false（无 key，或被 LLM_DISABLED/LLM_MODE 关掉）"
+    : "LLMClient 接缝未配置（本局用的是 MockLLMClient/占位 key，此前也没有别处设过）";
+  log.warn("intent", `本局意图解析全程走 regex，不会调用 LLM：${reason}`);
 }
 
 /**

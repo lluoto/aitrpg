@@ -3,7 +3,7 @@ import { parse as parseYaml } from "yaml";
 import { loadConfig, type LLMConfig } from "../config";
 import { LLMClient, type LLMLike } from "../llm/client";
 import { MockLLMClient } from "../llm/mock-client";
-import { parseIntent, setIntentLLM, intentLLMConfigured } from "../llm/intent";
+import { parseIntent, setIntentLLM, intentLLMConfigured, declareIntentPath } from "../llm/intent";
 import { generateNarrative, setNarratorLLM, narratorLLMConfigured } from "../llm/narrator";
 // llmEnabled 是「该不该打网络」的**唯一**判据，别在别处重写一份 ——
 // play-module.ts:101 记着上次抄第二份的代价。
@@ -364,6 +364,10 @@ export class GameSession {
     if (this.llm instanceof LLMClient && llmEnabled() && !intentLLMConfigured()) {
       setIntentLLM(this.llm);
     }
+    // 起手声明一次：这一局的意图解析最终走的是 LLM 还是 regex，日志上要能
+    // 唯一反推出来（见 declareIntentPath 的注释——"零条 warn"曾经同时符合
+    // "接上了且全对"和"根本没接"两种状态）。一局一次，不是每回合都打。
+    declareIntentPath();
     // 战斗叙述同理：`llm/narrator.ts` 的 `_narratorLLM` 也是模块级单例，
     // 原先只有 CLI 会设（`index.ts:55`），网页端战斗只印
     // 「造成 N 点伤害」，没有画面。守卫逻辑与上面 intent 那份一致。
