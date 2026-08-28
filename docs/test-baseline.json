@@ -1,6 +1,6 @@
 {
-  "tests": 2174,
-  "files": 129,
+  "tests": 2185,
+  "files": 130,
   "unwiredMethods": 90,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -304,6 +304,11 @@
       "tests": 2174,
       "files": 129,
       "when": "缺陷：无archetype建会话后直接创建队友会顶掉玩家自己的p1槽位。机制——构造函数不带archetype时走空壳分支（:372-388），建sanityEngines[\"p1\"]/world.registerPlayer(\"p1\")/session.join(\"p1\")但不调createPartyMember，所以this.party是空的；\"创建队友\"算pid用this.party.size+1，party.size为0→pid=\"p1\"，队友的卡直接覆盖空壳的SAN引擎/characters/世界实体，session.get(\"p1\")已存在走switchActive分支，播报却说\"加入了队伍\"——本仓反复修的\"报告了一件没发生的事\"。根因是pid分配依赖了一个已知会短暂失同步的计数（party不是唯一持有pcId的地方）。改法：新增私有nextFreePcId()，取一个当前未被占用的id，占用判定取**所有**四类持有者的并集——this.party/sanityEngines/session.getAllNames()/world.getPlayerIds()。给出选择理由：场bug的本质就是各持有者会短暂失同步，取并集是与这个失败模式同构的防御（correct by construction），代价只是O(成员数)扫表且上限PARTY_HARD_LIMIT=10；不只用最完整的world.getPlayerIds()一份，因为本次缺陷恰好因为依赖单一/失同步的信息源而引入。分配策略从1往上找第一个空位（不是单调递增不复用）：pcId语义是\"固定归属\"，空壳槽位p1、被重建的同id PC都不该被后建的人抢走；本轮无删除入口所以PlayerSession.leave()（销毁messageHistory，player-session.ts:73-79）不会触发，复用不会真发生旧历史串到新PC上，即便将来加删除，leave连id一起删这里仍正确。**不改空壳分支**（不让它调createPartyMember）：没有角色卡就得塞占位数据，会把\"八项齐全\"变成\"七项加一个假的\"，保留原注释。干扰侧确认：session按pcId做key（空壳join(\"p1\",...)首参即key、createPartyMember.join(pcId,...)），getAllNames()返回的正是pcId，一致。加2条测试（party-member-unified-entry.test.ts）：①直接创建队友（无archetype构造→创建队友乙）断言乙拿到p2不是p1、p1空壳槽位三个持有者都在（session.get(\"p1\")/sanityEngines.has(\"p1\")/world.getPlayerIds()含p1）、乙八项齐全（复用assertEightThings）；②随后创建角色甲落在p1、乙不被覆盖，p1/p2八项都齐。变异检验：把pid分配改回this.party.size+1，2条新测试精确变红（既有19条仍全绿——它们每条都先跑创建角色填了party，故pid仍是p2/p3，正常路径编号不乱）；Copy-Item还原后回归21/21。typecheck exit 0；bun test连跑3次2174/0/129文件"
+    },
+    {
+      "tests": 2185,
+      "files": 130,
+      "when": "只做路由、不碰AI侧：act() 第二参由角色显示名改为 pcId，web action 端点接受并转发 pcId，getState() 暴露队伍。现状——act(input, actingCharacterName?)（game-session.ts:1259）第二参存在但按角色显示名匹配（:1282-1288），命中后写 this.activePlayerId；web 路径 server.ts:451 永远 session.act(input) 不传第二参，于是 activePlayerId 在 web 上恒为 p1，多 PC 时无法以别的 PC 身份行动。按名字匹配还有两个毛病：重名 PC 取第一个（find 语义）、绕一圈才回到 pcId。改法：① 第二参直接收 pcId——actingCharacterName 零生产调用方（server.ts 不传），且无任何测试传第二参，直接换掉名字路径代价为零。② server action 端点做三层事：body 加可选 pcId 字段（缺省沿用 activePlayerId，与 kp/set-san 的 bodyString(body,\"playerId\")||activePlayerId 同一约定，保持既有客户端不破）；未知 pcId 由 act() 在**改动任何状态前**结构化校验（置 result.error{code:\"unknown_target\",targetId}，参照 setPlayerSan 的形状），server 翻成结构化 404——不抛异常、不兜底回 p1（那正是\"报告了一件没发生的事\"）；getState() 暴露 state.party（pcId+name+control），让\"谁能行动\"对客户端可见——control 只读不写，不加设置入口（L4 的事）。③ 为可测性把 action 端点核心抽成导出纯函数 runAction(session, body)（解析 body→可选pcId→act→error 映射→{status,body}），端点只管持久化/广播/附 summary；并把 server.ts 的 Bun.serve+启动块包进 if(import.meta.main)——被测试 import 取 runAction 时绝不能绑 3099 端口或扫 session 文件。边界情形：传了 pcId 但 PC 不在当前场景——本轮**允许**（自由跑团没有回合结构，getState 的 player/在场名单本来就按 activePlayerId 取）；并发缺口——act() 无锁改 this.round/activePlayerId/_turnMessages，两个客户端同时 POST 不同 pcId 会互相踩，本轮不做回合锁（那是 L3），在 act() 的 jsdoc 里写明这个已知缺口，别让下一个人以为路由做完就能多端并发。加 pc-route.test.ts（11条）：act按pcId路由行为正确（路由后 getState().player 与消息 speaker 归属都落在对应 PC、再切回能恢复、传当前活跃 pcId 本身不误报）、重名PC各自按pcId路由到本人（不走 find 取第一个）、未知pcId结构化拒绝且 activePlayerId/round 都不变（拒绝发生在任何改动前，且不折成正常叙事）、空壳p1建号前无卡不可行动、getState().party 暴露完整队伍、runAction 转发 pcId 到 act 的四条（含缺省沿用 activePlayerId、pcId 空白等价不传）。三侧覆盖：行为正确/目标行为错误对照/文本相似但不误报。变异检验两轮：① runAction 改回 session.act(input) 不传第二参，2 条 server 转发测试精确变红（9条游戏层直调 act 的仍绿）；② act() 的 unknown 校验短路（false&&），3 条未知pcId拒绝测试（含server 404那条）精确变红；两处 Copy-Item 还原后回归11/11。实测碰到的既有怪癖（与本题无关不修）：无 archetype 建号后 p1 的会话槽位 characterName 恒为兜底\"调查员\"（创建角色走 createPartyMember 对已存在 pcId 只 switchActive 不更新槽位名），导致无 archetype 下以 p1 行动的消息 speaker 是\"调查员\"而非真名——pr2 测试改用带 archetype 构造隔离。typecheck exit 0；bun test 连跑3次2185/0/130文件"
     }
   ]
 }

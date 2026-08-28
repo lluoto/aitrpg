@@ -441,34 +441,26 @@ async function handleRequest(req: Request): Promise<Response> {
     // POST /api/sessions/:id/action — 核心：玩家输入
     if (method === "POST" && segments[3] === "action") {
       const body = await readJsonBody(req);
-      const input = (bodyString(body, "input") ?? "").trim();
-
-      if (!input) {
-        return respondError("请输入行动", 400);
-      }
-
-      try {
-        const result: ActionResponse = await session.act(input);
-        saveSessionMeta(sessionId, {
-          lastActiveAt: Date.now(),
-          round: result.state?.round,
-          scene: result.state?.scene,
-        });
-        broadcastToSession(sessionId, "action-result", {
-          narrative: result.narrative,
-          events: result.events,
-          state: result.state,
-          dead: result.dead,
-          sanity: result.sanity,
-          dice: result.dice,
-        });
-        return respondJson({
-          ...result,
-          summary: session.getSummary(),
-        });
-      } catch (err: any) {
-        return respondError(`判定失败: ${err.message}`, 500);
-      }
+      const result = await runAction(session, body);
+      if (result.status !== 200) return respondJson(result.body, result.status);
+      const ar = result.body as unknown as ActionResponse;
+      saveSessionMeta(sessionId, {
+        lastActiveAt: Date.now(),
+        round: ar.state?.round,
+        scene: ar.state?.scene,
+      });
+      broadcastToSession(sessionId, "action-result", {
+        narrative: ar.narrative,
+        events: ar.events,
+        state: ar.state,
+        dead: ar.dead,
+        sanity: ar.sanity,
+        dice: ar.dice,
+      });
+      return respondJson({
+        ...ar,
+        summary: session.getSummary(),
+      });
     }
 
     // POST /api/sessions/:id/npc-chat — NPC 对话
@@ -749,6 +741,39 @@ function respondError(message: string, status = 400): Response {
   return respondJson({ error: message }, status);
 }
 
+/**
+ * 执行一次 action 的**核心**（body 解析 + 可选 pcId 路由 + 结构化拒绝），
+ * 抽取成纯逻辑而不是让 HTTP 端点内联：这样 POST /api/sessions/:id/action
+ * 的"pcId 是否真的被转发给 act()"是可单测的（改回 `session.act(input)`
+ * 不传第二参，本函数的测试就会变红），而端点本身只负责它自己的职责——
+ * 持久化元数据、广播、附 summary。
+ *
+ * pcId「以哪个 PC 身份行动」是可选字段：缺省（未传）时沿用
+ * activePlayerId，与 kp/set-san 的 `bodyString(...,"playerId") ||
+ * session.activePlayerId` 同一约定，保持既有客户端不破。未知 pcId 由
+ * act() 内部在改动任何状态**前**结构化校验并置 result.error（activePlayerId
+ * 因此不会"先切过去再发现切不了"），这里把它翻成结构化 4xx——不能折成 200
+ * 里一条系统消息，那又是"报告了一件没发生的事"。
+ */
+export async function runAction(
+  session: GameSession,
+  body: JsonRecord,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const input = (bodyString(body, "input") ?? "").trim();
+  if (!input) return { status: 400, body: { error: "请输入行动" } };
+  const actingPcId = (bodyString(body, "pcId") ?? "").trim() || undefined;
+  let result: ActionResponse;
+  try {
+    result = await session.act(input, actingPcId);
+  } catch (err: any) {
+    return { status: 500, body: { error: `判定失败: ${err.message}` } };
+  }
+  if (result.error) {
+    return { status: 404, body: { code: result.error.code, targetId: result.error.targetId } };
+  }
+  return { status: 200, body: { ...result, summary: session.getSummary() } };
+}
+
 // ============================================================
 // 测试页 // ============================================================
 
@@ -956,6 +981,11 @@ window.addEventListener('load', async () => {
 
 const PORT = parseInt(process.env.PORT || "3099");
 
+// 只在被直接运行时启动服务器（bun run src/api/server.ts）。被测试 import
+// 进来取 runAction 等纯逻辑时，绝不能在这里把 3099 端口绑起来、也不该去
+// 扫持久化的 session 文件。
+if (import.meta.main) {
+
 Bun.serve<WsConnectionData, never>({
   port: PORT,
   hostname: "0.0.0.0",
@@ -1006,3 +1036,6 @@ console.log(`  API:  http://localhost:${PORT}/api`);
 console.log(`  GUI:  http://localhost:${PORT}/`);
 console.log(`  Port: ${PORT}`);
 console.log(`  CORS: *\n`);
+
+}
+

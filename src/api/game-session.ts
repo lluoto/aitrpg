@@ -79,11 +79,26 @@ export interface ActionResponse {
       traits: CombatPersonalityTraits | null; skills: Record<string, number> | null;
       resolveState: string;
     }[];
+    /**
+     * 队伍列表（能在 POST /action 用 pcId 指定"以谁身份行动"的候选）。
+     * 让"谁能行动"对客户端可见——此前 getState 只暴露 companions（NPC 队友），
+     * 玩家自己（party 成员）无从得知有哪些 pcId 可选，路由能力拿到也用不上。
+     * control 只读不写：本轮不加设置入口（那是 L4 接管/交还的事）。
+     */
+    party: { pcId: string; name: string; control: "auto" | `player:${string}` }[];
   };
   dead?: boolean;
   sanity?: { currentSAN: number; maxSAN: number; temporaryInsanity: boolean; indefiniteInsanity: boolean; phobias: string[] };
   rolls?: { skill: string; roll: number; target: number; success: boolean }[];
   dice?: { expr: string; total: number; detail?: string; bonus?: number }[];
+  /**
+   * 结构化拒绝信号（本轮为「未知 pcId」的 action 路由加入）。取不到目标时
+   * 置位，客户端/传输层据此返回结构化错误（参照 setPlayerSan 的
+   * `{ code: "unknown_target", targetId }` 形状），**不**把它折成一条
+   * 可读系统消息塞进 events 了事——那是「报告了一件没发生的事」。正常路径
+   * 该字段恒 undefined，既有调用方无需感知。
+   */
+  error?: { code: string; targetId?: string };
 }
 
 export interface SessionSummary {
@@ -608,6 +623,11 @@ export class GameSession {
       npcs: npcs.map(e => ({ name: e.name, hp: e.hp, maxHp: e.maxHp, status: e.status })),
       monsters: monsters.map(e => ({ name: e.name, hp: e.hp, maxHp: e.maxHp, status: e.status })),
       companions: comps,
+      party: [...this.party.entries()].map(([pcId, m]) => ({
+        pcId,
+        name: m.sheet?.name ?? "调查员",
+        control: m.control,
+      })),
     };
   }
 
@@ -1256,7 +1276,30 @@ export class GameSession {
   // act() — 主游戏循环
   // ============================================================
 
-  async act(input: string, actingCharacterName?: string): Promise<ActionResponse> {
+  /**
+   * 让一个动作发生。`actingPcId` 指定「以哪个 PC 的身份行动」——按 **pcId**
+   * 路由（不再按角色显示名）：同名 PC 各按自己的 pcId 正确落到自己头上，
+   * 不会像旧的按名字 find 那样取到第一个。
+   *
+   * ⚠ 并发缺口：act() 无锁地改写 this.round / this.activePlayerId /
+   * this._turnMessages。两个客户端同时 POST 不同 pcId 时，后写者的
+   * activePlayerId 会覆盖先写者，二者回合内状态还会互相踩。**本轮不做回合
+   * 锁**（那是 L3 类回合调度的范围），刻意留白——别误以为这条路由做完就能
+   * 多端并发了。
+   */
+  async act(input: string, actingPcId?: string): Promise<ActionResponse> {
+    // 未知 pcId 必须在任何状态改动前拒绝——activePlayerId 绝不能"先切过去
+    // 再发现切不了"。存活过一个真 bug：切换在改动之后才判，返回给前端的是
+    // "已切换"的假象。这里不折成系统消息、不兜底回 p1（那正是本仓反复修的
+    // "报告了一件没发生的事"），而是结构化置 error。
+    if (actingPcId !== undefined && !this.characters.has(actingPcId)) {
+      return {
+        narrative: "",
+        events: [],
+        state: this.getState(),
+        error: { code: "unknown_target", targetId: actingPcId },
+      };
+    }
     this.lastActiveAt = Date.now();
     if (this.dead) {
       return this.buildActionResponse([{ speaker: "系统", content: "你已经死了。请重新开始", type: "system" }]);
@@ -1279,19 +1322,18 @@ export class GameSession {
     // 供模组宿主适配器把加载期产生的消息投进本回合，见 _turnMessages 的说明
     this._turnMessages = turnMessages;
 
-    if (actingCharacterName && actingCharacterName !== this.session.getActive()?.characterName) {
-      for (const [pid, ch] of this.characters) {
-        if (ch.name === actingCharacterName && pid !== this.activePlayerId) {
-          this.sanityEngines.set(this.activePlayerId, this.sanity);
-          // 换人前先把上一位的 SAN 落库，否则本回合的改动会随缓存切换丢失
-          this.persistSanity(this.activePlayerId);
-          this.activePlayerId = pid;
-          this.activeCharacter = ch;
-          this.session.switchActive(pid);
-          if (this.sanityEngines.has(pid)) this.sanity = this.sanityEngines.get(pid)!;
-          break;
-        }
-      }
+    if (actingPcId !== undefined && actingPcId !== this.activePlayerId) {
+      const ch = this.characters.get(actingPcId);
+      // 上面已保证 characters.has(actingPcId)，ch 必存在；party 未必有这一项
+      // （空壳槽位 p1 建号前不在 party），但这是"该 PC 有角色卡可行动"的
+      // 判断依据，有卡就能以它行动。
+      this.sanityEngines.set(this.activePlayerId, this.sanity);
+      // 换人前先把上一位的 SAN 落库，否则本回合的改动会随缓存切换丢失
+      this.persistSanity(this.activePlayerId);
+      this.activePlayerId = actingPcId;
+      this.activeCharacter = ch;
+      this.session.switchActive(actingPcId);
+      if (this.sanityEngines.has(actingPcId)) this.sanity = this.sanityEngines.get(actingPcId)!;
     }
 
     const activePlayer = this.session.getActive();
