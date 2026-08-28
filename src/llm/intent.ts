@@ -4,6 +4,7 @@
 
 import type { ActionIntent } from "../types";
 import type { LLMClient } from "./client";
+import { log } from "../log";
 
 // ============================================================
 // 硬编码 fallback（regex 模式匹配）
@@ -367,8 +368,10 @@ async function parseIntentLLM(
       reason: parsed.reason,
     };
   } catch {
-    // JSON 解析失败 → 退化到 regex
-    // console.warn(`  ⚠ LLM 意图解析失败，退化到 regex: ${raw.slice(0, 80)}`);
+    // JSON 解析失败 → 退化到 regex。原先这里静默——「LLM 答错了」和「LLM 一直
+    // 在失败」在外部完全无法区分，判错率无从归因。带上原文前 80 字，别只报
+    // 一句「失败了」（那等于没报）。
+    log.warn("intent", `LLM 返回非法 JSON，退化到 regex: ${raw.slice(0, 80)}`);
     return parseIntentRegex(input);
   }
 }
@@ -408,7 +411,9 @@ export async function parseIntent(input: string): Promise<ActionIntent> {
     try {
       return await parseIntentLLM(input, _llmClient);
     } catch (err) {
-      // console.warn(`  ⚠ LLM 调用失败，退化到 regex: ${(err as Error).message.slice(0, 80)}`);
+      // LLM 调用本身失败（网络/超时/非 2xx）→ 退化到 regex。同上，原先静默，
+      // 把原因带上，别让「答错」和「一直在失败」在外部分不出来。
+      log.warn("intent", `LLM 调用失败，退化到 regex: ${err instanceof Error ? err.message.slice(0, 80) : String(err).slice(0, 80)}`);
     }
   }
   return parseIntentRegex(input);
