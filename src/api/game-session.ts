@@ -420,6 +420,43 @@ export class GameSession {
    *   超过模组推荐上限时给出，只播报不拦——"警告后放行，不拒绝"是本轮定的
    *   设计决策，且不实现任何按人数缩放的补偿（没有这类规则，硬造等于编）。
    */
+  /**
+   * 分配一个未被占用的 pcId（p1, p2, ...）。
+   *
+   * 根因修正：原本"创建队友"用 `this.party.size + 1` 算 pid，但 `party`
+   * 不是唯一持有 pcId 的地方——构造函数在**没有角色卡时**（没传 archetype）
+   * 走空壳分支，往 `sanityEngines`/`world`/`session` 里注册了 "p1" 却**不**
+   * 填 `party`。于是 `party.size` 为 0，`0 + 1 = p1`，队友的卡直接顶掉玩家
+   * 自己的 p1 槽位（净效果：播报"加入了队伍"，实际是静默顶替）。
+   *
+   * 所以"占用"必须覆盖**所有**持有 pcId 的地方，取其并集——四个持有者任何
+   * 一个短暂失同步都不该让分配复用到一个已占用的 id：
+   *   · this.party                （createPartyMember 建的正式成员）
+   *   · this.sanityEngines       （空壳分支也建，见构造函数）
+   *   · this.session             （PlayerSession 槽位，join/switchActive）
+   *   · this.world.getPlayerIds()（player_state 表，两条分支都 registerPlayer）
+   * 用并集而不是只拿 `world.getPlayerIds()` 一份：虽然那是最完整的（空壳分支
+   * 也调 registerPlayer），但这场 bug 的本质就是"各持有者会短暂失同步"——
+   * 拿并集是与这个失败模式同构的防御（correct by construction），代价只是
+   * 一次 O(成员数) 的扫表，这里成员数上限是 PARTY_HARD_LIMIT=10。
+   *
+   * 从 1 往上找第一个空位（不是"单调递增不复用"）：pcId 语义是"固定归属"，
+   * 空壳槽位 p1、被重建的同 id PC 都不该被后建的人抢走。本轮没有删除入口，
+   * PlayerSession.leave()（会销毁 messageHistory）不会被触发，所以"复用"
+   * 不会真发生旧历史串到新 PC 上；即便将来加了删除，leave 时连 id 一起删，
+   * 这里从 1 找空位仍然正确。
+   */
+  private nextFreePcId(): string {
+    const used = new Set<string>();
+    for (const id of this.party.keys()) used.add(id);
+    for (const id of this.sanityEngines.keys()) used.add(id);
+    for (const id of this.session.getAllNames()) used.add(id);
+    for (const id of this.world.getPlayerIds()) used.add(id);
+    let n = 1;
+    while (used.has(`p${n}`)) n++;
+    return `p${n}`;
+  }
+
   private createPartyMember(
     pcId: string,
     sheet: any,
@@ -1279,7 +1316,7 @@ export class GameSession {
     if (recruitMatch) {
       const [, name, cls] = recruitMatch;
       const ch = buildCharacterForRuleset(name, cls, this.activeRuleset);
-      const pid = `p${this.party.size + 1}`;
+      const pid = this.nextFreePcId();
       // 默认 "auto"，同 CompanionState 的默认值（companion-manager.ts:74）——
       // 没人显式认领这个 PC 前，先按"没人手操"处理。本轮只建字段与读写口，
       // 不接调度：control 现在没有任何消费方去读它，谁在什么时候消费

@@ -145,6 +145,43 @@ describe("活 bug 回归：\"创建队友\"后世界实体必须真的存在", (
   });
 });
 
+describe("活 bug 回归：无 archetype 建会话后直接\"创建队友\"，不能顶掉玩家自己的 p1 槽位", () => {
+  // 缺陷机制：不带 archetype 构造会走空壳分支，往 sanityEngines/world/session
+  // 注册 "p1" 却**不填** this.party。原本 pid 用 `this.party.size + 1` 计算，
+  // party.size 为 0 → pid = "p1"，队友的卡直接覆盖掉空壳的 SAN 引擎/
+  // characters/世界实体，播报却说"加入了队伍"。根因是 pid 分配依赖了一个
+  // 已知会短暂失同步的计数（party 不是唯一持有 pcId 的地方）。
+
+  it("**错误行为的红线**：直接\"创建队友\"拿到的 pcId 不是 p1，p1 空壳槽位仍在，乙八项齐全", async () => {
+    const s: any = new GameSession(`o1-${Math.random()}`, "cosmic-horror", CFG); // 无 archetype → 走空壳分支
+    // 空壳分支确实建了 p1 的槽位（sanityEngines/world/session），但没填 party
+    expect(s.party.has("p1")).toBe(false); // 空壳不是正式成员——这本身就是缺陷的背景
+    await s.act("创建队友 乙 investigator");
+    // 乙的 pcId 不能复用 p1（哪怕 party.size 此刻是 0）
+    expect(s.characters.get("p1")).toBeUndefined(); // 队友的卡没有顶进 p1
+    const p2sheet = s.characters.get("p2");
+    expect(p2sheet?.name).toBe("乙");
+    // p1 空壳槽位仍然存在：三个持有者都在
+    expect(s.session.get("p1")).toBeDefined();
+    expect(s.sanityEngines.has("p1")).toBe(true);
+    expect(s.world.getPlayerIds()).toContain("p1");
+    // 乙作为正式成员八项齐全
+    assertEightThings(s, "p2");
+    expect(s.party.has("p2")).toBe(true);
+  });
+
+  it("**目标行为错误的对照**：创建队友之后再来\"创建角色 甲\"，甲落在 p1，乙不被覆盖", async () => {
+    const s: any = new GameSession(`o2-${Math.random()}`, "cosmic-horror", CFG); // 无 archetype → 走空壳分支
+    await s.act("创建队友 乙 investigator"); // 乙拿 p2（不能顶 p1）
+    expect(s.characters.get("p2")?.name).toBe("乙");
+    await s.act("创建角色 investigator 甲"); // 重建当前活跃 PC = p1
+    expect(s.characters.get("p1")?.name).toBe("甲"); // 甲落在 p1，空壳被正式角色卡填充
+    expect(s.characters.get("p2")?.name).toBe("乙"); // 乙没被覆盖
+    assertEightThings(s, "p1");
+    assertEightThings(s, "p2");
+  });
+});
+
 describe("人数：硬上限 10 拒绝，模组推荐人数超出后警告但放行", () => {
   async function buildParty(n: number, session: any) {
     for (let i = 2; i <= n; i++) await session.act(`创建队友 队友${i} investigator`);
