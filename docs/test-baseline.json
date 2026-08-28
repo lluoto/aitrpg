@@ -1,6 +1,6 @@
 {
-  "tests": 2263,
-  "files": 139,
+  "tests": 2268,
+  "files": 140,
   "unwiredMethods": 87,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -349,6 +349,11 @@
       "tests": 2263,
       "files": 139,
       "when": "五项开发（第二轮）·任务1：意图可观测性有个盲点（上一轮规格写漏了，不是实现错）。上一轮加了两处 log.warn（LLM 抛错 / 返回非法 JSON 时上报），但 intent.ts 的 if(_llmClient){try{...}catch{...}} 结构里，_llmClient 为 null 时整块 if 都跳过，两处 warn 都摸不到——静默走 regex 时反而是最沉默的状态。实跑 30 回合 [intent] 日志零条，而「零条」同时符合「LLM 接上了且全对」与「LLM 根本没接、全程 regex」两种截然相反的状态，日志上完全一样。同类前科：世界模型门禁不能断言 loaded，因为懒加载时 false 是正常态——「静默=健康」的假设这仓库已经错过两次。改法：不动意图判定逻辑，只加一条起手声明。新增 declareIntentPath()（intent.ts，与 intentLLMConfigured 同处）：接上了（intentLLMConfigured() 为真）→ log.info 一条，明确说走 LLM；没接上 → log.warn 一条，区分两种不同原因——llmEnabled() 为假 vs llmEnabled() 为真但接缝本身未配置（Mock/占位 key），两种原因的措辞不同，日志能唯一反推是哪一种。调用点：GameSession 构造函数里，在决定要不要 setIntentLLM 那段代码之后调一次——一局一次，不是每回合都打。新增 intent-path-declaration.test.ts（5条）：LLM 已配置时恰好一条 info 零条 warn；LLM_DISABLED=true 时恰好一条 warn 零条 info 且含 llmEnabled；占位 key（llmEnabled 为真但接缝未配置）时恰好一条 warn 且措辞与「llmEnabled 为假」那种不同；两种场景的 (info条数,warn条数) 组合必须不同（唯一反推的直接判据）；act() 跑三轮不产生新的声明日志（验证「一局一次」）。变异检验：去掉 GameSession 构造函数里的 declareIntentPath() 调用，4/5 测试精确变红（外加 tsc 报未使用的 import）；revert 后 5/5 回归绿。typecheck exit 0；bun test 2258→2263（+5）、138→139 文件。"
+    },
+    {
+      "tests": 2268,
+      "files": 140,
+      "when": "五项开发（第二轮）·任务2：NPC 整句台词重复（早就记在探针注释里，一直没修）。npc-dialogue.ts:742 与 scene-pipeline.ts 各自有一份 `revisitEncounter ?? firstEncounter`——LLM 没生成 revisitEncounter 时，再遇就逐字重复首见台词。探针 probe-dialogue-lead.ts §⑤ 实跑抓到过酒吧保镖那句连说四次。⚠ 重复引导句不是本任务目标（提交 a4fdb58 已判定不是病），本任务只管整句台词。改法：两处都不再回落到 firstEncounter，改落到程序化模板系统（buildDialogueForRel 等，本来就是 npc.llmExpanded 整体不存在时的路径）——按关系值分层、按性格特质选池子、pick() 随机取一条，不会逐字重复。scene-pipeline.ts 的调用点直接复用 generateNpcDialogue（npc-dialogue.ts），不重复实现一遍变化逻辑。判断用 `!= null` 不是真值判断：沉默型 NPC 的 revisitEncounter 可能是显式空字符串（templateRevisitEncounter 的 isSilent 分支），原 `??` 对空串不生效，真值判断会把它误判成缺失，让一个该沉默的 NPC 被程序化路径生成出台词来——这是实现过程中发现并顺带修正的一个边界，两处都改了。已知的复查发现：barn-of-premier.ts 在模块定义时就无条件跑 applyAllLlmExpanded()（模板），每个 NPC 的 llmExpanded 落地时 revisitEncounter 就已经有值（非沉默必为非空文本，沉默为空串）；再叠加更早一次提交（revisit-line-kept.test.ts 记录的合并保留修复）让 LLM 部分响应不会抹掉已有的 revisitEncounter——两者叠加后，'revisitEncounter 真正缺失（undefined）' 这个触发条件在 barn 模组 + LLM_DISABLED（纯模板）路径下已经很难复现，探针跑前跑后的聚合『整句台词重复』数字因此没有直接可见的变化（用一个临时的『局内去重』脚本核实过：唯一出现的重复是合法的、本就该逐字复用的手写/模板回访句，不是 bug 触发）。因此本任务的验证以确定性单测为准（与旁边 revisit-line-kept.test.ts 用 mock 的部分响应 LLM 客户端做单测验证是同一策略），不依赖探针的聚合指标。新增 npc-revisit-line-not-verbatim.test.ts（5条）：revisitEncounter 缺失时不与 firstEncounter 相同（红线）；连续 20 次调用同一 NPC 都不撞见逐字重复（覆盖 pick() 随机性）；revisitEncounter 存在时仍原样使用（对照，不被误伤）；首次见面不受影响；无 llmExpanded 的纯模板 NPC（含沉默判定）行为不变。变异检验：两处都改回 `?? firstEncounter`，5 条里 2 条精确变红；revert 后 5/5 回归绿，两处 Copy-Item 分别还原。typecheck exit 0；bun test 2263→2268（+5）、139→140 文件。"
     }
   ]
 }

@@ -665,16 +665,34 @@ export async function processScene(ctx: SceneCtx): Promise<SceneConnection | nul
         //
         //   一句话变不出花样，但**第几次见**是可以体现的：第三次之后加一句
         //   「又见面了」这类的前缀，让重复看起来是人物在意识到你老来，
-        //   而不是程序在复读。真正的解法是给回访台词也做成池子（要改模组数据），
-        //   这里先把最刺眼的复读感压掉。
+        //   而不是程序在复读。这只压掉了"最刺眼"的复读感，没解决根子——
+        //   revisitEncounter 缺失（LLM 没生成，很常见）时仍然回落到
+        //   firstEncounter，逐字重复的是**整句台词**，比引导句重复严重得多
+        //   （玩家察觉的是"这人把打招呼那句又说了一遍"，不是"神态描写像"）。
+        //
+        //   现在缺失时不再回落到 firstEncounter：改落到 generateNpcDialogue
+        //   的程序化路径（npc-dialogue.ts）——与 npc.llmExpanded 整体不存在时
+        //   走的是同一套变化机制（按关系值分层、按性格特质选池子、随机取一条），
+        //   不会逐字重复。真正的解法仍然是给回访台词也做成池子（要改模组数据），
+        //   这里先保证"至少不是同一句话"。
         const againNote = metCount >= 4
           ? `${displayName}显然已经认得你们了。`
           : metCount === 3
             ? `${displayName}又一次抬起头。`
             : "";
         if (againNote) say(`\n${againNote}`, "verbatim");
-        // 同 firstMeeting：开头括号在源头切掉，三个分支拿到的都是干净台词
-        const rawRevisit = stripDoorOpenPrefix(npc.llmExpanded.revisitEncounter ?? npc.llmExpanded.firstEncounter, lastTransitionText);
+        // 同 firstMeeting：开头括号在源头切掉，三个分支拿到的都是干净台词。
+        // 缺 revisitEncounter 时走的是程序化文本，不带"门已开"这类叙事前缀，
+        // 不需要（也不应该）经过 stripDoorOpenPrefix。
+        //
+        // ⚠ 判断用 `!= null`，不能用真值判断：`revisitEncounter` 对沉默型
+        // NPC（templateRevisitEncounter 的 isSilent 分支）是显式的空字符串
+        // ""——那是"这个人不会说话"的正确表达，原来的 `?? firstEncounter`
+        // 对空串不生效（?? 只認 null/undefined），换成真值判断会把它误判成
+        // "缺失"，反而让一个该沉默的 NPC 被程序化路径生成出台词来。
+        const rawRevisit = npc.llmExpanded.revisitEncounter != null
+          ? stripDoorOpenPrefix(npc.llmExpanded.revisitEncounter, lastTransitionText)
+          : generateNpcDialogue(npc, npcState, speechProfile, world, true);
         const { action: leadAction, speech: dialogueText } = splitLeadingStageDirection(rawRevisit, displayName);
         noteEntityMentions(dialogueText, world);
         if (speechProfile.type === "mental_voice") {

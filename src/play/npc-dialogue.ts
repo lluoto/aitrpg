@@ -736,11 +736,27 @@ export function generateNpcDialogue(
   profile: SpeechProfile, _w: WorldState,
   isRevisit?: boolean
 ): string {
-  // LLM 预生成文本优先
+  // LLM 预生成文本优先。
+  //
+  // ⚠ 再遇（isRevisit）且 LLM 没生成 revisitEncounter 时，原写法是
+  // `?? firstEncounter`——回落到首见台词。听着合理（总得说点什么），
+  // 实际后果是**逐字重复**：探针 probe-dialogue-lead.ts §⑤ 实跑抓到过
+  // 酒吧保镖那句「不想挨揍就老实点……」连说四次，玩家每次重进同一场景
+  // 听到的是完全相同的一句话——这比"没有台词"更容易被察觉成 bug。
+  // 引导句（leadIn）的重复不算病（同一个人举止一致），但**整句台词**
+  // 一字不差地重复是玩家真正会注意到的那件事，两者不是一回事。
+  //
+  // 改法：revisitEncounter 缺失时不再回落到 firstEncounter，而是落到
+  // 下面的程序化模板系统（buildDialogueForRel 等，本来就是
+  // `npc.llmExpanded` 整体不存在时的路径）——这条路自带按关系值分层、
+  // 按性格特质选池子、`pick()` 随机取一条的变化，不会逐字重复。
   if (npc.llmExpanded) {
-    return isRevisit
-      ? (npc.llmExpanded.revisitEncounter ?? npc.llmExpanded.firstEncounter)
-      : npc.llmExpanded.firstEncounter;
+    if (!isRevisit) return npc.llmExpanded.firstEncounter;
+    // `!= null`，不是真值判断：沉默型 NPC 的 revisitEncounter 可能是显式
+    // 空字符串（"这个人不会说话"），原 `??` 对空串不生效，真值判断会把它
+    // 误判成"缺失"从而生成出不该有的台词。
+    if (npc.llmExpanded.revisitEncounter != null) return npc.llmExpanded.revisitEncounter;
+    // 落到下面的程序化路径，不 return
   }
 
   const s = analyseNpcData(npc);
