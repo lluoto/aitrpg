@@ -91,6 +91,54 @@ export interface SessionSummary {
   archetype: string | null; messageCount: number; npcCount: number; createdAt: number;
 }
 
+/**
+ * 建一个 PC 需要同时诞生的八件事的登记项，供 createPartyMember() 统一填。
+ *
+ * ⚠ 不是要取代 `characters`/`sanityEngines` 两张 Map——`sheet`/`san` 与那两张
+ * Map 里存的是**同一个对象引用**，不是拷贝。`party` 是额外的第三张索引，
+ * 补上前两张不管的东西（`control`），不是重新造一份角色状态的真相源。
+ * 单一入口保证的是"建号时这八件事一次做齐"，不是"数据只能有一处"。
+ */
+export interface PartyMember {
+  pcId: string;
+  /** 与 characters.get(pcId) 同一个对象引用 */
+  sheet: any;
+  /** 与 sanityEngines.get(pcId) 同一个对象引用 */
+  san: SanityEngine;
+  /** "auto" = AI 自主行动，"player:userId" = 指定玩家手操。字段原样搬自 CompanionState（types.ts:229）。 */
+  control: "auto" | `player:${string}`;
+  /**
+   * 保留字段，本轮**不消费**——没有任何代码读它。按人数缩放难度是另一整轮
+   * 的活（本轮明确排除），这里先把字段占位占出来，免得以后又是"字段在、
+   * 没人接"的老毛病一次性发作。真要用时先写清楚谁读、怎么用再填值。
+   */
+  difficulty?: DifficultyProfile | null;
+}
+
+/** 队伍硬上限：超过直接拒绝，不放行。 */
+export const PARTY_HARD_LIMIT = 10;
+
+/**
+ * 解析模组 meta.playerCount（"2~3"/"2-3"/"3" 这类字符串）成 {min,max}。
+ * 解析不出来就返回 null——不强行猜一个范围出来，没有推荐人数就不警告，
+ * 不是"猜错了也要给条警告"。
+ */
+export function parsePlayerCountRange(s: string | null | undefined): { min: number; max: number } | null {
+  if (!s) return null;
+  const range = s.match(/(\d+)\s*[~～\-至到]\s*(\d+)/);
+  if (range) {
+    const min = Number(range[1]);
+    const max = Number(range[2]);
+    return min <= max ? { min, max } : { min: max, max: min };
+  }
+  const single = s.match(/^\s*(\d+)\s*$/);
+  if (single) {
+    const n = Number(single[1]);
+    return { min: n, max: n };
+  }
+  return null;
+}
+
 // ============================================================
 // 辅助函数
 // ============================================================
@@ -186,6 +234,12 @@ export class GameSession {
    * 背包 / 武器 / 护甲没有进程内副本，一律直读直写真相源。
    */
   private sanityEngines: Map<string, SanityEngine> = new Map();
+  /**
+   * 第三张索引，补 `characters`/`sanityEngines` 都不管的东西（`control`）。
+   * 键与那两张 Map 共用 pcId；`sheet`/`san` 字段与它们里的对象是同一份引用。
+   * 见 PartyMember 接口注释与 createPartyMember()。
+   */
+  private party: Map<string, PartyMember> = new Map();
   private sceneItems: Map<string, string[]> = new Map();
   private sceneDisplayNames: Record<string, string> = {};
   private sceneAliases: Record<string, string[]> = {};
@@ -297,68 +351,160 @@ export class GameSession {
       }
     }
 
-    // D&D 侧的属性表没有 power，回落到原来的 50，行为不变
-    this.sanity = new SanityEngine(initialCharacter?.attributes?.power ?? 50);
-    this.sanityEngines.set("p1", this.sanity);
-    this.world.registerPlayer("p1");
-    this.persistSanity("p1");
-
-    // 注册玩家到会话（始终执行：无玩家时 join 设为活动玩家，已存在则切换）
-    // 历史消息记录依赖活动玩家的 messageHistory，缺失会导致 getHistory 恒空
-    if (!this.session.getActive()) {
-      try {
-        this.session.join("p1", characterName ?? "调查员", "p1", "");
-      } catch { /* 已存在则忽略 */ }
-    } else {
-      this.session.switchActive("p1");
-    }
-
-    // 创建初始角色（上面已建好，这里只做落地：世界实体、角色卡档案）
     if (initialCharacter) {
+      // 有初始角色：走统一入口，八件事一次做齐（见 createPartyMember 注释）。
       try {
-        const char = initialCharacter;
-        this.activeCharacter = char;
-        this.characters.set("p1", char);
-        // 角色卡与世界实体必须同时诞生。此前实体要等 setPlayerHp 或移动流程
-        // 顺手 upsert 才出现，于是开局的 KP 伤害因为找不到实体而失败
-        // （改造前抛异常兜成 500），而 getState() 的硬编码兜底又让面板照常
-        // 显示 12/12，两相抵消，谁都看不出来。
-        this.world.upsertEntity({
-          id: "p1",
-          name: char.name,
-          type: "pc",
-          hp: char.hp,
-          maxHp: char.maxHp,
-          // GeneratedCharacter 没有 ac 字段；与另外两处懒建点取同一个常量。
-          // CoC 规则下 getState() 本就把对外的 ac 覆盖成 0。
-          ac: 10,
-          status: [],
-          position: this.world.getCurrentState().scene ?? "unknown",
-        });
-        // 创建角色卡档案（独立目录"
-        const careerDir = `data/careers/${this.id}`;
-        try { rmSync(careerDir, { recursive: true }); } catch { /* 清理临时目录：不存在或被占用都无所谓，失败不影响正确性 */ }
-        this.careerStore = new CareerFileStore(careerDir);
-        this.careerStore.saveSnapshot({
-          characterName: char.name,
-          // archetype 存的是 id 字符串，取显示名要过 getArchetype；
-          // 此前写 char.archetype?.label 恒为 undefined，职业栏一直落成英文 id。
-          // CoC 角色把职业存在 archetypeId，通用角色存在 archetype，两边都要认
-          occupation: getArchetype(char.archetypeId ?? char.archetype)?.label ?? char.archetypeId ?? char.archetype ?? archetypeId ?? "investigator",
-          attributes: { ...(char.attributes ?? {}) },
-          skills: char.skillValues ? { ...char.skillValues } : {},
-          san: this.sanity.state.currentSAN,
-          maxSan: this.sanity.state.maxSAN,
-          cthulhuMythos: 0,
-          hp: char.hp,
-          maxHp: char.maxHp,
-          creditRating: char.creditRating ?? 30,
-          createdAt: new Date().toISOString(),
-        });
+        const result = this.createPartyMember("p1", initialCharacter);
+        if ("rejected" in result) {
+          // 理论上不会发生：party 从空 Map 开始，人数检查不可能在这里触发。
+          log.warn("session", `建号被拒绝（不该发生，party 应为空）：${result.rejected}`);
+          this.sanity = new SanityEngine(initialCharacter?.attributes?.power ?? 50);
+          this.sanityEngines.set("p1", this.sanity);
+        } else {
+          this.activeCharacter = result.member.sheet;
+          this.sanity = result.member.san;
+        }
       } catch (e) {
         log.warn("session", "角色创建失败", e);
+        this.sanity = new SanityEngine(initialCharacter?.attributes?.power ?? 50);
+        this.sanityEngines.set("p1", this.sanity);
+      }
+    } else {
+      // 没有初始角色（没传 archetypeId）：先建一个空壳槽位——SAN(50 兜底)/
+      // registerPlayer/persistSanity/session 槽位都要有，历史消息记录依赖
+      // 活动玩家的 messageHistory，缺失会导致 getHistory 恒空。真正的角色卡
+      // /世界实体/careerStore 留到"创建角色"命令时再补（createPartyMember
+      // 里"已存在则整体重建"那条语义正是为了接这里）。
+      this.sanity = new SanityEngine(50);
+      this.sanityEngines.set("p1", this.sanity);
+      this.world.registerPlayer("p1");
+      this.persistSanity("p1");
+      if (!this.session.getActive()) {
+        try {
+          this.session.join("p1", characterName ?? "调查员", "p1", "");
+        } catch { /* 已存在则忽略 */ }
+      } else {
+        this.session.switchActive("p1");
       }
     }
+  }
+
+  // ============================================================
+  // PC 生命周期
+  // ============================================================
+
+  /**
+   * 建一个 PC 的单一入口。
+   *
+   * ⚠ 之前有三条各不相同的路径（构造函数建 p1 / "创建角色" 重建 p1 /
+   * "创建队友" 建 p2+），下面八件事没有一条路径全做齐：
+   *   1. sanityEngines.set          2. SAN 取角色 POW（不是硬编码 50）
+   *   3. world.registerPlayer       4. persistSanity
+   *   5. session.join/switchActive  6. characters.set
+   *   7. world.upsertEntity         8. careerStore 快照
+   * "创建角色"不建 SanityEngine——新角色沿用旧角色的 maxSAN；"创建队友"
+   * 硬编码 `new SanityEngine(50)`——不取角色真实 POW；"创建队友"不
+   * upsertEntity——世界实体不存在，构造函数自己的注释写过这个后果："开局的
+   * KP 伤害因为找不到实体而失败，getState() 的硬编码兜底又让面板照常显示
+   * 12/12，两相抵消，谁都看不出来"。三条路径各缺各的，现在收成一条。
+   *
+   * @param pcId 目标 PC 的键。已存在则**整体重建**（新 SanityEngine 换掉
+   *   旧的、新 sheet 换掉旧的）——不是合并更新。"创建角色"复用现有 pcId
+   *   时用的就是这个语义：重建当前活跃 PC，不是"更新几个字段"。
+   * @param sheet 角色卡（CoC/D&D 生成结果，不在这里挑类型）
+   * @param opts.control 初始控制模式，默认 "auto"（同 CompanionState 的默认值，
+   *   见 companion-manager.ts:74）——谁应该默认是 "player:xxx" 是消费方
+   *   （L2/L3）的决定，这里不替它做主。
+   * @returns 拒绝时给 `{ rejected }`（队伍已满，硬上限 10 人，见
+   *   PARTY_HARD_LIMIT）；否则给 `{ member, warning? }`，`warning` 在人数
+   *   超过模组推荐上限时给出，只播报不拦——"警告后放行，不拒绝"是本轮定的
+   *   设计决策，且不实现任何按人数缩放的补偿（没有这类规则，硬造等于编）。
+   */
+  private createPartyMember(
+    pcId: string,
+    sheet: any,
+    opts?: { control?: "auto" | `player:${string}` },
+  ): { member: PartyMember; warning?: string } | { rejected: string } {
+    if (!this.party.has(pcId) && this.party.size >= PARTY_HARD_LIMIT) {
+      return { rejected: `队伍已满（上限 ${PARTY_HARD_LIMIT} 人），无法再加入新角色。` };
+    }
+
+    const san = new SanityEngine(sheet?.attributes?.power ?? 50);
+    this.sanityEngines.set(pcId, san);
+    this.characters.set(pcId, sheet);
+    this.world.registerPlayer(pcId);
+    this.persistSanity(pcId);
+
+    // 注册/切换到会话槽位——已存在则只切换，不重复 join（PlayerSession.join
+    // 撞见已存在的 key 会抛异常，join 的 key 是 pcId 不是角色名，两个角色
+    // 重名不会撞这个异常，只有 pcId 撞了才会，而 pcId 在这个入口里由调用方
+    // 保证唯一/或走"重建同一个 pcId"的路径，所以这里的 has 检查已经够）。
+    if (!this.session.get(pcId)) {
+      try {
+        this.session.join(pcId, sheet?.name ?? "调查员", pcId, this.world.getCurrentState().scene ?? "unknown");
+      } catch { /* 理论上不会发生：上面刚判过不存在 */ }
+    } else {
+      this.session.switchActive(pcId);
+    }
+
+    // 角色卡与世界实体必须同时诞生，见方法头注释引用的构造函数原话。
+    this.world.upsertEntity({
+      id: pcId,
+      name: sheet?.name ?? "调查员",
+      type: "pc",
+      hp: sheet?.hp ?? 12,
+      maxHp: sheet?.maxHp ?? 12,
+      // CoC 规则下 getState() 本就把对外的 ac 覆盖成 0；D&D 侧按角色卡算。
+      ac: this.activeRuleset === "cosmic-horror" ? 10 : CharacterFactory.computeAC(sheet),
+      status: [],
+      position: this.world.getCurrentState().scene ?? "unknown",
+    });
+
+    if (!this.careerStore) {
+      const careerDir = `data/careers/${this.id}`;
+      try { rmSync(careerDir, { recursive: true }); } catch { /* 清理临时目录：不存在或被占用都无所谓 */ }
+      this.careerStore = new CareerFileStore(careerDir);
+    }
+    this.careerStore.saveSnapshot({
+      characterName: sheet?.name ?? "调查员",
+      occupation: getArchetype(sheet?.archetypeId ?? sheet?.archetype)?.label ?? sheet?.archetypeId ?? sheet?.archetype ?? "investigator",
+      attributes: { ...(sheet?.attributes ?? {}) },
+      skills: sheet?.skillValues ? { ...sheet.skillValues } : {},
+      san: san.state.currentSAN,
+      maxSan: san.state.maxSAN,
+      cthulhuMythos: 0,
+      hp: sheet?.hp ?? 12,
+      maxHp: sheet?.maxHp ?? 12,
+      creditRating: sheet?.creditRating ?? 30,
+      createdAt: new Date().toISOString(),
+    });
+
+    const member: PartyMember = { pcId, sheet, san, control: opts?.control ?? "auto" };
+    this.party.set(pcId, member);
+
+    const rec = this.recommendedPartySize();
+    const warning = rec && this.party.size > rec.max
+      ? `模组推荐 ${rec.min}~${rec.max} 人，当前 ${this.party.size} 人。`
+      : undefined;
+    return { member, warning };
+  }
+
+  /**
+   * 当前加载的模组推荐几个玩家，解析不出来给 null（不警告，不是"猜一个"）。
+   *
+   * 只认 BARN_OF_PREMIER：`this.registeredModules` 装的是 MythosModule
+   * （`rules/mythos-module.ts`），跟 BARN_OF_PREMIER 所属的 ModuleData
+   * （`module/types.ts`）是两套类型系统，后者没有被整体接进
+   * `registeredModules`——只在加载 "premiers_barn" 时才额外读它做线索桥接
+   * （见 bridgeBarnOfPremierClues）。这里按同一条件（`mod.id ===
+   * "premiers_barn"`）复用它的 meta.playerCount，不是给所有模组都接了推荐
+   * 人数——那需要先把两套模组类型统一，不在本轮范围。
+   */
+  private recommendedPartySize(): { min: number; max: number } | null {
+    if (this.registeredModules.some((m) => m?.id === "premiers_barn")) {
+      return parsePlayerCountRange(BARN_OF_PREMIER.meta.playerCount);
+    }
+    return null;
   }
 
   // ============================================================
@@ -1121,17 +1267,30 @@ export class GameSession {
     }
 
     // 队友命令
+    //
+    // ⚠ 此前这里自己拼了一份四步版本（characters.set / 硬编码
+    // `new SanityEngine(50)` / registerPlayer / persistSanity），跟统一
+    // 入口比缺四样：不取角色真实 POW、不 join 会话槽位（这个 PC 的
+    // messageHistory 从此没有归属）、不 upsertEntity（世界实体不存在——
+    // 构造函数注释记过这个后果的原话：「开局的 KP 伤害因为找不到实体而
+    // 失败……两相抵消，谁都看不出来」，这个 bug 对 p2+ 一直活着）、不建
+    // careerStore 快照。现在走统一入口。
     const recruitMatch = input.match(/^创建队友\s+(\S+)\s+(\S+)/);
     if (recruitMatch) {
       const [, name, cls] = recruitMatch;
       const ch = buildCharacterForRuleset(name, cls, this.activeRuleset);
-      const pid = `p${this.characters.size + 1}`;
-      const san = new SanityEngine(50);
-      this.characters.set(pid, ch);
-      this.sanityEngines.set(pid, san);
-      this.world.registerPlayer(pid);
-      this.persistSanity(pid);
+      const pid = `p${this.party.size + 1}`;
+      // 默认 "auto"，同 CompanionState 的默认值（companion-manager.ts:74）——
+      // 没人显式认领这个 PC 前，先按"没人手操"处理。本轮只建字段与读写口，
+      // 不接调度：control 现在没有任何消费方去读它，谁在什么时候消费
+      // （L2/L3 的 AI PC 调度）是下一步的事。
+      const result = this.createPartyMember(pid, ch, { control: "auto" });
+      if ("rejected" in result) {
+        turnMessages.push({ speaker: "系统", content: result.rejected, type: "system" });
+        return this.buildActionResponse(turnMessages);
+      }
       turnMessages.push({ speaker: "系统", content: `👤 ${name}(${cls}) 加入了队伍`, type: "system" });
+      if (result.warning) turnMessages.push({ speaker: "系统", content: `⚠️ ${result.warning}`, type: "system" });
       return this.buildActionResponse(turnMessages);
     }
 
@@ -2481,43 +2640,24 @@ export class GameSession {
     const charName = parts.slice(1).join(" ") || "调查员";
     try {
       const ch = buildCharacterForRuleset(charName, archetypeId, this.activeRuleset);
-      this.activeCharacter = ch;
-      this.characters.set("p1", ch);
-      // 注册玩家到会话（无玩家时 join 会设为活动玩家；已存在则仅切换）
-      if (!this.session.getActive()) {
-        this.session.join("p1", charName, "p1", "");
-      } else {
-        this.session.switchActive("p1");
+      // "创建角色"没有指定要建哪个 pcId——语义是"重建**当前活跃**的 PC"，
+      // 不是"总是重建 p1"。activePlayerId 默认就是 "p1"，单人局行为不变；
+      // 多人局里如果切换到了 p2 再执行这条命令，重建的是 p2，不会误伤 p1。
+      // 走统一入口：八件事一次做齐，包含此前这里完全没做的
+      // SanityEngine 重建——这正是本轮要修的活 bug（新角色沿用旧角色的
+      // maxSAN，因为这里从没调用过 sanityEngines.set）。
+      const result = this.createPartyMember(this.activePlayerId, ch);
+      if ("rejected" in result) {
+        // 只有硬上限（10 人）才会走到这里；"重建现有 pcId" 不受人数检查
+        // 影响（createPartyMember 内部对已存在的 pcId 直接放行），所以这
+        // 分支理论上不会在"创建角色"命令上触发，防御性处理，不静默吞掉。
+        msg(`创建失败：${result.rejected}`);
+        this.lastNarrative = "角色创建失败";
+        return true;
       }
-      // 创建世界实体
-      //
-      // ⚠ 这里原先写死 id: "player"，而这个函数上面几行把角色卡存进
-      // characters.set("p1", ch) —— activePlayerId 默认也是 "p1"。两者从
-      // 建号那一刻就是两个不同的实体：世界状态（HP/位置/status）全部写
-      // 到了 "player" 这个没人读的实体上，getState() 面板读的是
-      // activePlayerId（"p1"），永远读不到战斗/移动写的东西。
-      // 这是"创建角色"命令的路径——不是构造函数那条冷门路径，是每一局
-      // 实际使用的入口，之前这条谎报了整场战斗和移动。
-      this.world.upsertEntity({
-        id: this.activePlayerId, name: charName, type: "pc",
-        hp: ch.hp, maxHp: ch.maxHp, ac: CharacterFactory.computeAC(ch),
-        status: [], position: this.world.getCurrentState().scene ?? "tavern",
-      });
-      // 创建 career store（独立目录，清理旧数据）
-      if (!this.careerStore) {
-        const careerDir = `data/careers/${this.id}`;
-        try { rmSync(careerDir, { recursive: true }); } catch { /* 清理临时目录：不存在或被占用都无所谓，失败不影响正确性 */ }
-        this.careerStore = new CareerFileStore(careerDir);
-      }
-      this.careerStore.saveSnapshot({
-        characterName: ch.name, occupation: getArchetype(ch.archetypeId ?? ch.archetype)?.label ?? ch.archetypeId ?? ch.archetype ?? archetypeId,
-        attributes: { ...(ch.attributes ?? {}) },
-        skills: ch.skillValues ? { ...ch.skillValues } : {},
-        san: this.sanity.state.currentSAN, maxSan: this.sanity.state.maxSAN,
-        cthulhuMythos: 0, hp: ch.hp, maxHp: ch.maxHp,
-        creditRating: ch.creditRating ?? 30,
-        createdAt: new Date().toISOString(),
-      });
+      this.activeCharacter = result.member.sheet;
+      this.sanity = result.member.san;
+      if (result.warning) msg(`⚠️ ${result.warning}`);
       msg(`角色创建完成！${charName}（${archetypeId}）已就绪。HP:${ch.hp}, SAN:${this.sanity.state.currentSAN}`);
       this.lastNarrative = `角色创建完成: ${charName}。`;
     } catch (e) {
