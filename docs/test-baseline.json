@@ -1,6 +1,6 @@
 {
-  "tests": 2242,
-  "files": 136,
+  "tests": 2250,
+  "files": 137,
   "unwiredMethods": 88,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -334,6 +334,11 @@
       "tests": 2242,
       "files": 136,
       "when": "五项开发·任务3：小修五连（都在 game-session.ts）。3a getState().party 只有 {pcId,name,control}，实跑三个 PC 轮流行动 30 回合始终看不到任何人的 hp/san/status（state.player 只反映当前 active PC）——补上 hp/maxHp/status（取 world.getEntity(pcId)，与 player 单数字段同一份数据源）、san/maxSan（取 PartyMember.san，与 sanityEngines 同一引用），player 单数字段不动。3b tryResolveModuleScene 成功时不设 lastNarrative，响应沿用上一轮内容——实跑「周明回特里坎家」narrative 写的是特里坎家、state.scene 却仍是移动前的场景；移动成功时如实设一句「你来到了「X」。」。3c addPartyMember 调 buildCharacterForRuleset 无 try/catch，未知职业抛出后一路冒到 runAction 外层 catch 变成裸 500——实跑「创建队友 记者 林娜」（中文职业名不认，只认 journalist_coc 这类英文 id）与「创建队友 林娜 记者」（参数顺序写反）两次都中。接住异常走 { rejected } 形状（server.ts 已翻成 400）；加 resolveOccupationId 先按 id 精确匹配、查不到再按 getCoCArchetypes() 的 label 精确匹配（中文职业名从此可用）；rejected 消息把用法与参数顺序写反的提示都说清楚，不是只丢「未知职业: X」。3d game-session.ts 的「这里没什么特别的」（匹配层拒绝，玩家的措辞对不上任何未发现线索，没进检定）与 investigateCoC 检定失败的通用兜底「你没有找到有用的信息。」（investigation-engine.ts 两处 + game-session.ts 一处 bridgeBarnOfPremierClues 合成的 coc_primary.fail）读起来几乎一样，玩家分不清「没找对地方」和「找对了但骰子没过」——只改措辞不改判定，三处 fail 兜底文本统一改成「你仔细搜查了一番，但这次没能看出什么名堂。」。3e handleTalk 的 target 只 .trim() 不剥标点，自然语言输入「附近店铺，」这类尾随逗号原样进 key，回显打出「这里没有「附近店铺，」」——加 stripEdgePunctuation()（模块级函数，剥首尾中英文标点，不动中间），want 计算时套上。新增 task3-five-fixes.test.ts（16条，每条小修 2-3 条覆盖正确/红线/对照）：3a 两 PC 各自 hp/san 与 world/sanityEngines 一致、伤不串门、player 单数字段不受影响；3b 移动后 narrative 含新场景不含旧场景（红线用手动钉死的陈旧 lastNarrative 精确量「是否被覆盖」这一件事）；3c 未知职业/参数写反/文本命令路径都不抛异常且 rejected 消息含用法提示，中文职业名与已知英文 id 均正常建卡；3d 匹配不上与检定失败两种「没找到」用不同字符串（Math.random 钉死 0 或 0.999 分别逼成功/失败排除随机性）；3e 尾随逗号被剥、干净输入不受影响、名字中间的标点（「老王·二号」）不被误伤。变异检验五轮，每轮单独还原：① party 状态字段改回硬编码常量，2/3 变红；② 移除移动成功的 lastNarrative 赋值，2/2 变红；③ 去掉 addPartyMember 的 try/catch，3/5 变红；④ 三处 fail 文本挨个还原（investigation-engine.ts 两处 + game-session.ts 一处——第一轮只还原 investigation-engine.ts 未变红，定位到实际生效的是 game-session.ts 的合成路径，再单独还原该处才精确复现）；⑤ 去掉 stripEdgePunctuation 调用，1/3 变红；五轮均 Copy-Item 还原后回归绿。typecheck exit 0；bun test 2226→2242（+16）、135→136 文件。"
+    },
+    {
+      "tests": 2250,
+      "files": 137,
+      "when": "五项开发·任务4：判据对齐生产路径。scripts/diag/diag-clue-phrasing.ts 的「a-裸动词」用例原先直接调 matchSceneClues(\"侦查\", group)，报「歧义 10/10 全过」。但生产路径（GameSession.resolveSceneClueMatch）在此之前就短路了——said.length<2 时直接返回 { kind: \"fallback\" }（取候选首条，不问不猜），压根不会走到 matchSceneClues 内部；matchSceneClues 自己也有一条独立的 no-signal 早退（stripSearchVerbs 全句抠，不是前缀锚定），两层短路结构相似但归属不同（见 matchSceneClues 现有 docstring 里早就写明的区分）。诊断脚本绕过生产的入口短路直接调 matchSceneClues，命中的是 matchSceneClues 自己的 no-signal（报 ambiguous=全部候选），判据看着「歧义正确处理」在过，实际测的是生产从不会执行到的一条路——真实行为是静默挑了候选首条，判据全绿，行为却是它想禁止的那个。改法：保留短路（是有意的设计，注释写着「玩家压根没说要找什么，跟目标不存在是两回事」），把决策抽成纯函数 decideClueMatch()（新增于 src/investigation/clue-match.ts，与 matchSceneClues/splitKeys 等原语同一个文件）——入口短路 + matchSceneClues 派发一步做齐，返回 resolve/ask/deny/fallback 四态。GameSession.resolveSceneClueMatch 与诊断脚本改为共用这一份，不再各自维护一份短路正则（原来私有的 SEARCH_VERB_PREFIX_RAW 静态字段整体删除，逻辑搬进 decideClueMatch）。诊断侧：CluePhraseOutcome 新增可选字段 decisionKind，只给走完整 decideClueMatch 路径的用例（目前只有「a-裸动词」）填；judgeCluePhrase 对 ambiguous 类用例，若带 decisionKind 则按它判——resolve 才是「本该 fallback/ask 却抢答了」，fallback（设计如此）与 ask（真歧义，问清楚）都算诚实通过，不再笼统看 chosenClueId 是否为 null（没有 decisionKind 的用例走原逻辑兜底，保持向后兼容）。新增 clue-match-decision-parity.test.ts（8条）：decideClueMatch 对裸动词/空输入/空候选返回 fallback，带位置信号的输入仍与直接调 matchSceneClues 结果一致（行为不变的判据）；judgeCluePhrase 对 decisionKind=fallback/ask 判过、=resolve 判不过（红线）；端到端跑一次真实 GameSession + 谷仓模组，裸「侦查」确实静默取候选首条而不是问清楚或报没有。变异检验：删掉 decideClueMatch 里的入口短路（said.length<2 那行），8 条里 3 条精确变红（含端到端那条）；revert 后 8/8 回归绿。验收对齐：有位置信号的输入仍走 matchSceneClues 不变（scene-clue-input-match.test.ts 22 条原样全绿）；重跑 diag-clue-phrasing.ts，产物落 analysis/diag/diag-clue-phrasing.md，歧义 10/10（现在测的是生产真正走的那条路，不是巧合对上）。typecheck exit 0；bun test 2242→2250（+8）、136→137 文件。"
     }
   ]
 }

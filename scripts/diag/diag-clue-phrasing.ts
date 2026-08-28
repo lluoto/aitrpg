@@ -13,7 +13,7 @@
 process.env.LLM_DISABLED = "true";
 
 import { BARN_OF_PREMIER } from "../../src/module/barn-of-premier";
-import { matchSceneClues, splitKeys, stripSearchVerbs, type ClueMatchCandidate } from "../../src/investigation/clue-match";
+import { matchSceneClues, splitKeys, stripSearchVerbs, decideClueMatch, type ClueMatchCandidate } from "../../src/investigation/clue-match";
 import {
   addCluePhraseResult, newCluePhraseReport, pct,
   type CluePhraseCase, type CluePhraseOutcome,
@@ -106,16 +106,27 @@ for (const scene of BARN_OF_PREMIER.scenes) {
     }
   }
 
-  // 歧义：场景内裸调查动词，不给任何位置提示——matchSceneClues() 会走
-  // ClueMatchTrace.noSignal 那条早退路径，报出全部候选而不是精确命中。
-  const bare: CluePhraseCase = { id: "a-裸动词", kind: "ambiguous", desc: "不带任何位置提示的裸调查动词", said: "侦查", wantClueId: null };
+  // 歧义：场景内裸调查动词，不给任何位置提示。
+  //
+  // ⚠ 这里不能直接调 matchSceneClues()——生产路径（GameSession.
+  // resolveSceneClueMatch）对裸动词从入口短路就返回 fallback（取候选
+  // 首条，不问不猜），压根不会走到 matchSceneClues 内部。之前这里直接调
+  // matchSceneClues("侦查", group)，测的是生产从不会执行到的一条路：
+  // matchSceneClues 自己的 no-signal 早退会报"ambiguous=全部候选"，判据
+  // 一看 chosenClueId===null 就判过，可实际生产行为是静默挑了候选首条——
+  // 判据全绿，行为却是它想禁止的那个。改用 decideClueMatch()（与
+  // resolveSceneClueMatch 共用同一份决策），如实拿到 fallback，
+  // 判据据此判"设计如此"而不是"侥幸没抢答"。
+  const bare: CluePhraseCase = { id: "a-裸动词", kind: "ambiguous", desc: "不带任何位置提示的裸调查动词（生产正确行为是 fallback：取候选首条，不问不猜）", said: "侦查", wantClueId: null };
   caseIds.add(`${bare.kind}/${bare.id}`);
-  const r = matchSceneClues(bare.said, group);
+  const decision = decideClueMatch(bare.said, group);
+  const r = matchSceneClues(stripSearchVerbs(bare.said), group); // 仅用于 trace/matched 展示，判定本身看 decision
   addCluePhraseResult(report, bare, {
-    chosenClueId: r.hit,
-    ambiguousIds: r.ambiguous,
+    chosenClueId: decision.kind === "resolve" ? decision.clueId : null,
+    ambiguousIds: decision.kind === "ask" ? decision.clueIds : [],
     noSignal: r.trace.noSignal,
     matched: r.trace.matched.map((m) => ({ clueId: m.id, key: m.key })),
+    decisionKind: decision.kind,
   }, `${scene.name}`);
 }
 

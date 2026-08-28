@@ -24,7 +24,7 @@ import { NPCCombatEngine, NPC_UNARMED_SKILL } from "../combat/npc-combat";
 import { CompanionManager } from "../combat/companion-manager";
 import { PlayerSession, type VisibilityRule } from "../session/player-session";
 import { InvestigationEngine } from "../investigation/investigation-engine";
-import { matchSceneClues } from "../investigation/clue-match";
+import { decideClueMatch } from "../investigation/clue-match";
 import { SpellEngine } from "../spell/spell-engine";
 import { WorldModelLoader, sharedWorldModel, DEFAULT_CTHULHU_PATH } from "../world/world-model-loader";
 import { WorldModelIntegrator, type SceneContext, type NPCPresentProfile } from "../world/world-model-integrator";
@@ -2230,14 +2230,6 @@ export class GameSession {
   ]);
 
   /**
-   * 供 resolveSceneClueMatch 剥掉输入开头的调查类动词，剩下的才是要匹配的
-   * "提示"。剥完不剩什么（长度<2）视为"没给提示"，回落旧行为——那是
-   * "玩家没说要找什么"，不是"说了但没对上"，两种要分开处理。
-   */
-  private static readonly SEARCH_VERB_PREFIX_RAW =
-    /^(?:侦查|观察|搜索|寻找|搜查|调查|检查|查看|翻找|翻阅|询问|打听|使用|尝试)\s*/;
-
-  /**
    * 取技能值。
    *
    * intent 用的是通用词汇（perception / investigation / persuasion），CoC 角色卡的键却是
@@ -2330,14 +2322,17 @@ export class GameSession {
    *              那会报告一件玩家没做的事，比拒绝更糟）
    *   没给提示（去掉动词后不剩什么）→ 回落旧行为：唯一/首条候选直接给。
    *   这不是"匹配失败"，是玩家压根没说要找什么，跟"目标不存在"是两回事。
+   *
+   * 决策本身（入口短路 + matchSceneClues 派发）在 decideClueMatch()
+   * （clue-match.ts）——纯函数，diag-clue-phrasing.ts 的判据用例共用同一份，
+   * 不再各自维护一份短路正则。这里只做两件本方法独有的事：① 按 matchTexts
+   * 是否存在筛出真正能参与匹配的候选（YAML 手写/旧版 registerSceneClue
+   * 合成的线索没有这份数据）；② 把 ask 的候选 id 翻成显示名给玩家看。
    */
   private resolveSceneClueMatch(
     input: string,
     candidates: string[],
   ): { kind: "resolve"; clueId: string } | { kind: "ask"; options: string[] } | { kind: "deny" } | { kind: "fallback" } {
-    const said = input.replace(GameSession.SEARCH_VERB_PREFIX_RAW, "").trim();
-    if (said.length < 2) return { kind: "fallback" };
-
     // 只有带 matchTexts 的线索参与按文本匹配——YAML 手写线索/
     // registerSceneClue 合成的旧线索没有这份数据，不是"匹配失败"，是这条
     // 线索压根没参与匹配这件事。全场景候选都没有 matchTexts 时整体回落。
@@ -2346,13 +2341,12 @@ export class GameSession {
       .filter((c): c is { id: string; info: { matchTexts: string[]; displayName: string } } => c.info !== null);
     if (matchable.length === 0) return { kind: "fallback" };
 
-    const result = matchSceneClues(said, matchable.map((c) => ({ id: c.id, texts: c.info.matchTexts })));
-    if (result.hit) return { kind: "resolve", clueId: result.hit };
-    if (result.ambiguous.length > 0) {
-      const options = result.ambiguous.map((id) => matchable.find((c) => c.id === id)!.info.displayName);
+    const decision = decideClueMatch(input, matchable.map((c) => ({ id: c.id, texts: c.info.matchTexts })));
+    if (decision.kind === "ask") {
+      const options = decision.clueIds.map((id) => matchable.find((c) => c.id === id)!.info.displayName);
       return { kind: "ask", options };
     }
-    return { kind: "deny" };
+    return decision;
   }
 
   /**

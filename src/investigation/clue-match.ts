@@ -174,3 +174,52 @@ export function matchSceneClues(said: string, candidates: ClueMatchCandidate[]):
   if (uniqueIds.length > 1) return { hit: null, ambiguous: uniqueIds, trace };
   return { hit: null, ambiguous: [], trace };
 }
+
+/**
+ * 入口层的"没给提示"判定——剥掉开头紧贴着的一个调查类动词前缀（不是像
+ * `stripSearchVerbs` 那样抠掉全句里出现的所有动词）。剩下太短（<2 字）就
+ * 是玩家压根没说要找什么，这是"入口就该不该走到 matchSceneClues"的判断，
+ * 与 matchSceneClues 内部自己的 no-signal 早退（stripSearchVerbs，全句抠）
+ * 是两件不同的事——见 matchSceneClues 的 docstring。
+ *
+ * 之前只有 GameSession.resolveSceneClueMatch 私有内联了这份正则与短路，
+ * diag-clue-phrasing.ts 的"裸动词"用例绕过它直接调 matchSceneClues()，
+ * 于是判据测的根本不是生产真正走的那条路：生产对"侦查"这类裸动词从这里
+ * 就短路回 fallback（取候选首条，不问不猜），压根不会走到 matchSceneClues
+ * 内部那条 no-signal 分支；判据却直接调 matchSceneClues("侦查", ...)，
+ * 命中的是 matchSceneClues 自己的 no-signal（报 ambiguous=全部候选），
+ * 判据看着"歧义正确处理"，实际测的是生产从不会执行到的一条路。
+ */
+const ENTRY_VERB_PREFIX = /^(?:侦查|观察|搜索|寻找|搜查|调查|检查|查看|翻找|翻阅|询问|打听|使用|尝试)\s*/;
+
+export type ClueMatchDecision =
+  | { kind: "resolve"; clueId: string }
+  | { kind: "ask"; clueIds: string[] }
+  | { kind: "deny" }
+  | { kind: "fallback" };
+
+/**
+ * "场景内一句话该解析成哪条线索"的完整决策——入口短路 + matchSceneClues 派发，
+ * 一步做齐。GameSession.resolveSceneClueMatch 与
+ * scripts/diag/diag-clue-phrasing.ts 共用这一份，不各自维护一份短路判断
+ * （上一次各自维护的代价：判据全绿，生产行为却是判据想禁止的那个）。
+ *
+ * 四种结果：
+ *   resolve  —— 唯一命中，解析这一条
+ *   ask      —— 命中多条，问清楚，不猜
+ *   deny     —— 给了具体提示但一条都不中，如实说没有
+ *   fallback —— 没给提示（剥掉开头动词后不剩什么）——不是"匹配失败"，
+ *               是玩家压根没说要找什么。调用方按既有行为取候选首条，
+ *               不在这个函数里做（会不会取首条是调用方的策略，不是
+ *               "匹配"这件事本身）。
+ */
+export function decideClueMatch(input: string, candidates: ClueMatchCandidate[]): ClueMatchDecision {
+  const said = input.replace(ENTRY_VERB_PREFIX, "").trim();
+  if (said.length < 2) return { kind: "fallback" };
+  if (candidates.length === 0) return { kind: "fallback" };
+
+  const result = matchSceneClues(said, candidates);
+  if (result.hit) return { kind: "resolve", clueId: result.hit };
+  if (result.ambiguous.length > 0) return { kind: "ask", clueIds: result.ambiguous };
+  return { kind: "deny" };
+}

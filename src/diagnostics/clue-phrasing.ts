@@ -58,6 +58,18 @@ export interface CluePhraseOutcome {
    * 编一个 —— 编的话这个字段就没有意义了。
    */
   noSignal?: boolean;
+  /**
+   * 走完整生产决策路径（decideClueMatch，见 clue-match.ts）时的决策类型。
+   *
+   * ⚠ 只给直接调 matchSceneClues() 的用例留空——那些用例本来就有实质
+   * 信号，两层短路都不会触发，decideClueMatch 的结果与 matchSceneClues
+   * 一致，不影响判据。"a-裸动词"这类用例必须带上它：生产对裸动词从
+   * decideClueMatch 的入口短路就返回 fallback，压根不会走到
+   * matchSceneClues 内部——若只调 matchSceneClues() 直接测，判的是生产
+   * 从不会执行到的一条路（判据全绿、行为却是它想禁止的那个，见
+   * diag-clue-phrasing.ts 头注释）。
+   */
+  decisionKind?: "resolve" | "ask" | "deny" | "fallback";
 }
 
 /**
@@ -118,6 +130,20 @@ interface ClueJudgement {
  */
 export function judgeCluePhrase(c: CluePhraseCase, o: CluePhraseOutcome): ClueJudgement {
   if (c.kind === "ambiguous") {
+    // 带 decisionKind 的用例（走完整的 decideClueMatch 决策路径，见
+    // diag-clue-phrasing.ts 的"a-裸动词"）：按决策类型判，能分清
+    // "fallback（设计如此——没给信号，静默取候选首条，不是匹配失败）"
+    // 与"resolve（本该 ask/fallback 却抢答了）"这两种完全不同的情况，
+    // 而不是笼统地看 chosenClueId 是不是 null。ask/deny/fallback 都算诚实
+    // （没有擅自精确选中一个），只有 resolve 才是真的抢答。
+    if (o.decisionKind) {
+      if (o.decisionKind !== "resolve") return { verdict: "pass", why: "", countsTowardHitRate: false };
+      return {
+        verdict: "fail",
+        why: `歧义/无信号输入却精确选中了「${o.chosenClueId}」——擅自挑了一个（decisionKind=resolve，本该 fallback/ask）`,
+        countsTowardHitRate: false,
+      };
+    }
     // ⚠ 这里曾经要求 ambiguousIds.length >= 2 才算过——但"没给任何位置
     // 提示"（比如裸的"侦查"）合法的诚实结果是"压根没命中"（chosen=null 且
     // ambiguousIds 为空），不是"报出多个候选"。matchSceneClues() 不看
@@ -126,6 +152,10 @@ export function judgeCluePhrase(c: CluePhraseCase, o: CluePhraseOutcome): ClueJu
     // 拿匹配器没有的职责去考它，是判据自己的设计错误，不是匹配器的问题——
     // 这条判据本身就被诊断脚本抓到过一次假红，见 diag-clue-phrasing.ts。
     // 真正该守住的只有一件事：不能精确选中某一个（chosenClueId 必须为 null）。
+    //
+    // 没有 decisionKind 时才走这条老路径（当前所有 ambiguous 用例都会带
+    // decisionKind，这支是给未来可能不经过 decideClueMatch 的用例兜底，
+    // 不是活跃路径）。
     if (o.chosenClueId === null) return { verdict: "pass", why: "", countsTowardHitRate: false };
     return {
       verdict: "fail",
