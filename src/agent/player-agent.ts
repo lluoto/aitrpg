@@ -3,7 +3,8 @@
 // 有 LLM 时用 LLM，无 LLM 时用性格模板
 
 import type { CoCGeneratedCharacter } from "../character/coc-character";
-import { extractMessageContent } from "../llm/client";
+import type { LLMClient } from "../llm/client";
+import { llmEnabled } from "../llm/enabled";
 
 interface PlayerCharacter {
   name: string;
@@ -198,6 +199,25 @@ const PL_SYSTEM_PROMPT = `你是一个 CoC 7e 调查员角色。你正在参与�
 
 格式：直接输出你的角色的行动。`;
 
+// ====== 玩家 Agent 的 LLM 接缝 ======
+// 与 intent.ts / narrator.ts 同一套模式：模块级单例 + 「只在还没设过时才设」。
+// 原先 decideViaLLM 直接读 `LLM_API_KEY`/`LLM_BASE_URL`/`LLM_MODEL` 并裸 fetch，
+// 于是：
+//   - 绕过 `llmEnabled()` 这个唯一判据，`LLM_DISABLED=true` 拦不住它打网络；
+//   - 每次调用都重新读环境变量、各自实现一套 OpenAI 协议，与 LLMClient 漂移；
+//   - temperature / max_tokens 硬编码，调用方改不了。
+// 现在统一走 LLMClient 的 `chat`，可测、可注入、可被离线开关拦下。
+let _playerLLM: LLMClient | null = null;
+
+export function setPlayerLLM(client: LLMClient | null) {
+  _playerLLM = client;
+}
+
+/** 同 intent/narrator：给「只在还没设过时才设」用，多会话共享一份时别互相顶掉。 */
+export function playerLLMConfigured(): boolean {
+  return _playerLLM !== null;
+}
+
 export class PlayerAgent {
   /** 底层角色数据（公开只读以支持场景描述等外部读访问） */
   readonly pc: PlayerCharacter;
@@ -284,46 +304,30 @@ export class PlayerAgent {
   }
 
   /** 使用 LLM 做出决策 */
-  async decideViaLLM(kpNarration: string, availableClues: string[], availableActions: string[]): Promise<PlayerDecision> {
+  async decideViaLLM(
+    kpNarration: string,
+    availableClues: string[],
+    availableActions: string[],
+    opts?: { temperature?: number; maxTokens?: number },
+  ): Promise<PlayerDecision> {
     const prompt = this.buildPrompt(kpNarration, availableClues, availableActions);
 
+    // 判据与装配一致：接缝里只有 `llmEnabled()` 这一份网络开关，
+    // 不再在这里重写「有没有 key / 是不是占位」那一整套。
+    if (!_playerLLM || !llmEnabled()) {
+      this.downgrade(!llmEnabled() ? "llmEnabled() 为 false（无 key 或被 LLM_DISABLED 关掉）" : "未配置 player LLM 接缝");
+      return this.fallbackDecision(kpNarration, availableActions, { availableClues });
+    }
+
     try {
-      // Try to use a direct LLM call via fetch
-      const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
-      const baseUrl = process.env.LLM_BASE_URL || "https://api.openai.com/v1";
-      const model = process.env.LLM_MODEL || "gpt-4o-mini";
+      const content = (await _playerLLM.chat(
+        [
+          { role: "system", content: PL_SYSTEM_PROMPT },
+          { role: "user", content: prompt },
+        ],
+        { temperature: opts?.temperature ?? 0.8, maxTokens: opts?.maxTokens ?? 200 },
+      )).trim();
 
-      if (!apiKey || apiKey === "sk-placeholder" || apiKey.startsWith("${")) {
-        this.downgrade("没有可用的 API key");
-        return this.fallbackDecision(kpNarration, availableActions, { availableClues });
-      }
-
-      const resp = await fetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: PL_SYSTEM_PROMPT },
-            { role: "user", content: prompt },
-          ],
-          temperature: 0.8,
-          max_tokens: 200,
-        }),
-        signal: AbortSignal.timeout(15000),
-      });
-
-      if (!resp.ok) {
-        // 原先这里是「stderr noise suppressed — fallback handles gracefully」——
-        // 安静是要付代价的：降级与「模型写得平庸」从此分不出来。
-        this.downgrade(`HTTP ${resp.status}`);
-        return this.fallbackDecision(kpNarration, availableActions, { availableClues });
-      }
-
-      const content = extractMessageContent(await resp.json()).trim();
       if (!content) {
         this.downgrade("LLM 返回空串");
         return this.fallbackDecision(kpNarration, availableActions, { availableClues });
@@ -335,6 +339,8 @@ export class PlayerAgent {
       this.history.push({ kp: kpNarration, action: decision.action });
       return decision;
     } catch (e) {
+      // 不把错误抛上去 —— 与 intent/narrator 一样，一次 LLM 失败落回 fallback，
+      // 只是把原因打出来，别让「没调成」伪装成「写得平庸」。
       this.downgrade(e instanceof Error ? e.message : String(e));
       return this.fallbackDecision(kpNarration, availableActions, { availableClues });
     }

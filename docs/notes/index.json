@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-27",
+  "generated": "2026-08-28",
   "note": "问题记录索引。按 file+line 取正文，不必整份读。正文只追加，改动请重跑 bun scripts/docs-index.ts",
   "statusLegend": {
     "fixed": "已修，有实测数",
@@ -13,7 +13,7 @@
       "id": "engine",
       "name": "运行引擎 / 主循环",
       "file": "docs/notes/engine.md",
-      "count": 19
+      "count": 20
     },
     {
       "id": "ingest",
@@ -237,6 +237,17 @@
       "line": 636,
       "lines": 46,
       "summary": "前两次是\"文档说的和代码不符\"，去看一眼代码就能发现："
+    },
+    {
+      "id": "engine-20",
+      "title": "已知语义：activePlayerId 是粘性的，多端下会互相踩（2026-08-28）",
+      "date": "2026-08-28",
+      "status": "warn",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 682,
+      "lines": 21,
+      "summary": "L2a 让 `act(input, actingPcId?)`（`src/api/game-session.ts:1290`）能指定谁"
     },
     {
       "id": "ingest-01",

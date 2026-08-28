@@ -1,7 +1,7 @@
 {
-  "tests": 2185,
-  "files": 130,
-  "unwiredMethods": 90,
+  "tests": 2216,
+  "files": 133,
+  "unwiredMethods": 88,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
@@ -309,6 +309,16 @@
       "tests": 2185,
       "files": 130,
       "when": "只做路由、不碰AI侧：act() 第二参由角色显示名改为 pcId，web action 端点接受并转发 pcId，getState() 暴露队伍。现状——act(input, actingCharacterName?)（game-session.ts:1259）第二参存在但按角色显示名匹配（:1282-1288），命中后写 this.activePlayerId；web 路径 server.ts:451 永远 session.act(input) 不传第二参，于是 activePlayerId 在 web 上恒为 p1，多 PC 时无法以别的 PC 身份行动。按名字匹配还有两个毛病：重名 PC 取第一个（find 语义）、绕一圈才回到 pcId。改法：① 第二参直接收 pcId——actingCharacterName 零生产调用方（server.ts 不传），且无任何测试传第二参，直接换掉名字路径代价为零。② server action 端点做三层事：body 加可选 pcId 字段（缺省沿用 activePlayerId，与 kp/set-san 的 bodyString(body,\"playerId\")||activePlayerId 同一约定，保持既有客户端不破）；未知 pcId 由 act() 在**改动任何状态前**结构化校验（置 result.error{code:\"unknown_target\",targetId}，参照 setPlayerSan 的形状），server 翻成结构化 404——不抛异常、不兜底回 p1（那正是\"报告了一件没发生的事\"）；getState() 暴露 state.party（pcId+name+control），让\"谁能行动\"对客户端可见——control 只读不写，不加设置入口（L4 的事）。③ 为可测性把 action 端点核心抽成导出纯函数 runAction(session, body)（解析 body→可选pcId→act→error 映射→{status,body}），端点只管持久化/广播/附 summary；并把 server.ts 的 Bun.serve+启动块包进 if(import.meta.main)——被测试 import 取 runAction 时绝不能绑 3099 端口或扫 session 文件。边界情形：传了 pcId 但 PC 不在当前场景——本轮**允许**（自由跑团没有回合结构，getState 的 player/在场名单本来就按 activePlayerId 取）；并发缺口——act() 无锁改 this.round/activePlayerId/_turnMessages，两个客户端同时 POST 不同 pcId 会互相踩，本轮不做回合锁（那是 L3），在 act() 的 jsdoc 里写明这个已知缺口，别让下一个人以为路由做完就能多端并发。加 pc-route.test.ts（11条）：act按pcId路由行为正确（路由后 getState().player 与消息 speaker 归属都落在对应 PC、再切回能恢复、传当前活跃 pcId 本身不误报）、重名PC各自按pcId路由到本人（不走 find 取第一个）、未知pcId结构化拒绝且 activePlayerId/round 都不变（拒绝发生在任何改动前，且不折成正常叙事）、空壳p1建号前无卡不可行动、getState().party 暴露完整队伍、runAction 转发 pcId 到 act 的四条（含缺省沿用 activePlayerId、pcId 空白等价不传）。三侧覆盖：行为正确/目标行为错误对照/文本相似但不误报。变异检验两轮：① runAction 改回 session.act(input) 不传第二参，2 条 server 转发测试精确变红（9条游戏层直调 act 的仍绿）；② act() 的 unknown 校验短路（false&&），3 条未知pcId拒绝测试（含server 404那条）精确变红；两处 Copy-Item 还原后回归11/11。实测碰到的既有怪癖（与本题无关不修）：无 archetype 建号后 p1 的会话槽位 characterName 恒为兜底\"调查员\"（创建角色走 createPartyMember 对已存在 pcId 只 switchActive 不更新槽位名），导致无 archetype 下以 p1 行动的消息 speaker 是\"调查员\"而非真名——pr2 测试改用带 archetype 构造隔离。typecheck exit 0；bun test 连跑3次2185/0/130文件"
+    },
+    {
+      "tests": 2194,
+      "files": 131,
+      "when": "L2b 任务3：PlayerAgent 的 decideViaLLM 改走 LLMClient 接缝，不再裸 fetch / 直读 env。原先它直接读 LLM_API_KEY/LLM_BASE_URL/LLM_MODEL 并裸 fetch——绕过 llmEnabled() 唯一判据（LLM_DISABLED=true 拦不住它）、各自实现一套 OpenAI 协议、temperature/max_tokens 硬编码。现在加第三条模块级单例接缝（setPlayerLLM/playerLLMConfigured，与 intent/narrator 同一套模式），GameSession 构造与 play-module 的 llmClient 创建两处都在「只在还没设过时设」守卫下注册；decideViaLLM 用 _playerLLM.chat()（temperature/max_tokens 提为参数，默认 0.8/200），llmEnabled() 为 false 或接缝未配置或调用抛错/空串一律降级 fallbackDecision 不抛错。为避循环依赖（play-module→player-agent→play-module），llmEnabled 从 play-module 抽到 src/llm/enabled.ts（play-module re-export 保持对外 API 不变）。加 player-llm-wiring.test.ts（9条）：GameSession 可用时接上接缝红线/离线开关拦截/占位 key 不接/已设过不被覆盖红线（用可辨识 sentinel 经 decideViaLLM 验证）+ decideViaLLM 无 key 不抛降级/走接缝而非裸 fetch/默认且可覆盖 temperature 与 maxTokens/抛错降级/空串降级。变异检验两轮：移除 GameSession 注册（红线1变红）、去掉 !playerLLMConfigured() 守卫（强化后的红线变红）；Copy-Item 还原后 9/9。preflight 11 项全过；unwiredMethods 90→88（抽走 llmEnabled 连带少 2 处）。"
+    },
+    {
+      "tests": 2216,
+      "files": 133,
+      "when": "L2b 任务4：PC 扮演元数据（personality/backstory/currentGoal）落到 PartyMember.meta（本轮只落值不消费，给后续把 PlayerAgent 接进 web 会话时读），加 web 端点 POST /api/sessions/:id/party 建队友。新增纯函数 resolvePlayerMeta/resolvePlayerMetaSync（src/character/player-metadata.ts）：逐字段兜底链 HTTP（优先）→模组→backgroundProfile 推导（personality←traits+beliefs，backstory←significantPeople+meaningfulPlace+woundsAndScars，currentGoal 无推导来源直接跳过）→LLM 回调（注入方自担 llmEnabled() 与失败兜底），某层非空即停不继续。GameSession 构造函数不能 await（构造器非 async），故拆出同步版 resolvePlayerMetaSync 给构造器与 addPartyMember 用；异步版 resolvePlayerMeta 仅在有 llm 回调时才真正 await。新增公共方法 addPartyMember(name, archetypeId, meta?)（建卡→nextFreePcId→createPartyMember→resolveMeta 一次做齐），web 端点与文本命令「创建队友」共用同一入口。POST /api/sessions 新增可选 body 字段 personality/backstory/currentGoal 作为 p1 的 persona 参数（GameSession 构造函数第 6 参）。复查本轮时发现并修了一个真实 gap：POST /api/sessions 允许不传 archetype（p1 先是空壳槽位），此时唯一能建出 p1 真角色卡的路径是文本命令「创建角色」——但该命令原先完全不解析 meta，会把构造时给的 HTTP persona 字段静默丢掉且无任何报错。修法：加私有字段 p1Persona 在构造函数里存住 persona（不因为走了空壳分支就丢），「创建角色」命令建卡后按 activePlayerId===\"p1\" 才用 p1Persona 走 resolvePlayerMetaSync（非 p1 场景，如切到 p2 后再执行「创建角色」重建，不会窜用 p1 的 persona）。server.ts 新 party 路由补了 try/catch 包住 buildCharacterForRuleset 可能抛出的未知 archetype 错误（与 POST /character、/luck-spend 同款包法），避免裸 500。新增 player-metadata.test.ts（12条）：resolvePlayerMetaSync 三层兜底链行为正确/HTTP 优先/currentGoal 无来源时缺席不塞假数据/纯空白视为未给；derive 函数口径；resolvePlayerMeta 带 LLM 层时只填前三层没定的字段、HTTP 不被 LLM 覆盖、LLM 空串视为未拿到、无 llm 回调时退化为同步行为。新增 party-meta.test.ts（10条）：addPartyMember 的 meta 落值与八件事全部到位（HTTP 优先/推导兜底/currentGoal 缺席红线）；构造函数 p1 的 meta 反映 persona；「创建角色」重建 p1（真实建卡路径）的 persona-丢失 gap 红线（+ 不窜到 p2）；文本命令「创建队友」的 meta 与八件事。变异检验：① 关掉 resolvePlayerMetaSync 的 HTTP 优先分支（if(false&&…)），player-metadata.test.ts 与 party-meta.test.ts 共 7 条 HTTP 优先红线精确变红；② 撤掉「创建角色」命令里的 meta 解析块，party-meta.test.ts 的「创建角色」建 p1 三条测试精确变红（其余不受影响）；两处均 revert 后回归绿。typecheck exit 0；preflight 11 项全过（测试 2194→2216 +22，断线 88 不变）。"
     }
   ]
 }

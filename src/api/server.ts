@@ -213,9 +213,15 @@ async function handleRequest(req: Request): Promise<Response> {
     if (requestedRuleset === "dnd5e" || requestedRuleset === "grail") ruleset = requestedRuleset;
     archetypeId = bodyString(body, "archetype") ?? archetypeId;
     characterName = bodyString(body, "characterName") ?? characterName;
-
+    // p1 的扮演元数据（personality/backstory/currentGoal）——HTTP 字段为兜底链最
+    // 优先一层，其余层（模组/推导/LLM）在 GameSession 构造里补。
+    const persona = {
+      personality: bodyString(body, "personality"),
+      backstory: bodyString(body, "backstory"),
+      currentGoal: bodyString(body, "currentGoal"),
+    };
     const id = generateId();
-    const session = new GameSession(id, ruleset, undefined, archetypeId, characterName);
+    const session = new GameSession(id, ruleset, undefined, archetypeId, characterName, persona);
 
     // 生成开场描述
     let opening = "";
@@ -461,6 +467,41 @@ async function handleRequest(req: Request): Promise<Response> {
         ...ar,
         summary: session.getSummary(),
       });
+    }
+
+    // POST /api/sessions/:id/party — 为队伍新增一个 PC
+    // 单一入口 addPartyMember（其内部必须走到 createPartyMember，见 game-session
+    // 注释）；body 里的 personality/backstory/currentGoal 走兜底链解析后挂到
+    // PartyMember.meta（HTTP 字段最优先）。
+    if (method === "POST" && segments[3] === "party") {
+      const body = await readJsonBody(req);
+      const name = (bodyString(body, "name") ?? "").trim();
+      const archetype = (bodyString(body, "archetype") ?? "").trim();
+      if (!name || !archetype) return respondError("name 和 archetype 不能为空", 400);
+      const meta = {
+        personality: bodyString(body, "personality"),
+        backstory: bodyString(body, "backstory"),
+        currentGoal: bodyString(body, "currentGoal"),
+      };
+      try {
+        // buildCharacterForRuleset（addPartyMember 内部）对未知 archetype 会抛——
+        // 与 POST /character、/luck-spend 同样有会抛的下游调用，同样包一层，
+        // 不让它变成 Bun.serve 兜底的裸 500。
+        const result = session.addPartyMember(name, archetype, meta);
+        if ("rejected" in result) return respondError(result.rejected, 400);
+        const m = result.member;
+        saveSessionMeta(sessionId, { lastActiveAt: Date.now() });
+        return respondJson({
+          pcId: m.pcId,
+          name,
+          archetype,
+          meta: m.meta ?? {},
+          control: m.control,
+          ...(result.warning ? { warning: result.warning } : {}),
+        }, 201);
+      } catch (err: any) {
+        return respondError(`创建队友失败: ${err.message}`, 400);
+      }
     }
 
     // POST /api/sessions/:id/npc-chat — NPC 对话

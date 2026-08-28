@@ -9,7 +9,7 @@ import { nameParts, mentionsName, knownNameVariants } from "./play/names";
 import { SanityEngine } from "./rules/coc-engine";
 import { BARN_OF_PREMIER, BARN_SUPPORT, renderPrologue, renderPartySetup, evaluateEpilogues } from "./module/barn-of-premier";
 import { WorldState } from "./world/state";
-import { PlayerAgent, createPlayerCharacter } from "./agent/player-agent";
+import { PlayerAgent, createPlayerCharacter, setPlayerLLM, playerLLMConfigured } from "./agent/player-agent";
 import { displayCharacterSheet, characterSummary } from "./pl/character-display";
 import type { ModuleData, ModuleSupport } from "./module/types";
 
@@ -94,20 +94,11 @@ async function createPC(name: string, archId: string, archetype: any) {
 // 八项背景元素（形象/信念/重要之人/意义之地/宝贵之物/特质/伤口疤痕/恐惧症躁狂症）先由模板池生成，
 // 再经 LLM 增强并据此撰写背景故事（LLM 不可用时回退模板拼接）。
 
-/**
- * 这一局到底能不能打 LLM。
- *
- * 抽出来是因为原先有两份判据：`llmOnce` 只看有没有 key，
- * runModuleInner 里那份还看 `LLM_DISABLED`/`LLM_MODE`。
- * 于是开发机上只要 key 在环境里，`LLM_DISABLED=true` **拦不住车卡阶段打网络** ——
- * 离线跑（测试、CI）会莫名其妙变慢甚至挂在超时上。两份判据只留一份。
- */
-export function llmEnabled(): boolean {
-  if (process.env.LLM_DISABLED === "true" || process.env.LLM_MODE === "template") return false;
-  const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
-  if (!apiKey || apiKey === "sk-placeholder" || apiKey.startsWith("${")) return false;
-  return true;
-}
+// llmEnabled 已抽到 `llm/enabled.ts`（唯一判据），这里 import 供模块内使用、
+// 并 re-export 保持对外 API 不变。抽走是因为 player-agent 也要用，留在本文件
+// 会成环（play-module → player-agent → play-module），preflight 会拦。
+import { llmEnabled } from "./llm/enabled";
+export { llmEnabled };
 
 /**
  * 一次 LLM 对话（不可用/失败 → 返回空串，由调用方回退）。
@@ -608,6 +599,12 @@ async function runModuleInner(module: ModuleData, support: ModuleSupport) {
         temperature: parseFloat(process.env.LLM_TEMPERATURE || "0.7"),
       })
     : null;
+
+  // 玩家 Agent 决策接缝：与 game-session 同一条注册规则（只在还没设过时设）。
+  // llmClient 是 LLMClient 才传；Mock/无 key 时不设，decideViaLLM 自会回落 fallback。
+  if (llmClient && !playerLLMConfigured()) {
+    setPlayerLLM(llmClient);
+  }
 
   // ── NPC 对话数据：LLM 可用时用 LLM 生成（覆盖模板生成，手写黄金标准不被覆盖） ──
   if (llmClient) {

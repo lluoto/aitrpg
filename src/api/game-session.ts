@@ -8,6 +8,8 @@ import { generateNarrative, setNarratorLLM, narratorLLMConfigured } from "../llm
 // llmEnabled 是「该不该打网络」的**唯一**判据，别在别处重写一份 ——
 // play-module.ts:101 记着上次抄第二份的代价。
 import { llmEnabled } from "../play-module";
+import { setPlayerLLM, playerLLMConfigured } from "../agent/player-agent";
+import { resolvePlayerMetaSync, type PlayerMeta } from "../character/player-metadata";
 
 import { RuleEngine } from "../engine/rule-engine";
 // 状态定义库 + 时限口径。存储仍是 `status: string[]`，这里只提供定义与推进规则。
@@ -122,6 +124,13 @@ export interface PartyMember {
   san: SanityEngine;
   /** "auto" = AI 自主行动，"player:userId" = 指定玩家手操。字段原样搬自 CompanionState（types.ts:229）。 */
   control: "auto" | `player:${string}`;
+  /**
+   * PlayerAgent 的扮演字段（personality/backstory/currentGoal），经 resolvePlayerMeta
+   * 的兜底链（HTTP→模组→backgroundProfile 推导→LLM）解析后落在这里。
+   * 本轮只落值不消费——GameSession 尚未创建 PlayerAgent，是给 L2b 后续把
+   * PlayerAgent 接进 web 会话时读的。
+   */
+  meta?: PlayerMeta;
   /**
    * 保留字段，本轮**不消费**——没有任何代码读它。按人数缩放难度是另一整轮
    * 的活（本轮明确排除），这里先把字段占位占出来，免得以后又是"字段在、
@@ -286,6 +295,15 @@ export class GameSession {
   private _lastPushedRoll: { skill: string; roll: number; target: number } | null = null;
   private _moduleLoader?: MythosModuleLoader;
   private _loadedModules: Map<string, boolean> = new Map();
+  /**
+   * 建会话时 HTTP 传的 p1 扮演字段（personality/backstory/currentGoal）。
+   *
+   * 没传 archetypeId 时 p1 建的是空壳槽位，真正的角色卡要等"创建角色"命令
+   * 才诞生（见该命令处理函数）——这份字段那时候才用得上，所以先存住，不能
+   * 在构造函数里因为走了空壳分支就把它默默丢掉（HTTP 给的值消失且没有任何
+   * 报错，调用方毫无察觉）。
+   */
+  private p1Persona?: PlayerMeta;
 
   constructor(
     id: string,
@@ -293,11 +311,13 @@ export class GameSession {
     llmConfig?: LLMConfig,
     archetypeId?: string,
     characterName?: string,
+    persona?: PlayerMeta,
   ) {
     this.id = id;
     this.createdAt = Date.now();
     this.lastActiveAt = Date.now();
     this.activeRuleset = ruleset;
+    this.p1Persona = persona;
 
     const config = llmConfig ?? loadConfig();
     this.config = config;
@@ -328,6 +348,11 @@ export class GameSession {
     // 「造成 N 点伤害」，没有画面。守卫逻辑与上面 intent 那份一致。
     if (this.llm instanceof LLMClient && llmEnabled() && !narratorLLMConfigured()) {
       setNarratorLLM(this.llm);
+    }
+    // 玩家 Agent 的决策 LLM 同理（decideViaLLM）：原先直接在 player-agent 里裸
+    // fetch、绕开 llmEnabled()。走 LLMClient 后这里只在还没设过时设一次。
+    if (this.llm instanceof LLMClient && llmEnabled() && !playerLLMConfigured()) {
+      setPlayerLLM(this.llm);
     }
 
     this.ruleEngine = new RuleEngine();
@@ -378,6 +403,10 @@ export class GameSession {
         } else {
           this.activeCharacter = result.member.sheet;
           this.sanity = result.member.san;
+          // p1 的扮演元数据：HTTP 给的字段（优先）→ backgroundProfile 推导。
+          // 见 resolveMeta 方法注释——三处建卡入口（这里/addPartyMember/
+          // "创建角色"命令）共用它，不各自内联一份 resolvePlayerMetaSync 调用。
+          result.member.meta = this.resolveMeta(persona, result.member.sheet);
         }
       } catch (e) {
         log.warn("session", "角色创建失败", e);
@@ -470,6 +499,44 @@ export class GameSession {
     let n = 1;
     while (used.has(`p${n}`)) n++;
     return `p${n}`;
+  }
+
+  /**
+   * 逐字段走兜底链（HTTP→模组→backgroundProfile 推导→LLM），结果落成一个
+   * PlayerMeta。见 src/character/player-metadata.ts。
+   *
+   * web/session 这条路的客户端没接 ModulePlayerSetup（BARN_SUPPORT 无 players
+   * 字段，恒空——见 module/types.ts:524 的注释），所以模组层在这条路上没有
+   * 来源；真正有 ModulePlayerSetup 的是 play-module（剧本杀）那条路。LLM 步骤
+   * 本路暂不注入生成器（真有 LLM 生成需求时由调用方提供），依赖 HTTP/推导层，
+   * 故用同步版——三处建 PC 的地方（构造函数建 p1、addPartyMember、"创建角色"
+   * 命令重建当前活跃 PC）都调这一个方法，不各自内联一份 resolvePlayerMetaSync。
+   */
+  private resolveMeta(http: PlayerMeta | undefined, sheet: any): PlayerMeta {
+    return resolvePlayerMetaSync({
+      http,
+      profile: sheet?.backgroundProfile,
+      module: undefined,
+    });
+  }
+
+  /**
+   * 为队伍新增一个 PC —— web 的 `POST /api/sessions/:id/party` 与文本命令
+   * 「创建队友」共用（不掰成两套做法）。必须走到 createPartyMember（单一入口，
+   * 八件事一次做齐）；meta 经 resolveMeta 兜底链解析后挂到 PartyMember.meta，
+   * 供后续把 PlayerAgent 接进 web 会话时读。
+   */
+  addPartyMember(
+    name: string,
+    archetypeId: string,
+    meta?: PlayerMeta,
+  ): { member: PartyMember; warning?: string } | { rejected: string } {
+    const ch = buildCharacterForRuleset(name, archetypeId, this.activeRuleset);
+    const pid = this.nextFreePcId();
+    const result = this.createPartyMember(pid, ch, { control: "auto" });
+    if ("rejected" in result) return result;
+    result.member.meta = this.resolveMeta(meta, result.member.sheet);
+    return result;
   }
 
   private createPartyMember(
@@ -1357,13 +1424,11 @@ export class GameSession {
     const recruitMatch = input.match(/^创建队友\s+(\S+)\s+(\S+)/);
     if (recruitMatch) {
       const [, name, cls] = recruitMatch;
-      const ch = buildCharacterForRuleset(name, cls, this.activeRuleset);
-      const pid = this.nextFreePcId();
-      // 默认 "auto"，同 CompanionState 的默认值（companion-manager.ts:74）——
-      // 没人显式认领这个 PC 前，先按"没人手操"处理。本轮只建字段与读写口，
-      // 不接调度：control 现在没有任何消费方去读它，谁在什么时候消费
-      // （L2/L3 的 AI PC 调度）是下一步的事。
-      const result = this.createPartyMember(pid, ch, { control: "auto" });
+      // 走 addPartyMember（与 web 的 POST /party 同一入口）：建卡 + 兜底链
+      // 解析扮演元数据 + createPartyMember 一次做齐八件事。
+      // 文本命令没有 body，故 meta 不传 —— 走兜底链（模组/推导/LLM），
+      // 与 web 端点能接收 HTTP 字段的能力不同（见 addPartyMember 注释）。
+      const result = await this.addPartyMember(name, cls);
       if ("rejected" in result) {
         turnMessages.push({ speaker: "系统", content: result.rejected, type: "system" });
         return this.buildActionResponse(turnMessages);
@@ -2736,6 +2801,14 @@ export class GameSession {
       }
       this.activeCharacter = result.member.sheet;
       this.sanity = result.member.san;
+      // 扮演元数据：只有 p1 可能带着建会话时的 HTTP persona（见 p1Persona
+      // 字段注释）；其余 PC（多人局切到 p2 再"创建角色"重建）没有这层，
+      // 直接落 backgroundProfile 推导。走同一个 resolveMeta，不因为这里是
+      // 文本命令就另起一份内联调用（构造函数/addPartyMember 同理）。
+      result.member.meta = this.resolveMeta(
+        this.activePlayerId === "p1" ? this.p1Persona : undefined,
+        result.member.sheet,
+      );
       if (result.warning) msg(`⚠️ ${result.warning}`);
       msg(`角色创建完成！${charName}（${archetypeId}）已就绪。HP:${ch.hp}, SAN:${this.sanity.state.currentSAN}`);
       this.lastNarrative = `角色创建完成: ${charName}。`;
