@@ -1,6 +1,6 @@
 {
-  "tests": 2220,
-  "files": 134,
+  "tests": 2226,
+  "files": 135,
   "unwiredMethods": 88,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -324,6 +324,11 @@
       "tests": 2220,
       "files": 134,
       "when": "五项开发·任务1：让意图解析的回落说话（当前它是哑的）。实跑30回合（analysis/sim/2026-08-28-barn-three-pc-run.md）里有6次意图判错（≈20%），但 intent.ts 的两处回落原先都是静默的：parseIntentLLM 内 JSON.parse 失败（:370-372，console.warn 整行被注释）与 parseIntent 外层 llm.chat() 抛错（:410-412，同样注释掉）。'LLM 答错了' 和 'LLM 一直在失败' 在外部完全无法区分，判错率无从归因。改法：两处都换成 log.warn(\"intent\", ...) 带上原因（异常 message 前80字 / JSON解析失败的原文前80字）——只做可观测性，不动判定逻辑、不调 prompt、不改阈值，行为（照常回落 regex）完全不变。新增 intent-fallback-observability.test.ts（4条）：LLM 抛异常时有一条 warn 且含异常原因、结果仍是 regex 兜底值；LLM 返回非法 JSON 时有一条 warn 且含原文片段；LLM 正常返回合法 JSON 时零 warn（不刷屏正常路径）；未配置 LLM 的纯 regex 路径同样零 warn（静默回落只指 LLM 失败的那两处，不泛化到所有走 regex 的路径）。用 bun:test 的 spyOn(log, \"warn\") 断言调用次数与参数内容，不靠人眼看日志。变异检验：分别删掉两处 log.warn 调用，对应的两条 warn 存在性测试精确变红，其余两条（零 warn 场景）不受影响；revert 后 4/4 回归绿。typecheck exit 0；bun test 2216→2220（+4）、133→134 文件。"
+    },
+    {
+      "tests": 2226,
+      "files": 135,
+      "when": "五项开发·任务2：模组摄取把文档小标题注册成了场景（这是那次毁局的根因）。mythos-module.ts 的 import() 有一行 `if (module.hooks) for (const h of module.hooks) if (h.condition) referencedScenes.add(h.condition)`，把每条 hook 的 condition 无条件当场景注册——hook 的 condition 只是「触发条件」（on_read_tome 类型的 hook，condition 是典籍名不是场景 id），从来就不该等同于地点。谷仓模组实测：sceneDescriptions 声明的真场景 22 个，最终 registerScene 的总数被灌到 39 个，混进去的 17 条里有「主要_npc」「结局」「可选」「艾德里安会在外围布置_3_种陷阱」这种一眼是文档小标题/章节标题抽取管线漏进来的东西。模糊移动的候选池（game-session.ts 的 tryResolveModuleScene）取 world.listScenes() 全量，于是「查看餐桌、披萨盒和啤酒罐」被判定送到「可能的敌人类」并打出兜底提示，实跑第 6 回合起整局再没回正轨。改法：判据按来源不按字符特征——白名单 = sceneDescriptions 声明 ∪ npc/item/tome/clue 的 sceneId 引用 ∪ module.exits 的 key 与 target（被出口连接的东西）。删掉 hook.condition 那行，加上 sceneDescriptions 与 exits 两个来源（原来这两者不直接进白名单，全靠与其它引用碰巧重叠才没漏注册，谷仓模组验证过零丢失，但不能靠碰巧）。hook 的 narration 仍然照常走第 6 步单独注册（是 lore，没有被一起丢掉）。新增 mythos-scene-whitelist.test.ts（6条）：谷仓模组注册场景数 39→26；13 个已知非地点一个都不在注册结果里；报亭（只靠 exits 才在白名单里，不在 sceneDescriptions 也不在 npc/item/tome/clue）等真地点一个没丢；注册结果与独立重算的白名单公式完全一致（不是巧合对上）；三个内置模组（印斯茅斯/阿卡姆/谷仓精简版）场景数与白名单公式一致，顺带验证了同一个 bug 在这三个模组里的另一处实例（on_read_tome 的 condition 是典籍名「扎多克的低语」「塞拉伊诺断章」，旧代码会误当场景，属于同一根因不是新问题）；hook 本身（registerHook 调用）不受影响，narration 没被一起丢。变异检验：把 hook.condition 那行加回去，6 条里 4 条精确变红（含谷仓 39→26 那条与白名单等价性两条）；revert 后 6/6 回归绿。typecheck exit 0；bun test 2220→2226（+6）、134→135 文件。"
     }
   ]
 }

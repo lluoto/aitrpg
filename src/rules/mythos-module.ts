@@ -446,13 +446,28 @@ export class MythosModuleLoader {
     lines.push(`【剧本杀模组：${module.name}】`);
     lines.push(`难度：${module.difficulty} | ${module.description}`);
 
-    // 0. 注册模组场景（收集所有被 NPC、物品、典籍引用的场景名）
+    // 0. 注册模组场景 —— 白名单按"来源"判定，不是按字符串长得像不像地点：
+    //    地点是被声明（sceneDescriptions）/被引用（NPC、物品、典籍、线索的
+    //    sceneId）/被出口连接（module.exits 的 key 与 target）的东西。
+    //
+    //    ⚠ 曾经这里还加了一条 `if (h.condition) referencedScenes.add(h.condition)`
+    //    —— hook 的 condition 是"触发条件"，从来就不是地点，但被无条件当场景
+    //    注册了。谷仓模组实测：22 个真场景硬是被灌成了 39 个，混进去的 17 条
+    //    里有「主要_npc」「结局」「可选」这种一眼是从文档小标题抽取管线里
+    //    漏进来的东西。移动候选池（game-session.ts 的模糊场景匹配）取的是
+    //    全量已注册场景，于是「查看餐桌、披萨盒」能被判定送到「可能的敌人类」。
+    //    hook 的 narration 仍然有用（是 lore，下面第 6 步单独注册），只是不该
+    //    让它顺带造出一个可移动到的地点。
     const referencedScenes = new Set<string>();
     if (module.npcs) for (const n of module.npcs) if (n.sceneId && n.sceneId !== "unknown") referencedScenes.add(n.sceneId);
     if (module.items) for (const it of module.items) if (it.sceneId && it.sceneId !== "unknown") referencedScenes.add(it.sceneId);
     if (module.tomes) for (const t of module.tomes) if (t.sceneId && t.sceneId !== "unknown") referencedScenes.add(t.sceneId);
     if (module.clues) for (const c of module.clues) if (c.scene && c.scene !== "unknown") referencedScenes.add(c.scene);
-    if (module.hooks) for (const h of module.hooks) if (h.condition) referencedScenes.add(h.condition);
+    if (module.sceneDescriptions) for (const sid of Object.keys(module.sceneDescriptions)) referencedScenes.add(sid);
+    if (module.exits) for (const [sid, list] of Object.entries(module.exits)) {
+      referencedScenes.add(sid);
+      for (const e of list) referencedScenes.add(e.target);
+    }
     let sceneCount = 0;
     // 场景注册到 DB — 无描述，handleMovement 会自动根据 NPC 位置生成"在场的还有"
     if (this.host.registerScene) {
