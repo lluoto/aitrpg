@@ -152,14 +152,38 @@ export interface AgentMessage {
    * 取值与主流情感 TTS 的 style 参数基本对应，是未来语音层的音色输入。
    */
   mood?: NPCMood;
-  /** 谁可见（per-receiver 预留） */
+  /** 谁可见（per-receiver 预留，全仓零消费方——见 visibility/discoverer 字段注释）。 */
   visible_to?: string[];
   /**
    * 入会话时间（epoch ms），由 PlayerSession.push 统一打上。
    * 可选：早先存档里的历史消息没有这个字段。
    */
   timestamp?: number;
+  /**
+   * 可见性规则，配合 discoverer 使用——message 自带路由信息，
+   * PlayerSession.push 据此分发到不同玩家的 messageHistory。缺省视为
+   * "public"（push() 的默认参数）。
+   *
+   * ⚠ 这不是 visible_to：那是另一套预留但零消费方的机制（per-receiver 名单）。
+   * 这里复用的是 PlayerSession.push(message, visibility, discoverer, targets)
+   * 已有的、GameSession.addMessage 已经在用的 vocabulary——不新开第三套。
+   */
+  visibility?: VisibilityRule;
+  /** visibility 为 "discoverer_only" 时，谁是发现者（pcId）。 */
+  discoverer?: string;
 }
+
+/**
+ * 消息可见性规则。原定义在 session/player-session.ts，搬到这里是因为
+ * AgentMessage（上面）需要它，而 player-session.ts 反过来 import
+ * AgentMessage——放回 session 层会成环。
+ */
+export type VisibilityRule =
+  | "public"              // 所有人可见（战斗结果、场景切换）
+  | "scene_restricted"    // 同场景可见（NPC 对话、环境变化）
+  | "discoverer_only"     // 仅发现者可见（**线索发现、秘密揭露**）
+  | "targeted"            // 仅指定玩家可见（私密 DM 旁白、个人 SAN 检定结果）
+  | "private";            // 仅当前玩家 + KP 可见
 
 /**
  * 消息类型 — API 响应、CLI、模组宿主接口共用同一套取值。

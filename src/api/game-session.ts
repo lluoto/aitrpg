@@ -794,6 +794,27 @@ export class GameSession {
   }
 
   /**
+   * 按 pcId 取历史——PlayerSession.getPlayerHistory(pcId) 早就有，但 HTTP
+   * 只接得到 getActiveHistory()（恒返回当前活动玩家），外部永远看不到别的
+   * PC 的历史。这是线索私密（discoverer_only）能被验证的前提：p1 掷出的
+   * 线索只进 p1 的 messageHistory，不靠这个方法就没人能从 HTTP 侧确认。
+   *
+   * pcId 是否存在（join 过 PlayerSession）由调用方（server.ts）用
+   * `session.get(pcId)` 先判——未知 pcId 要结构化 4xx，不能悄悄返回空数组，
+   * 那和"这个人根本没有历史"从外部长得一模一样，是本仓反复吃亏的
+   * "静默失效"。这里不做判断，只管取数据，判断权交给路由层（与
+   * getKPState/setPlayerSan 等既有方法一样，校验发生在 API 边界）。
+   */
+  getPlayerHistory(pcId: string, limit?: number) {
+    const msgs = this.session.getPlayerHistory(pcId);
+    const slice = msgs.slice(-(limit ?? msgs.length)).map(m => {
+      const key = voiceKeyFor(m);
+      return key ? { ...m, voiceKey: key } : m;
+    });
+    return { messages: slice, total: msgs.length };
+  }
+
+  /**
    * 尾部可选项收成一个对象，而不是继续往后加位置参数。
    *
    * 之前是六个位置参数，写到 `addMessage(s, c, t, "public", undefined, true)`
@@ -873,7 +894,12 @@ export class GameSession {
     // 经 addMessage() 直入历史的消息（模组开场白、流血提示）按各自写入时刻排，
     // 回合消息统一排在其后。彻底统一属于 docs/voice-readiness.md §六 第 2 步
     // 「addMessage 尾参收成 options 对象」那次重构的范围，不在此处提前做。
-    for (const m of turnMessages) this.session.push(m);
+    //
+    // 按每条消息自带的 visibility/discoverer 路由（见 AgentMessage 的字段
+    // 注释与 resolveSceneClue 的用法），不再统一按 public 处理——线索揭示
+    // 靠这一步才真正只进发现者的 messageHistory。没带这两个字段的消息
+    // （绝大多数）走 push() 的默认参数，行为与改动前完全一致。
+    for (const m of turnMessages) this.session.push(m, m.visibility ?? "public", m.discoverer);
 
     const state = this.getState();
     return {
@@ -2358,12 +2384,32 @@ export class GameSession {
    * SAN 经 setPlayerSan 扣减，因此和 KP 手动改 SAN 走同一个 applyAction 闸门，
    * 也同样会落到真相源。目标值恒在 [0, 当前值] 内，落在闸门的整数域中，
    * 不存在被拒绝的取值。
+   *
+   * 线索揭示只对发现者可见（discoverer_only）——发现者=做出这次检定的
+   * pcId，与 investigateCoC 自己的 markDiscovered/isDiscoveredBy 口径一致
+   * （同一个 this.activePlayerId）。不改 msg() 的调用方式（29 处调用方共用
+   * 同一个签名，牵一发动全身，且已有直接调 resolveSceneClue 的测试按位置参数
+   * 传 (clueType, msgFn)，改签名会破坏它们）：msg() 的返回值就是
+   * messages.push(...) 的新长度，用它定位刚推入的那条消息，原地补上
+   * visibility/discoverer——act() 期间 msg() 背后的数组与 this._turnMessages
+   * 是同一个引用（见该字段的说明），直接调用（测试里那样，不经过 act()）时
+   * this._turnMessages 为 null，补丁自然跳过，不影响任何既有测试。
+   *
+   * ⚠ 已知缺口：这只对**存储的历史**（GET /history）生效。live 的 WS 广播
+   * （ws-handler.ts 的 broadcastToSession）不按玩家过滤，server.ts 把完整
+   * narrative 广播给该 session 全部连接——线索私密目前只在"回看历史"这个
+   * 维度成立，不是"实时全程保密"。这是 L6/L7b 的正题，本轮不碰。
    */
   private resolveSceneClue(clueType: string, msg: (s: string) => number): boolean {
     const skills = this.activeCharacter?.skillValues ?? this.activeCharacter?.skills ?? {};
     const result = this.investigation.investigateCoC(clueType, skills, this.activePlayerId);
 
-    msg(result.revelation);
+    const newLength = msg(result.revelation);
+    const idx = newLength - 1;
+    if (this._turnMessages && this._turnMessages[idx]) {
+      this._turnMessages[idx].visibility = "discoverer_only";
+      this._turnMessages[idx].discoverer = this.activePlayerId;
+    }
     this.lastNarrative = result.revelation;
 
     if (result.sanLost > 0) this.inflictSanLoss(result.sanLost, msg);

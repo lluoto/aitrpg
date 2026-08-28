@@ -6,7 +6,11 @@
 //   叙事是分发的（KP 为每个玩家生成不同的旁白）
 //   秘密是隔离的（发现线索的玩家 ≠ 知道线索的所有玩家）
 
-import type { AgentMessage } from "../agent/types";
+import type { AgentMessage, VisibilityRule } from "../agent/types";
+// 重新导出：VisibilityRule 的真身现在挂在 agent/types.ts（AgentMessage 需要
+// 它，反过来在这里定义会成环），但既有 import 点（index.ts、game-session.ts）
+// 都写的是 `from "../session/player-session"`，保持这条路可用，不强改调用方。
+export type { VisibilityRule };
 
 // ============================================================
 // 玩家槽位
@@ -24,17 +28,6 @@ interface PlayerSlot {
   /** 此玩家当前所在场景 */
   currentScene: string;
 }
-
-// ============================================================
-// 可见性规则
-// ============================================================
-
-export type VisibilityRule =
-  | "public"              // 所有人可见（战斗结果、场景切换）
-  | "scene_restricted"    // 同场景可见（NPC 对话、环境变化）
-  | "discoverer_only"     // 仅发现者可见（**线索发现、秘密揭露**）
-  | "targeted"            // 仅指定玩家可见（私密 DM 旁白、个人 SAN 检定结果）
-  | "private";            // 仅当前玩家 + KP 可见
 
 // ============================================================
 // 玩家会话管理器

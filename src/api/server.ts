@@ -309,8 +309,22 @@ async function handleRequest(req: Request): Promise<Response> {
     }
 
     // GET /api/sessions/:id/history
+    // ?pcId= 按指定 PC 读取——每个 PC 只看得到发给自己的消息（含
+    // discoverer_only 的线索揭示，只有发现者自己看得到）。不传 pcId 时
+    // 行为不变（取当前活动玩家的历史，兼容既有客户端）。
     if (method === "GET" && segments[3] === "history") {
       const limit = parseInt(query.get("limit") || "50");
+      const pcId = query.get("pcId");
+      if (pcId) {
+        // 未知 pcId 要明确报错，不能悄悄返回空数组——那和"这个人确实没有
+        // 历史"从外部长得一模一样，是本仓反复吃亏的"静默失效"。
+        if (!session.session.get(pcId)) return respondError(`未知 pcId: ${pcId}`, 404);
+        const history = session.getPlayerHistory(pcId);
+        return respondJson({
+          messages: history.messages.slice(-limit),
+          total: history.total,
+        });
+      }
       const history = session.getHistory();
       return respondJson({
         messages: history.messages.slice(-limit),
