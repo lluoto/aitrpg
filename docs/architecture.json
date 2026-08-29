@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-21",
+  "generated": "2026-08-29",
   "source": "docs/index-program.md",
   "note": "架构地图。按 title 找 section，只取需要的那节，不必整份读。",
   "maintain": "新增文件顺手补一行；与代码不符以代码为准。改完重跑 bun scripts/docs-index.ts",
@@ -52,7 +52,10 @@
       "title": "三条并行的局面驱动",
       "prose": [
         "这是本仓最容易走错的地方：**同时存在三套\"跑一局\"的实现，互不共享状态**。",
-        "`play-module.ts` 文件头明确写着与自由跑团\"互不共享状态，混在一起只会互相污染\"——**是有意为之，不是事故**。"
+        "`play-module.ts` 文件头明确写着与自由跑团\"互不共享状态，混在一起只会互相污染\"——**是有意为之，不是事故**（docs/todo.json todo-01）。",
+        "谷仓模组本身也有两份并行数据（docs/todo.json todo-19/20，未收敛）：`src/rules/custom-modules/premiers_barn.ts`（`MythosModule` 格式，自由跑团加载）与 `src/module/barn-of-premier.ts`（`ModuleData` 格式，剧本杀加载）。`game-session.ts` 会从后者向前者桥接线索（`bridgeBarnOfPremierClues`），只对这一个模组写死，不是通用机制。",
+        "模组摄取（`MythosModuleLoader.import()`，`src/rules/mythos-module.ts`）注册场景按**来源**判定白名单，不按字符特征：`sceneDescriptions` 声明 ∪ npc/item/tome/clue 的 sceneId 引用 ∪ `module.exits` 的 key 与 target。曾经额外把每条 hook 的 `condition` 也无条件当场景注册——hook 的 condition 只是触发条件，不是地点，谷仓模组因此把 22 个真场景灌成 39 个，混进「主要_npc」「结局」这类文档小标题，模糊移动的候选池直接受污染。已修（见 docs/notes/engine.md）。",
+        "结局判定（`src/module/barn-of-premier.ts` 的 `EndNarration[]` / `evaluateEndNarration`）是本仓唯一可机器求值的结局表示；另两套（`ModuleEnding.conditionText`、`ModuleData.endings`）都是自由文本，只能展示不能求值。三套的关系与理由见 `buildEndings()` 之前的长注释；一致性由 id 集合判据钉住（不让展示文本悄悄跟判定分叉）。求值器按显式 `priority` 字段排序取第一条命中的，不依赖数组书写顺序——这是修过一次真实优先级 bug 之后才加的字段，见下方「测试」一节。"
       ],
       "tables": [
         {
@@ -97,6 +100,11 @@
               "src/play-module.ts",
               "剧本引擎主入口（3100+ 行）：KP 描述 → PL 决策 → 检定 → 世界推进，有 LLM 用 LLM 无 LLM 用模板",
               "runModule, rollDice, trapsInScene, isMajorWound, speechLead"
+            ],
+            [
+              "src/rules/mythos-module.ts",
+              "自由跑团一侧的模组加载器：把 `MythosModule` 数据（NPC/物品/线索/场景）注册进 GameSession 的宿主接口。场景白名单按来源判定（见 sec-02 prose），不再把 hook.condition 误当场景",
+              "MythosModuleLoader, MythosModuleHost, createMythosEntity"
             ],
             [
               "src/index.ts",
@@ -280,8 +288,8 @@
             ],
             [
               "src/agent/player-agent.ts",
-              "LLM 驱动的调查员 PC；无 LLM 时按职业标签权重走性格模板",
-              "PlayerAgent, createPlayerCharacter, occupationTagWeight"
+              "LLM 驱动的调查员 PC；无 LLM 时按职业标签权重走性格模板。`decideViaLLM` 走 `setPlayerLLM`/`playerLLMConfigured` 模块级单例接缝（与 intent/narrator 同一套「只在还没设过时设」模式），不再直接读环境变量裸 fetch",
+              "PlayerAgent, createPlayerCharacter, occupationTagWeight, setPlayerLLM"
             ],
             [
               "src/agent/agent-registry.ts",
@@ -343,8 +351,8 @@
             ],
             [
               "src/llm/intent.ts",
-              "自然语言 → ActionIntent；无 LLM 时退化为 regex",
-              "parseIntent, parseIntentLLM"
+              "自然语言 → ActionIntent；无 LLM 时退化为 regex，两处静默回落（JSON 解析失败/LLM 调用失败）都会 log.warn 带上原因。`declareIntentPath()` 在 GameSession 构造时打一条起手声明（一局一次）：接上 LLM 记一条 info，没接上记一条 warn 并区分「llmEnabled() 为假」与「接缝未配置」两种原因——避免「零条 warn」同时表示「全对」与「从没接上」两种状态",
+              "parseIntent, parseIntentLLM, declareIntentPath"
             ],
             [
               "src/llm/narrator.ts",
@@ -360,6 +368,11 @@
               "src/llm/mock-client.ts",
               "离线假 LLM：按场景 id 返回预写文本，让无 key 时整条循环可跑可测",
               "MockLLMClient"
+            ],
+            [
+              "src/llm/enabled.ts",
+              "「该不该打网络」的唯一判据（`LLM_DISABLED`/`LLM_MODE`/key 是否占位）。从 play-module.ts 抽出来，因为 player-agent.ts 也要用它，留在原处会成环（play-module → player-agent → play-module）",
+              "llmEnabled"
             ]
           ]
         }
@@ -416,6 +429,11 @@
               "src/pl/character-display.ts",
               "角色卡渲染：完整表、一行摘要、高亮技能",
               "displayCharacterSheet, characterSummary"
+            ],
+            [
+              "src/character/player-metadata.ts",
+              "PC 扮演字段（personality/backstory/currentGoal）的逐字段兜底链：HTTP 给的（最优先）→ 模组 → backgroundProfile 推导 → LLM 回调（可选，调用方自担 llmEnabled() 判据）。落到 `PartyMember.meta`，目前只落值不消费",
+              "resolvePlayerMeta, resolvePlayerMetaSync, PlayerMeta"
             ]
           ]
         }
@@ -455,7 +473,7 @@
             ],
             [
               "src/session/player-session.ts",
-              "多玩家 per-receiver 视图：按可见性给每人不同旁白，秘密隔离",
+              "多玩家 per-receiver 视图：按可见性给每人不同旁白，秘密隔离。五档可见性里目前只有 public 与 discoverer_only 有生产调用方（线索揭示用后者，发现者=做出该次检定的 pcId，与 investigateCoC 的 markDiscovered 口径一致）；`AgentMessage.visible_to` + `pushPerPlayer` 是另一套预留但零调用方的机制，未使用（docs/todo.json todo-21）；`setPlayerScene`/`getPlayersInScene`/`PlayerSlot.currentScene` 同样零调用方或从不更新（todo-23/24），scene_restricted 档位因此不可靠",
               "PlayerSession, VisibilityRule"
             ]
           ]
@@ -476,13 +494,13 @@
           "rows": [
             [
               "src/api/server.ts",
-              "HTTP/WS 入口（Bun.serve）：管理两类会话实例池，暴露 REST 路由",
+              "HTTP/WS 入口（Bun.serve）：管理两类会话实例池，暴露 REST 路由，含多 PC 建号（`POST /:id/party`）与按 PC 读历史（`GET /:id/history?pcId=`，缺省仍是当前活动玩家，未知 pcId 走结构化 4xx）",
               "（入口，无导出）"
             ],
             [
               "src/api/game-session.ts",
-              "自由跑团单局总装配（2470 行）：串起 LLM、律书、CoC 引擎、Agent、世界状态、战斗/调查/法术/经济",
-              "GameSession, ActionResponse"
+              "自由跑团单局总装配（3729 行，2026-08-29 复核，仍在涨——见 docs/todo.json todo-27）：串起 LLM、律书、CoC 引擎、Agent、世界状态、战斗/调查/法术/经济。多 PC 支持：`PartyMember`/`createPartyMember`（单一入口，同时诞生 SAN 引擎/世界实体/会话槽位/职业履历「八件事」）、`addPartyMember`（web 端点与「创建队友」文本命令共用）、`act(input, pcId?)` 按 pcId 路由行动而非活动玩家显示名。线索揭示走 `discoverer_only` 可见性（只进发现者的 `PlayerSession` 历史，live 的 WS 广播尚未按玩家过滤，见 docs/todo.json todo-25）",
+              "GameSession, ActionResponse, PartyMember"
             ],
             [
               "src/api/scripted-session.ts",
