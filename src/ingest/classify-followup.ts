@@ -19,6 +19,7 @@
 // 其中一处把例子删了，同一条管线的基线就从 31/33 变成 29/33，跨实验的数不能比了。
 // 所以这两个 prompt 全仓**只此一份**，工具脚本一律 import 这里，不许自己重打。
 import type { LLMClient } from "../llm/client";
+import { extractJson } from "../llm/json";
 import type { ItemInput, ItemKind } from "./classify-items";
 
 /**
@@ -79,17 +80,8 @@ ${body}
 /** 从可能夹着解释或围栏的回答里抠 JSON，并按 pN:LN 归一化键 */
 export function parseKeyed(text: string, known: Set<string>, valid: readonly string[]): Map<string, string> {
   const out = new Map<string, string>();
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const b = fenced ? (fenced[1] as string) : text;
-  const s = b.indexOf("{");
-  const e = b.lastIndexOf("}");
-  if (s < 0 || e <= s) return out;
-  let obj: unknown;
-  try {
-    obj = JSON.parse(b.slice(s, e + 1));
-  } catch {
-    return out;
-  }
+  const obj = extractJson(text);
+  if (!obj || typeof obj !== "object") return out;
   for (const [rk, v] of Object.entries(obj as Record<string, unknown>)) {
     const m = rk.match(/p\d+:L\d+/);
     const k = m ? m[0] : rk.trim();

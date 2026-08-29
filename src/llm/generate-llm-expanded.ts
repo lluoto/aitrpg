@@ -17,6 +17,7 @@
 
 import type { ModuleNPC } from "../module/types";
 import type { LLMClient } from "./client";
+import { extractJson } from "./json";
 import { checkDialogueText } from "../world/world-constraint";
 import { MYTHOS_CREATURES } from "../rules/mythos-expansion";
 import { log } from "../log";
@@ -348,7 +349,15 @@ async function generateViaAPI(
   }
 
   try {
-    const data = JSON.parse(raw);
+    // ⚠ 同 llm/intent.ts 的教训：曾经是裸 JSON.parse(raw)，围栏一裹就抛异常。
+    // 这里虽然被下面的 catch 接住不会崩，但"同类潜伏"——本次实跑没有触发，
+    // 不代表以后不会（这个消费方目前默认不启用，见 applyLlmExpandedWithLLM
+    // 的调用条件），一并改用 extractJson 是趁手就修，不是因为查到了新实例。
+    const data = extractJson(raw) as any;
+    if (!data || typeof data !== "object") {
+      warnFallback(npc, "LLM 返回的内容里抠不出 JSON 对象");
+      return null;
+    }
     const firstEncounter = typeof data.firstEncounter === "string" ? data.firstEncounter : "";
     const knowledgeReveals = Array.isArray(data.knowledgeReveals)
       ? data.knowledgeReveals.filter((k: unknown): k is string => typeof k === "string")

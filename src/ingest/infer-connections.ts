@@ -16,6 +16,7 @@
 // 一间刷着红油漆的类似谷仓的建筑，和一个农场主别墅」正是包含关系。
 // 90 字 / 400 字 / 全文 = F1 0.71 / 0.76 / 0.81，单调。
 import type { Message } from "../llm/client";
+import { extractJson } from "../llm/json";
 
 /** 只要 chat 这一个能力，方便测试时替身。 */
 export interface ChatLike {
@@ -86,12 +87,9 @@ ${list}
   for (const s of scenes) if (!byName.has(s.name)) byName.set(s.name, s.id);
 
   try {
-    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const body = fenced ? (fenced[1] as string) : raw;
-    const start = body.indexOf("{");
-    const end = body.lastIndexOf("}");
-    if (start < 0 || end <= start) return out;
-    const obj = JSON.parse(body.slice(start, end + 1)) as Record<string, unknown>;
+    const parsed = extractJson(raw);
+    if (!parsed || typeof parsed !== "object") return out;
+    const obj = parsed as Record<string, unknown>;
 
     for (const [from, tos] of Object.entries(obj)) {
       const fromId = byName.get(from.trim());

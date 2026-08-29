@@ -1,5 +1,5 @@
 {
-  "tests": 2376,
+  "tests": 2386,
   "files": 151,
   "unwiredMethods": 87,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。",
@@ -399,6 +399,11 @@
       "tests": 2376,
       "files": 151,
       "when": "开发A·任务4+5：脱离判定+确认门+结局播报+终态。合并提交是因为二者功能上不可分——确认门的处理分支本来就要调用结局判定，拆开会让中间态引用一个还不存在的方法。src/play/module-departure.ts：isExplicitLeaveIntent() 只认明确写出\"离开/结束调查/放弃调查/回家/收工\"这类词，故意收得比通用移动正则窄——宁可漏判也不可误判（意图误判率约20%，todo-29，第一次实跑就把一句纯调查的话判成过移动）；isConfirmReply() 只认清楚的肯定，其它任何话（含否定、新行动）一律按取消处理；MODULE_ENDING_SUPPORT 登记表（目前只有 premiers_barn→BARN_SUPPORT）+ GENERIC_DEPARTURE_LINES 通用收场文案。act() 顶部加两段检查：① pendingLeaveConfirm 非空时优先处理确认/取消，代价对称（两种结果都已经花掉本回合 advanceTime 那 1 tick）；② isExplicitLeaveIntent 检查**不挂在 case \"move\" 下面**——\"结束这次调查\"这类句子会被意图解析里\"调查\"关键词命中判成 skill_check，挂在 move case 永远碰不到，必须在 handleIntent 之前、不依赖 intent.action 独立检查。resolveModuleDeparture()：查 MODULE_ENDING_SUPPORT 有没有登记这个模组，有则调 evaluateEnding(isClueFound, isSceneVisited) 拿 EndNarration，没有则通用收场（阿卡姆/印斯茅斯目前如此——这是待补不是按设计没有结局）；播报 lines；this.dead=true（复用既有终态字段，不造第三种）；有 careerStore 时按 handleSkillAdvancement 的既有形状记一条履历，endingId/endingName 填真实判定结果而非硬编码\"completed\"。新增 module-departure-flow.test.ts（13条）：判据单测（应报/不应报，含本仓真实误判样本原句）、确认门完整往返（问确认不直接结束/确认后dead=true/不确认留在原地不消耗结局/误判类输入不触发结局/模组内正常移动不受影响）、谷仓早退落Normal End、无endings模组走通用收场不报错不空播、变异检验（临时给阿卡姆登记一份假结局支持，确认它改走结局分支而不是通用收场，finally块还原登记表）。剧本杀路径不受影响（module-loop.test.ts 16条全绿，不碰 play-module.ts）。typecheck exit 0；bun test 2363→2376（+13）、150→151 文件。"
+    },
+    {
+      "tests": 2386,
+      "files": 151,
+      "when": "修A·任务1：围栏解析收敛到一处。src/llm/json.ts 承接原 src/ingest/llm-json.ts 的 extractJson()（对象形态），新增姊妹函数 extractJsonArray()（数组形态，给 extract-endings.ts 用，不是给 extractJson 加参数——两种形态起止符号/失败返回值形状都不同，参数比两个函数更容易在调用点传错默认值）。放 src/llm/ 不放 src/ingest/：src/ingest/*.ts 已经在 import src/llm/client.ts 的 LLMClient 类型，ingest 依赖 llm 这条方向早就定了，放回 ingest/ 会让 llm/ 反过来 import ingest/，方向反了（同 llm/enabled.ts 抽到这一层的理由）。删 src/ingest/llm-json.ts。全仓六份拷贝收敛：classify-items.ts/classify-sections.ts（改 import 路径）、infer-connections.ts/classify-followup.ts（内嵌逻辑改调用共享函数，classify-followup.ts 的 parseKeyed 保留自己的 pN:LN 键归一化，只是把抽取那段换掉）、extract-endings.ts（改用 extractJsonArray）、player-agent.ts（direct copy 替换）、play-module.ts（半吊子版本——原先只 /\\{[\\s\\S]*\\}/ 不剥围栏——换成 extractJson）全部接入。两处真正会裸 JSON.parse 炸掉、此前一份拷贝都没拿到的消费方：llm/intent.ts:359（本仓一次真实事故的根因——LLM 把合法 JSON 裹进 ```json 围栏，JSON.parse(raw.trim()) 抛异常，静默回落 regex，regex 的 /追/ 把「追问」误判成「chase」）与 llm/generate-llm-expanded.ts:351（同类潜伏，本次实跑未触发，不是已验证修复，如实记录）均已接入 extractJson。新增 extractJsonArray 的 7 条契约测试（ingest-llm-json.test.ts）+ intent-fallback-observability.test.ts 补 3 条围栏回归测试（用实跑原文「追问菲碧」的形状，断言解析出 talk 不是 chase 且不回落 regex；光秃围栏；裸 JSON 无回归）。既有的 ingest-classify-items/ingest-classify/ingest-extract-endings/ingest-infer-connections/player-agent-intent 五个测试文件本就各自测过围栏解析，重构后原样验证了调用点没有行为漂移，未新增改动。变异检验：临时把 intent.ts 换回裸 JSON.parse(raw.trim())，「追问菲碧」围栏用例精确变红；Copy-Item 还原后回归绿。typecheck exit 0；bun test 2376→2386（+10）、151 文件不变（改在既有文件里，新文件是产品代码 src/llm/json.ts 不是测试文件）。"
     }
   ]
 }

@@ -16,6 +16,7 @@ import type { ModuleData, ModuleSupport } from "./module/types";
 
 
 import { LLMClient, extractMessageContent } from "./llm/client";
+import { extractJson } from "./llm/json";
 import { applyAllLlmExpandedWithLLM } from "./llm/generate-llm-expanded";
 import { analyzeThreats, getWeaponPolicy } from "./module/threat-analyzer";
 import { checkDialogueText } from "./world/world-constraint";
@@ -187,9 +188,8 @@ async function enhanceBackgroundProfile(
   const raw = await llmOnce("你是 CoC 7e 车卡系统，输出严格 JSON。", prompt, 700, "background");
   if (!raw) return { profile: base };
   try {
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) return { profile: base };
-    const parsed = JSON.parse(m[0]);
+    const parsed = extractJson(raw) as any;
+    if (!parsed || typeof parsed !== "object") return { profile: base };
     // ⚠ **逐字段兜底是会静默发生的**：LLM 少答一项，`parsed.x || base.x`
     // 就让那一项退回候选库 —— 而候选库按职业分池之后**每项只有 3 句**，
     // 同职业两个角色必然撞句。整次调用失败会被 `llm-call` 事件记下来，

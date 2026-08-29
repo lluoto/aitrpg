@@ -5,6 +5,7 @@
 import type { CoCGeneratedCharacter } from "../character/coc-character";
 import type { LLMClient } from "../llm/client";
 import { llmEnabled } from "../llm/enabled";
+import { extractJson } from "../llm/json";
 
 interface PlayerCharacter {
   name: string;
@@ -488,17 +489,9 @@ export class PlayerAgent {
   }
 
   private parseStructured(content: string): PlayerDecision | null {
-    const fenced = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const body = fenced ? (fenced[1] as string) : content;
-    const s = body.indexOf("{");
-    const e = body.lastIndexOf("}");
-    if (s < 0 || e <= s) return null;
-    let obj: Record<string, unknown>;
-    try {
-      obj = JSON.parse(body.slice(s, e + 1)) as Record<string, unknown>;
-    } catch {
-      return null;
-    }
+    const parsed = extractJson(content);
+    if (!parsed || typeof parsed !== "object") return null;
+    const obj = parsed as Record<string, unknown>;
     const action = typeof obj.action === "string" ? obj.action.trim() : "";
     // 没有 action 就不算数 —— 只有 intent 没有行动描述，KP 那边什么都念不出来。
     if (action === "") return null;

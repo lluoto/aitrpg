@@ -16,6 +16,7 @@
 // 不在这里假装解决。
 import type { Ending } from "../module/types";
 import type { ChatLike } from "./infer-connections";
+import { extractJsonArray } from "../llm/json";
 
 interface EndingBlock {
   title: string;
@@ -66,13 +67,8 @@ ${doc}
   }
 
   try {
-    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const body = fenced ? (fenced[1] as string) : raw;
-    const start = body.indexOf("[");
-    const end = body.lastIndexOf("]");
-    if (start < 0 || end <= start) return [];
-    const arr = JSON.parse(body.slice(start, end + 1)) as unknown;
-    if (!Array.isArray(arr)) return [];
+    const arr = extractJsonArray(raw);
+    if (!arr) return [];
 
     const out: Ending[] = [];
     for (const raw of arr) {

@@ -25,7 +25,7 @@
 
 import type { LLMClient } from "../llm/client";
 import type { Section } from "./sectionize";
-import { extractJson } from "./llm-json";
+import { extractJson } from "../llm/json";
 
 export type SectionKind = "scene" | "npc" | "structure" | "rule" | "item";
 

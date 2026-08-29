@@ -81,3 +81,41 @@ describe("parseIntent 的静默回落改成 log.warn（任务1：只做可观测
     warnSpy.mockRestore();
   });
 });
+
+// ── 修 A · 任务 1：围栏解析收敛到 extractJson，intent.ts 的裸 parse 是根因 ──
+//
+// analysis/sim/2026-08-28-barn-a-acceptance.md 第 11 回合中止：LLM 正确判定
+// {"action":"talk","target":"菲碧",…}，但裹在 ```json 围栏里；intent.ts 曾经
+// `JSON.parse(raw.trim())` 直接抛异常，静默回落 parseIntentRegex，
+// regex 里贪婪的 /追/ 命中"追问"，一次对话请求变成一次追逐判定。
+describe("围栏包裹的合法 JSON 必须解析成功（正例，用实跑原文的形状）", () => {
+  test("**关键回归**：裹在 ```json 围栏里的合法意图 JSON，解析成功且不回落 regex", async () => {
+    const warnSpy = spyOn(log, "warn");
+    // 形状取自实跑事故原文：LLM 判对了（talk），但裹了围栏。
+    setIntentLLM(fakeClient(async () =>
+      '```json\n{"action":"talk","target":"菲碧"}\n```'
+    ));
+    const result: ActionIntent = await parseIntent("林娜追问菲碧，加比是否提过维森酒吧");
+
+    // 判据本身：必须是 talk，绝不能因为围栏解析失败而回落 regex 判成 chase。
+    expect(result.action).toBe("talk");
+    expect(result.action).not.toBe("chase");
+    expect(result.target).toBe("菲碧");
+    // 围栏解析成功，不该有任何 warn（回落 regex 才会报 warn）。
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  test("光秃秃的 ``` 围栏（不带 json 标注）同样解析成功", async () => {
+    setIntentLLM(fakeClient(async () => '```\n{"action":"move","target":"特里坎家"}\n```'));
+    const result: ActionIntent = await parseIntent("走到特里坎家");
+    expect(result.action).toBe("move");
+    expect(result.target).toBe("特里坎家");
+  });
+
+  test("不裹围栏的裸 JSON 仍然照常解析（没有回归）", async () => {
+    setIntentLLM(fakeClient(async () => JSON.stringify({ action: "look" })));
+    const result: ActionIntent = await parseIntent("环顾四周");
+    expect(result.action).toBe("look");
+  });
+});

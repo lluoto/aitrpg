@@ -11,7 +11,7 @@ import type { LLMClient } from "../llm/client";
 import type { Section } from "./sectionize";
 import { sourceKey } from "./sectionize";
 import type { SectionKind } from "./classify-sections";
-import { extractJson } from "./llm-json";
+import { extractJson } from "../llm/json";
 
 export type ItemKind = "clue" | "item" | "trap" | "connection" | "npc_knowledge" | "event";
 

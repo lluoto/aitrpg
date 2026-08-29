@@ -1,17 +1,20 @@
-// 摄取管线 · 从 LLM 回答里抠 JSON
+// 从 LLM 回答里抠 JSON —— 全仓唯一实现（src/llm/json.ts）的契约测试。
 //
-// 这一段原先在块分类和条目分类里各存一份逐字相同的拷贝，抽成 llm-json.ts 就是为了
-// 止住两份实现悄悄跑偏。但抽完之后它只被那两个解析器间接盖到 ——
-// 而它的失效方式恰好是最难看出的一种：返回 null，上游拿到空表，
-// 表现成「模型没答」。前两轮各栽在这个形状上一次（键带【】、值大小写不一），
-// 两次都是从「模型好像没干活」查起，绕了一圈才发现是解析这一层丢的。
-// 所以这里直接对着 extractJson 测，把它到底认什么、不认什么钉下来。
+// 这段逻辑曾经六份拷贝（摄取管线两个解析器各存一份，另外四处或抄一份
+// 或干脆没有），2026-08-29 收敛到 src/llm/json.ts，因为两个真正会
+// 裸 JSON.parse 炸掉的消费方（llm/intent.ts、llm/generate-llm-expanded.ts）
+// 一份都没拿到——intent.ts 那处直接导致过一次真事故（见该文件的注释）。
+//
+// 它的失效方式是最难看出的一种：返回 null，上游拿到空表，表现成「模型
+// 没答」。前几轮各栽在这个形状上一次，都是从「模型好像没干活」查起，
+// 绕了一圈才发现是解析这一层丢的。所以这里直接对着 extractJson 测，
+// 把它到底认什么、不认什么钉下来。
 //
 // 下面写的都是**现有实现的实际契约**，不是希望它有的契约 ——
 // 有几条（围栏优先、尾随文字里带花括号）是刺，照实钉住比假装没有更有用。
 
 import { describe, test, expect } from "bun:test";
-import { extractJson } from "../ingest/llm-json";
+import { extractJson, extractJsonArray } from "../llm/json";
 
 describe("能认出来的", () => {
   test("干净的 JSON 对象原样解析", () => {
@@ -90,5 +93,39 @@ describe("两处刺 —— 照实钉住，别当它不存在", () => {
     // 末个 } 落在散文里，切出来的那段就不是合法 JSON —— 结果是 null，
     // 也就是「模型没答」那个症状。真遇上了别去查 LLM，查这里。
     expect(extractJson('{"报亭": "scene"}\n说明：{已按要求输出}')).toBeNull();
+  });
+});
+
+describe("extractJsonArray —— 同一份围栏/散文剥离逻辑，认的是 [ ] 不是 { }", () => {
+  test("干净的 JSON 数组原样解析", () => {
+    expect(extractJsonArray('["a", "b"]')).toEqual(["a", "b"]);
+  });
+
+  test("```json 围栏里的数组", () => {
+    const reply = '```json\n[{"name":"true"}]\n```';
+    expect(extractJsonArray(reply)).toEqual([{ name: "true" }]);
+  });
+
+  test("模型说没有结局时按 prompt 要求给空数组", () => {
+    const reply = '好的，这段文字里没有结局。\n[]';
+    expect(extractJsonArray(reply)).toEqual([]);
+  });
+
+  test("认不出数组的一律给 null，即便文本里有合法的对象", () => {
+    // 与 extractJson 分工相反：这里找的是 [ 与 ]，对象形态不算数。
+    expect(extractJsonArray('{"a": 1}')).toBeNull();
+  });
+
+  test("空字符串给 null", () => {
+    expect(extractJsonArray("")).toBeNull();
+  });
+
+  test("方括号里不是合法 JSON 给 null", () => {
+    expect(extractJsonArray("[a, b]")).toBeNull();
+  });
+
+  test("方括号里是对象不是数组（JSON.parse 能过，但 Array.isArray 会拦）", () => {
+    // `[` 和 `]` 都能在文本里找到，但切出来的内容解析后不是数组
+    expect(extractJsonArray("先看这个 [提示] 然后是 {\"a\":1}")).toBeNull();
   });
 });

@@ -6,6 +6,7 @@ import type { ActionIntent } from "../types";
 import type { LLMClient } from "./client";
 import { log } from "../log";
 import { llmEnabled } from "./enabled";
+import { extractJson } from "./json";
 
 // ============================================================
 // 硬编码 fallback（regex 模式匹配）
@@ -355,26 +356,33 @@ async function parseIntentLLM(
     { temperature: 0.1, maxTokens: 200, jsonMode: true }
   );
 
-  try {
-    const parsed = JSON.parse(raw.trim());
+  // ⚠ 曾经这里是裸 `JSON.parse(raw.trim())`：LLM 把合法 JSON 裹进 ```json
+  // 围栏（哪怕已经传了 jsonMode: true，实测仍会发生）就直接抛异常，
+  // 静默退化到下面的 regex 兜底——而 regex 里贪婪的 /追/ 会把"追问 NPC"
+  // 误判成"chase"（追逐），一次对话请求变成一次追逐判定，是本仓一次
+  // 真实事故的直接根因。改用 extractJson：能剥围栏、也兼容不裹围栏的
+  // 裸 JSON，两种形态都不必再退化到 regex。
+  const parsed = extractJson(raw);
+  if (parsed && typeof parsed === "object") {
+    const p = parsed as Record<string, unknown>;
     return {
-      action: parsed.action || "unknown",
-      target: parsed.target,
-      weapon: parsed.weapon,
-      method: parsed.method,
-      skill: parsed.skill,
-      ability: parsed.ability,
-      dc: parsed.dc,
-      sanCost: parsed.sanCost,
-      reason: parsed.reason,
+      action: (typeof p.action === "string" && p.action) || "unknown",
+      target: p.target as string | undefined,
+      weapon: p.weapon as string | undefined,
+      method: p.method as string | undefined,
+      skill: p.skill as string | undefined,
+      ability: p.ability as string | undefined,
+      dc: p.dc as number | undefined,
+      sanCost: p.sanCost as string | undefined,
+      reason: p.reason as string | undefined,
     };
-  } catch {
-    // JSON 解析失败 → 退化到 regex。原先这里静默——「LLM 答错了」和「LLM 一直
-    // 在失败」在外部完全无法区分，判错率无从归因。带上原文前 80 字，别只报
-    // 一句「失败了」（那等于没报）。
-    log.warn("intent", `LLM 返回非法 JSON，退化到 regex: ${raw.slice(0, 80)}`);
-    return parseIntentRegex(input);
   }
+  // 真正抠不出任何 JSON 对象（模型答的不是 JSON、或答案里压根没有 { }）
+  // 才退化到 regex。原先这里静默——「LLM 答错了」和「LLM 一直在失败」在
+  // 外部完全无法区分，判错率无从归因。带上原文前 80 字，别只报一句
+  // 「失败了」（那等于没报）。
+  log.warn("intent", `LLM 返回的内容里抠不出 JSON 对象，退化到 regex: ${raw.slice(0, 80)}`);
+  return parseIntentRegex(input);
 }
 
 // ============================================================
