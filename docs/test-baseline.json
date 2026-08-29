@@ -1,6 +1,6 @@
 {
-  "tests": 2332,
-  "files": 145,
+  "tests": 2348,
+  "files": 148,
   "unwiredMethods": 87,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -384,6 +384,11 @@
       "tests": 2332,
       "files": 145,
       "when": "开发·索引轮任务3：preflight 前三层判据全部只查「文档引用的代码路径是否有效」这一个方向，文档引用另一份文档（或某个小节）完全没有判据覆盖——2026-08-29 精简 docs/index-world-model.md 那一轮，docs/todo.json 的 risk-01 与 docs/notes/ingest.md 两处都留了指向被删小节的死链，preflight 全绿放过了（任务2已修复引用本身）。补 tier-4：docSectionRefs() 只认一种规范写法 `` `docs/路径.md`「小节标题」 `` 或不带反引号的 `docs/路径.md「小节标题」`（todo.json 是 JSON 字符串值，反引号会跟转义搅在一起，两种都收）；docHeadings() 取目标文档 1~6 级标题的逐字文本；judgeDocSectionRefs() 分两档报——引用的文件不存在（doc-ref-missing-file）、文件存在但小节标题在目标文档里找不到（doc-ref-missing-section），小节匹配要求逐字相同，不做模糊匹配（措辞改了没跟着改引用，同样判断链）。preflight.ts 加 7d 段：扫描全部入库 docs/**/*.md 加 docs/todo.json，命中即用目标文档的实际标题核对。⚠ 收窄边界（写进了 source-scan.ts 的注释）：只覆盖规范写法，不点小节的纯文件级引用（「见 docs/xxx.md」不展开）判据故意看不见——宁可覆盖面小而真。实跑第一次就報出 7 条真断链：都不是任务2漏改的引用本身（那两处已经改成指向 docs/archive-world-model-2026-08.md），而是新写的引用小节标题跟归档文档的实际标题对不上（少打了日期后缀、多打/少打了空格）——判据一上线就抓到了自己人（这一轮自己）的手误，逐条核实后改的是引用文本、不是放宽判据。加 6 条测试（tier-4 describe 块）：两种写法的提取、干扰——纯文件级引用判据看不见、docHeadings 边界、复现本仓真实的两种断链（小节没了/文件没了）、逐字匹配通过、干扰——措辞近似但不逐字相同判为断链（收紧的一侧，不做模糊匹配）。变异检验：往 docs/index-world-model.md 里插一句引用不存在的 docs/xxx-not-real.md「某节」，preflight 精确报出 doc-ref-missing-file；Copy-Item 还原后回归绿（见下方 unwiredNote 同轮记录，或本条 commit message 附带的实测记录）。typecheck exit 0；bun test 2325→2332（+7）、145 文件不变（加在已有的 diag-preflight-checks.test.ts 里）。"
+    },
+    {
+      "tests": 2348,
+      "files": 148,
+      "when": "开发A·任务1+2：线索发现与场景访问历史真迁进真相源（WorldStateManager），InvestigationEngine 改成读写真相源的门面。schema.ts 加 clue_discoveries/scene_visits 两张表（按玩家、累计、从不清空，语义对齐 src/world/state.ts 的 sceneHistory）。world-state-manager.ts 加 recordClueDiscovery/isClueDiscoveredBy/getCluesDiscoveredBy/isClueDiscoveredByAnyone 与 recordSceneVisit/isSceneVisitedBy/getScenesVisitedBy/isSceneVisitedByAnyone。InvestigationEngine 构造函数加可选 world 参数：挂了就真相只在库里一处（markDiscovered/isDiscoveredBy/getDiscoveredBy 全部委托给 world），没挂时退回原有进程内 Map（独立单测/CLI 场景没有另一份真相源可言，谈不上两处各写一份）。GameSession 构造时挂 this.world；src/index.ts（CLI 生产入口）同样挂上。movePlayerToScene()（唯一的玩家位置落点）与 handleMove() 落地时各记一笔 recordSceneVisit。GameSession 加 isClueFound/isSceneVisited 两个队伍视图谓词（任一人发现/到过），供 BARN_SUPPORT.evaluateEnding 的签名使用（任务5）。命名空间用真实模组数据核对：bridgeBarnOfPremierClues() 用 clue.id 原样注册，与 END_NARRATIONS 引用的一致（ending-namespace-truth-source.test.ts）；顺带核实发现 requiredScenes 那半边有个真实存在的命名空间缺口（BARN_OF_PREMIER 的 ASCII 场景 id 与 GameSession 实际注册的中文场景 id 不是同一套），已记入 docs/todo.json todo-34，本轮不修（与 todo-19/20 同源，收敛需要先决定用哪套）。新增 3 个测试文件（progress-state-truth-source/party-view-predicates/ending-namespace-truth-source）。变异检验：临时把 markDiscovered 改成无论有没有挂 world 都只写进程内 Map，4 条测试精确变红（含「两个独立引擎共享 world 后互相可见」这条关键判据）；Copy-Item 还原后回归绿。typecheck exit 0；bun test 2332→2348（+16）、145→148 文件。"
     }
   ]
 }

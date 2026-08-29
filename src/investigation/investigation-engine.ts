@@ -13,6 +13,7 @@ import { CoCEngine, type CoCSuccessLevel } from "../rules/coc-engine";
 import type { RuleEngine } from "../engine/rule-engine";
 
 import type { DifficultyProfile } from "../rules/module-difficulty";
+import type { WorldStateManager } from "../state/world-state-manager";
 import { log } from "../log";
 
 // ============================================================
@@ -132,7 +133,15 @@ const SKILL_MAP: Record<string, { en: string; zh: string }> = {
 
 export class InvestigationEngine {
   private clueTypes: Map<string, ClueDef> = new Map();
-  /** 已被发现的线索（clue_id → Set<player_name>） */
+  /**
+   * 已被发现的线索的**进程内后备存储**（clue_id → Set<player_name>）。
+   *
+   * 只在没有挂 `world` 时使用——独立测试/CLI 场景下这个引擎自成一体，
+   * 没有另一份真相源可言，谈不上"两处各写一份"。一旦挂了 `world`
+   * （见 constructor 的第二个参数），这份 Map 整个不再被读写，
+   * 发现记录**只**落 `WorldStateManager` 的 `clue_discoveries` 表——
+   * 真相只在库里一处，不接受"真相源做投影、这里仍是真相"。
+   */
   private discovered: Map<string, Set<string>> = new Map();
   /** 玩家已尝试过的技能（clue_id_skill → tried） */
   private attemptedSkills: Set<string> = new Set();
@@ -140,8 +149,15 @@ export class InvestigationEngine {
   private sceneClues: Map<string, string[]> = new Map();
   /** 当前模组难度画像（影响 DC 和失败产出） */
   private difficultyProfile: DifficultyProfile | null = null;
+  /**
+   * 挂了就是真相源；不挂就用上面的进程内 Map。
+   * `GameSession`/CLI（`src/index.ts`）传自己的 `world`；单测多数不传，
+   * 测的是这个引擎自身的多技能路径/YAML 解析逻辑，与真相源迁移无关。
+   */
+  private readonly world: WorldStateManager | null;
 
-  constructor(yamlPath: string = "./src/rules/investigation.yaml") {
+  constructor(yamlPath: string = "./src/rules/investigation.yaml", world?: WorldStateManager) {
+    this.world = world ?? null;
     this.load(yamlPath);
   }
 
@@ -400,6 +416,10 @@ export class InvestigationEngine {
 
   /** 标记玩家已发现某个线索 */
   markDiscovered(clueType: string, playerName: string) {
+    if (this.world) {
+      this.world.recordClueDiscovery(playerName, clueType);
+      return;
+    }
     if (!this.discovered.has(clueType)) {
       this.discovered.set(clueType, new Set());
     }
@@ -408,11 +428,13 @@ export class InvestigationEngine {
 
   /** 玩家是否已发现某个线索 */
   isDiscoveredBy(clueType: string, playerName: string): boolean {
+    if (this.world) return this.world.isClueDiscoveredBy(playerName, clueType);
     return this.discovered.get(clueType)?.has(playerName) ?? false;
   }
 
   /** 获取所有已发现线索 */
   getDiscoveredBy(playerName: string): string[] {
+    if (this.world) return this.world.getCluesDiscoveredBy(playerName);
     const result: string[] = [];
     for (const [clue, players] of this.discovered) {
       if (players.has(playerName)) result.push(clue);
@@ -420,12 +442,12 @@ export class InvestigationEngine {
     return result;
   }
 
-  /** 重置某线索的尝试记录（用于回滚/重试） */
+  /** 重置某线索的尝试记录（用于回滚/重试）。挂了 world 时目前不支持撤销发现记录——调用方只在测试里用过，真相源没有"撤销一次发现"的写入方法。 */
   resetAttempts(clueType: string) {
     for (const key of this.attemptedSkills) {
       if (key.startsWith(`${clueType}_`)) this.attemptedSkills.delete(key);
     }
-    this.discovered.delete(clueType);
+    if (!this.world) this.discovered.delete(clueType);
   }
 
   // ==========================================================

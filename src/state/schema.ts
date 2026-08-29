@@ -67,6 +67,25 @@ export function createSchema(db: Database) {
       UNIQUE(entity_a, entity_b)
     );
 
+    -- 线索发现 / 场景访问历史 —— 按玩家记，累计、从不清空。
+    -- 此前分别停在 InvestigationEngine 的进程内 Map（discovered）和完全没有
+    -- 追踪（GameSession 侧 scene 访问史）。归入真相源后 isClueFound/
+    -- isSceneVisited（队伍任一人）才有单一权威可查，且重启不丢。
+    -- 语义对齐 src/world/state.ts 的 WorldState.sceneHistory：只增不减。
+    CREATE TABLE IF NOT EXISTS clue_discoveries (
+      player_id      TEXT NOT NULL,
+      clue_id        TEXT NOT NULL,
+      discovered_at  INTEGER NOT NULL DEFAULT (unixepoch()),
+      PRIMARY KEY (player_id, clue_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS scene_visits (
+      player_id        TEXT NOT NULL,
+      scene_id         TEXT NOT NULL,
+      first_visited_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      PRIMARY KEY (player_id, scene_id)
+    );
+
     CREATE TABLE IF NOT EXISTS scenes (
       id          TEXT PRIMARY KEY,
       name        TEXT NOT NULL,
@@ -103,5 +122,7 @@ export function createSchema(db: Database) {
     CREATE INDEX IF NOT EXISTS idx_events_round    ON event_log(round);
     CREATE INDEX IF NOT EXISTS idx_snapshots_round ON snapshots(round);
     CREATE INDEX IF NOT EXISTS idx_inventory_owner ON inventory(entity_id);
+    CREATE INDEX IF NOT EXISTS idx_clue_disc_clue  ON clue_discoveries(clue_id);
+    CREATE INDEX IF NOT EXISTS idx_scene_visit_scn ON scene_visits(scene_id);
   `);
 }

@@ -235,6 +235,71 @@ export class WorldStateManager {
   }
 
   // ==========================================================
+  // 线索发现 / 场景访问历史 —— 按玩家，累计，从不清空
+  //
+  // 这两类此前分别停在 InvestigationEngine 的进程内 Map（discovered）和
+  // 完全没有追踪（GameSession 侧场景访问史，见 docs/todo.json todo-03/todo-26）。
+  // 归入真相源后才有单一权威：队伍视图（任一人发现/到过）从这里推导，
+  // 不能反过来——按玩家的记录才是权威，队伍视图只是聚合查询。
+  // ==========================================================
+
+  /** 记一次线索发现。同一 (player, clue) 重复记录是幂等的（INSERT OR IGNORE）。 */
+  recordClueDiscovery(playerId: string, clueId: string) {
+    this.db.run(
+      "INSERT OR IGNORE INTO clue_discoveries (player_id, clue_id) VALUES (?1,?2)",
+      [playerId, clueId],
+    );
+  }
+
+  isClueDiscoveredBy(playerId: string, clueId: string): boolean {
+    return !!this.db
+      .query("SELECT 1 FROM clue_discoveries WHERE player_id=?1 AND clue_id=?2 LIMIT 1")
+      .get(playerId, clueId);
+  }
+
+  getCluesDiscoveredBy(playerId: string): string[] {
+    const rows: any[] = this.db
+      .query("SELECT clue_id FROM clue_discoveries WHERE player_id=?1 ORDER BY discovered_at")
+      .all(playerId);
+    return rows.map((r) => r.clue_id as string);
+  }
+
+  /** 队伍里任一人是否发现过这条线索——结局条件（isClueFound）用这个。 */
+  isClueDiscoveredByAnyone(clueId: string): boolean {
+    return !!this.db
+      .query("SELECT 1 FROM clue_discoveries WHERE clue_id=?1 LIMIT 1")
+      .get(clueId);
+  }
+
+  /** 记一次场景访问。同一 (player, scene) 重复记录是幂等的。 */
+  recordSceneVisit(playerId: string, sceneId: string) {
+    this.db.run(
+      "INSERT OR IGNORE INTO scene_visits (player_id, scene_id) VALUES (?1,?2)",
+      [playerId, sceneId],
+    );
+  }
+
+  isSceneVisitedBy(playerId: string, sceneId: string): boolean {
+    return !!this.db
+      .query("SELECT 1 FROM scene_visits WHERE player_id=?1 AND scene_id=?2 LIMIT 1")
+      .get(playerId, sceneId);
+  }
+
+  getScenesVisitedBy(playerId: string): string[] {
+    const rows: any[] = this.db
+      .query("SELECT scene_id FROM scene_visits WHERE player_id=?1 ORDER BY first_visited_at")
+      .all(playerId);
+    return rows.map((r) => r.scene_id as string);
+  }
+
+  /** 队伍里任一人是否到过这个场景——结局条件（isSceneVisited）用这个。 */
+  isSceneVisitedByAnyone(sceneId: string): boolean {
+    return !!this.db
+      .query("SELECT 1 FROM scene_visits WHERE scene_id=?1 LIMIT 1")
+      .get(sceneId);
+  }
+
+  // ==========================================================
   // 效果 / buff
   // ==========================================================
 

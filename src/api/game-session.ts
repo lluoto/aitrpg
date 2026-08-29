@@ -387,7 +387,9 @@ export class GameSession {
     this.npcCombat = new NPCCombatEngine();
     this.companionManager = new CompanionManager();
     this.politicoEconomy = new PoliticoEconomyEngine();
-    this.investigation = new InvestigationEngine();
+    // 挂 this.world：线索发现从此写真相源，不是引擎自己的进程内 Map——
+    // 见 InvestigationEngine 构造函数与 markDiscovered 的注释。
+    this.investigation = new InvestigationEngine(undefined, this.world);
     this.spellEngine = new SpellEngine();
     this.npcStore = new NPCStore();
     this.registry = new AgentRegistry(this.llm, this.npcStore);
@@ -941,6 +943,24 @@ export class GameSession {
    */
   getDisplayedScene(): string {
     return this.world.getCurrentState().scene;
+  }
+
+  /**
+   * 结局条件用的两个谓词——队伍里**任一人**发现过 / 到过。
+   *
+   * 命名空间已核对：BARN_OF_PREMIER 的线索通过 bridgeBarnOfPremierClues()
+   * 用 `clue.id` 原样注册进 InvestigationEngine（见该方法注释），
+   * END_NARRATIONS 引用的正是同一份 `clue.id`，两边不会对不上——
+   * 已用真实模组数据验过（ending-namespace-truth-source.test.ts）。
+   * ⚠ requiredScenes 那半边目前有个已知缺口：GameSession 实际注册的场景 id
+   * 与 BARN_OF_PREMIER 的场景 id 不是同一套，见 docs/todo.json todo-34。
+   */
+  isClueFound(clueId: string): boolean {
+    return this.world.isClueDiscoveredByAnyone(clueId);
+  }
+
+  isSceneVisited(sceneId: string): boolean {
+    return this.world.isSceneVisitedByAnyone(sceneId);
   }
 
   /**
@@ -2083,6 +2103,11 @@ export class GameSession {
     } else {
       this.world.upsertEntity({ id: this.activePlayerId, name: this.activeCharacter?.name ?? "调查员", type: "pc", hp: 12, maxHp: 12, ac: 10, status: [], position: sceneId });
     }
+    // 玩家位置真的落到这个场景了——记一笔访问历史（真相源，按玩家累计，
+    // 从不清空）。放在这一处而不是各调用方各记一次：这是"玩家位置改变"
+    // 这件事唯一的落点，调用方多（tryResolveModuleScene / 模组入场等），
+    // 分散记录容易漏，且 INSERT OR IGNORE 本就幂等，不怕这里多调一次。
+    this.world.recordSceneVisit(this.activePlayerId, sceneId);
     return true;
   }
 
@@ -2124,6 +2149,7 @@ export class GameSession {
     } else {
       this.world.upsertEntity({ id: this.activePlayerId, name: this.activeCharacter?.name ?? "调查员", type: "pc", hp: 12, maxHp: 12, ac: 10, status: [], position: sceneId });
     }
+    this.world.recordSceneVisit(this.activePlayerId, sceneId);
     msg(`你移动到了场景: ${this.sceneDisplayNames[sceneId] ?? sceneId}`);
     this.lastNarrative = `你走向了${target}。`;
     return true;

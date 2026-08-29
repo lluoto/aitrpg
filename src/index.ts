@@ -59,7 +59,9 @@ const rules = new RulesEngine();      // 统一路由
 const world = new WorldStateManager();
 const npcCombat = new NPCCombatEngine();
 const session = new PlayerSession();
-const investigation = new InvestigationEngine("./src/rules/investigation.yaml");
+// 挂 world：线索发现落真相源，不是引擎自己的进程内 Map——
+// 见 InvestigationEngine 构造函数与 markDiscovered 的注释。
+const investigation = new InvestigationEngine("./src/rules/investigation.yaml", world);
 const sanity = new SanityEngine(55);
 // CoC 角色（由 /horror-create 生成，替代 D&D activeCharacter）
 let cocCharacter: CoCGeneratedCharacter | null = null;
