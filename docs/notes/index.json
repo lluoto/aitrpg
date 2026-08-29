@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-28",
+  "generated": "2026-08-29",
   "note": "问题记录索引。按 file+line 取正文，不必整份读。正文只追加，改动请重跑 bun scripts/docs-index.ts",
   "statusLegend": {
     "fixed": "已修，有实测数",
@@ -13,7 +13,7 @@
       "id": "engine",
       "name": "运行引擎 / 主循环",
       "file": "docs/notes/engine.md",
-      "count": 20
+      "count": 26
     },
     {
       "id": "ingest",
@@ -246,8 +246,74 @@
       "group": "engine",
       "file": "docs/notes/engine.md",
       "line": 682,
-      "lines": 21,
+      "lines": 20,
       "summary": "L2a 让 `act(input, actingPcId?)`（`src/api/game-session.ts:1290`）能指定谁"
+    },
+    {
+      "id": "engine-21",
+      "title": "可观测性复制了它要消除的歧义——这是第四次（2026-08-29）",
+      "date": "2026-08-29",
+      "status": "warn",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 702,
+      "lines": 25,
+      "summary": "给 `intent.ts` 两处 LLM 静默回落（JSON 解析失败 / 调用失败）各加了一条"
+    },
+    {
+      "id": "engine-22",
+      "title": "防线装在让它永远通过的动作下游（2026-08-29）",
+      "date": "2026-08-29",
+      "status": "warn",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 727,
+      "lines": 20,
+      "summary": "空目标时 `target` 是空串；`sceneId = sceneMap[target] ?? target` 同样"
+    },
+    {
+      "id": "engine-23",
+      "title": "声明式数据是装饰品——这是第五次（2026-08-29）",
+      "date": "2026-08-29",
+      "status": "warn",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 747,
+      "lines": 20,
+      "summary": "结局，从不读 `END_NARRATIONS[i].condition`——那份声明式数据只在最后"
+    },
+    {
+      "id": "engine-24",
+      "title": "模拟换了输入分布，把唯一没结论的问题绕过去了（2026-08-29）",
+      "date": "2026-08-29",
+      "status": "warn",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 767,
+      "lines": 13,
+      "summary": "两次实跑模拟都叫\"30 回合\"，读起来像是同一个强度的复测。实际输入的"
+    },
+    {
+      "id": "engine-25",
+      "title": "固定回合数把第 6 回合的发现埋进 24 回合噪音（2026-08-29）",
+      "date": "2026-08-29",
+      "status": "warn",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 780,
+      "lines": 14,
+      "summary": "第一次实跑模拟在第 6 回合就已经脱轨（一次自然调查被模糊匹配送进了"
+    },
+    {
+      "id": "engine-26",
+      "title": "外部模型的根因推测四条全错（2026-08-29）",
+      "date": "2026-08-29",
+      "status": "warn",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 794,
+      "lines": 25,
+      "summary": "2026-08-07 UTF-8 损坏事故发生后，曾把损坏样本交给 DeepSeek 分析根因，"
     },
     {
       "id": "ingest-01",
