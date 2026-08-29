@@ -228,6 +228,11 @@
               "src/investigation/investigation-engine.ts",
               "多技能路径线索评估：主/辅检定、三技能阈值免投骰、全失败走预设 fallback",
               "InvestigationEngine"
+            ],
+            [
+              "src/world/world-constraint.ts",
+              "对话/叙事文本过 LLM 前后的确定性过滤：DEFAULT_CONSTRAINTS 目前只有两个域——时代错置（1920s 拦手机/电脑/互联网等）与对话 meta 词汇（场景/线索/NPC 等出戏词）。框架支持 matchItem/matchText/matchPredicate 三种匹配与 block/replace/allow_with_cost/redirect 四种处置，也支持模组 override，但没有身体状态、行动力、物理后果任何一个域（见 docs/todo.json todo-33）",
+              "DEFAULT_CONSTRAINTS, ConstraintEngine, checkDialogueText"
             ]
           ]
         }

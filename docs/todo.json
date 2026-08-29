@@ -255,6 +255,13 @@
       "severity": "info",
       "status": "done",
       "text": "三套结局表示已收敛（提交 `0305b4c`）：`EndNarration` 是判定真相（唯一可机器求值），`ModuleEnding.conditionText` 是展示文本，`ModuleData.endings` 也是展示文本但受 id 一致性判据约束，三者不会再悄悄长出矛盾；`host.moduleEndings`（原先只写不读的注册表）已删除。"
+    },
+    {
+      "id": "todo-33",
+      "category": "已知缺口",
+      "severity": "info",
+      "status": "open",
+      "text": "`src/world/world-constraint.ts` 的 `DEFAULT_CONSTRAINTS`（2026-08-29 复核 `:250-314` 仍成立）只有两个域：时代错置（1920s 拦手机/电脑/互联网等）与对话 meta 词汇（场景/线索/NPC 等出戏词）。框架本身支持 matchItem/matchText/matchPredicate 三种匹配与 block/replace/allow_with_cost/redirect 四种处置，也支持模组 override，但没有身体状态、行动力、物理后果任何一个域——`TrapMechanics` 是「模组特殊规则」这一层第一次有内容，通用层仍是空的。已记入 architecture.json §4（规则引擎）。"
     }
   ]
 }
