@@ -1298,6 +1298,21 @@ export const END_NARRATIONS: EndNarration[] = [
     ],
   },
   // ── Bad End: 拉拉杆杀了所有人 ──
+  //
+  // ⚠ 已知：这个结局当前不可达。条件用的 bad_lever_pulled 全仓只在本文件
+  // 内部出现三处（这里、下面的 excludeClues、旧 if 链留下的历史注释），
+  // 没有任何代码路径会产生它——所有 world.discoverClue(...) 调用点都不传
+  // 它，src/play/ 下也没有"拉杆"/"拉下拉杆"这个动作的实现。
+  //
+  // 不要改成指向 clue_control_lever："观察中控台的拉杆"（findMethods 是
+  // observation）与"拉下拉杆"是两件事，改过去会变成看一眼拉杆就团灭全员，
+  // 语义完全错了。实现拉杆动作不在这一轮的范围内。
+  //
+  // 这里选择的是"让不可达成为显式事实"：end-narration-clue-reachability
+  // .test.ts 的判据会把 bad_lever_pulled 识别为"引用了但没有生产者"，
+  // 并要求它出现在测试里显式声明的 KNOWN_UNREACHABLE 名单中——名单之外
+  // 冒出的任何新的不可达 clue id 都会让那条判据变红。真给拉杆动作接上
+  // 生产者的那天，这条注释、KNOWN_UNREACHABLE 名单要一起摘掉。
   {
     id: "bad",
     priority: 2,
