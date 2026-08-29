@@ -231,9 +231,9 @@
     {
       "id": "todo-29",
       "category": "未决问题",
-      "severity": "info",
-      "status": "open",
-      "text": "意图误判率约 20%（30 回合 6 次判错），两次模拟（`analysis/sim/` 下两份实跑记录）都没能定性根因——第二次模拟换了输入分布（平均长度 21.7 字 vs 第一次 6.1 字），判错次数从 6 次变成 0 次，但「0 次」不能证明问题不存在，只能说明第二次的输入分布没有触发它。"
+      "severity": "warn",
+      "status": "done",
+      "text": "意图误判率约 20%（30 回合 6 次判错），两次模拟都没能定性根因——第二次模拟换了输入分布，判错次数从 6 次变成 0 次，但当时不能证明问题不存在。**根因已定位并修复（修A，2026-08-29）**：analysis/sim/2026-08-28-barn-a-acceptance.md 第 11 回合中止，连续三次「追问 NPC」被判成追逐，链条是——LLM 正确判定 {\"action\":\"talk\",...} 但裹在 ```json 围栏里 → llm/intent.ts:359 原来的 `JSON.parse(raw.trim())` 直接抛异常（server-err.log 里 17 条 warn，100% 都是围栏，LLM 本身判断零失败——不是「模型判错」，是「答对了但解析层接不住」）→ 静默回落 parseIntentRegex → 贪婪的 /追/ 命中「追问」判成 chase。两处一起修：① 全仓六份「从LLM回答抠JSON」的拷贝收敛到 src/llm/json.ts 的 extractJson()，intent.ts 与 generate-llm-expanded.ts（此前一份拷贝都没拿到）接入；② chase/flee 正则收紧，裸「追」「跑」「撤」「逃」不再贪婪匹配长句子。修复分两次提交，见 git log 的「修A·任务1」「修A·任务2」。"
     },
     {
       "id": "todo-30",
@@ -290,6 +290,13 @@
       "severity": "warn",
       "status": "by-design",
       "text": "服务端口是 **3099**，不是 3000（`src/api/server.ts:1037`，用环境变量 `PORT` 覆盖）。模拟实跑用的 prompt 模板里从来没写过这一点，容易按习惯默认成 3000 去连。启停服务器用 `bun run dev-server:start` / `:stop` / `:status`（`scripts/dev-server.ps1`），不要手拼 `start /b`——那条路两个毛病：`bun run server` 包装脚本会再 spawn 一次子进程，杀掉包装脚本后真正监听端口的那个变孤儿；`start /b` 不脱离控制台，等不到 EOF 会让工具空转。这条脚本本身就是修A·任务4的产出，本条记录只是把「port 3099」这个事实钉进 todo，脚本已经入库不会再丢。"
+    },
+    {
+      "id": "todo-38",
+      "category": "已知缺口",
+      "severity": "info",
+      "status": "open",
+      "text": "`data/sessions` 目录已累积到 94 个 `.json` 文件（`Get-ChildItem` 实测，2026-08-29）。`listStoredSessions()`（session-store.ts:42）在服务器启动时无条件读取并 `JSON.parse` 每一个，不做失败跳过——任何一份损坏会让启动直接抛异常崩掉，不是优雅降级。实测启动一次：日志打的是「Loaded 94 stored session(s) from disk」，94/94 全部成功——本条据实记录当前状态，不代表任何时刻都是这个数字（文件数会随更多局跑起来持续增长，也可能有人手动清过）。**如实记录现状与影响，不要顺手删**：这些文件可能对应正在被别人使用的会话，删除前没有核实哪些是过期的、哪些还有人在用。真要处理，至少先补：① 加过期策略（比如按 createdAt 清理超过 N 天的）、② 让单个文件损坏不拖垮整个启动（逐个 try/catch，报出坏文件名而不是让进程整体崩掉）。这两件事本身不在这一轮范围内。"
     }
   ]
 }

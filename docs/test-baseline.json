@@ -419,6 +419,11 @@
       "tests": 2405,
       "files": 152,
       "when": "修A·任务4：服务器启停写成可复用脚本，不再留在模拟prompt里。发现`.gitignore`里已经有一条`start.ps1`——早先显然写过同名脚本，被这条规则悄悄吃掉从没入过库，这次改名`scripts/dev-server.ps1`避开撞规则。脚本封装正确启停：直接起`src/api/server.ts`不走`bun run server`包装脚本（包装脚本会再spawn一次子进程，Stop-Process杀掉包装脚本后真正监听端口的那个会变孤儿）；用`Start-Process -PassThru -NoNewWindow -RedirectStandardOutput/-RedirectStandardError`真正脱离控制台（不像`start /b`那样让子孙进程继承调用者stdout/stderr句柄、工具等不到EOF空转）；PID落.dev-server.pid（已加进.gitignore），start/stop/status三个子命令。package.json加dev-server:start/stop/status三条npm脚本转发。⚠ 踩过一次新坑：.ps1文件含中文注释时若不带UTF-8 BOM，PowerShell 5.1按系统codepage解析会把中文内容读乱，进而破坏字符串/括号配对，报一堆语法错——这与\"不要用PowerShell读写中文源码\"是同一类问题的另一面（这次是执行.ps1脚本本身，不是读写.ts源码），修法是给这一份.ps1单独加BOM（.ts源码仍然不能加BOM，两者约定不同）。实测验证脚本真的干净：start→确认PID对应进程在跑且HTTP 200响应→stop→PID文件删除、进程确认已退出、无孤儿残留。scripts/handoff.ts模板加一段\"启动后端做实跑\"并重新生成docs/handoff.md。docs/todo.json新增todo-37记录端口3099（不是3000）这一事实与脚本入库情况。不是测试类改动，无新增测试，只更新本条history作记录。typecheck exit 0；bun test 2405（不变）、152 文件不变；preflight 11项全过。"
+    },
+    {
+      "tests": 2405,
+      "files": 152,
+      "when": "修A·任务5：收尾。todo-29（意图误判约20%）标done，正文补上完整根因链条与「17/17全是markdown围栏、LLM本身零失败」这个实测结论（不是模型判错，是解析层接不住），并回链到修A任务1/2两次提交。新增todo-38：data/sessions已累积94个.json文件，listStoredSessions()启动时无条件JSON.parse每一个不做失败跳过；实测本次启动94/94全部成功（Loaded 94 stored session(s) from disk），如实记录当前状态、不代表任何时刻都是这个数字，不删除（可能有人在用），只记现状与影响（含真要处理需要先补的两件事：过期策略、单文件损坏不拖垮整体启动）。generate-llm-expanded.ts:351的修复描述已在任务1的commit message与代码注释里写明「同类潜伏，本次实跑未触发，不是已验证修复」，本条收尾不重复。不是测试类改动，无新增测试。typecheck exit 0；bun test 2405（不变）、152 文件不变；preflight 11项全过。"
     }
   ]
 }
