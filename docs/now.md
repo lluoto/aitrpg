@@ -1,19 +1,16 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-08-29 04:35
+> 生成于 2026-08-29 07:06
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 98cfa55 docs: index-program.md补status字段说明与新增文档入表 |
-| 测试 | 2332 条 / 145 文件  全绿 |
-| 工作树 | **1 个文件未提交** |
-
-未提交：
-- `M docs/now.md`
+| HEAD | 6a8f6c9 docs: 收尾——更新todo-26/todo-03，记录时间系统与孤立场景两个已知缺口 |
+| 测试 | 2376 条 / 151 文件  全绿 |
+| 工作树 | 干净 |
 
 ## 开工前
 
@@ -51,7 +48,7 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - ️ 一直在报的那个数不衡量目标：可运行性是 1/27（2026-08-20）
   `docs/notes/ingest.md:745`
 
-## 动手前先扫一眼的坑（17）
+## 动手前先扫一眼的坑（18）
 
 - 改动前后各跑一次 `bun scripts/preflight.ts`。它把反复犯的几类错做成了机器判据：切割截断语义单元、搬运残渣、循环依赖、语法错。别靠记性。
 - 同一类失误连着犯到第 3 次就停手，换一双眼睛（另一个模型 review diff）。本轮机械切割边界连错 5 次才自己发现——失效模式相同的人查不出自己的系统性错误。
@@ -70,17 +67,18 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - `ws-handler.ts:63-70 broadcastToSession` 不按玩家过滤——线索私密（discoverer_only）在**存储的历史**层面成立（`GET /history?pcId=` 只返回该玩家可见的消息），但 live 的 WS 广播仍然把完整 narrative 推
 - 摄取管线 `build-scenes.ts:99 clues: []`——摄取出来的每个场景一条线索都不产，实跑产物显示 24 场景的线索总数为 0。结局条件编译（属于另一轮「B」的范围）依赖场景能带线索，这条不修，那条无从谈起。
 - 「经历模组: 0」这条统计是否仍然存在——未验证。`career.ts:265` 的相关逻辑挂在从不实例化的 `CareerStore` 类里（见 todo-02/todo-05），实际在用的是 `CareerFileStore`，需要先确认「经历模组」这个统计口径在 `CareerFileStor
+- 开发A实测发现：`END_NARRATIONS`（barn-of-premier.ts）requiredScenes 引用的场景 id 是 ASCII（如 "maintenance_room"），而 GameSession 加载模组时经 bridgeBarnOfPremierClues() 只桥接了
 
 ## 最近提交
 
+- 6a8f6c9 docs: 收尾——更新todo-26/todo-03，记录时间系统与孤立场景两个已知缺口
+- c7f3e2c feat: 脱离判定+确认门+结局播报+终态
+- 8c30de6 feat: 移动代价——弱版邻接+按场景图跳数计时，顺带修空目标bug
+- a4b2d6e feat: 线索发现与场景访问历史真迁进真相源 + 队伍视图谓词
+- 18fa6e2 docs: 补回索引整理时弄丢的约束层覆盖面记录，核实原材料清单未丢
+- 65836f0 docs: 刷新now.md（跑在任务1-4提交之后）
 - 98cfa55 docs: index-program.md补status字段说明与新增文档入表
 - 4dd7cac diag: preflight补反向判据——文档引用文档的存在性
-- aca5d68 docs: 修复上一轮索引精简造成的悬空引用
-- 9afbe9e docs: 归档index-world-model.md被精简掉的历史内容，补回未覆盖的活内容和断链修复前置
-- 0880f75 docs: record six methodology-level lessons from the 08-22..08-29 stretch (~90 commits, 0 notes so far)
-- 1d3d3f5 docs: architecture.json hadn't been regenerated in 158 commits
-- bae10e3 docs: todo.json gets a status field -- 21 items had no way to mark done
-- 96ddfb0 docs: archive the 2026-08-07 UTF-8 corruption forensics, out of the way of analysis/ listings
 
 ## 找东西
 
