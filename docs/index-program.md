@@ -23,9 +23,11 @@ bun scripts/docs-index.ts log failback      # 搜 log 正文，给出 file:line
 | 我想…… | 读这个 | 说明 |
 |---|---|---|
 | 看架构地图 / 某个模块在哪 | `docs/architecture.json` | 15 节。用 `arch <关键词>` 取，别整读（36KB） |
-| 看待办 / 已知的坑 | `docs/todo.json` | 条数跑 `bun scripts/docs-index.ts todo warn` 看，`severity=warn` 的是踩过的坑 |
+| 看待办 / 已知的坑 | `docs/todo.json` | 条数跑 `bun scripts/docs-index.ts todo warn` 看，`severity=warn` 的是踩过的坑。⚠ `severity` 只分 warn/info/cleanup，不代表办没办完——还有个独立的 `status` 字段：`open`(尚待处理，20)/`done`(已解决或已确认不存在，5)/`by-design`(有意为之，10)/`superseded`(被另一条覆盖，见 `mergedInto`，1)。`docs-index.ts` 目前**不支持按 status 查询**（`todo <severity>` 只按 severity 过滤），要看 status 得直接 `Read docs/todo.json` 或用 `bun -e` 过滤 |
 | 查某个问题查过没有 | `docs/notes/index.json` | 元数据（标题/日期/状态/摘要/行号）；这份索引本身就是给脚本查的，别在这里写死条数 |
 | 读某条记录的正文 | `docs/notes/<组>.md` | 按组分文件（ingest/engine/rules…），条数跑 `bun scripts/docs-index.ts log <关键词>` 现查 |
+| 看某次事故的完整复盘 | `docs/incident-*.md` | 时点事故记录，如 `docs/incident-2026-08-07-utf8-corruption.md`（UTF-8 损坏事故：根因、修复、判据补强） |
+| 看世界模型索引精简前的历史内容 | `docs/archive-world-model-2026-08.md` | 2026-08-29 从 `docs/index-world-model.md` 归档出来的旧清点/一次性核对记录/`relics/` 子工程，不在当前地图范围但入库可查 |
 
 放 `docs/` 不放 `.opencode/`：后者被 `.gitignore` 排除，
 而架构与待办是**项目知识**不是会话状态，clone 下来必须还在。
