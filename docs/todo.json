@@ -50,7 +50,7 @@
       "category": "同职责多实现",
       "severity": "info",
       "status": "open",
-      "text": "两套状态追踪：`src/world/state.ts`（内存，仅 play-module 用）vs `src/state/world-state-manager.ts`（SQLite）——最可能的整合目标。补细节（2026-08-29）：两者存在重叠的四处同一事实——NPC 位置 / 存活 / 态度 / 当前场景——各自维护一份，没有单一真相源。已复验仍成立。"
+      "text": "两套状态追踪：`src/world/state.ts`（内存，仅 play-module 用）vs `src/state/world-state-manager.ts`（SQLite）——最可能的整合目标。补细节（2026-08-29）：两者存在重叠的四处同一事实——NPC 位置 / 存活 / 态度 / 当前场景——各自维护一份，没有单一真相源。已复验仍成立。**进展（开发A，2026-08-29）**：GameSession 侧的线索发现（原停在 InvestigationEngine 自己的 Map）与场景访问历史（原完全没有）已真迁进 WorldStateManager（clue_discoveries/scene_visits 两张表）。四处重叠（位置/存活/态度/当前场景）仍在，其余进度层字段（triggeredEvents/sceneStateVars/introducedEntities/mood/metCount）仍未进真相源——这些都停留在 src/world/state.ts 的 WorldState（play-module 专用），本轮不碰（拆 WorldState、迁 play-module 明确不在本轮范围）。"
     },
     {
       "id": "todo-04",
@@ -211,8 +211,8 @@
       "id": "todo-26",
       "category": "文档里挂着的未决",
       "severity": "info",
-      "status": "open",
-      "text": "`docs/kp-tool-surface-assessment.md:122-124` 阶段 3 未决①：`setScene` 目前只有存在性校验，真正有价值的版本是用 `scenes.exits` 做邻接校验（只能走到当前场景有出口连通的地方），但那会拦掉 KP 传送与自由移动——这是玩法决定，不是接线工作，文档里明确标了「未决」。"
+      "status": "done",
+      "text": "`docs/kp-tool-surface-assessment.md:120-125` 阶段 3 未决①已裁决并实现（开发A·任务3，2026-08-29）：不是给 setScene 加邻接校验，是弱版邻接（表内场景都能去）+ 按 scenes.exits 图最短跳数付时间（不是瞬移），落在 tryResolveModuleScene 而非 setScene 本身。见 src/play/move-graph.ts。文档已就地更正。"
     },
     {
       "id": "todo-27",
@@ -269,6 +269,20 @@
       "severity": "warn",
       "status": "open",
       "text": "开发A实测发现：`END_NARRATIONS`（barn-of-premier.ts）requiredScenes 引用的场景 id 是 ASCII（如 \"maintenance_room\"），而 GameSession 加载模组时经 bridgeBarnOfPremierClues() 只桥接了线索（clue.id 直接复用）、从未桥接场景——实际注册进 world.scenes 的场景 id 来自 mythos-module.ts 的 PREMIERS_BARN_MODULE，是中文展示名当 id（如\"维修间\"）。两者说的是同一地点，id 完全不同，逐条核对过全部 requiredScenes 引用（目前只有 True End 一条）：无一命中。后果：True End 在 GameSession 自由跑团路径下当前不可达（Good/Bad/Normal 三档不受影响，它们只用 requiredClues）。与 todo-19/todo-20（两份谷仓模组表示/两个模组加载器）同源，是该问题一个可复现的具体后果，见 ending-namespace-truth-source.test.ts。收敛场景 id 命名空间需要先在 todo-19/20 层面做决定，本条只记录现状。"
+    },
+    {
+      "id": "todo-35",
+      "category": "已知缺口",
+      "severity": "info",
+      "status": "open",
+      "text": "开发A·任务3：时间系统（src/rules/game-time.ts）目前没有任何消费方。全仓除 game-time.ts 自身外没有任何地方按 day/period 做判断；`module/types.ts` 里 period/dawn/dusk/night/day 全部零命中——模组数据没有表达时间依赖的字段，谷仓里所有时间字样都是背景叙述。本轮给移动加了按跳数计时（真实后果只有两条：时段推进更真实、注入 LLM 的 [当前时间] 跟着变，仅影响叙述氛围），不是「时间压力机制」——没有任何玩法会因为时间流逝而改变。给模组加时段依赖字段本身不在本轮范围（先造字段后造玩法，本仓刚在结局条件 requiredScenes 那里吃过这个亏，见 todo-34）。"
+    },
+    {
+      "id": "todo-36",
+      "category": "已知缺口",
+      "severity": "info",
+      "status": "open",
+      "text": "开发A·任务3实测确认：`奇怪的卡片`（BARN_OF_PREMIER 里其实是一条物品/连接，被误当场景注册，见 docs/notes/ingest.md 与 index-world-model.md 的历史记录）在 GameSession 实际注册的场景表里仍是一个孤立节点（0 出口、也没被任何其它场景当出口目标提到）。本轮移动代价判据（buildSceneGraph/shortestHops）已经把它当成「图上量不出到达方式」正确拒绝移动并说明，不会静默瞬移或崩溃——但这不是修复，只是新判据没有被这个已知的脏数据绊倒。真正的修复（不把它注册成场景）与 todo-19 同族，本轮不做。"
     }
   ]
 }

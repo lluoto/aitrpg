@@ -119,10 +119,13 @@ BFCL-V4 数据（Qwen3.5-4B 50.3 / 9B 66.1，用户提供）指向的判断成�
 
 **阶段 3 未决**：
 
-- `setScene` 已有存在性校验与单一写入路径，过闸门只多出 delta 和形式统一，
-  不增加任何新校验。真正有价值的版本是用 `scenes.exits` 做邻接校验（只能走到
-  当前场景有出口连通的地方），但那会拦掉 KP 传送与自由移动，属于玩法决定而非接线。
-- `game-session.ts` 拆分未动。
+- **已裁决并实现（开发 A · 任务 3，2026-08-29）**：`setScene` 不需要邻接校验——
+  玩法裁决是弱版邻接（表内场景都能去，不要求与当前场景有出口直连）+ 按
+  `scenes.exits` 图上最短跳数付时间（不是瞬移）。落在 `tryResolveModuleScene`
+  而不是 `setScene` 本身：`setScene` 仍只做存在性校验，跳数代价是移动流程
+  的事，不是场景激活的事。见 `src/play/move-graph.ts`、`docs/todo.json` todo-26
+  （已标 done）。
+- `game-session.ts` 拆分未动，见 todo-27。
 
 **顺带记录的两项发现**：
 
