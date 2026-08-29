@@ -1,5 +1,5 @@
 {
-  "tests": 2403,
+  "tests": 2405,
   "files": 152,
   "unwiredMethods": 87,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。",
@@ -409,6 +409,11 @@
       "tests": 2403,
       "files": 152,
       "when": "修A·任务2：收紧 chase/flee 正则。原 chase 正则 /(?:追逐|逃跑|跑|追|逃)/ 贪婪的裸「追」「跑」「逃」把追问/追查/追踪/跑团/逃避这类对话/调查/闲聊词全部命中成追逐——一次真实事故的根因（任务1修的是围栏解析这一半，这是 regex 兜底路径本身该独立修的另一半，即使不经过围栏失败也不该错）。收紧方向：复合动词（追逐/追赶/追捕/追击/猛追/狂追/追上去/追过去/拔腿追/拼命追）任意位置匹配；裸「追」「跑」收窄成锚定的整句形式（^追$/^跑$，允许结尾标点）——game-session.test.ts 有测试直接送裸\"追\"/\"跑\"当战斗中的快捷指令，不能连这个都收掉，但\"追问菲碧……\"这种长句不该被一个字拖进追逐。flee 同样收紧：/(?:逃跑|逃走|逃离|撤退|撤|逃)/ 里裸「撤」「逃」同样贪，且没有任何测试要求它们单独触发 flee，改成纯复合词 /(?:逃跑|逃走|逃离|撤退)/。顺带在 talk 正则里加\"追问\"作为独立触发词——\"追问\"字面像追逐（含\"追\"字）但语义是对话，这是让实跑三句真事故原文（\"林娜追问菲碧……\"）解析成 talk 而不是掉进 unknown 的必要一步，不是可选的順手改动。新增 intent-chase-tightening.test.ts（17条）：实跑原文三句必须判 talk 不得判 chase；追问/追查/追踪/跑团/逃避不得命中 chase；真正的追逐说法（追逐/追上去/猛追/裸追/裸跑）仍然命中（正例，回归判据）；flee 裸撤/裸逃不再触发，复合词不受影响（正例）。既有 175 条 intent 相关测试（intent.test.ts/intent-coverage.test.ts/game-session.test.ts）全绿，包括依赖裸\"追\"\"跑\"当战斗快捷指令的用例，证明收紧没有改瘸既有行为。变异检验：临时把 chase 正则换回 /(?:追逐|逃跑|跑|追|逃)/，「跑团」「逃避这个话题」「我们聊聊跑团规则」三条精确变红（三句真事故原文因为 talk 正则加了\"追问\"独立触发词、在 chase 正则之前就已经命中 talk，不受这次单独的 chase 回退影响，符合预期——两处修复各自独立起作用）；Copy-Item 还原后回归绿。typecheck exit 0；bun test 2386→2403（+17）、151→152 文件。"
+    },
+    {
+      "tests": 2405,
+      "files": 152,
+      "when": "修A·任务3：补 Good End vs Normal End 判别测试。A轮module-departure-flow.test.ts只测了「什么线索都没找到→Normal End」一个分支——自由跑团路径下只有Good/Normal两个结局可达（True End因todo-34场景id命名空间不对齐、Bad End因bad_lever_pulled无生产者），只测Normal End无法排除「永远播Normal End」这种退化实现。补一条：发现clue_control_supplies且未发现clue_bedroom_old_doc（Good End的requiredClues/excludeClues，命名空间已核对对齐，不碰有缺口的requiredScenes）→早退→必须是Good End，且正文与Normal End逐字不同（直接对比END_NARRATIONS里两条的lines.join）；外加一条对照测试钉住两条正文本身没有撞车。变异检验：先试了把evaluateEndNarration的priority排序去掉——对这个具体状态不会变红（END_NARRATIONS数组书写顺序恰好是true→good→bad→normal，good本来就排在normal前面，priority排序真正起作用的是good/bad谁赢，那个分歧点end-narration-32-states.test.ts已经在测，如实记录这次插桩没有区分力，不假装它有）；换成更贴合判据本身在防什么的插桩——把evaluateEndNarration硬编码成永远返回Normal End（随便播一个的字面实现），精确命中新测试；Copy-Item还原后回归绿。顺带修preflight真发现：JSDoc注释直接放在describe(...)调用前，DECL_START白名单不认bare标识符起手的调用表达式，报了一条切割残渣假阳（本仓测试文件里这个位置向来用//行注释不用/**/块注释，没有先例），改成//行注释解决，不是放宽判据。typecheck exit 0；bun test 2403→2405（+2）、152 文件不变。"
     }
   ]
 }

@@ -5,6 +5,7 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { GameSession } from "../api/game-session";
 import { isExplicitLeaveIntent, isConfirmReply, MODULE_ENDING_SUPPORT } from "../play/module-departure";
+import { END_NARRATIONS } from "../module/barn-of-premier";
 
 function makeSession(): GameSession {
   process.env.LLM_API_KEY = "";
@@ -117,6 +118,52 @@ describe("确认离开后：谷仓早退 → Normal End 正文", () => {
     expect(res.narrative.trim().length).toBeGreaterThan(0);
     expect(res.events.length).toBeGreaterThan(0);
   });
+});
+
+// Good End vs Normal End 判别（修A·任务3）。
+//
+// 自由跑团路径下只有这两个结局可达：True End 因场景 id 命名空间不对齐
+// （todo-34）、Bad End 因 bad_lever_pulled 无生产者，都已记 todo。所以这条
+// 是唯一能证明"结局是按状态选的、不是随便播一个"的判据——A轮只测了
+// Normal End 一个分支，无法排除"永远播 Normal End"这种退化实现。
+//
+// clue id 命名空间已核对对齐（见 ending-namespace-truth-source.test.ts），
+// Good End 只用 requiredClues/excludeClues，不碰有命名空间缺口的
+// requiredScenes，这条测试写得出来。
+//
+// ⚠ 变异检验做过但没留在这里当断言：先试了"把 evaluateEndNarration 的
+// priority 排序去掉"——对下面这个具体状态（只发现 clue_control_supplies）
+// 不会变红，因为 END_NARRATIONS 数组的书写顺序恰好是 true→good→bad→
+// normal，good 本来就排在 normal 前面，去不去 priority 排序对这一态没有
+// 区别（priority 排序真正起作用的是 good/bad 谁赢，这份数据的书写顺序与
+// priority 在 good-vs-normal 这个维度上从头到尾就没分歧过，end-narration-
+// 32-states.test.ts 已经在测 good/bad 那个真正的分歧点，不必在这里重测
+// 同一件事）。换成更贴合"这条到底在防什么"的插桩——把 evaluateEndNarration
+// 硬编码成永远返回 Normal End（"随便播一个"的字面实现）——精确命中下面
+// 这条测试；Copy-Item 还原后回归绿。
+describe("确认离开后：Good End 与 Normal End 判别——按状态选，不是随便播一个", () => {
+  const normalNarration = END_NARRATIONS.find((e) => e.id === "normal")!;
+  const goodNarration = END_NARRATIONS.find((e) => e.id === "good")!;
+
+  it("发现 clue_control_supplies 且未发现 clue_bedroom_old_doc → Good End", async () => {
+    const session = makeSession();
+    await session.act("加载模组 普瑞米尔的谷仓");
+    session.investigation.markDiscovered("clue_control_supplies", "p1");
+    // 未发现 clue_bedroom_old_doc（Good End 的 excludeClues）——不做任何事即可。
+
+    await session.act("我们决定离开这里，结束这次调查");
+    const res = await session.act("确定");
+
+    expect(session.dead).toBe(true);
+    expect(res.narrative).toBe(goodNarration.lines.join("\n"));
+    // 判别的核心：Good End 与 Normal End 正文必须不同，否则测不出"按状态选"。
+    expect(res.narrative).not.toBe(normalNarration.lines.join("\n"));
+  });
+
+  it("Normal End 与 Good End 正文互不相同（对照，钉住两条正文本身没有撞车）", () => {
+    expect(normalNarration.lines.join("\n")).not.toBe(goodNarration.lines.join("\n"));
+  });
+
 });
 
 describe("确认离开后：无 endings 数据的模组走通用收场，不报错不空播", () => {
