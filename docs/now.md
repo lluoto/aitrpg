@@ -1,15 +1,15 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-08-29 07:06
+> 生成于 2026-08-29 11:19
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 6a8f6c9 docs: 收尾——更新todo-26/todo-03，记录时间系统与孤立场景两个已知缺口 |
-| 测试 | 2376 条 / 151 文件  全绿 |
+| HEAD | d1a8314 docs: 收尾——todo-29标done补根因链条，新增todo-38记录data/sessions现状 |
+| 测试 | 2405 条 / 152 文件  全绿 |
 | 工作树 | 干净 |
 
 ## 开工前
@@ -48,7 +48,7 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - ️ 一直在报的那个数不衡量目标：可运行性是 1/27（2026-08-20）
   `docs/notes/ingest.md:745`
 
-## 动手前先扫一眼的坑（18）
+## 动手前先扫一眼的坑（20）
 
 - 改动前后各跑一次 `bun scripts/preflight.ts`。它把反复犯的几类错做成了机器判据：切割截断语义单元、搬运残渣、循环依赖、语法错。别靠记性。
 - 同一类失误连着犯到第 3 次就停手，换一双眼睛（另一个模型 review diff）。本轮机械切割边界连错 5 次才自己发现——失效模式相同的人查不出自己的系统性错误。
@@ -66,19 +66,21 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - `PlayerSlot.currentScene` 只在 `join` 时设，之后从不更新——因为唯一能更新它的 `setPlayerScene`（见 todo-23）零调用方。这是 `scene_restricted` 可见性档位「三个独立的坑」之一（另两个坑：比的是活动玩家场景不是消息所属场景；
 - `ws-handler.ts:63-70 broadcastToSession` 不按玩家过滤——线索私密（discoverer_only）在**存储的历史**层面成立（`GET /history?pcId=` 只返回该玩家可见的消息），但 live 的 WS 广播仍然把完整 narrative 推
 - 摄取管线 `build-scenes.ts:99 clues: []`——摄取出来的每个场景一条线索都不产，实跑产物显示 24 场景的线索总数为 0。结局条件编译（属于另一轮「B」的范围）依赖场景能带线索，这条不修，那条无从谈起。
+- 意图误判率约 20%（30 回合 6 次判错），两次模拟都没能定性根因——第二次模拟换了输入分布，判错次数从 6 次变成 0 次，但当时不能证明问题不存在。**根因已定位并修复（修A，2026-08-29）**：analysis/sim/2026-08-28-barn-a-acceptance.md
 - 「经历模组: 0」这条统计是否仍然存在——未验证。`career.ts:265` 的相关逻辑挂在从不实例化的 `CareerStore` 类里（见 todo-02/todo-05），实际在用的是 `CareerFileStore`，需要先确认「经历模组」这个统计口径在 `CareerFileStor
 - 开发A实测发现：`END_NARRATIONS`（barn-of-premier.ts）requiredScenes 引用的场景 id 是 ASCII（如 "maintenance_room"），而 GameSession 加载模组时经 bridgeBarnOfPremierClues() 只桥接了
+- 服务端口是 **3099**，不是 3000（`src/api/server.ts:1037`，用环境变量 `PORT` 覆盖）。模拟实跑用的 prompt 模板里从来没写过这一点，容易按习惯默认成 3000 去连。启停服务器用 `bun run dev-server:start` / `:stop
 
 ## 最近提交
 
+- d1a8314 docs: 收尾——todo-29标done补根因链条，新增todo-38记录data/sessions现状
+- d3e59b7 feat: 服务器启停写成可复用脚本scripts/dev-server.ps1
+- c24693e test: 补Good End vs Normal End判别测试
+- fb41e6b fix: 收紧chase/flee正则，别再把追问/跑团/逃避这类词判成追逐
+- b267e90 fix: 围栏解析收敛到src/llm/json.ts一处，接入intent.ts和generate-llm-expanded.ts
+- ecbcde7 docs: 刷新now.md（跑在其余提交之后）
 - 6a8f6c9 docs: 收尾——更新todo-26/todo-03，记录时间系统与孤立场景两个已知缺口
 - c7f3e2c feat: 脱离判定+确认门+结局播报+终态
-- 8c30de6 feat: 移动代价——弱版邻接+按场景图跳数计时，顺带修空目标bug
-- a4b2d6e feat: 线索发现与场景访问历史真迁进真相源 + 队伍视图谓词
-- 18fa6e2 docs: 补回索引整理时弄丢的约束层覆盖面记录，核实原材料清单未丢
-- 65836f0 docs: 刷新now.md（跑在任务1-4提交之后）
-- 98cfa55 docs: index-program.md补status字段说明与新增文档入表
-- 4dd7cac diag: preflight补反向判据——文档引用文档的存在性
 
 ## 找东西
 
