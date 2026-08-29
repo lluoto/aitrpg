@@ -1,444 +1,204 @@
 # 内容索引 — 世界模型与模组
 
-> 用途：世界模型这一侧可能由多个 agent 分别推进，这份索引是共同的地图。
-> 姊妹篇是 `docs/index-program.md`（引擎与程序）。
->
-> 建立方式：逐文件读取头部注释归纳 + 全盘清查 `C:\aitrpg`，2026-08-19。
-> **本文件的路径跨出 git 仓库**：`poc/` 开头的在仓库内，其余相对 `C:\aitrpg\`。
->
-> **维护约定**：新增素材请顺手补一行，并标明「已接入 / 未接入」。
-> 「未接入」那一节是这份索引最有价值的部分，不要让它烂掉。
+> 用途：世界模型、模组内容、原始材料和外部语料工程的共同地图。
+> 姊妹篇：`docs/index-program.md`（代码架构、待办和工作记录）。
+> 刷新日期：2026-08-29。路径和状态以当前磁盘审计为准。
+> 历史细节（旧清点、一次性核对记录、`relics/` 遗物母版子工程）已归档到
+> `docs/archive-world-model-2026-08.md`，不在当前地图范围但仍可查。
+
+## 当前地图
+
+| 区域 | 当前位置 | 角色 | 状态 |
+|---|---|---|---|
+| POC 引擎与模组 | `C:\aitrpg\poc\` | Git 管理的 TRPG 引擎、PDF 摄取和运行时 | 活跃 |
+| POC 外部材料 | `C:\aitrpg\` 根目录 | PDF、YAML 规则原材料、规则书、计划文档 | 活跃但未全部接入 |
+| 小说语料与提取工程 | `D:\aitrpg\世界模型\` | 原文、章节切片、旧产物、v2 语义提取 | 活跃 |
+| 旧路径兼容入口 | `C:\aitrpg\世界模型` | 指向 D 盘语料工程的 Junction | 已验证 |
+
+`C:\aitrpg\世界模型` 必须保持为 Junction。POC 中仍有 `../世界模型/v18_output/...` 的默认路径；删除或改成空目录会使运行时语料加载失效。
 
 ## 一句话现状
 
-素材远多于接进去的。模组的**真正源头是 PDF**。现有《普瑞米尔的谷仓》模组数据
-（`barn-of-premier.ts`）仍是人/LLM 手写产物，但「从 PDF 到运行模组这一步从来没有
-程序做过」这句话已经不对——`src/ingest/`（17 个模块 / 2401 行）+ 入口
-`scripts/ingest/run.ts` 现在真的会跑 PDF → 清洗 → 切分 → 分类 → 建场景骨架 →
-对基准 diff 这条链路（详见 `docs/notes/ingest.md`），只是它产出的是结构化候选与
-对比报告，**还没有自动写出最终提交的 `ModuleData` .ts 文件**这一步——那一步仍是
-人工/LLM 组装。上层目录另有约 120KB 成套的规则原材料一行未接。
+当前存在两条不应混淆的世界模型线：
 
----
+1. POC 运行时仍加载旧 `v18_output/v18_all_master.jsonl`，作为只读参考语料。
+2. `D:\aitrpg\世界模型\worldmodel\` 是新版、来源绑定的候选提取管线。它还没有替换 POC 的 v18 运行时语料。
 
-## 三层结构（务必分清）
+新版管线的目标是候选库，不是运行时世界状态：任何模型输出都不能自动成为 `confirmed`。
 
-这三者名字都带「模组」或「神话」，职责完全不同：
+## POC 模组与运行时
 
-| 层 | 文件 | 职责 |
+### 三层结构
+
+| 层 | 文件 | 职责 | 状态 |
+|---|---|---|---|
+| 原著世界内容库 | `poc/src/rules/mythos-expansion.ts` | 神话生物、典籍、法术等跨模组内容 | 仅 prompt 层引用，未接入剧本引擎 |
+| 摄取中间表示 | `poc/src/module/types.ts` 的 `ModuleData` | PDF 读取模块应产出的权威结构 | 已接入 |
+| 运行时导入容器 | `poc/src/rules/mythos-module.ts` 的 `MythosModule` | activation、loader、hooks、initialEffects | 已接入；应由 ModuleData 投影生成 |
+
+当前《普瑞米尔的谷仓》仍存在三份表述：
+
+| 文件 | 类型 | 风险 |
 |---|---|---|
-| **原著世界模型** | `poc/src/rules/mythos-expansion.ts` | 洛夫克拉夫特原著内容（公共领域）：神话生物/典籍/法术（曾计划过第四类「场景模板」，从未实现，文件里没有这个导出）。**跨模组可复用**，与具体模组无关 |
-| **摄取目标（中间表示）** | `poc/src/module/types.ts` 的 `ModuleData` | 文件头原文：「用于将原始模组 PDF 文本解析为结构化数据」。**这就是读取模块该产出的类型** |
-| **运行期导入容器** | `poc/src/rules/mythos-module.ts` 的 `MythosModule` | 「剧本杀式模组导入系统」：activation 条件、loader、hooks、initialEffects。是消费者，不是世界模型 |
+| `poc/src/module/barn-of-premier.ts` | 手写 `ModuleData` | 当前剧本引擎使用 |
+| `poc/src/rules/custom-modules/premiers_barn.ts` | 生成式 `MythosModule` | `game-session.ts` 路径使用 |
+| `poc/src/rules/mythos-module.ts` 的内联 `PREMIERS_BARN_MODULE` | 简版 `MythosModule` | 与上一份存在重复 ID 映射 |
 
-目标架构：
+在确定唯一权威源前，不应向这三份内容继续新增模组事实。
 
-```
-PDF ──[读取模块 + LLM + 世界模型约束]──> ModuleData（权威源）
-              ↑                              │
-      mythos-expansion                       ├──> 剧本引擎 play-module.ts
-      （构建时引用）                          └──投影──> MythosModule ──> game-session.ts
-              │
-        留痕 Provenance（原文/结果/理由）
-```
+其余已接入的模组相关文件：`poc/src/module/types.ts`（模组类型契约，23 个
+interface：`ModuleData`/`Scene`/`Clue`/`ModuleItem`/`TrapMechanics`/`Provenance` 等）、
+`poc/src/module/threat-analyzer.ts`（从模组反推难度：敌对 NPC 数、最大伤害、陷阱数、
+困难/极限检定数、最大 SAN 损失、有无 Boss）、`poc/src/rules/custom-modules/index.ts`
+（社区模组注册表与查询入口）。
 
-`MythosModule` 应当是**生成物**，不再手写。`mythos-expansion` 是共享库，读取模块构建时**引用**它（米戈的属性块该来自 `MYTHOS_CREATURES`，而不是模组里再抄一份）。
-
-## ⚠ 同一模组存在三份表述
-
-| 文件 | 类型 | 谁在用 |
-|---|---|---|
-| `poc/src/module/barn-of-premier.ts`（79KB，手写） | `ModuleData` | `play-module.ts`（剧本引擎） |
-| `poc/src/rules/custom-modules/premiers_barn.ts`（51KB，**生成物**，中文场景 ID） | `MythosModule` | `game-session.ts`、`gen-speech.ts` |
-| `poc/src/rules/mythos-module.ts:918` 内联的 `PREMIERS_BARN_MODULE`（简版，ASCII 场景 ID） | `MythosModule` | `game-session.ts` 按显示名二选一 |
-
-三者 `id` 都是 `premiers_barn`。`mythos-module.ts:931` 的注释自己承认这是同一模组的两套 ID 映射。**收敛前不要在任何一份上继续加内容。**
-
----
-
-## 模组内容（仓库内）
-
-| 路径 | 职责 | 状态 |
-|---|---|---|
-| poc/src/module/types.ts | 模组类型契约（579 行，23 个 interface）：ModuleData / Scene / Clue / ModuleItem / TrapMechanics / Provenance / ModuleSupport / ModuleState | 已接入 |
-| poc/src/module/barn-of-premier.ts | 《普瑞米尔的谷仓》ver1.03 结构化数据本体（1524 行） | 已接入 |
-| poc/src/module/threat-analyzer.ts | 从模组反推难度并据此发枪：敌对 NPC 数、最大伤害、陷阱数、困难/极限检定数、最大 SAN 损失、有无 Boss | 已接入 |
-| poc/src/rules/custom-modules/premiers_barn.ts | 同模组的 MythosModule 版，2026-07-06 由 extract-module.ts 自动提取 | 已接入（另一条路径） |
-| poc/src/rules/custom-modules/index.ts | 社区模组注册表与查询入口 | 已接入 |
-| poc/src/rules/mythos-module.ts | MythosModule 类型契约 + 导入器 + 三个内联模组（印斯茅斯 / 阿卡姆图书馆 / 谷仓简版） | 已接入 |
-| poc/src/rules/mythos-expansion.ts | 原著世界内容数据库：MYTHOS_CREATURES / TOMES / SPELLS（曾计划过第四类 LOCATIONS「场景模板」，从未实现，该文件没有这个导出） | **仅 LLM prompt 层引用；剧本引擎零引用** |
-
-## 世界模型运行时（仓库内）
+### POC 运行时世界模型
 
 | 路径 | 职责 |
 |---|---|
-| poc/src/world/world-model-loader.ts | v18 语料加载器（383K 条 / 73 部小说，v15+v16+v17 合并）：按小说/类型/关键词多重索引，带幻觉风险标记与共享单例 |
-| poc/src/world/world-model-integrator.ts | 把语料按场景/行为/因果注入运行时，产出在场 NPC 人设卡，防 LLM 臆造事实 |
-| poc/src/world/world-constraint.ts | 约束引擎：四级优先级下对物品与对话文本做 block/replace/allow_with_cost/redirect |
-| poc/src/world/module-loader.ts | 把 ModuleData 的场景/NPC/物品灌进 SQLite（`populateWorldFromModule`） |
-| poc/src/world/state.ts | 内存态模组进度追踪（当前场景、已发现线索、NPC 状态、剧情状态变量） |
-| poc/src/investigation/investigation-engine.ts + poc/src/rules/investigation.yaml | 复合线索系统：一条线索多技能入口，各给不同信息层 |
+| `poc/src/world/world-model-loader.ts` | 加载旧 v18 参考语料，默认经 C→D Junction 定位 |
+| `poc/src/world/world-model-integrator.ts` | 按场景、行为和因果向运行时提供参考约束 |
+| `poc/src/world/world-constraint.ts` | 文本/物品约束；当前主要覆盖时代错置和 meta 词汇 |
+| `poc/src/world/module-loader.ts` | 将 `ModuleData` 灌入 SQLite |
+| `poc/src/state/world-state-manager.ts` | SQLite 世界状态；与 `src/world/state.ts` 存在待收敛的双实现 |
+| `poc/src/investigation/investigation-engine.ts` | 多入口线索判定 |
 
-### 约束层的实际覆盖面（重要）
+### 运行时边界
 
-`DEFAULT_CONSTRAINTS` 目前**只有两个域**：
+目标顺序是：玩家经律书提出解释/适用请求，KP 裁定并记录先例；规则执行器读取已提交 SQLite 状态并结算确定性规则；世界模型只以可验证模板写入物理/社会派生事件；LLM 只叙事，不能直接写规则结果或状态。
 
-1. **时代错置** —— 1920s 设定下拦手机/电脑/互联网/扫码，以及"打他电话"（联系失效是模组戏剧核心）
-2. **对话 meta 词汇** —— 场景/关卡、线索/任务/道具、调查员/KP/跑团/存档、NPC/PC
+`PLAN.md` 中部分旧段落仍将“律书”称为确定性执行器。以本索引和 `docs/todo.json` 的 `todo-17` 为准：律书是玩家侧的规则辩论与先例制度，确定性代码名称是“规则执行器”。
 
-框架本身支持 `matchItem` / `matchText` / `matchPredicate` 三种匹配与四种处置，也支持模组 override，**但没有身体状态、行动力、物理后果任何一个域**。
+## POC 外部原材料
 
-`DESIGN-LOG.md §1` 声明的优先级是：
-
-> 模组特殊规则 > 当前场景与已确认世界事实 > CoC通用规则 > LLM的一般常识
-
-陷阱结算此前一路穿透到最底层，正是因为上面三层对物理后果**都是空的**。`TrapMechanics` 是「模组特殊规则」这一层第一次有内容。
-
----
-
-## 模组原材料（仓库外）
-
-| 路径 | 内容 | 状态 |
+| 路径/组 | 内容 | 接入状态 |
 |---|---|---|
-| `MikuFan-普瑞米尔的谷仓/普瑞米尔的谷仓 ver1.03.pdf` | **4.36MB，真正的源头** | 未被任何程序读取 |
-| `MikuFan-普瑞米尔的谷仓/附件/B照片 (1)~(6).png` | 6 张模组配图，共 2.2MB | **完全未使用** |
-| `MikuFan-普瑞米尔的谷仓.zip`（根目录） | 与上面解压目录重复 | 冗余，可删 |
-| `poc/tools/modules/raw/` | 原文按章节切分，19 个 txt | **唯一一份**（`src/module/raw/` 的重复副本已于 2026-08-19 删除） |
-| `poc/tools/modules/structured/` | 从旧 .ts 反向拆出的 15 个字段 txt | 是派生物，不是来源 |
+| `MikuFan-普瑞米尔的谷仓/` | PDF 原件及 6 张附件图 | PDF 摄取候选；图片未接入 |
+| `forensic_rules.yaml` | 尸检、伤害和世界物理规则 | 未接入 |
+| `mythos_rules.yaml`、`mythos_taxonomy.yaml` | 原著神话规则与实体分类 | 未接入 |
+| `investigation_system.yaml` | 完整版复合线索系统 | POC 有裁剪版 |
+| `narrative_style.yaml` | 原著叙事特征 | 未接入 |
+| `dnd_rules.yaml`、`cr_replacement.yaml` | D&D SRD/替换辅助材料 | 未接入 |
+| `miskatonic_*.yaml` | 密大教授与参考设定 | 未接入 |
+| `module_integration.yaml` | 模组接入设计 | 未接入 |
+| `pigeon_takeover.yaml` | 玩家缺席处理 | 未接入 |
+| `COC七版规则空白卡CY20.06.1.xlsx`、PDF/TXT 规则资料 | 人工参考材料 | 未接入 |
 
-**注意方向**：`tools/split-modules.mjs` 的输入是 `premiers_barn_raw.txt` **和已经写好的 .ts**，输出到 `tools/modules/`。也就是说 `structured/*.txt` 是**从 TS 反向拆出来的**，不是生成 TS 的来源。`premiers_barn_raw.txt` 目前**已不存在**，摄取需从 PDF 重跑。
+这些文件与 `poc/src/rules/` 中的材料可能同源但版本不同。接入前必须比较来源、语义与许可证，不能按文件名直接覆盖。
 
-### 原文与 raw/ 的血缘已确认（2026-08-19）
+`poc/tools/modules/raw/`（PDF 按章节切分的 19 个 txt，与源 PDF 逐字一致，已核对
+17/17，见 `docs/archive-world-model-2026-08.md`「原文与 raw/ 的血缘已确认」）与
+`poc/tools/modules/structured/`（从旧 `.ts` **反向拆出**的 15 个字段 txt，是派生物
+不是来源）都在 `.gitignore` 排除的 `poc/tools/` 下。**注意方向**：
+`tools/split-modules.mjs` 的输入是 `premiers_barn_raw.txt` 和已经写好的 `.ts`，
+`structured/*.txt` 是从 TS 反向拆出来的，不是生成 TS 的来源；
+`premiers_barn_raw.txt` 目前已不存在，摄取需从 PDF 重跑。这批 `tools/*.mjs`
+遗留脚本详情已归档，见 `docs/archive-world-model-2026-08.md`「摄取相关脚本」；
+当前活跃摄取管线见 `docs/notes/ingest.md`。
 
-`tools/modules/raw/` 的切片**确实出自这份 PDF**，逐字一致（空白归一化后）：
+## D 盘小说语料与新版提取
 
-| PDF | raw 文件 | 结果 |
+### 目录分层
+
+| 路径 | 角色 | 当前处理 |
 |---|---|---|
-| page 1 | `00_header.txt` | 完全一致 |
-| page 2–18 | `section_01..17.txt` | **17/17 完全一致** |
-| — | `section_18.txt` | 0 字节，是旧切分器 off-by-one 留下的空壳 |
+| `D:\aitrpg\世界模型\*.txt`、`*.epub` | 原始小说语料 | 保留，不与章节切片去重 |
+| `D:\aitrpg\世界模型\chapters_*` | 原文的章节/合成切片 | 派生输入；保留与来源文本的血缘 |
+| `D:\aitrpg\世界模型\v18_output` | POC 当前运行时参考语料 | 保留，未被 v2 替换 |
+| `D:\aitrpg\世界模型\relics`、`verification_*`、`output`、`results` | 旧提取、遗物和验证实验 | 历史/参考；不可作为 v2 新结论依据 |
+| `D:\aitrpg\世界模型\worldmodel` | 当前来源绑定 v2 提取工程 | 活跃 |
 
-即 `section_NN` 对应 **PDF 第 NN+1 页**。全文 18 页 / 21032 字符。
+审计时的规模约为：D 盘语料工程 `100,030` 文件、`2.74 GiB`；其中当前 `worldmodel/` 核心约 `625 MiB`。数字会随提取产物变化，不能当固定容量承诺。迁移前（C 盘、98,269 文件/1.5GB）按材料类型分类的旧清点见
+`docs/archive-world-model-2026-08.md`「世界模型语料工程旧清点」。
 
-意义：这批 raw 切片可以当作**已知正确的基准**——重建摄取时，第一段的输出应当与它逐字相同。
+### V2 管线
 
-> 抽取怎么做（依赖版本、API 调用、清洗）属于工程实现，见 `docs/notes/ingest.md`
-> （原指向 `docs/index-program.md` 的「模组摄取」一节——那一节其实是
-> `docs-index.ts:27` 的切分标记 `RECORDS_START`，内容早已迁入这里，
-> 死指针没跟着一起改）。这份文档只管内容与素材。
+核心文档和入口：
 
-### 摄取相关脚本（这批遗留脚本均在 `poc/tools/`，整个目录被 .gitignore 排除——不是「全部摄取相关脚本」，见下表后的限定语；新的入口 `scripts/ingest/run.ts` 已入库，不在这批里）
-
-| 脚本 | 作用 | 状态 |
-|---|---|---|
-| split-modules.mjs | raw.txt → 18 章节 txt；.ts → 15 字段 txt | 输入文件已缺失 |
-| calibrate.mjs | 原文 vs 结构化数据逐项比对，出报告 | 指向旧 .ts |
-| verify-module.mjs | 文本扫描式 CI 校验，返回 0/1 | 指向旧 .ts |
-| extract-hooks.mjs | **唯一会生成 TS 代码的脚本**，但只生成 `hooks:` 一个字段，输出到 generated-hooks.txt 等人工回贴，约 1/5 条目是"(原始文本中无对应段落)"占位 | 半成品 |
-
-> `poc/src/module/extract-tools/` 曾有这批脚本的第二份副本，且因 `BASE = resolve(__dirname, "..")` 在搬家后失效（解析成不存在的 `src/module/src/rules/...`）整体不可运行，已于 2026-08-19 删除。`src/module/` 现在只剩三个 .ts。
-
-**结论（就上面这批 `tools/*.mjs` 遗留脚本而言）：不存在从原文端到端产出完整模组
-.ts 的自动化路径。** 15 个字段里 14 个靠手工维护。
-
-⚠ 这不代表整个仓库都没有更自动化的路径——`src/ingest/` + `scripts/ingest/run.ts`
-是后来另起的一套（见 `docs/notes/ingest.md`），已经在做 PDF → 结构化数据 →
-对基准 diff，但同样止步于「产出可对比的候选」，还没有自动写出最终
-`ModuleData` .ts 的一步。
-
----
-
-## 未接入的规则原材料 ⚠
-
-`C:\aitrpg` 根目录有 11 份成套 yaml，与 `poc/src/rules/` 的三份 **md5 无一匹配**，但内容同源——是同一设计的不同版本或从未移植的部分。
-
-| 文件 | 大小 | 内容 | poc |
-|---|---|---|---|
-| `forensic_rules.yaml` | **76.2KB** | 尸检与世界物理规则，跨世界观通用，声明不含版权内容 | **未接入** |
-| `mythos_rules.yaml` | **40.5KB** | 克苏鲁神话规则，从 Lovecraft 1920–1937 原著推导，非 Chaosium | **未接入** |
-| `investigation_system.yaml` | 23.3KB | 复合线索系统完整版 | poc 有**裁剪版** |
-| `miskatonic_professors.yaml` | 12.4KB | 密大教授数值化，据原著行为推导 | 未接入 |
-| `miskatonic_reference.yaml` | 9.3KB | 密大设定参考，描述均来自原著 | 未接入 |
-| `mythos_taxonomy.yaml` | 8.8KB | 神话实体分类体系 | 未接入 |
-| `dnd_rules.yaml` | 8.3KB | D&D 5e SRD 施法规则 | poc 有**另一版** |
-| `cr_replacement.yaml` | 5.5KB | CR 替换助手：按队伍等级推荐怪物替换 | 未接入 |
-| `module_integration.yaml` | 4.5KB | 模组接入系统设计 | 未接入 |
-| `narrative_style.yaml` | 3.6KB | **Lovecraft 叙事风格特征库，7 篇原著提取** | **未接入** |
-| `pigeon_takeover.yaml` | 2.9KB | 鸽子接管系统（玩家缺席时的处理） | 未接入 |
-
-**其中三份直接对应当前正在做的事**：
-
-- `narrative_style.yaml` —— 我们一直在手工修「叙事像不像人话」，而这份从原著提取的风格特征库一行没接
-- `mythos_rules.yaml`（40KB）+ `forensic_rules.yaml`（76KB）—— 正是「世界模型常理约束」缺的那层内容。约束引擎现在只有时代错置和 meta 词汇两个文本域，身体状态/物理后果全空
-
-其他原材料：`COC七版规则空白卡CY20.06.1.xlsx`、`论萌新跑团的正确姿势1.1.pdf`(+ .txt)、`骰子姬食用一览.txt`。`test.jsonl` 内容是 `{"a":1}` `{"b":2}`，纯占位。
-
----
-
-## 世界模型语料工程（`世界模型/`，98,269 文件 / 1.5GB）
-
-一个独立的、未收尾的语料工程。**当前与 poc 的唯一接口是一个文件**：
-
-| 文件 | 大小 | 说明 |
-|---|---|---|
-| `世界模型/v18_output/v18_all_master.jsonl` | 229.3MB | **唯一一份**。`DEFAULT_V18_PATH` 默认就指向它（`../世界模型/v18_output/...`） |
-| `世界模型/cthulhu_extracted/cthulhu_world_model.jsonl` | 67.7KB | 同上，`DEFAULT_CTHULHU_PATH` |
-
-`poc/assets/` 的两份副本已于 2026-08-19 删除（md5 校验与原件完全一致）。它只服务于 Docker
-（`COPY assets/` + `ENV WORLD_MODEL_PATH=/app/assets/...`）。**要构建镜像时按 Dockerfile 第 5–8 行重建**：
-
-```
-cp ../世界模型/v18_output/v18_all_master.jsonl assets/
-cp ../世界模型/cthulhu_extracted/cthulhu_world_model.jsonl assets/
-```
-
-开发期不需要——运行时默认读仓库外的原件。
-
-构成：
-- **语料原材料**：顶层 79 个 .txt 小说（435.9MB）+ 5 个 .epub + 73 个 `chapters_*` 章节切分目录
-- **克苏鲁子集**：`cthulhu_raw/`(7)、`chapters_cthulhu/`(302)、`cthulhu_extracted/`(9)、`extract_cthulhu.mjs`、`split_cthulhu.mjs`、`cthulhu_extract_rules.md`
-- **产物**：`v18_output/`、`v14_output/`、`output/`、`flop_output/`、`results/`、`relics/`(291)
-- **校验**：`verification_work/`(8121)、`verification_pipeline/`(3228)、`verification_report.md`、`tests/test_strong_entities_validator.py`、`scripts/strong_entities_*.py`
-- **D&D 职业体系设计**（与 poc 的 qiankun 是不同材料，不必合并）：`races_md/`(107)、`德鲁伊能力体系.md`、`战士能力体系.md`、`圣名体系.md`、`法师多维融合与DND对接设计.md`、`data/races*.json`、`data/holy_names.json`
-- **独立生成实验**：`deepgen_trpg_generator.py` + 8 个 `test_*.py`（hf/vlm/minimal 等），与主线无关
-
-### 重复与占位（清理线索）
-
-- **合并脚本 5 个版本**：`merge_v11.ps1` / `merge_v12.mjs` / `merge_v13.mjs` / `merge_v14.mjs` / `merge_final.mjs`
-- **切章脚本 3 份**：`split_chapters.py` / `split_chapters.mjs` / `split_chapters_generic.mjs`
-- **同名双语言**：`scan_suffix.cjs` + `scan_suffix.mjs`
-- **抽取脚本 6 变体**：`extract.mjs` / `extract_book.cjs` / `batch_extract.cjs` / `v13_extract.mjs` / `v14_extract.mjs` / `extract_cthulhu.mjs`
-- **下载脚本带序号**：`download_奥法权杖.mjs` + `2.mjs`；`download_焚尽八荒.mjs` + `_88` + `_续`
-- **手工版本管理**：`data/holy_names.json` 有 `.bak` ~ `.bak5_design` **五份**；`strong_entities.json.bak_before_sleeping_witness`
-- **分批与合并并存**：`races.json` 与 `races_batch1..8.json`
-- **清洗前后并存**：`奥法权杖_全文.txt` + `_clean.txt`；`网游之焚尽八荒` 同样
-- **空目录占位**：`世界模型/来源/`（0 文件）
-- `poc/src/module/raw/section_18.txt` 为 0 字节
-
----
-
-## 归档完整性核对（2026-08-21）
-
-跑 `tools/_audit-workdir.ts` + `tools/_audit-orphans.ts` 全量盘了一次
-`C:\aitrpg`，结论：**没有未归档的内容**。上面几张表覆盖了顶层全部 24 项。
-
-| | |
+| 文件 | 用途 |
 |---|---|
-| 顶层条目 | 24（6 目录 + 18 文件） |
-| 在版本控制里 | **只有 `poc/`** |
-| 有远端 | **只有 `poc/`**（github.com/lluoto/aitrpg） |
-| 总体量 | 3.86 GB，其中 `世界模型/` 占 3.66 GB / 99453 文件 |
+| `worldmodel/tools/WORKFLOW.md` | v2 规范工作流 |
+| `worldmodel/DELEGATION_PROTOCOL.md` | worker 与 lead review 边界 |
+| `worldmodel/handoff_absolute_priest_v2_batched.md` | 《绝对牧师》从头执行的当前提示 |
+| `worldmodel/handoff_v2_semantic_migration.md` | 其他旧书的 v2 迁移说明 |
+| `worldmodel/handoff_yuchong_huanshi_synthetic.md` | 《驭宠幻世》假章节标题问题的前置重建 |
+| `worldmodel/worker_config.json` | 不含密钥的 chat/embedding 端点配置 |
+| `worldmodel/DESIGN_TRANSLATION_POLICY.md` | 提取后设计转换政策，不改变抽取事实 |
 
-⚠ **记录不等于备份**。`世界模型/v18_output/v18_all_master.jsonl`（229MB）
-是唯一一份，运行时默认直接读它（`DEFAULT_V18_PATH`）——丢了整层就没了。
-已记入 `docs/todo.json` 的 `risk-01`。
+每本书先通过 `29_validate_semantic_inputs.mjs`，再分别执行：
 
-### 备份分层：不必全备，只有 ~500MB 是不可再生的
+```text
+rule discovery -> cluster -> review -> rule registry
+special discovery -> cluster -> review -> special registry -> privilege ledger
+```
 
-⚠ 下面这份是**只扫 `poc/` 自身范围**的旧结果。后来另跑过一次**全 `C:\aitrpg`**
-范围的审计，产物在 `analysis/diag/audit-backup.md`——但那份自己声明
-「审计未完成，不给精确总量」，数字比下面这份更粗，不能拿它的总量替换
-下面的结论；两份的范围本来就不同（下面这份只看 poc/，那份连世界模型原始
-素材所在的父目录都扫了）。谁需要更全的口径去看那份，日常判断仍以下表为准。
+`19_agent_review_open_systems.mjs --batch-size 6` 是串行批量审核优化：每次请求最多审核 6 个同 mode 候选，逐条验证，单条失败不影响批内其他候选。
 
-`scripts/diag/audit-backup.ts` 按「丢了怎么办」分了层：
+### 当前书籍状态
 
-| 类别 | 文件数 | 大小 | 丢了怎么办 |
-|---|---|---|---|
-| 抽取产物 | 858 | 2590 MB | 能重跑（源材料 + 脚本都在就行） |
-| **源材料** | 111 | **474 MB** | **找不回来** — 小说全文、模组 PDF、原著 txt |
-| **脚本** | 4229 | **13 MB** | **找不回来** — 抽取管线（Python + mjs） |
-| **手写设计** | 899 | **12 MB** | **找不回来** — yaml / md |
-| 其它 | — | ~600 MB | 章节切片等中间产物 |
+| 书籍 | 状态 |
+|---|---|
+| `绝对牧师` | 有已验证的输入与 targeted queue；尚未完成 v2 rule/special 管线，是当前第一优先级 |
+| `网游之奥术至高` | 已有 v2 rule/special/registry/privilege 目录；先核验产物和失败记录，避免盲目重跑 |
+| `网游之魔剑圣域` | 旧 unified/v1 已完成；必须按 v2 重跑才可参与跨书比较 |
+| `奥法权杖`、`传奇博物馆`、`网游之数据为王`、`网游之焚尽八荒` | 待核验最新输入后迁移到 v2 |
+| `驭宠幻世` | 先以强制合成分段重建，再进入 v2 |
 
-**不可再生合计 5239 个文件 / 500 MB** —— 3.7GB 里只有这些真的需要异地留一份。
+旧 `cross_book_round1` 已删除：它存在已知错误合并。后续跨书比较只可在至少两份 v2 registry 完成后进行，并比较触发、前提、成本、效果、限制、可观察性和反制，不可只按标签 embedding 融合。
 
-执行：`bun scripts/backup-critical.ts --out <目标盘>`
-（`--dry` 先看清单；复制而非压缩，因为大头本就是 epub/pdf 这类已压缩格式；
-会在目标目录留 `_manifest.txt` 便于核对）
+### 文化转换边界
 
-⚠ **判据在这里错过一次，值得记**：头一版把 `.txt` 只在
-「路径含 来源/原著/raw」时才算源材料，于是 `世界模型/` 根目录下那些
-**15~18MB 的小说全文**全被归进「其它」，算出来「不可再生只有 53MB」。
-实际是 489MB —— **漏掉的正是整条抽取链的根**。
-按「直接躺在 `世界模型\` 下且是 .txt」补上判据才对。
+中文作品的来源概念必须如实保留，但不能自动进入西幻运行时。后续设计重用只能在审核后分配：
 
-**盘点时判据错过两次，都是同一类**：
+```text
+monk_existing_feature
+monk_subclass_or_feat
+magic_item_only
+source_only
+no_transfer
+```
 
-1. 先用 PowerShell 列目录，中文名全是乱码 → 换 `fs.readdirSync`
-2. 判断「文件名有没有被 poc 引用」时，用去掉扩展名的短词做子串匹配，
-   于是 `PLAN`、`docs` 这种词到处命中，**18 个文件全部"被引用"** ——
-   收紧成「带扩展名的完整文件名」才对。
+相近武术内容优先映射到既有武僧 `Focus`、职业特性、子职或专长；不新建仙侠/修真能力系统。境界、渡劫、飞升、御剑、灵根、因果等默认 `source_only` 或 `no_transfer`。震旦作为极东、低扩散文化区，只通过稀少行商、使团、旅人、遗物或飞地进入场景。
 
-第 2 条的教训跟这轮反复踩的是同一个：**判据没验就用**。
-收紧后重跑，仍是 18/18 命中，但这次是真的 ——
-`docs/index-world-model.md` 里那张 yaml 表逐个索引了它们。
+## 重复审计（2026-08-29）
 
-## 不在范围内（已确认）
+清理前对 C 盘工作区和 D 盘语料工程进行 SHA-256 审计，跳过依赖目录、缓存目录和 C→D Junction，扫描 `121,433` 个文件：发现 `4,263` 组字节级重复，去除每组保留的一份后约 `63.4 MiB`。本节列出的无歧义派生副本已按下表清理；剩余重复需在下一次全量哈希复检后重新计数。
 
-- `消弭/` —— 另一份在别处开发中的原创模组（《璀璨欢宴》），未完成。其中 `AI_KP与TTRPG相关学术工作备忘录_v1.docx` 是 `DESIGN-LOG.md` 引用的那份综述来源
-- `《苍青之剑》-改.txt` —— 不处理
-- D&D 职业体系设计 vs qiankun-subclasses —— 不同材料，不合并
+| 重复类别 | 典型位置 | 处理原则 |
+|---|---|---|
+| 阈值扫描重跑产物 | `semantic_threshold_scan/t78` 与正式 `semantic_clusters_round*` | 已删除全部扫描目录；正式 semantic 输出保留 |
+| 旧阶段重复产物 | `v14_output/world_model_v14_clean.jsonl` 与 `v18_output/v17_structured_data/world_model_clean.jsonl` | 已删除 v14 副本；保留 v18 运行时谱系 |
+| 同输入重复生成 | `evidence_atoms_round*`、D&D audit 重跑目录 | 已删除经哈希确认且被最新轮次覆盖的旧副本；保留当前执行提示指定的输入轮次 |
+| 验证工作副本 | `verification_*` 下章节与根 `chapters_*` | 是可重跑验证快照，不能与原文混为同一保留级别 |
+| POC 证据/日志副本 | `docs/evidence/` 与 `play-logs/` | 先检查文档链接与测试引用，再决定保留哪一侧 |
+
+禁止仅按文件名、目录名或“看起来相似”删除。删除重复前必须完成：完整哈希一致、保留侧存在、运行时/脚本引用检查、以及来源与派生产物角色确认。（本次审计前按脚本/文件类型归因的旧重复清单见
+`docs/archive-world-model-2026-08.md`「重复与占位（清理线索）」，粒度更细但范围已被本次全量扫描覆盖。）
+
+## 已清理与重复处理
+
+本轮已删除：
+
+- D 盘 `worldmodel/runs/末法王座` 的非当前实验产物。
+- 已知错误合并的 `worldmodel/runs/cross_book_round1`。
+- `worldmodel/tools/__pycache__`。
+- 被 v2 替代的旧 mechanical/semantic/review handoff。
+- 根目录 DeepGen 专属脚本、部署文件、快速指南和测试。
+- 全部 `semantic_threshold_scan`、`mechanism_cluster_threshold_scan`，以及旧 `v14_output` 完全副本。
+- 被最新 evidence-atom/D&D audit 轮次覆盖的旧审核输入；POC `tools/ingest-out` 中已复制到 `docs/evidence` 的三份中间快照。
+
+保留原则：原文与章节切片不是简单重复，二者构成来源与派生输入；`v18_output` 与 v2 registry 也不是简单重复，前者仍被 POC 运行时消费，后者尚未接入运行时。
 
 ## 待办
 
-1. **摄取管线重跑**：从 PDF 出发（可重跑），产出 `ModuleData`，带 `Provenance` 留痕
-2. ~~副本各留一份~~ —— 已完成 2026-08-19，见下「去重记录」
-3. **三份模组表述收敛**：确定权威源，其余改为生成物
-4. **接入未用的原材料**：优先 `narrative_style.yaml`、`mythos_rules.yaml`、`forensic_rules.yaml`
-5. **约束层补物理域**：身体状态/行动力，作为 CoC 通用规则而非模组规则
-6. `mythos-expansion.ts` 接进剧本引擎（现在剧本引擎零引用）
-7. 6 张模组附件图未使用
+1. 从 PDF 重跑《普瑞米尔的谷仓》摄取，并确定 `ModuleData` 与 `MythosModule` 的唯一权威源。
+2. 接入或明确弃用根目录 YAML 原材料，优先物理/尸检、神话规则和叙事特征。
+3. 为规则执行器与世界模型补齐物理/社会派生事件模板；保持 LLM 无直接写状态权限。
+4. 完成《绝对牧师》v2 双管线，再按书迁移其他语料。
+5. 获取具体原始描述后，才定义数据化躯体的伤害事件、弱点覆盖和致死伤延缓规则。
+6. 每次迁移或清理后更新本索引、`docs/todo.json` 和 `worldmodel/HANDOFF_DEVICE_TRANSFER.md`，避免 C/D 路径、历史产物和当前主线再次断层。
+7. `mythos-expansion.ts`（原著世界内容库）接进剧本引擎——现在剧本引擎零引用，只有 LLM prompt 层在用。
+8. 6 张模组附件图（`MikuFan-普瑞米尔的谷仓/附件/`）未接入任何摄取或展示路径。
 
-## 去重记录（2026-08-19）
-
-删除前均以 md5 逐文件校验内容一致，保留侧已核对存在。
-
-| 删除 | 保留 | 依据 |
-|---|---|---|
-| `poc/src/module/raw/`（19 txt） | `poc/tools/modules/raw/` | 19 个文件 md5 全同；保留侧与 structured/ 及脚本同处，是管线的自然位置 |
-| `poc/src/module/extract-tools/`（5 mjs） | `poc/tools/*.mjs` | 5 个文件 md5 全同，且被删的那份因 `__dirname` 变化整体不可运行 |
-| `poc/src/module/calibration-report.md` | `poc/tools/modules/CALIBRATION_REPORT.md` | md5 相同（3243B） |
-| `poc/src/module/extraction-summary.md` | `poc/tools/modules/SUMMARY.md` | md5 相同（1330B） |
-| `poc/assets/`（229.4MB） | `世界模型/v18_output/` 与 `cthulhu_extracted/` | md5 相同；运行时默认读原件，副本仅供 Docker，重建方式已在 Dockerfile 注释 |
-
-连带修正：`barn-of-premier.ts` 头部的来源注释、`tsconfig.json` 对 `src/module/raw` 的 exclude、
-`.gitignore` 里 `src/module/raw/` 与 `src/module/*.md` 两条失效条目。
-
-结果：`src/module/` 只剩 `barn-of-premier.ts` / `threat-analyzer.ts` / `types.ts` 三个源码文件；
-poc 目录体积从 409MB 降了下来——具体数字会随依赖/构建产物变化持续漂移
-（实测过一次是 303.6MB，含 node_modules，与本节写的 179.6MB 口径不同，
-按 `index-program.md:27` 的规矩不再写死数字），要精确值现测：
-`du`/`Get-ChildItem -Recurse | Measure-Object -Property Length -Sum`。
-
----
-
-## 遗物母版工程（`relics/`，URF v0.5）
-
-独立的遗物提取与框架化工程。已产出 56 本书的母版，正在推进 worldmodel 管道化。
-
-### 核心文档
-
-| 路径 | 内容 |
-|---|---|
-| `relics/_standard/处理标准_v1.md` | 提取判据标准（T0–TΩ 判据、术语碰撞、铁律、校验器规定） |
-| `relics/_tools/worldmodel/WORKFLOW.md` | **P0 管道工作流**（2026-08-19 新建） |
-| `relics/末法王座/母版_v1.md` | 首个实证批次，17 件遗物 |
-| `relics/疯巫妖的实验日志/母版_v1.md` | v1.1 更新：补录两件神器 + T5 边界验证 |
-
-### P0 世界模型管道（`relics/_tools/worldmodel/`）
-
-从原文到 D&D 5e 可接入规则的完整管道。去掉角色/剧情后，提取法术、物品、生物、机制等世界观设定。
-
-#### 管道结构
-
-```
-01_discover_mentions  →  mentions.jsonl (全文位置锚点，无上限)
-          ↓
-03_stream_cluster     →  clusters.jsonl (流式去重)
-          ↓                   ↑
-          ↓             [bge-m3 替换 Jaccard — 待部署]
-          ↓
-05_fusion             →  enriched_mentions.jsonl (+ v17 分类)
-          ↓
-06_surface_summary    →  surface_summary.jsonl (纯逻辑合并)
-          ↓
-07_classify_entries   →  world_entries.jsonl (qwen 分类过滤)
-          ↓
-08_dnd_convert        →  dnd_rules.jsonl (GPT/Claude → D&D 5e)
-```
-
-#### 脚本清单
-
-| 脚本 | 功能 | 依赖 | 状态 |
-|---|---|---|---|
-| `01_discover_mentions.mjs` | 原文 n-gram 发现 → mentions.jsonl | 无 | ✅ 完整运行 |
-| `02_collect_contexts.mjs` | 多层上下文 → contexts.jsonl | 01 | ✅ 224K 条 |
-| `03_stream_cluster.mjs` | **流式聚类去重** → clusters.jsonl | 01 | ✅ **2026-08-20 新建** |
-| `03_embed_mentions.mjs` | 真 embedding → vectors.jsonl | 01 | ⏳ 待 bge-m3 |
-| `03_pseudo_embed.mjs` | LLM 伪 embedding → pseudo_vectors.jsonl | 01 | ✅ 备用 |
-| `04_candidate_pairs.mjs` | 候选实体对 → candidate_pairs.jsonl | 03 | ✅ 就绪 |
-| `05_fusion.mjs` | v17 分类 + P0 位置锚点融合 | 01+02 | ✅ 中文匹配已修复 |
-| `06_surface_summary.mjs` | **纯逻辑合并** clusters → surface_summary | 03 | ✅ **2026-08-20 新建** |
-| `07_classify_entries.mjs` | **qwen 分类**过滤 → world_entries + junk | 06 | ✅ **2026-08-20 新建** |
-| `08_dnd_convert.mjs` | **GPT/Claude → D&D 5e** 规则格式 | 07 | ✅ **2026-08-20 新建** |
-
-#### 关键修复（2026-08-20）
-
-- **去掉 maxPositions=100 上限**：原来每个 surface 只保留前 100 个位置，导致高频词（林云、死亡之书等）只覆盖前几章，后期战斗完全丢失。现在无上限，由流式聚类去重控制产出量。
-- **流式聚类**（03_stream_cluster）：读一条 mention → 与已有簇比较 → 语义相似则丢弃，不同则新建簇。「林云点了点头」保留第一次，后续自动去重；「林云取出死亡之书」是新语义，自动保留。
-- **中文匹配修复**（05_fusion）：禁用 Levenshtein 模糊匹配（中文字形无语义关联），调严 contains 匹配阈值。
-- **io.mjs 流式读取**：支持超大 JSONL 文件（224K+ 条），避免 `ERR_STRING_TOO_LONG`。
-
-#### 验证：148-150 章战斗场景
-
-用末法王座第 148-150 章（林云 vs 凯恩/死亡之书化身）验证管道效果：
-
-| 修复前 | 修复后 |
-|---|---|
-| 关键实体命中：0 个 | 关键实体命中：全部 |
-| 林云/死亡之书/凯恩/毁灭之日：全 MISS | 凯恩 37 簇、毁灭之日 20 簇、死亡之书 16 簇 |
-| 原因：maxPositions=100 在前几章耗尽配额 | 流式聚类覆盖全文，语义去重 |
-
-#### 执行示例
-
-```powershell
-$src = "C:\aitrpg\世界模型\末法王座-庄毕凡.txt"
-$out = "C:\aitrpg\世界模型\relics\_scan\_末法王座_worldmodel"
-
-# 阶段1-3: 本地纯计算
-node 03_stream_cluster.mjs $src --out-dir $out --chapter-range 148-150
-node 06_surface_summary.mjs --data-dir $out
-
-# 阶段4: qwen 分类 (LiteLLM)
-node 07_classify_entries.mjs --data-dir $out --model qwen3.5-9b
-
-# 阶段5: D&D 转换 (GPT)
-$env:OPENAI_API_KEY="sk-..."
-node 08_dnd_convert.mjs --data-dir $out --type spell,item,creature
-```
-
-### 战斗展开（设计方向，未实现）
-
-原文中强者对战常有大段省略（如「三小时战斗」用几句话带过）。未来 `09_battle_expand.mjs` 的设计方向：
-
-- **不是提取，是约束生成**：原文没写的内容，根据已有 world_entries 中的法术/机制规则补全
-- **输出战斗骨架**：标记哪些阶段原文有写（直接提取），哪些省略（标注约束条件供人工/LLM 填充）
-- **输入依赖**：world_entries（法术列表）+ 全书其他详细战斗作为 few-shot 样本
-- **需要更多战斗场景数据后再开发**
-
-### 神器对决启发式
-
-独立文件：`relics/_standard/artifact_conflict_heuristics.yaml`
-
-- 定位为 GM 参考，非硬规则
-- 适用 T5 级效果互相作用等边缘情况
-- 核心理念：叙事决策 > 规则推导
-
-### T5 判据更新（2026-08-19）
-
-`处理标准_v1.md` §3.4.10 更新：
-
-> **核心：效果受规则裁决（T4），还是效果定义规则如何运行（T5）？**
->
-> - T4 = 规则裁决效果的成败（有判定、有边界）
-> - T5 = 效果定义规则如何运行（移除后规则本身变化）
->
-> **边界验证**：
-> 1. 有失败/被抵抗/上限记录？→ T4
-> 2. 无使用记录？→ 默认 T4，标注「有 T5 路径」
-> 3. 无边界 + 有记录证明无豁免 → 移除测试 → T5
->
-> **注意**：「神权」「至高」等标签仅供参考，不自动升级
-
-### 待办
-
-- [x] P0 完整运行末法王座（224K mentions）
-- [x] 05_fusion.mjs 融合（enriched 14200 / new 210062 / orphans 5887）
-- [x] 流式聚类脚本 + 148-150 章验证
-- [x] 06/07/08 三阶段脚本编写
-- [ ] 部署 bge-m3 embedding 模型（WSL + vllm，替换 Jaccard）
-- [ ] 07 qwen 分类全量测试
-- [ ] 08 GPT/Claude D&D 转换测试
-- [ ] 战斗展开脚本设计（需更多战斗样本）
-- [ ] 推广至其他书籍
+更早的旧清点、一次性核对记录与 `relics/` 遗物母版子工程见
+`docs/archive-world-model-2026-08.md`。
