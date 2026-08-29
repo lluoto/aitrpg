@@ -6,6 +6,7 @@ tmp/
 .codegraph/
 .env
 *.log
+.dev-server.pid
 .opencode/
 _find_false_npc.mjs
 start.ps1

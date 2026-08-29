@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-25 03:42  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-29 09:25  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：c4d9c41 fix: combat narration tiering was built but only the CLI path used it, and even that had maxHp hardcoded to 10  ·  **测试**：1985 条 / 114 文件，全绿（基线 1985，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：c24693e test: 补Good End vs Normal End判别测试  ·  **测试**：2405 条 / 152 文件，全绿（基线 2405，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -33,6 +33,24 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 2. 同一类失误连着犯到第 3 次就停手，换一双眼睛（另一个模型 review diff）。本轮机械切割边界连错 5 次才自己发现——失效模式相同的人查不出自己的系统性错误。
 
 3. **判据没验过就不算数**。写完诊断脚本先确认它能区分对错两种情形：第一版「切割截断」判据出了 174 个假阳性，第一版「倒下仍行动」判据永远报警。判据本身要做变异检验。
+
+## 启动后端做实跑（模拟局/手动测试）
+
+**不要**用 `start "" /b bun run server > out.log 2> err.log`——这条写法
+两个毛病占全了：`bun run server` 是包装脚本，会再 spawn 一个子进程，
+杀掉包装脚本后真正监听端口的那个变成孤儿；`start /b` 不脱离控制台，
+子孙进程继承调用者的 stdout/stderr 句柄，等的是"管道关闭"不是"进程退出"，
+工具会永远等不到 EOF、空转。正确用法已经写进仓库（这条已经在模拟 prompt
+里丢过一次，模拟 prompt 每轮重写不算数，脚本才算）：
+
+```
+bun run dev-server:start     启动，PID 落 .dev-server.pid，日志落 server-out.log / server-err.log
+bun run dev-server:stop      按 PID 干净地杀掉，不留孤儿
+bun run dev-server:status    看还在不在
+```
+
+服务端口默认 **3099**（不是 3000），见 `src/api/server.ts:1037`，用环境变量
+`PORT` 覆盖。脚本本体：`scripts/dev-server.ps1`。
 
 ## 环境坑
 
@@ -98,29 +116,49 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 用法：跑局类脚本都收 `[局数] [起始局号]`，
 `bun scripts/diag/diag-downed.ts 3 4` = 第 4~6 局，便于分批跑而不重叠。
 
-## 手上还挂着的（3）
+## 手上还挂着的（13）
 
 - ️ 「引擎别再替玩家挪窝」这一步单独做不成立（2026-08-20）
   `docs/notes/engine.md:514`
 - ️ 引擎的移动是「给选项 + 不选就替你选」（2026-08-20）
   `docs/notes/engine.md:590`
+- 载荷文档陈述反向传播进生产代码——这是第二次（2026-08-26）
+  `docs/notes/engine.md:612`
+- 改了被判据观测的行为，没同步检查观测者的失败分类——这是第三次（2026-08-27）
+  `docs/notes/engine.md:636`
+- 已知语义：activePlayerId 是粘性的，多端下会互相踩（2026-08-28）
+  `docs/notes/engine.md:682`
+- 可观测性复制了它要消除的歧义——这是第四次（2026-08-29）
+  `docs/notes/engine.md:702`
+- 防线装在让它永远通过的动作下游（2026-08-29）
+  `docs/notes/engine.md:727`
+- 声明式数据是装饰品——这是第五次（2026-08-29）
+  `docs/notes/engine.md:747`
+- 模拟换了输入分布，把唯一没结论的问题绕过去了（2026-08-29）
+  `docs/notes/engine.md:767`
+- 固定回合数把第 6 回合的发现埋进 24 回合噪音（2026-08-29）
+  `docs/notes/engine.md:780`
+- 外部模型的根因推测四条全错（2026-08-29）
+  `docs/notes/engine.md:794`
+- 整理索引的那一轮自己制造了悬空引用（2026-08-29）
+  `docs/notes/engine.md:818`
 - ️ 一直在报的那个数不衡量目标：可运行性是 1/27（2026-08-20）
-  `docs/notes/ingest.md:743`
+  `docs/notes/ingest.md:745`
 
 ## 最近做了什么
 
-- c4d9c41 fix: combat narration tiering was built but only the CLI path used it, and even that had maxHp hardcoded to 10
-- 1fd96d2 docs: a content-development brief that says which mechanics actually fire
-- 62137da fix: "乙 joined the party" then "there is no 乙 in the party", one turn apart
-- 13cad76 fix: you could go insane and the character sheet wouldn't mention it
-- a141d6b chore: a probe for the bug class that kept getting past every existing check
-- bc4db90 fix: the difficulty setting never reached the investigation engine
-- d8bae0f fix: every `bun test` run was hitting the live LLM with a real key
-- adf64d1 fix: combat on the web path was one-sided — enemies never fought back
-- 1847cd2 fix: "潜行" was listed as an attack verb — stealth made you swing
-- 27163aa feat: mythos creatures now cost Sanity to look at
-- 336fdbf fix: investigation SAN loss could never drive anyone mad — two bugs stacked
-- 02485f9 docs: apply-action said it was not wired; it has been for a while
+- c24693e test: 补Good End vs Normal End判别测试
+- fb41e6b fix: 收紧chase/flee正则，别再把追问/跑团/逃避这类词判成追逐
+- b267e90 fix: 围栏解析收敛到src/llm/json.ts一处，接入intent.ts和generate-llm-expanded.ts
+- ecbcde7 docs: 刷新now.md（跑在其余提交之后）
+- 6a8f6c9 docs: 收尾——更新todo-26/todo-03，记录时间系统与孤立场景两个已知缺口
+- c7f3e2c feat: 脱离判定+确认门+结局播报+终态
+- 8c30de6 feat: 移动代价——弱版邻接+按场景图跳数计时，顺带修空目标bug
+- a4b2d6e feat: 线索发现与场景访问历史真迁进真相源 + 队伍视图谓词
+- 18fa6e2 docs: 补回索引整理时弄丢的约束层覆盖面记录，核实原材料清单未丢
+- 65836f0 docs: 刷新now.md（跑在任务1-4提交之后）
+- 98cfa55 docs: index-program.md补status字段说明与新增文档入表
+- 4dd7cac diag: preflight补反向判据——文档引用文档的存在性
 
 ## 代码地图
 

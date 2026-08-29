@@ -6,7 +6,10 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "run": "bun src/index.ts",
-    "server": "bun src/api/server.ts"
+    "server": "bun src/api/server.ts",
+    "dev-server:start": "powershell -File scripts/dev-server.ps1 start",
+    "dev-server:stop": "powershell -File scripts/dev-server.ps1 stop",
+    "dev-server:status": "powershell -File scripts/dev-server.ps1 status"
   },
   "dependencies": {
     "pdf-parse": "^2.4.5",

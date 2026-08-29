@@ -79,6 +79,24 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 
 ${rules.map((r: any, i: number) => `${i + 1}. ${r.text}`).join("\n\n")}
 
+## 启动后端做实跑（模拟局/手动测试）
+
+**不要**用 \`start "" /b bun run server > out.log 2> err.log\`——这条写法
+两个毛病占全了：\`bun run server\` 是包装脚本，会再 spawn 一个子进程，
+杀掉包装脚本后真正监听端口的那个变成孤儿；\`start /b\` 不脱离控制台，
+子孙进程继承调用者的 stdout/stderr 句柄，等的是"管道关闭"不是"进程退出"，
+工具会永远等不到 EOF、空转。正确用法已经写进仓库（这条已经在模拟 prompt
+里丢过一次，模拟 prompt 每轮重写不算数，脚本才算）：
+
+\`\`\`
+bun run dev-server:start     启动，PID 落 .dev-server.pid，日志落 server-out.log / server-err.log
+bun run dev-server:stop      按 PID 干净地杀掉，不留孤儿
+bun run dev-server:status    看还在不在
+\`\`\`
+
+服务端口默认 **3099**（不是 3000），见 \`src/api/server.ts:1037\`，用环境变量
+\`PORT\` 覆盖。脚本本体：\`scripts/dev-server.ps1\`。
+
 ## 环境坑
 
 - **PowerShell 5.1**。仓库源码 UTF-8 **无 BOM**，\`Select-String\`/\`Get-Content\`
