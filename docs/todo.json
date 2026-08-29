@@ -1,133 +1,260 @@
 {
-  "generated": "2026-08-21",
+  "generated": "2026-08-29",
   "source": "docs/index-program.md #已知问题",
-  "note": "已知问题 / 环境约束。severity=warn 的是踩过的坑，动手前先扫一遍。",
+  "note": "已知问题 / 环境约束。severity=warn 的是踩过的坑，动手前先扫一遍。status: open=尚待处理, done=已解决/已确认不存在, by-design=有意为之/属既定实践非缺陷, superseded=已被另一条覆盖，见 mergedInto。",
   "items": [
     {
       "id": "rule-01",
       "category": "工作约定",
       "severity": "warn",
+      "status": "by-design",
       "text": "改动前后各跑一次 `bun scripts/preflight.ts`。它把反复犯的几类错做成了机器判据：切割截断语义单元、搬运残渣、循环依赖、语法错。别靠记性。"
     },
     {
       "id": "rule-02",
       "category": "工作约定",
       "severity": "warn",
+      "status": "by-design",
       "text": "同一类失误连着犯到第 3 次就停手，换一双眼睛（另一个模型 review diff）。本轮机械切割边界连错 5 次才自己发现——失效模式相同的人查不出自己的系统性错误。"
     },
     {
       "id": "rule-03",
       "category": "工作约定",
       "severity": "warn",
+      "status": "by-design",
       "text": "**判据没验过就不算数**。写完诊断脚本先确认它能区分对错两种情形：第一版「切割截断」判据出了 174 个假阳性，第一版「倒下仍行动」判据永远报警。判据本身要做变异检验。"
     },
     {
       "id": "risk-01",
       "category": "工作目录",
       "severity": "warn",
+      "status": "open",
       "text": "C:\\aitrpg 下只有 poc/ 有版本控制和远端，其余 3.7GB 裸奔。**已分层，不必全备**：不可再生的只有 5239 个文件 / 500MB（源材料 474MB + 脚本 13MB + 手写设计 12MB），其余 3.2GB 是能重跑的抽取产物。执行 `bun scripts/backup-critical.ts --out <目标盘>`（先 --dry 看清单）。**待办：选一个目标盘跑一次。** 分层依据见 docs/index-world-model.md「备份分层」。"
     },
     {
       "id": "todo-01",
       "category": "同职责多实现",
       "severity": "info",
-      "text": "三套局面驱动（见上）——有意为之"
+      "status": "by-design",
+      "text": "三套局面驱动（见上）——有意为之。依据：architecture.json §2 原文「是有意为之，不是事故」。"
     },
     {
       "id": "todo-02",
       "category": "同职责多实现",
       "severity": "info",
-      "text": "两套角色历程存储：`career.ts`(SQLite) vs `career-file.ts`(JSON)，只有后者在用"
+      "status": "open",
+      "text": "两套角色历程存储：`career.ts`(SQLite) vs `career-file.ts`(JSON)，只有后者在用；`career.ts` 的 `CareerStore` 类全仓无处 `new`（原 todo-05，同一件事，已并入本条——见 todo-05 的 superseded 记录）。已复验仍成立。"
     },
     {
       "id": "todo-03",
       "category": "同职责多实现",
       "severity": "info",
-      "text": "两套状态追踪：`src/world/state.ts`（内存，仅 play-module 用）vs `src/state/world-state-manager.ts`（SQLite）——最可能的整合目标"
+      "status": "open",
+      "text": "两套状态追踪：`src/world/state.ts`（内存，仅 play-module 用）vs `src/state/world-state-manager.ts`（SQLite）——最可能的整合目标。补细节（2026-08-29）：两者存在重叠的四处同一事实——NPC 位置 / 存活 / 态度 / 当前场景——各自维护一份，没有单一真相源。已复验仍成立。"
     },
     {
       "id": "todo-04",
       "category": "废弃/无引用",
       "severity": "cleanup",
-      "text": "`src/validator/item-validator.ts` —— 全仓（含测试）零 import，三个导出全部悬空"
+      "status": "done",
+      "text": "`src/validator/item-validator.ts` —— 全仓（含测试）零 import，三个导出全部悬空。依据（2026-08-29 复核）：文件已不存在。"
     },
     {
       "id": "todo-05",
       "category": "废弃/无引用",
       "severity": "cleanup",
-      "text": "`src/character/career.ts` 的 `CareerStore` 类 —— 无处 new"
+      "status": "superseded",
+      "mergedInto": "todo-02",
+      "text": "`src/character/career.ts` 的 `CareerStore` 类 —— 无处 new。与 todo-02（两套角色历程存储，只有 career-file.ts 在用）说的是同一件事——`CareerStore` 无处 new 正是「只有后者在用」的另一种表述，已把这条细节并入 todo-02，本条不再单独追踪。"
     },
     {
       "id": "todo-06",
       "category": "废弃/无引用",
       "severity": "cleanup",
-      "text": "`frontend/src/FlightPanel.vue` —— 未被任何组件引用的孤儿"
+      "status": "open",
+      "text": "`frontend/src/FlightPanel.vue` —— 未被任何组件引用的孤儿。已复验（2026-08-29）：`frontend/src` 内零引用，仍然成立。"
     },
     {
       "id": "todo-07",
       "category": "废弃/无引用",
       "severity": "cleanup",
-      "text": "`character/prestige-classes.ts` 与 `qiankun-subclasses.ts` 只被 CLI 入口引用，服务端完全不碰"
+      "status": "open",
+      "text": "`character/prestige-classes.ts` 与 `qiankun-subclasses.ts` 只被 CLI 入口引用，服务端完全不碰。已复验（2026-08-29）：`src/api/` 下零引用，仍然成立。"
     },
     {
       "id": "todo-08",
       "category": "测试套件里有一条会假红（约 1/100）",
       "severity": "warn",
-      "text": "`src/__tests__/coc-engine.test.ts:131`「失败时损失 = sanCost 后半部分」：用 `new SanityEngine(1)` 凑「几乎必失败」，但 `coc-engine.ts:669` 的 `regularD100()` 没有种子，判定是 `roll <= currentSAN`。 `currentSAN` 是 1，掷出 1 就算通过，`expect(r.passed).toBe(false)` 于是红。概率正好 1%。"
+      "status": "done",
+      "text": "`src/__tests__/coc-engine.test.ts:131`「失败时损失 = sanCost 后半部分」：用 `new SanityEngine(1)` 凑「几乎必失败」，但 `coc-engine.ts:669` 的 `regularD100()` 没有种子，判定是 `roll <= currentSAN`。 `currentSAN` 是 1，掷出 1 就算通过，`expect(r.passed).toBe(false)` 于是红。概率正好 1%。依据（2026-08-29 复核）：该测试（现位于 :147）已改用 `Math.random = () => 0.999` 强制 d100=100 必定失败，且改用不受钳位影响的 SAN=50，1% 假红条件已不存在。"
     },
     {
       "id": "todo-09",
       "category": "测试套件里有一条会假红（约 1/100）",
       "severity": "warn",
-      "text": "**先例存在、本轮不修**：它早于摄取管线，属规则引擎，修它要改 d100 的注入方式，是另一轮的活。"
+      "status": "done",
+      "text": "**先例存在、本轮不修**：它早于摄取管线，属规则引擎，修它要改 d100 的注入方式，是另一轮的活。依据：同 todo-08，已在后续某轮修掉（见 todo-08 的复核记录）。"
     },
     {
       "id": "todo-10",
       "category": "测试套件里有一条会假红（约 1/100）",
       "severity": "warn",
-      "text": "但它现在比以前更碍事：摄取这条线的产物是**一个数**（17/20），下一轮要重新测量， 而「`bun test` 全绿」是那个数唯一的背书。一个 1% 说谎的套件会把每一次这样的背书都打个折。"
+      "status": "done",
+      "text": "但它现在比以前更碍事：摄取这条线的产物是**一个数**（17/20），下一轮要重新测量， 而「`bun test` 全绿」是那个数唯一的背书。一个 1% 说谎的套件会把每一次这样的背书都打个折。依据：同 todo-08，假红条件已消除。"
     },
     {
       "id": "todo-11",
       "category": "全量 `expect()` 计数不能当回归信号，只有测试条数能",
       "severity": "warn",
-      "text": "实测：同为 1156 个测试的两次跑，`expect()` 总数是 9412 与 9410；1151 个测试那次是 9443。 摆动幅度远超测试数变化能解释的范围。原因大概率就是上面那条无种子的随机测试 （断言数随分支走向变化），但无论原因如何，结论一样：**比 `expect()` 数会被噪音骗到。**"
+      "status": "by-design",
+      "text": "实测：同为 1156 个测试的两次跑，`expect()` 总数是 9412 与 9410；1151 个测试那次是 9443。 摆动幅度远超测试数变化能解释的范围。原因大概率就是上面那条无种子的随机测试 （断言数随分支走向变化），但无论原因如何，结论一样：**比 `expect()` 数会被噪音骗到。**这是已确立的方法论结论，不是待修的缺陷——持续适用。"
     },
     {
       "id": "todo-12",
       "category": "全量 `expect()` 计数不能当回归信号，只有测试条数能",
       "severity": "warn",
-      "text": "代价要说清楚：**条数管不住「断言被就地改弱」**。把 `toEqual([...])` 改成 `toContain(\"2\")` 条数不变而测试变瞎，本仓已经因为这个吃过三次亏。"
+      "status": "by-design",
+      "text": "代价要说清楚：**条数管不住「断言被就地改弱」**。把 `toEqual([...])` 改成 `toContain(\"2\")` 条数不变而测试变瞎，本仓已经因为这个吃过三次亏。持续适用的方法论提醒，不是待修条目。"
     },
     {
       "id": "todo-13",
       "category": "全量 `expect()` 计数不能当回归信号，只有测试条数能",
       "severity": "warn",
-      "text": "所以改断言的轮次必须额外做两件事：看**逐文件**的 `expect()` 增量（单文件是稳定的）， 以及对新断言做**变异检验**（把实现按发现描述的方式改坏，确认测试变红，再还原）。 本轮那个 `llm-json` 的裸围栏用例就是这么抓出来的——它一开始是假绿的。"
+      "status": "by-design",
+      "text": "所以改断言的轮次必须额外做两件事：看**逐文件**的 `expect()` 增量（单文件是稳定的）， 以及对新断言做**变异检验**（把实现按发现描述的方式改坏，确认测试变红，再还原）。 本轮那个 `llm-json` 的裸围栏用例就是这么抓出来的——它一开始是假绿的。持续适用的工作方法，不是待修条目。"
     },
     {
       "id": "todo-14",
       "category": "环境陷阱（踩过）",
       "severity": "warn",
-      "text": "本仓源文件**不能过 PowerShell 写**（`Set-Content` 会把中文 mojibake）。读也一样，用 Read 工具。"
+      "status": "by-design",
+      "text": "本仓源文件**不能过 PowerShell 写**（`Set-Content` 会把中文 mojibake）。读也一样，用 Read 工具。证据来源：2026-08-07 UTF-8 损坏事故，见 docs/incident-2026-08-07-utf8-corruption.md（已闭合，全仓 U+FFFD=0）。这是永久性环境约束，不是待修缺陷。"
     },
     {
       "id": "todo-15",
       "category": "环境陷阱（踩过）",
       "severity": "warn",
-      "text": "`bash` 工具的 `workdir` 参数会卡死，用 `cd C:\\aitrpg\\poc; ...`"
+      "status": "by-design",
+      "text": "`bash` 工具的 `workdir` 参数会卡死，用 `cd C:\\aitrpg\\poc; ...`。永久性环境约束。"
     },
     {
       "id": "todo-16",
       "category": "环境陷阱（踩过）",
       "severity": "warn",
-      "text": "精确分析写临时 `.ts` 用 bun 跑，并让脚本自己 `Bun.write` 落盘，不要经控制台"
+      "status": "by-design",
+      "text": "精确分析写临时 `.ts` 用 bun 跑，并让脚本自己 `Bun.write` 落盘，不要经控制台。永久性环境约束。"
     },
     {
       "id": "todo-17",
       "category": "世界状态与世界模型反馈边界",
       "severity": "info",
+      "status": "open",
       "text": "定义事件反馈闭环：规则执行器只能读取已提交的 SQLite 世界状态，先写直接事件；世界模型只用可验证物理/社会模板生成派生事件；派生事件再经规则执行器结算并写回。LLM 不得直接改变规则结果或世界状态；全链应有 `causation_id` 防止重复触发。律书是玩家向 KP 提出规则解释/适用请求的制度，不是规则执行器名称。"
+    },
+    {
+      "id": "todo-18",
+      "category": "数据化躯体规则建模",
+      "severity": "info",
+      "status": "open",
+      "text": "等待获得具体原始描述后再建模数据化躯体事件。届时先以战地急救/创伤后果的抽象基线建立 damage_event，再分别审查弱点覆盖、功能失能、普通人致死伤延缓、核心同步/锚点、救治窗口、代价、上限和反制。不得从小说的单句存活描写自动推导完整运行时能力。"
+    },
+    {
+      "id": "todo-19",
+      "category": "同职责多实现",
+      "severity": "info",
+      "status": "open",
+      "text": "两份谷仓模组表示：`rules/custom-modules/premiers_barn.ts`（MythosModule 格式，39 hooks / 4 endings / 25 exits）vs `module/barn-of-premier.ts`（ModuleData 格式，32 clues / END_NARRATIONS）。GameSession（自由跑团）加载前者，同时又从后者桥接线索——`game-session.ts:670-675` 已在注释里承认这是只对 premiers_barn 写死的特例，不是通用机制。"
+    },
+    {
+      "id": "todo-20",
+      "category": "同职责多实现",
+      "severity": "info",
+      "status": "open",
+      "text": "两个模组→世界加载器：`populateWorldFromModule`（ModuleData → SQLite，仅 `index.ts:179` 一处调用）vs `MythosModuleLoader`（MythosModule → registerScene 等，GameSession 用）。与 todo-19 同源，但这条是加载器层面的重复，todo-19 是数据层面的重复。"
+    },
+    {
+      "id": "todo-21",
+      "category": "同职责多实现",
+      "severity": "info",
+      "status": "open",
+      "text": "两套消息可见性机制：`PlayerSession.push(message, visibility, ...)` 在用（discoverer_only 等五档，见任务「线索只对发现者可见」提交）vs `AgentMessage.visible_to` + `PlayerSession.pushPerPlayer` 零调用方——`agent/types.ts:167` 已在字段注释里承认 `visible_to` 是「预留」，但这个事实没有进过 todo。建议：确认不再需要 `visible_to`/`pushPerPlayer` 后直接删除，不要留着两套并存。"
+    },
+    {
+      "id": "todo-22",
+      "category": "同职责多实现",
+      "severity": "info",
+      "status": "open",
+      "text": "技能成长结算有两处独立实现：`game-session.ts:2176-2196`（休息时结算）与 `:3357-3431`（`handleSkillAdvancement`，模组结算）——同一套「去重 / `Math.min(99,…)` 钳位 / 写回角色卡 / 清空标记」逻辑各写一份，没有共用一个函数。"
+    },
+    {
+      "id": "todo-23",
+      "category": "废弃/无引用",
+      "severity": "cleanup",
+      "status": "open",
+      "text": "`player-session.ts` 三个零调用方：`:183 pushPerPlayer`、`:237 setPlayerScene`、`:243 getPlayersInScene`。与 todo-21（`visible_to`/`pushPerPlayer` 是同一套预留但未使用的机制）及 todo-24（`setPlayerScene` 没人调是 `currentScene` 从不更新的直接原因）相关，三条一起看才是完整画像。"
+    },
+    {
+      "id": "todo-24",
+      "category": "接了一半",
+      "severity": "warn",
+      "status": "open",
+      "text": "`PlayerSlot.currentScene` 只在 `join` 时设，之后从不更新——因为唯一能更新它的 `setPlayerScene`（见 todo-23）零调用方。这是 `scene_restricted` 可见性档位「三个独立的坑」之一（另两个坑：比的是活动玩家场景不是消息所属场景；两个 join 点给了不同的 startingScene），此前已在提交历史里判定过不在那几轮的范围内，本条把它正式记进 todo，避免下一个人以为「有 currentScene 字段」就意味着「它是准的」。"
+    },
+    {
+      "id": "todo-25",
+      "category": "已知缺口",
+      "severity": "warn",
+      "status": "open",
+      "text": "`ws-handler.ts:63-70 broadcastToSession` 不按玩家过滤——线索私密（discoverer_only）在**存储的历史**层面成立（`GET /history?pcId=` 只返回该玩家可见的消息），但 live 的 WS 广播仍然把完整 narrative 推给该 session 的全部连接，等于该结论在实时通道上不成立。已在 `game-session.ts` 的 `resolveSceneClue` 方法 docstring 里写明这个已知缺口，本条是把它同步进 todo.json，不只靠源码注释记着。"
+    },
+    {
+      "id": "todo-26",
+      "category": "文档里挂着的未决",
+      "severity": "info",
+      "status": "open",
+      "text": "`docs/kp-tool-surface-assessment.md:122-124` 阶段 3 未决①：`setScene` 目前只有存在性校验，真正有价值的版本是用 `scenes.exits` 做邻接校验（只能走到当前场景有出口连通的地方），但那会拦掉 KP 传送与自由移动——这是玩法决定，不是接线工作，文档里明确标了「未决」。"
+    },
+    {
+      "id": "todo-27",
+      "category": "文档里挂着的未决",
+      "severity": "info",
+      "status": "open",
+      "text": "`docs/kp-tool-surface-assessment.md:125` 阶段 3 未决②：`game-session.ts` 拆分未动。文档原写「已 2920 行」，2026-08-29 复核实测已涨到 3729 行——这个数字已在文档里就地更正（标注了复核日期，不追溯每次涨了多少）。拆分本身仍未开始。"
+    },
+    {
+      "id": "todo-28",
+      "category": "摄取管线缺陷",
+      "severity": "warn",
+      "status": "open",
+      "text": "摄取管线 `build-scenes.ts:99 clues: []`——摄取出来的每个场景一条线索都不产，实跑产物显示 24 场景的线索总数为 0。结局条件编译（属于另一轮「B」的范围）依赖场景能带线索，这条不修，那条无从谈起。"
+    },
+    {
+      "id": "todo-29",
+      "category": "未决问题",
+      "severity": "info",
+      "status": "open",
+      "text": "意图误判率约 20%（30 回合 6 次判错），两次模拟（`analysis/sim/` 下两份实跑记录）都没能定性根因——第二次模拟换了输入分布（平均长度 21.7 字 vs 第一次 6.1 字），判错次数从 6 次变成 0 次，但「0 次」不能证明问题不存在，只能说明第二次的输入分布没有触发它。"
+    },
+    {
+      "id": "todo-30",
+      "category": "未决问题",
+      "severity": "info",
+      "status": "open",
+      "text": "DeepSeek 报告（`analysis/archive/2026-08-07-utf8-corruption/deepseek-analysis-premiers-barn-2026-08-07.md:35-36`）里两条未处理的叙事问题：调查员之间没有互动描写；场景结束时没有行动锚点（不知道接下来能做什么）。"
+    },
+    {
+      "id": "todo-31",
+      "category": "未验证",
+      "severity": "warn",
+      "status": "open",
+      "text": "「经历模组: 0」这条统计是否仍然存在——未验证。`career.ts:265` 的相关逻辑挂在从不实例化的 `CareerStore` 类里（见 todo-02/todo-05），实际在用的是 `CareerFileStore`，需要先确认「经历模组」这个统计口径在 `CareerFileStore` 那边是否也是 0，再判定这条是不是 todo-02 的又一个症状还是独立问题。"
+    },
+    {
+      "id": "todo-32",
+      "category": "同职责多实现",
+      "severity": "info",
+      "status": "done",
+      "text": "三套结局表示已收敛（提交 `0305b4c`）：`EndNarration` 是判定真相（唯一可机器求值），`ModuleEnding.conditionText` 是展示文本，`ModuleData.endings` 也是展示文本但受 id 一致性判据约束，三者不会再悄悄长出矛盾；`host.moduleEndings`（原先只写不读的注册表）已删除。"
     }
   ]
 }
