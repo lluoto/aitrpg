@@ -1,6 +1,6 @@
 {
-  "tests": 2386,
-  "files": 151,
+  "tests": 2403,
+  "files": 152,
   "unwiredMethods": 87,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -404,6 +404,11 @@
       "tests": 2386,
       "files": 151,
       "when": "修A·任务1：围栏解析收敛到一处。src/llm/json.ts 承接原 src/ingest/llm-json.ts 的 extractJson()（对象形态），新增姊妹函数 extractJsonArray()（数组形态，给 extract-endings.ts 用，不是给 extractJson 加参数——两种形态起止符号/失败返回值形状都不同，参数比两个函数更容易在调用点传错默认值）。放 src/llm/ 不放 src/ingest/：src/ingest/*.ts 已经在 import src/llm/client.ts 的 LLMClient 类型，ingest 依赖 llm 这条方向早就定了，放回 ingest/ 会让 llm/ 反过来 import ingest/，方向反了（同 llm/enabled.ts 抽到这一层的理由）。删 src/ingest/llm-json.ts。全仓六份拷贝收敛：classify-items.ts/classify-sections.ts（改 import 路径）、infer-connections.ts/classify-followup.ts（内嵌逻辑改调用共享函数，classify-followup.ts 的 parseKeyed 保留自己的 pN:LN 键归一化，只是把抽取那段换掉）、extract-endings.ts（改用 extractJsonArray）、player-agent.ts（direct copy 替换）、play-module.ts（半吊子版本——原先只 /\\{[\\s\\S]*\\}/ 不剥围栏——换成 extractJson）全部接入。两处真正会裸 JSON.parse 炸掉、此前一份拷贝都没拿到的消费方：llm/intent.ts:359（本仓一次真实事故的根因——LLM 把合法 JSON 裹进 ```json 围栏，JSON.parse(raw.trim()) 抛异常，静默回落 regex，regex 的 /追/ 把「追问」误判成「chase」）与 llm/generate-llm-expanded.ts:351（同类潜伏，本次实跑未触发，不是已验证修复，如实记录）均已接入 extractJson。新增 extractJsonArray 的 7 条契约测试（ingest-llm-json.test.ts）+ intent-fallback-observability.test.ts 补 3 条围栏回归测试（用实跑原文「追问菲碧」的形状，断言解析出 talk 不是 chase 且不回落 regex；光秃围栏；裸 JSON 无回归）。既有的 ingest-classify-items/ingest-classify/ingest-extract-endings/ingest-infer-connections/player-agent-intent 五个测试文件本就各自测过围栏解析，重构后原样验证了调用点没有行为漂移，未新增改动。变异检验：临时把 intent.ts 换回裸 JSON.parse(raw.trim())，「追问菲碧」围栏用例精确变红；Copy-Item 还原后回归绿。typecheck exit 0；bun test 2376→2386（+10）、151 文件不变（改在既有文件里，新文件是产品代码 src/llm/json.ts 不是测试文件）。"
+    },
+    {
+      "tests": 2403,
+      "files": 152,
+      "when": "修A·任务2：收紧 chase/flee 正则。原 chase 正则 /(?:追逐|逃跑|跑|追|逃)/ 贪婪的裸「追」「跑」「逃」把追问/追查/追踪/跑团/逃避这类对话/调查/闲聊词全部命中成追逐——一次真实事故的根因（任务1修的是围栏解析这一半，这是 regex 兜底路径本身该独立修的另一半，即使不经过围栏失败也不该错）。收紧方向：复合动词（追逐/追赶/追捕/追击/猛追/狂追/追上去/追过去/拔腿追/拼命追）任意位置匹配；裸「追」「跑」收窄成锚定的整句形式（^追$/^跑$，允许结尾标点）——game-session.test.ts 有测试直接送裸\"追\"/\"跑\"当战斗中的快捷指令，不能连这个都收掉，但\"追问菲碧……\"这种长句不该被一个字拖进追逐。flee 同样收紧：/(?:逃跑|逃走|逃离|撤退|撤|逃)/ 里裸「撤」「逃」同样贪，且没有任何测试要求它们单独触发 flee，改成纯复合词 /(?:逃跑|逃走|逃离|撤退)/。顺带在 talk 正则里加\"追问\"作为独立触发词——\"追问\"字面像追逐（含\"追\"字）但语义是对话，这是让实跑三句真事故原文（\"林娜追问菲碧……\"）解析成 talk 而不是掉进 unknown 的必要一步，不是可选的順手改动。新增 intent-chase-tightening.test.ts（17条）：实跑原文三句必须判 talk 不得判 chase；追问/追查/追踪/跑团/逃避不得命中 chase；真正的追逐说法（追逐/追上去/猛追/裸追/裸跑）仍然命中（正例，回归判据）；flee 裸撤/裸逃不再触发，复合词不受影响（正例）。既有 175 条 intent 相关测试（intent.test.ts/intent-coverage.test.ts/game-session.test.ts）全绿，包括依赖裸\"追\"\"跑\"当战斗快捷指令的用例，证明收紧没有改瘸既有行为。变异检验：临时把 chase 正则换回 /(?:追逐|逃跑|跑|追|逃)/，「跑团」「逃避这个话题」「我们聊聊跑团规则」三条精确变红（三句真事故原文因为 talk 正则加了\"追问\"独立触发词、在 chase 正则之前就已经命中 talk，不受这次单独的 chase 回退影响，符合预期——两处修复各自独立起作用）；Copy-Item 还原后回归绿。typecheck exit 0；bun test 2386→2403（+17）、151→152 文件。"
     }
   ]
 }

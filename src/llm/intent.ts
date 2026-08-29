@@ -70,7 +70,9 @@ const INTENT_PATTERNS: Array<{ verb: RegExp; intent: Partial<ActionIntent>; requ
   // ⚠ 「急救」后面原先**必须**跟 伤口|伤势|出血|伤，裸词落到 unknown ——
   //   而 `handleFirstAid` 就在派发表里，打「急救」够不着它。改成后缀可选。
   { verb: /(?:急救|包扎|止血)|(?:医疗|治疗).*(?:伤口|伤势|出血|伤)/, intent: { action: "first_aid" } },
-  { verb: /(?:和|跟|与|对).*(?:说话|交谈|对话|聊聊|询问|问)/, intent: { action: "talk" } },
+  // 「追问」单独列出：字面像追逐（含"追"字），语义却是对话——
+  // 见下方 chase 那条注释，这是同一次真实事故修复的另一半。
+  { verb: /(?:和|跟|与|对).*(?:说话|交谈|对话|聊聊|询问|问)|追问/, intent: { action: "talk" } },
   { verb: /(?:休息|休息一下|休整|休养|睡觉|睡眠|治疗|包扎)/, intent: { action: "rest" } },
 
   // ⚠ 这一段的顺序是有意的，别按字母或手感重排。
@@ -119,7 +121,11 @@ const INTENT_PATTERNS: Array<{ verb: RegExp; intent: Partial<ActionIntent>; requ
   { verb: /(?:出售|卖|卖掉|卖出)\s*(.*)/, intent: { action: "sell" } },
   { verb: /(?:商店|购物|shop|buy|买)/, intent: { action: "shop" } },
   { verb: /(?:背包|物品|物品栏|道具|查看.*物品|我的.*东西|有什么.*东西)/, intent: { action: "inventory" } },
-  { verb: /(?:逃跑|逃走|逃离|撤退|撤|逃)/, intent: { action: "flee" } },
+  // ⚠ 收紧过（修A·任务2）：原来还认裸「撤」「逃」，跟 chase 那条一样贪——
+  // 「逃避」（谈话里的比喻）之类会被误伤。regex 是兜底路径，方向应该是
+  // 宁可漏判回 unknown（回落叙事），不可误判成动作（真的会改状态）。
+  // 没有任何测试要求裸「撤」「逃」单独触发 flee，收紧不影响既有行为。
+  { verb: /(?:逃跑|逃走|逃离|撤退)/, intent: { action: "flee" } },
   // 故事生成
   { verb: /(?:生成故事|生成场景|生成剧本|生成模组|故事生成|随机生成|生成世界|生成.*冒险|generate.*story|new.*story)/, intent: { action: "generate_story" } },
   // 帮助
@@ -151,7 +157,19 @@ const INTENT_PATTERNS: Array<{ verb: RegExp; intent: Partial<ActionIntent>; requ
   // CoC 神话法术
   { verb: /(?:念咒|吟唱|召唤|呼唤|驱逐|放逐).*(?:米戈|克苏鲁|神话|咒语)/, intent: { action: "occult_cast" } },
   // CoC 追逐
-  { verb: /(?:追逐|逃跑|跑|追|逃)/, intent: { action: "chase" } },
+  //
+  // ⚠ 收紧过（修A·任务2）：原来是 /(?:追逐|逃跑|跑|追|逃)/，裸「追」「跑」
+  // 「逃」贪到把"追问""追查""追踪""跑团""逃避"这些对话/调查/闲聊词全部
+  // 命中成追逐——一次真实事故的根因（见 llm/json.ts 的注释）。
+  //
+  // 收紧方向：复合动词（真正明确表达追逐行为的说法）任意位置匹配；
+  // 裸「追」「跑」只在**整句就是这一个字**（不带其它内容）时才算——
+  // game-session.test.ts 有测试直接送裸"追"/"跑"当作战斗中的快捷指令，
+  // 不能连这个都收掉，但"追问菲碧……"这种长句不该被一个字拖进追逐。
+  // 「逃」不再单独出现在这里：flee 那条已经处理"逃跑/逃走/逃离/撤退"，
+  // 没有测试要求裸"逃"单独触发 chase（会被 flee 那条排在前面接住，
+  // 但既然 flee 也已收紧掉裸"逃"，chase 这里更不该凭空补上）。
+  { verb: /(?:追逐|追赶|追捕|追击|猛追|狂追|追上去|追过去|拔腿追|拼命追|^追[!！。]*$|^跑[!！。]*$)/, intent: { action: "chase" } },
   // CoC 模组结算/技能成长
   { verb: /(?:模组结算|冒险结束|场景结算|结算技能|技能成长|成长骰)/, intent: { action: "skill_advancement" } },
   // 装备
