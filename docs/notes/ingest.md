@@ -4,7 +4,8 @@
 
 目标：`PDF → ModuleData（权威源）→ 投影出运行模组`，改写处带 `Provenance` 留痕。
 产出物先并排放，用现有已校准的 `barn-of-premier.ts` 逐字段 diff 反过来校准读取模块。
-内容侧的素材清单与血缘见 `docs/index-world-model.md`；这里只记工程实现。
+内容侧的素材清单见 `docs/index-world-model.md`；PDF 与 raw/ 切片的逐字血缘核对见
+`docs/archive-world-model-2026-08.md`「原文与 raw/ 的血缘已确认」；这里只记工程实现。
 
 ### pdf-parse 的坑（会浪费掉半小时，先看这条）
 
@@ -25,7 +26,8 @@ const res = await new PDFParse({ data: buffer }).getText();
 
 | 阶段 | 文件 | 状态 |
 |---|---|---|
-| PDF → 逐页文本 | `src/ingest/pdf-source.ts` | **已完成**，2 测试（只测形态）；内容保真**已验证**：与既有 `tools/modules/raw/` 切片逐字一致 **17/17**（空白归一化后，见 index-world-model.md） |
+| PDF → 逐页文本 | `src/ingest/pdf-source.ts` | **已完成**，2 测试（只测形态）；内容保真**已验证**：与既有 `tools/modules/raw/` 切片逐字一致 **17/17**（空白归一化后，见
+`docs/archive-world-model-2026-08.md`「原文与 raw/ 的血缘已确认」） |
 | 文本清洗 | `src/ingest/clean-text.ts` | **已完成**，41 测试。`cleanPageText` 管页内、`joinPages` 管跨页（实测接 **5 处**页边界，其中 4 处的上一行是 `▶`——两个分母见下）。内核是同一个 `shouldJoin`，但页边界上另加两条否决（首行冒号收尾一律不接、上一页末行 ASCII 连续句点算句末），因为 `cleanPageText` 逐页调用时把空行吃掉了，段落分隔到 `joinPages` 手上已经看不见 |
 | 字段级 diff 校准器 | `src/ingest/calibrate.ts` | **已完成**，46 测试。配对键可配（`pairBy`）、引用字段单列（`refFields` → `ref-mismatch`） |
 | 章节切分 | `src/ingest/sectionize.ts` | **已完成**，22 测试 |

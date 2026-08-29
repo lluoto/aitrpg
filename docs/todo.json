@@ -29,7 +29,7 @@
       "category": "工作目录",
       "severity": "warn",
       "status": "open",
-      "text": "C:\\aitrpg 下只有 poc/ 有版本控制和远端，其余 3.7GB 裸奔。**已分层，不必全备**：不可再生的只有 5239 个文件 / 500MB（源材料 474MB + 脚本 13MB + 手写设计 12MB），其余 3.2GB 是能重跑的抽取产物。执行 `bun scripts/backup-critical.ts --out <目标盘>`（先 --dry 看清单）。**待办：选一个目标盘跑一次。** 分层依据见 docs/index-world-model.md「备份分层」。"
+      "text": "C:\\aitrpg 下只有 poc/ 有版本控制和远端，其余 3.7GB 裸奔。**已分层，不必全备**：不可再生的只有 5239 个文件 / 500MB（源材料 474MB + 脚本 13MB + 手写设计 12MB），其余 3.2GB 是能重跑的抽取产物。执行 `bun scripts/backup-critical.ts --out <目标盘>`（先 --dry 看清单）。**待办：选一个目标盘跑一次。** 分层依据见 docs/archive-world-model-2026-08.md「备份分层：不必全备，只有~500MB是不可再生的」。"
     },
     {
       "id": "todo-01",
