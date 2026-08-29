@@ -33,6 +33,7 @@ import {
   referencedScripts, judgeScriptRefs, generatedDocs, resolveRef,
   referencedRepoPaths, LIVE_DOCS,
   architecturePathRefs, ARCHITECTURE_DOCS,
+  docSectionRefs, docHeadings, judgeDocSectionRefs,
   boolReturningNames, findDroppedReturns, findSilentCatches,
   type Finding, type TestBaseline,
 } from "../src/diagnostics/source-scan";
@@ -216,6 +217,34 @@ for (const f of [...srcFiles, ...walk("scripts", [".ts"])]) {
     push(judgeScriptRefs(refs, doc));
   }
   notes.push(`结构化载荷文档校验覆盖 ${architectureDocsChecked} 份（只判存在性，跳过"工具脚本"节）：${ARCHITECTURE_DOCS.join("、")}`);
+
+  // ── 7d. 反向：文档引用文档的存在性 ──
+  //
+  // 前三层全部只查"文档引用的代码路径是否有效"这一个方向。文档引用
+  // 另一份文档、或另一份文档的某个小节，完全没有判据覆盖——2026-08-29
+  // 精简 docs/index-world-model.md 那一轮，docs/todo.json 与
+  // docs/notes/ingest.md 各留了一处指向被删小节的死链，没有任何检查拦下。
+  //
+  // 只认规范写法 `` `docs/路径.md`「小节标题」``（见 docSectionRefs 的注释）；
+  // 扫描范围是全部入库的 docs/**/*.md 加 docs/todo.json（后者是 JSON 字符串，
+  // 直接当文本扫，正则一样能命中）。
+  const docSourceFiles = [
+    ...walk("docs", [".md"]),
+    "docs/todo.json",
+  ].filter((p) => existsSync(p));
+  let docRefsChecked = 0;
+  for (const doc of docSourceFiles) {
+    const refs = docSectionRefs(read(doc));
+    if (refs.length === 0) continue;
+    docRefsChecked++;
+    const verdicts = refs.map((ref) => {
+      const fileExists = existsSync(ref.file);
+      const sectionExists = fileExists && docHeadings(read(ref.file)).has(ref.section);
+      return { ref, fileExists, sectionExists };
+    });
+    push(judgeDocSectionRefs(verdicts, doc));
+  }
+  notes.push(`文档互相引用校验（反向判据）覆盖 ${docRefsChecked} 份含小节引用的文档，规范写法之外的引用不在覆盖范围`);
 
   // ── 10. 源码拿来当证据的文件，仓库里得真有 ──
   //

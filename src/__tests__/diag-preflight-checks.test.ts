@@ -14,6 +14,7 @@ import {
   referencedScripts, judgeScriptRefs, generatedDocs, resolveRef,
   referencedRepoPaths, LIVE_DOCS,
   architecturePathRefs, ARCHITECTURE_DOCS,
+  docSectionRefs, docHeadings, judgeDocSectionRefs,
   boolReturningNames, findDroppedReturns, findSilentCatches,
 } from "../diagnostics/source-scan";
 
@@ -556,6 +557,79 @@ describe("检查 7 · 文档叫人跑的脚本", () => {
     test("ARCHITECTURE_DOCS 清单目前只有 architecture.json 一份", () => {
       expect(ARCHITECTURE_DOCS).toEqual(["docs/architecture.json"]);
     });
+  });
+});
+
+// ── tier-4（反向判据）：文档引用文档的存在性 ──
+//
+// 前三层全部只查"文档引用的代码路径是否有效"。这一层反过来：
+// 2026-08-29 精简 docs/index-world-model.md 时，docs/todo.json 与
+// docs/notes/ingest.md 各留了一处指向被删小节的死链，没有任何判据拦下。
+// 复现的就是那两处真事：文件还在但小节没了、以及文件本身就没了。
+describe("docSectionRefs / docHeadings / judgeDocSectionRefs —— tier-4 反向判据", () => {
+  test("提取带反引号的规范写法", () => {
+    const refs = docSectionRefs("分层依据见 `docs/archive-world-model-2026-08.md`「备份分层」。");
+    expect(refs).toEqual([{ file: "docs/archive-world-model-2026-08.md", section: "备份分层" }]);
+  });
+
+  test("提取不带反引号的写法（todo.json 是 JSON 字符串，不方便嵌反引号）", () => {
+    const refs = docSectionRefs("分层依据见 docs/archive-world-model-2026-08.md「备份分层」。");
+    expect(refs).toEqual([{ file: "docs/archive-world-model-2026-08.md", section: "备份分层" }]);
+  });
+
+  test("干扰：只提一句文件名、不点小节的引用——判据故意看不见（收窄边界写在注释里）", () => {
+    expect(docSectionRefs("详见 `docs/index-world-model.md`，别处再展开。")).toEqual([]);
+  });
+
+  test("docHeadings 认 1~6 级标题，去掉前导 # 与首尾空白", () => {
+    const md = "# 标题\n\n正文\n\n## 二级 \n### 三级标题\n";
+    expect(docHeadings(md)).toEqual(new Set(["标题", "二级", "三级标题"]));
+  });
+
+  test("**应报**：本仓真实踩过的两种断链，各复现一次", () => {
+    // 复现 docs/todo.json 修复前的样子：引用的文件还在，但那个小节已经不在里面了
+    // （原精简版把「备份分层」整节删掉，只剩「一句话现状」等标题）。
+    const staleHeadings = docHeadings("# 标题\n\n## 一句话现状\n\n## 待办\n");
+    const verdictSectionGone = {
+      ref: { file: "docs/index-world-model.md", section: "备份分层" },
+      fileExists: true,
+      sectionExists: staleHeadings.has("备份分层"),
+    };
+    const findingsA = judgeDocSectionRefs([verdictSectionGone], "docs/todo.json");
+    expect(findingsA.length).toBe(1);
+    expect(findingsA[0]!.rule).toBe("doc-ref-missing-section");
+
+    // 复现"文件本身就不存在"的那一半（变异检验用的另一侧）
+    const verdictFileGone = {
+      ref: { file: "docs/does-not-exist-2026.md", section: "任意小节" },
+      fileExists: false,
+      sectionExists: false,
+    };
+    const findingsB = judgeDocSectionRefs([verdictFileGone], "docs/notes/ingest.md");
+    expect(findingsB.length).toBe(1);
+    expect(findingsB[0]!.rule).toBe("doc-ref-missing-file");
+  });
+
+  test("**不应报**：小节标题逐字匹配", () => {
+    const headings = docHeadings("## 备份分层：不必全备，只有 ~500MB 是不可再生的\n");
+    const verdict = {
+      ref: { file: "docs/archive-world-model-2026-08.md", section: "备份分层：不必全备，只有 ~500MB 是不可再生的" },
+      fileExists: true,
+      sectionExists: headings.has("备份分层：不必全备，只有 ~500MB 是不可再生的"),
+    };
+    expect(judgeDocSectionRefs([verdict], "docs/todo.json")).toEqual([]);
+  });
+
+  test("干扰：措辞近似但不逐字相同——有意判为断链，不做模糊匹配（见 docSectionRefs 注释第 3 条）", () => {
+    const headings = docHeadings("## 备份分层：不必全备，只有~500MB是不可再生的\n"); // 少了两个空格
+    const verdict = {
+      ref: { file: "docs/archive-world-model-2026-08.md", section: "备份分层：不必全备，只有 ~500MB 是不可再生的" },
+      fileExists: true,
+      sectionExists: headings.has("备份分层：不必全备，只有 ~500MB 是不可再生的"),
+    };
+    const findings = judgeDocSectionRefs([verdict], "docs/todo.json");
+    expect(findings.length).toBe(1);
+    expect(findings[0]!.rule).toBe("doc-ref-missing-section");
   });
 });
 

@@ -1,5 +1,5 @@
 {
-  "tests": 2325,
+  "tests": 2332,
   "files": 145,
   "unwiredMethods": 87,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。",
@@ -379,6 +379,11 @@
       "tests": 2325,
       "files": 145,
       "when": "开发C·任务4：让「结局引用了不存在的东西」再也藏不住。已知实例：bad_lever_pulled 全仓只有 3 处，全在 barn-of-premier.ts 内部，没有任何地方产生它——所有 world.discoverClue(...) 调用点都不传它，src/play/ 下「拉杆」/lever 零匹配（拉杆这个动作根本没实现）。后果：Bad End 不可达，Normal End 的 excludeClues 里那一项恒真、白写。加一条判据：结局条件里引用的每个 clue id，必须在代码里存在产生它的路径。参考 ingest-scoring-key-boundary.test.ts:264-278 的「引用的 clue/item id 必须在基准里找到」（那条查存在性），这条深一层——不光要存在，还要可被产生。梳理出全仓四种已知的线索生产机制并各自对应一处真实调用：Scene.clues[].id（clue-check.ts/scene-pipeline.ts 的常规调查）、EncounterNarration.victoryClueId（combat.ts 的战斗胜利奖励）、clue_kn_${npc.id}_${index}/conv_kn_${npc.id}_${index}（npc-dialogue.ts/scene-pipeline.ts 的 NPC 知识揭示，动态生成）、ModuleItem.trap.detectedByClue（traps.ts 的陷阱预先发现）。判据用一个可复用的 producibleClueIds() 汇总这四种机制的完整 id 集合，对所有结局条件（true/good/bad/normal 全部，不是只查 bad_lever_pulled 这一个）生效。⚠ 不把 bad_lever_pulled 改指 clue_control_lever——那是「观察」中控台拉杆（findMethods: observation），Bad End 要的是「拉下」拉杆，改过去会变成看一眼拉杆就全员团灭，语义完全错了；实现拉杆动作不在本轮范围。做法：让不可达成为显式事实——① 在 END_NARRATIONS 的 bad 条目上加长注释记录这个已知缺口与原因；② 判据用一份显式声明的 KNOWN_UNREACHABLE 名单（目前只有 bad_lever_pulled）与「引用了但无生产者」的 id 集合做精确相等断言（toEqual，不是子集包含）——名单之外新冒出的不可达引用会让判据变红，bad_lever_pulled 哪天真接上生产者也会让判据变红（提醒同步改名单），不是只靠这份 commit message 记着。新增 end-narration-clue-reachability.test.ts（4条）：常规可达的 clue（clue_bedroom_diary 等）确实在生产者集合里（判据本身没算错）；bad_lever_pulled 确实无生产者（已知实例，判据必须能报出它）；不可达 id 集合与 KNOWN_UNREACHABLE 精确相等；判据对所有结局条件生效——true/good/normal 引用的 clue 全部可达（对照，不是只查 bad 这一条）。变异检验：临时给 Good End 的 requiredClues 加一个虚构 clue id，判据精确报出新增的不可达引用（2条测试变红：精确相等断言失败 + 全结局可达对照断言失败）；revert 后 4/4 回归绿。typecheck exit 0；bun test 2321→2325（+4）、144→145 文件。"
+    },
+    {
+      "tests": 2332,
+      "files": 145,
+      "when": "开发·索引轮任务3：preflight 前三层判据全部只查「文档引用的代码路径是否有效」这一个方向，文档引用另一份文档（或某个小节）完全没有判据覆盖——2026-08-29 精简 docs/index-world-model.md 那一轮，docs/todo.json 的 risk-01 与 docs/notes/ingest.md 两处都留了指向被删小节的死链，preflight 全绿放过了（任务2已修复引用本身）。补 tier-4：docSectionRefs() 只认一种规范写法 `` `docs/路径.md`「小节标题」 `` 或不带反引号的 `docs/路径.md「小节标题」`（todo.json 是 JSON 字符串值，反引号会跟转义搅在一起，两种都收）；docHeadings() 取目标文档 1~6 级标题的逐字文本；judgeDocSectionRefs() 分两档报——引用的文件不存在（doc-ref-missing-file）、文件存在但小节标题在目标文档里找不到（doc-ref-missing-section），小节匹配要求逐字相同，不做模糊匹配（措辞改了没跟着改引用，同样判断链）。preflight.ts 加 7d 段：扫描全部入库 docs/**/*.md 加 docs/todo.json，命中即用目标文档的实际标题核对。⚠ 收窄边界（写进了 source-scan.ts 的注释）：只覆盖规范写法，不点小节的纯文件级引用（「见 docs/xxx.md」不展开）判据故意看不见——宁可覆盖面小而真。实跑第一次就報出 7 条真断链：都不是任务2漏改的引用本身（那两处已经改成指向 docs/archive-world-model-2026-08.md），而是新写的引用小节标题跟归档文档的实际标题对不上（少打了日期后缀、多打/少打了空格）——判据一上线就抓到了自己人（这一轮自己）的手误，逐条核实后改的是引用文本、不是放宽判据。加 6 条测试（tier-4 describe 块）：两种写法的提取、干扰——纯文件级引用判据看不见、docHeadings 边界、复现本仓真实的两种断链（小节没了/文件没了）、逐字匹配通过、干扰——措辞近似但不逐字相同判为断链（收紧的一侧，不做模糊匹配）。变异检验：往 docs/index-world-model.md 里插一句引用不存在的 docs/xxx-not-real.md「某节」，preflight 精确报出 doc-ref-missing-file；Copy-Item 还原后回归绿（见下方 unwiredNote 同轮记录，或本条 commit message 附带的实测记录）。typecheck exit 0；bun test 2325→2332（+7）、145 文件不变（加在已有的 diag-preflight-checks.test.ts 里）。"
     }
   ]
 }

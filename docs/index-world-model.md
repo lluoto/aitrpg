@@ -87,13 +87,13 @@ interface：`ModuleData`/`Scene`/`Clue`/`ModuleItem`/`TrapMechanics`/`Provenance
 这些文件与 `poc/src/rules/` 中的材料可能同源但版本不同。接入前必须比较来源、语义与许可证，不能按文件名直接覆盖。
 
 `poc/tools/modules/raw/`（PDF 按章节切分的 19 个 txt，与源 PDF 逐字一致，已核对
-17/17，见 `docs/archive-world-model-2026-08.md`「原文与 raw/ 的血缘已确认」）与
+17/17，见 `docs/archive-world-model-2026-08.md`「原文与 raw/ 的血缘已确认（2026-08-19）」）与
 `poc/tools/modules/structured/`（从旧 `.ts` **反向拆出**的 15 个字段 txt，是派生物
 不是来源）都在 `.gitignore` 排除的 `poc/tools/` 下。**注意方向**：
 `tools/split-modules.mjs` 的输入是 `premiers_barn_raw.txt` 和已经写好的 `.ts`，
 `structured/*.txt` 是从 TS 反向拆出来的，不是生成 TS 的来源；
 `premiers_barn_raw.txt` 目前已不存在，摄取需从 PDF 重跑。这批 `tools/*.mjs`
-遗留脚本详情已归档，见 `docs/archive-world-model-2026-08.md`「摄取相关脚本」；
+遗留脚本详情已归档，见 `docs/archive-world-model-2026-08.md`「摄取相关脚本（poc/tools/ 遗留脚本，2026-08-19 状态）」；
 当前活跃摄取管线见 `docs/notes/ingest.md`。
 
 ## D 盘小说语料与新版提取
@@ -109,7 +109,7 @@ interface：`ModuleData`/`Scene`/`Clue`/`ModuleItem`/`TrapMechanics`/`Provenance
 | `D:\aitrpg\世界模型\worldmodel` | 当前来源绑定 v2 提取工程 | 活跃 |
 
 审计时的规模约为：D 盘语料工程 `100,030` 文件、`2.74 GiB`；其中当前 `worldmodel/` 核心约 `625 MiB`。数字会随提取产物变化，不能当固定容量承诺。迁移前（C 盘、98,269 文件/1.5GB）按材料类型分类的旧清点见
-`docs/archive-world-model-2026-08.md`「世界模型语料工程旧清点」。
+`docs/archive-world-model-2026-08.md`「世界模型语料工程旧清点（`世界模型/`，2026-08-19 状态：98,269 文件 / 1.5GB）」。
 
 ### V2 管线
 
@@ -173,7 +173,7 @@ no_transfer
 | POC 证据/日志副本 | `docs/evidence/` 与 `play-logs/` | 先检查文档链接与测试引用，再决定保留哪一侧 |
 
 禁止仅按文件名、目录名或“看起来相似”删除。删除重复前必须完成：完整哈希一致、保留侧存在、运行时/脚本引用检查、以及来源与派生产物角色确认。（本次审计前按脚本/文件类型归因的旧重复清单见
-`docs/archive-world-model-2026-08.md`「重复与占位（清理线索）」，粒度更细但范围已被本次全量扫描覆盖。）
+`docs/archive-world-model-2026-08.md`「重复与占位（清理线索，2026-08-19 状态）」，粒度更细但范围已被本次全量扫描覆盖。）
 
 ## 已清理与重复处理
 

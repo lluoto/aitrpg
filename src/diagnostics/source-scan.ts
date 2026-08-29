@@ -576,6 +576,76 @@ export function architecturePathRefs(jsonText: string): string[] {
 }
 
 /**
+ * tier-4（反向判据）：文档引用**另一份文档**的存在性。
+ *
+ * 前三层（tier-1/2/3）全部只查一个方向——「文档引用的代码路径是否有效」。
+ * 文档引用另一份文档、或另一份文档的某个小节，完全没有判据覆盖：
+ * 2026-08-29 那一轮把 `docs/index-world-model.md` 从 348 行精简到 178 行，
+ * `docs/todo.json` 与 `docs/notes/ingest.md` 各有一处还指着被删掉的小节，
+ * 没有任何检查能拦下来。
+ *
+ * **覆盖边界，故意收窄**：
+ * 1. 只认一种规范写法：`` `docs/路径.md`「小节标题」 `` 或不带反引号的
+ *    `docs/路径.md「小节标题」`（`docs/todo.json` 是 JSON 字符串值，
+ *    反引号会跟 JSON 转义搅在一起，所以两种写法都收）。仓库里在这条判据
+ *    写出来之前只有一种引用风格（纯文件级「见 docs/xxx.md」，不点小节），
+ *    本次顺带把小节级引用也统一成这个写法——所以"写法不统一"目前不是
+ *    真实存在的问题，但**判据不覆盖没有用这个写法的引用**：一句"血缘见
+ *    上面那节"这种不点文件名的引用，这条判据看不见，故意不看
+ *    （宁可覆盖面小而真，见 docs/todo.json 的 rule-03）。
+ * 2. 只查 `docs/*.md` 目标——`docs/architecture.json` 不会被点小节引用
+ *    （它是表格，tier-3 已经单独在管）。
+ * 3. 小节标题必须**逐字**匹配目标文档里某一级标题（`#`~`######` 都认，
+ *    不比较级别），标题改了措辞但意思没变也会被判定为断链——这是有意
+ *    收紧的一侧：宁可要求引用者在改标题时顺手改引用，不要在这里做模糊
+ *    匹配去猜"是不是同一节"。
+ */
+const DOC_SECTION_REF = /`?(docs\/[\w./-]+\.md)`?「([^」]+)」/g;
+
+export interface DocSectionRef { file: string; section: string }
+
+export function docSectionRefs(text: string): DocSectionRef[] {
+  const out: DocSectionRef[] = [];
+  for (const m of text.matchAll(DOC_SECTION_REF)) out.push({ file: m[1]!, section: m[2]! });
+  return out;
+}
+
+/** 目标文档里全部标题行的标题文字（去掉前导 `#` 与首尾空白），用于核对小节引用。 */
+export function docHeadings(markdown: string): Set<string> {
+  const out = new Set<string>();
+  for (const line of markdown.split("\n")) {
+    const m = /^#{1,6}\s+(.+?)\s*$/.exec(line);
+    if (m) out.add(m[1]!);
+  }
+  return out;
+}
+
+export interface DocSectionVerdict {
+  ref: DocSectionRef;
+  fileExists: boolean;
+  /** 只有 fileExists 为 true 时才有意义 */
+  sectionExists: boolean;
+}
+
+export function judgeDocSectionRefs(verdicts: readonly DocSectionVerdict[], sourceDoc: string): Finding[] {
+  const out: Finding[] = [];
+  for (const v of verdicts) {
+    if (!v.fileExists) {
+      out.push({
+        file: sourceDoc, line: 1, rule: "doc-ref-missing-file",
+        message: `引用了 \`${v.ref.file}\`「${v.ref.section}」，但 ${v.ref.file} 这个文件不存在`,
+      });
+    } else if (!v.sectionExists) {
+      out.push({
+        file: sourceDoc, line: 1, rule: "doc-ref-missing-section",
+        message: `\`${v.ref.file}\` 存在，但小节「${v.ref.section}」在里面找不到（文件还在，小节被删或改名了）`,
+      });
+    }
+  }
+  return out;
+}
+
+/**
  * 哪些文档是**脚本生成的**。
  *
  * 这条检查只对生成的文档生效，理由是可推导的而不是拍脑袋定的：
