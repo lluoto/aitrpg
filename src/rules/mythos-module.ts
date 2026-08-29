@@ -276,8 +276,6 @@ export interface MythosModuleHost {
   itemDescriptions: Map<string, string>;
   /** KP 灵活干涉指引（场景ID/特殊key → 指引文本），供 LLM KP 运行时读取 */
   kpNotes?: Map<string, string>;
-  /** 模块结局注册（结局ID → ModuleEnding），LLM KP 在游戏结束时读取 */
-  moduleEndings?: Map<string, ModuleEnding>;
   /** 模块奖励规则（奖励ID → ModuleReward），LLM KP 在游戏结束时结算 */
   moduleRewards?: Map<string, ModuleReward>;
   world: {
@@ -688,14 +686,14 @@ export class MythosModuleLoader {
       lines.push(`加载 ${Object.keys(module.kpNotes).length} 条 KP 灵活干涉指引`);
     }
 
-    // 10. 结局注册
-    if (module.endings) {
-      if (!this.host.moduleEndings) this.host.moduleEndings = new Map();
-      for (const e of module.endings) {
-        this.host.moduleEndings.set(e.id, e);
-      }
-      lines.push(`注册 ${module.endings.length} 个模块结局`);
-    }
+    // ⚠ 这里曾经有一段"结局注册"：把 module.endings 逐条写进
+    // this.host.moduleEndings（一个 Map）。删掉的原因是那个 Map 从建出来
+    // 那天起就没有任何读者——GameSession 这条自由跑团路径压根没有"判定
+    // 结局"这回事（那是另一轮的范围），"写但没人读"的注册表正是本仓
+    // 反复吃过亏的"认出来了，没地方放"。module.endings 本身没有被删——
+    // 它仍然是 MythosModule 数据的一部分（conditionText 是给人/LLM 读的
+    // 展示文本，见 ModuleEnding 类型定义），只是本轮不再把它复制进一个
+    // 谁都不查的 Map。真要用它时，先接上读者，再决定要不要重新登记。
 
     // 11. 奖励规则注册
     if (module.rewards) {

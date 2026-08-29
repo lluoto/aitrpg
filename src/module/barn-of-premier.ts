@@ -1197,6 +1197,31 @@ function buildItems(): ModuleItem[] {
 }
 
 // ─── 结局 ──────────────────────────────────────────────────
+//
+// ⚠ 仓库里同时存在三套结局表示，容易被误当成同一件事的三份拷贝——它们
+// 不是，分工不同：
+//
+//   1. END_NARRATIONS（下方，EndNarration[]）—— **判定真相**。唯一声明式、
+//      能被机器求值的一份（condition.requiredClues/excludeClues/
+//      requiredScenes），evaluateEndNarration() 据它决定"这一局该给哪个
+//      结局"，是 BARN_SUPPORT.evaluateEnding 实际调用的那份。
+//   2. Ending[]（这个函数 buildEndings() 产出，挂在 ModuleData.endings
+//      上）—— **展示/派生文本**，自由文本 conditions 只能给人读，不能被
+//      引擎求值。当前没有渲染它的调用方（判定已经交给 END_NARRATIONS），
+//      保留是因为 ModuleData.endings 是必填字段（摄取管线也要用），删掉
+//      整个字段会牵连另一条不在本轮范围的流水线。id 集合必须与
+//      END_NARRATIONS 一致——见 module-endings-consistency.test.ts，
+//      那条判据就是防止这两份未来悄悄长出矛盾（比如判定端加了新结局，
+//      这份忘了同步）的唯一保险。
+//   3. MythosModule.endings（ModuleEnding[]，conditionText 自由文本，
+//      定义见 src/rules/mythos-module.ts，实际数据在
+//      src/rules/custom-modules/premiers_barn.ts）—— GameSession 自由跑团
+//      路径（MythosModuleLoader）用的是这套**遗留**模组格式，同样只有
+//      展示文本，不可求值。原先会被复制进 host.moduleEndings 这个 Map，
+//      但那个 Map 从建出来就没有任何读者——GameSession 这条路径目前压根
+//      没有"判定结局"这回事（属于另一轮的范围）。已经删掉那次复制，
+//      不留一个谁都不读的注册表；conditionText 这份数据本身还在，真要用
+//      时先接读者再决定要不要重新登记。
 function buildEndings() {
   return [
     {
@@ -1214,7 +1239,7 @@ function buildEndings() {
     {
       id: "bad",
       name: "Bad End",
-      description: "调查员在中控室拉下了拉杆，害死了所有的受害者。即使法律没有制裁他，他自己也不会轻易原谅草率行动的自己吧...",
+      description: "调查员误拉拉杆杀死所有受害者。",
       conditions: ["调查员在中控室误拉拉杆导致所有受害者死亡"],
     },
     {
@@ -1234,7 +1259,7 @@ function buildEndings() {
 // 每条遭遇战数据包含触发条件和不同结果的叙事文本
 // EndNarration / EncounterNarration 类型定义见 src/module/types.ts
 
-const END_NARRATIONS: EndNarration[] = [
+export const END_NARRATIONS: EndNarration[] = [
   // ── True End: 找到真相，救了受害者 ──
   {
     id: "true",
