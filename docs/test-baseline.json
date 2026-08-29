@@ -1,6 +1,6 @@
 {
-  "tests": 2348,
-  "files": 148,
+  "tests": 2363,
+  "files": 150,
   "unwiredMethods": 87,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -389,6 +389,11 @@
       "tests": 2348,
       "files": 148,
       "when": "开发A·任务1+2：线索发现与场景访问历史真迁进真相源（WorldStateManager），InvestigationEngine 改成读写真相源的门面。schema.ts 加 clue_discoveries/scene_visits 两张表（按玩家、累计、从不清空，语义对齐 src/world/state.ts 的 sceneHistory）。world-state-manager.ts 加 recordClueDiscovery/isClueDiscoveredBy/getCluesDiscoveredBy/isClueDiscoveredByAnyone 与 recordSceneVisit/isSceneVisitedBy/getScenesVisitedBy/isSceneVisitedByAnyone。InvestigationEngine 构造函数加可选 world 参数：挂了就真相只在库里一处（markDiscovered/isDiscoveredBy/getDiscoveredBy 全部委托给 world），没挂时退回原有进程内 Map（独立单测/CLI 场景没有另一份真相源可言，谈不上两处各写一份）。GameSession 构造时挂 this.world；src/index.ts（CLI 生产入口）同样挂上。movePlayerToScene()（唯一的玩家位置落点）与 handleMove() 落地时各记一笔 recordSceneVisit。GameSession 加 isClueFound/isSceneVisited 两个队伍视图谓词（任一人发现/到过），供 BARN_SUPPORT.evaluateEnding 的签名使用（任务5）。命名空间用真实模组数据核对：bridgeBarnOfPremierClues() 用 clue.id 原样注册，与 END_NARRATIONS 引用的一致（ending-namespace-truth-source.test.ts）；顺带核实发现 requiredScenes 那半边有个真实存在的命名空间缺口（BARN_OF_PREMIER 的 ASCII 场景 id 与 GameSession 实际注册的中文场景 id 不是同一套），已记入 docs/todo.json todo-34，本轮不修（与 todo-19/20 同源，收敛需要先决定用哪套）。新增 3 个测试文件（progress-state-truth-source/party-view-predicates/ending-namespace-truth-source）。变异检验：临时把 markDiscovered 改成无论有没有挂 world 都只写进程内 Map，4 条测试精确变红（含「两个独立引擎共享 world 后互相可见」这条关键判据）；Copy-Item 还原后回归绿。typecheck exit 0；bun test 2332→2348（+16）、145→148 文件。"
+    },
+    {
+      "tests": 2363,
+      "files": 150,
+      "when": "开发A·任务3：移动代价——弱版邻接 + 按场景图跳数计时。src/play/move-graph.ts：buildSceneGraph() 把 WorldStateManager.listScenes() 建成无向邻接表（节点集是全部已注册场景，不只是出现在某条边里的那些——否则「奇怪的卡片」这类零出口场景会被判成压根不存在而不是存在但孤立）；shortestHops() 做 BFS，0=原地不动，null=不连通或未注册（图上量不出到达方式时拒绝移动并说明，不编代价，不猜一个固定数字）。tryResolveModuleScene()（模块模式移动的唯一入口）接入：算出 hops，null 则回一句「没有已知路线可达」并 return true（不落到 LLM 叙事）；否则正常移动，hops>1 时额外 advanceTime(hops-1)——1 跳 = act() 每回合本来就有的那 1 tick，相邻移动因此与改动前逐字一致。顺带修一个真 bug：handleMove()（自由模式无模组路径）的 intent.target ?? \"\" 为空时，原防线在自动注册之后，空字符串被注册成真场景、setScene(\"\") 必然通过，打出「你移动到了场景: 」且 state.scene=\"\"（实跑抓到过，见 analysis/sim/2026-08-28-barn-long-input-abort.md）；防线移到自动注册之前，trim 后长度为 0 一律拒绝。新增 move-graph.test.ts（10条，BFS 本体：无向化/孤立节点/未注册目标/原地不动/多路径取最短）+ move-cost-integration.test.ts（5条，接真实 GameSession：相邻移动时间不变、8 跳移动多花 7 tick、孤立目标拒绝、handleMove 空目标不再产生空场景）。变异检验：临时把 tryResolveModuleScene 的额外 advanceTime 调用整段删掉，「8 跳的移动比 1 跳的移动多花 7 tick」精确变红；Copy-Item 还原后回归绿。剧本杀路径不受影响（不碰 play-module.ts / src/world/state.ts）。typecheck exit 0；bun test 2348→2363（+15）、148→150 文件。"
     }
   ]
 }

@@ -46,6 +46,7 @@ import { PREMIERS_BARN_MODULE, ARKHAM_LIBRARY_MODULE, INNSMOUTH_MODULE } from ".
 import { getModule as getCustomModule } from "../rules/custom-modules/index";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
 import { resolveSceneTarget, type SceneRow } from "../play/scene-resolve";
+import { buildSceneGraph, shortestHops } from "../play/move-graph";
 
 import type { WorldEntity, ActionIntent, CombatPersonalityTraits } from "../types";
 import type { NPCPersonality, AgentMessage, MessageType, NPCMood } from "../agent/types";
@@ -2067,7 +2068,24 @@ export class GameSession {
       rows,
     });
     if (!hit.sceneId) return false;
+
+    // 弱版邻接 + 按跳数计时（开发 A · 任务 3）：目标在场景表内就能去，
+    // 不要求与当前场景有出口直连，但按最短跳数付时间，不是瞬移。
+    // 图上量不出到达方式（孤立场景/不连通）时拒绝移动并说明，不编代价。
+    const fromSceneId = this.getDisplayedScene();
+    const graph = buildSceneGraph(this.world.listScenes());
+    const hops = shortestHops(graph, fromSceneId, hit.sceneId);
+    if (hops === null) {
+      const name = this.sceneDisplayNames[hit.sceneId] ?? hit.sceneId;
+      msg?.(`「${name}」目前没有已知路线可达，去不了。`);
+      return true; // 已经明说了原因，不是"没处理"，别再落到 LLM 叙事兜底
+    }
+
     const moved = this.movePlayerToScene(hit.sceneId);
+    // 1 跳 = act() 每回合本来就会推进的那 1 tick；跳数更多才额外加时间，
+    // 所以相邻移动（hops<=1）与改动前逐字一致。访问历史的记录在
+    // movePlayerToScene() 内部（任务1已加），这里不用再记一次。
+    if (moved && hops > 1) this.gameTime = advanceTime(this.gameTime, hops - 1);
     // 没认准就说出来。玩家有权知道「这一步是我选的，还是引擎猜的」——
     // 剧本杀那条路早有这句（「没听清要去哪……」），真人这条路一直没有。
     if (moved && hit.forced) {
@@ -2113,6 +2131,18 @@ export class GameSession {
 
   private handleMove(intent: ActionIntent, msg: (s: string) => number): boolean {
     const target = intent.target ?? "";
+    // ⚠ 空/空白目标一律拒绝，不注册、不谎报成功。
+    //
+    // 此前这道防线在自动注册**之后**：intent.target 为空字符串时，
+    // sceneMap[""] ?? "" 仍是空串，`registerScene("", "", "的场景")`
+    // 把空字符串注册成一个真场景，setScene("") 因此必然通过，最后打出
+    // 「你移动到了场景: 」且 state.scene = ""（实跑抓到过，见
+    // analysis/sim/2026-08-28-barn-long-input-abort.md）。防线必须移到
+    // 自动注册之前，判据也不能只查 undefined——空字符串 trim 后同样要拦。
+    if (target.trim().length === 0) {
+      msg("你要去哪？没听清具体的地方。");
+      return false; // 交回上层，走 LLM 叙事兜底，别谎报成功
+    }
     // 场景名称解析映射
     const sceneMap: Record<string, string> = {
       "谷仓": "barn_interior", "谷仓内部": "barn_interior",
