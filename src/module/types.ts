@@ -437,9 +437,20 @@ export interface EpilogueEntry {
   lines: string[];
 }
 
-/** 结局叙事 — 引擎根据世界状态匹配的结局（id + 触发条件 + 叙事段） */
+/**
+ * 结局叙事 — 引擎根据世界状态匹配的结局（id + 触发条件 + 叙事段）。
+ *
+ * 求值器（evaluateEndNarration，barn-of-premier.ts）按 priority 从小到大
+ * 依次检查每条的 condition，命中第一条就返回——数组书写顺序不代表优先级，
+ * 挪动这份数据里条目的先后顺序不会改变游戏行为，只有 priority 数值算数。
+ * 这是有意的：以前数组顺序悄悄兼职当过优先级用，跟"真正想要的优先级"
+ * （对应旧 if 链的判断顺序）不一致却没有任何报错——同一份数据被两套
+ * 隐含约定各自解读，是这套结构本身出过的错，不是求值器实现错了。
+ */
 export interface EndNarration {
   id: string;
+  /** 求值优先级，数值越小越先检查。命中即返回，不再往下比较。 */
+  priority: number;
   condition: {
     /** 必须已发现的线索 ID 列表（AND） */
     requiredClues: string[];

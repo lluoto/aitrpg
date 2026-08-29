@@ -1,6 +1,6 @@
 {
-  "tests": 2285,
-  "files": 143,
+  "tests": 2321,
+  "files": 144,
   "unwiredMethods": 87,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -369,6 +369,11 @@
       "tests": 2285,
       "files": 143,
       "when": "开发C·任务2：定死 requiredScenes 的 AND/OR。types.ts:449 注释「必须访问过的场景 ID 列表（AND）」与 barn-of-premier.ts 的实现 `requiredScenes.some(...)`（OR）矛盾，没有任何测试钉住过。选 AND：字面意思是「必须访问过」，且 requiredClues 已经是 AND，两个同名字段（都是 conditon 里的 requiredXxx）语义一致比各自实现方便更重要。复查了改动前后现有数据的匹配结果：全仓只有 3 处 requiredScenes 给了非空数组——两处单元素（AND/OR 对单元素数组没有区别：migo_escaped、END_NARRATIONS 的 true 条目）；唯一的双元素数组是 evaluateEpilogues 用到的 adrian_fate 条目（hospital + adrian_hospital_meeting）——但场景图里唯一指向 adrian_hospital_meeting 的连接来自 hospital（前往艾德里安的病房），isSceneVisited() 查的是从不清空的累计历史（WorldState.sceneHistory），所以能到达 adrian_hospital_meeting 就必然已经访问过 hospital——AND 与 OR 在这条真实数据上给出完全相同的结果，跑前跑后无变化，改动是安全的。evaluateEpilogues 的 hasScenes 判断从 `.some(...)` 改成 `.every(...)`，加长注释陈述理由与复查结论。新增 epilogue-required-scenes-and.test.ts（7条）：合成用例——两个必须场景都访问过才匹配、只访问其中一个不匹配（AND 与 OR 的分歧点，红线）、一个都没访问不匹配、空/未声明 requiredScenes 不受影响；真实数据——adrian_fate 在访问过两个场景时仍匹配（拓扑保证 AND/OR 结果相同）、只访问 hospital 不访问 adrian_hospital_meeting 时在 AND 语义下不匹配（红线，AND 生效的直接证据）、migo_escaped（单元素）不受切换影响。变异检验：改回 `.some(...)`，7 条里 2 条精确变红（含真实数据那条）；revert 后 7/7 回归绿。剧本杀路径不受影响：module-loop.test.ts 16 条全绿。typecheck exit 0；bun test 2278→2285（+7）、142→143 文件。"
+    },
+    {
+      "tests": 2321,
+      "files": 144,
+      "when": "开发C·任务3：让 evaluateEndNarration 真读声明式条件。evaluateEndNarration（barn-of-premier.ts）此前无视 END_NARRATIONS[i].condition，手写了一遍 if 链，靠注释 `return END_NARRATIONS[0]; // true` 手工对应下标——不是机械翻译，声明式数据本身是错的。32态穷举（5个布尔：clue_bedroom_diary/clue_bedroom_old_doc/clue_control_supplies/bad_lever_pulled/是否访问过maintenance_room）确认了10态不一致：缺陷一（6态全部可达）Normal End 的 excludeClues 把它写成三条线索一条都没找到，if 链却当无条件兜底——玩家找到老文件但没凑齐 True End 时声明式给不出任何结局，游戏无法结束；缺陷二（4态）if 链是 true→bad→good→normal，数组顺序是 true→good→bad→normal，拉杆杀光所有人比拿到补给更有决定性，bad 应当赢。两个缺陷都按 if 链行为收敛：缺陷一是数据缺陷（改数据，去掉 Normal 的 excludeClues，让它成为真正的兜底），缺陷二用显式 priority 字段表达优先级（不依赖数组书写顺序——数组顺序隐含优先级正是这次踩的坑本身，字段自解释，编辑时挪行不会悄悄改变游戏行为）。EndNarration 类型加 priority: number 必填字段。evaluateEndNarration 改写成与 evaluateEpilogues 同一套通用求值形状：按 priority 排序后取第一条命中的（结局互斥），不再手写 if 链。为验证求值器真的按 priority 而不是数组位置求值，故意让 Good End 的数组书写位置排在 Bad End 前面（priority 却是 bad=2 < good=3）。新增 end-narration-32-states.test.ts（36条）：32态穷举——每态都用忠实复刻的旧 if 链 oracle（独立副本，不引用当前实现）与真实 BARN_SUPPORT.evaluateEnding 比对，改动前对着旧实现跑通过验证测试本身没写错（trivial 相等），改动后仍然全绿（验证新旧行为完全等价）；全覆盖断言——32态中任何一态都不得匹配不到结局，独立于逐态等价性断言；优先级测试——同时满足 bad 与 good 条件时结局是 bad；Normal 兜底测试——只找到 clue_bedroom_old_doc（凑不齐 True End）仍必须给出 normal 结局；数据结构测试——每条 END_NARRATIONS 都带 priority 且顺序 true<bad<good<normal。变异检验两轮：① 求值器改成直接遍历数组（不按 priority 排序），32态穷举精确报出4态差异（与任务描述的缺陷二数量一致）+ 优先级测试变红；② Normal End 的 excludeClues 加回去，32态穷举精确报出6态差异（与缺陷一数量一致）+ 全覆盖断言 + Normal兜底测试变红；两轮均用 Copy-Item 精确对比还原（还原后与备份逐行 diff 为空）。剧本杀路径行为不变：module-loop.test.ts 16条全绿。typecheck exit 0；bun test 2285→2321（+36）、143→144 文件。"
     }
   ]
 }

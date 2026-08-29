@@ -1263,6 +1263,7 @@ export const END_NARRATIONS: EndNarration[] = [
   // ── True End: 找到真相，救了受害者 ──
   {
     id: "true",
+    priority: 1,
     condition: {
       requiredClues: ["clue_bedroom_diary", "clue_bedroom_old_doc"],
       requiredScenes: ["maintenance_room"],
@@ -1275,8 +1276,19 @@ export const END_NARRATIONS: EndNarration[] = [
     ],
   },
   // ── Good End: 救了受害者但未发现真相 ──
+  //
+  // ⚠ 这条的 priority（3）故意大于 Bad End 的 priority（2），而数组书写
+  // 顺序上 Good End 却排在 Bad End 前面——留着这个"数组顺序与 priority
+  // 不一致"的样子是故意的，用来证明求值器真的按 priority 排序求值，
+  // 不是偷懒继续依赖数组位置（那正是这次要修的坑本身：以前数组顺序
+  // 悄悄兼职当过优先级用）。拉下拉杆杀光所有受害者比拿到补给更有决定性，
+  // 两个条件同时成立时 bad 该赢——旧 if 链本来就是这个判断顺序
+  // （true→bad→good→normal）。32 态穷举抓出来的 10 个差异里，4 个就是
+  // 这条顺序矛盾（如果当年求值器真按数组顺序求值，会在这些状态下误判
+  // 成 Good End）。
   {
     id: "good",
+    priority: 3,
     condition: {
       requiredClues: ["clue_control_supplies"],
       excludeClues: ["clue_bedroom_old_doc"],
@@ -1288,6 +1300,7 @@ export const END_NARRATIONS: EndNarration[] = [
   // ── Bad End: 拉拉杆杀了所有人 ──
   {
     id: "bad",
+    priority: 2,
     condition: {
       requiredClues: ["bad_lever_pulled"],
     },
@@ -1296,12 +1309,23 @@ export const END_NARRATIONS: EndNarration[] = [
       "即使法律没有制裁你，你自己也不会轻易原谅草率行动的自己的吧……",
     ],
   },
-  // ── Normal End: 什么都没发现 ──
+  // ── Normal End: 兜底 ──
+  //
+  // ⚠ 这里曾经是 `excludeClues: [clue_control_supplies, clue_bedroom_old_doc,
+  // bad_lever_pulled]`——字面意思是"三条线索一条都没找到才算 Normal
+  // End"，但旧 if 链把它当**无条件兜底**（前三个分支都不中就落到这里，
+  // 不再检查任何条件）。两套不同的理论：玩家找到了 clue_bedroom_old_doc
+  // 但凑不齐 True End 的另外两个条件时，旧的 excludeClues 会让 Normal
+  // End 也不匹配——32 态穷举里这类"哪个结局都对不上"的状态有 6 个，全部
+  // 可达。游戏必须总能给出结局，这是功能要求，不是"数据恰好这样写"可以
+  // 商量的——所以按 if 链的行为收敛：改数据，把 excludeClues 去掉，让
+  // Normal End 成为真正的兜底（priority 最低，前面都不中才轮到它，属于
+  // 它的语义就是"没有更具体的结局匹配时给这个"，不需要自己的排除条件）。
   {
     id: "normal",
+    priority: 4,
     condition: {
       requiredClues: [],
-      excludeClues: ["clue_control_supplies", "clue_bedroom_old_doc", "bad_lever_pulled"],
     },
     lines: [
       "调查员未能查明真相——简单的调查之后，就这么放弃了。",
@@ -1310,29 +1334,32 @@ export const END_NARRATIONS: EndNarration[] = [
   },
 ];
 
-/** 评估当前世界状态，返回匹配的结局叙事 */
+/**
+ * 评估当前世界状态，返回匹配的结局叙事。
+ *
+ * 与 evaluateEpilogues() 同一套通用求值形状（都是 AND 语义的 requiredClues
+ * /excludeClues/requiredScenes），差别只在于这里按 priority 排序后取
+ * **第一条**命中的（结局互斥，只能有一个），evaluateEpilogues 收集**全部**
+ * 命中的（后日谈可以叠加多条）。这里不再手写一遍 if 链——之前那份 if 链
+ * 与 END_NARRATIONS[i].condition 各自表达了一套不同的判断，靠人工对齐
+ * `return END_NARRATIONS[0]; // true` 这种下标注释维持一致，32 态穷举
+ * 验出 10 态不一致（见 END_NARRATIONS 数据里 bad/normal 两条的注释）。
+ */
 function evaluateEndNarration(
   isClueFound: (id: string) => boolean,
   isSceneVisited: (id: string) => boolean,
 ): EndNarration | null {
-  // True End: 必须找到日记+文件+访问过维修间
-  if (
-    isClueFound("clue_bedroom_diary") &&
-    isClueFound("clue_bedroom_old_doc") &&
-    isSceneVisited("maintenance_room")
-  ) {
-    return END_NARRATIONS[0]; // true
+  const sorted = [...END_NARRATIONS].sort((a, b) => a.priority - b.priority);
+  for (const en of sorted) {
+    const { requiredClues, excludeClues, requiredScenes } = en.condition;
+    const hasReq = !requiredClues || requiredClues.length === 0 ||
+      requiredClues.every(c => isClueFound(c));
+    const hasExcl = !excludeClues || excludeClues.every(c => !isClueFound(c));
+    const hasScenes = !requiredScenes || requiredScenes.length === 0 ||
+      requiredScenes.every(s => isSceneVisited(s));
+    if (hasReq && hasExcl && hasScenes) return en;
   }
-  // Bad End: 拉了拉杆
-  if (isClueFound("bad_lever_pulled")) {
-    return END_NARRATIONS[2]; // bad
-  }
-  // Good End: 有氧气但无真相
-  if (isClueFound("clue_control_supplies") && !isClueFound("clue_bedroom_old_doc")) {
-    return END_NARRATIONS[1]; // good
-  }
-  // Normal End
-  return END_NARRATIONS[3]; // normal
+  return null;
 }
 
 // ─── NPC 统计资料（来源于原始模块附录） ────────────────────
