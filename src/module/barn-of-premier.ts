@@ -1498,7 +1498,25 @@ export function renderPrologue(
   );
 }
 
-/** 评估世界状态，返回匹配的后日谈条目列表 */
+/**
+ * 评估世界状态，返回匹配的后日谈条目列表。
+ *
+ * ⚠ requiredScenes 是 AND，不是 OR——EpilogueEntry.condition 的类型注释
+ * （module/types.ts）写的是"必须访问过的场景 ID 列表（AND）"，这里原来
+ * 实现成 `.some(...)`，字面意思和实现互相矛盾，且没有任何测试钉住过
+ * 到底该是哪个。选 AND：① 就是"必须访问过"这四个字的字面意思；
+ * ② requiredClues 已经是 AND，两个同名字段（都叫 requiredXxx，都描述
+ * "必须满足的列表"）语义不一致，比"哪个更方便写数据"更值得优先对齐。
+ *
+ * 复查过现有数据在这次改动前后的匹配结果：全仓只有 3 处 requiredScenes
+ * 给了非空数组，其中两处只有 1 个场景（AND/OR 对单元素数组无区别）；
+ * 唯一的 2 元素数组是 adrian_fate 这条（["hospital",
+ * "adrian_hospital_meeting"]）——但 adrian_hospital_meeting 在场景图里
+ * 只有一条连接指向它，且来源就是 hospital（:356 "前往艾德里安的病房"），
+ * isSceneVisited() 查的是从不清空的累计历史（WorldState.sceneHistory），
+ * 所以能到达 adrian_hospital_meeting 就必然已经访问过 hospital——AND 与
+ * OR 在这条数据上给出完全相同的结果，跑前跑后无变化。
+ */
 export function evaluateEpilogues(
   entries: EpilogueEntry[],
   isClueFound: (id: string) => boolean,
@@ -1510,7 +1528,7 @@ export function evaluateEpilogues(
       requiredClues.every(c => isClueFound(c));
     const hasExcl = !excludeClues || excludeClues.every(c => !isClueFound(c));
     const hasScenes = !requiredScenes || requiredScenes.length === 0 ||
-      requiredScenes.some(s => isSceneVisited(s));
+      requiredScenes.every(s => isSceneVisited(s));
     return hasReq && hasExcl && hasScenes;
   });
 }

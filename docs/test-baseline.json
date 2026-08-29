@@ -1,6 +1,6 @@
 {
-  "tests": 2278,
-  "files": 142,
+  "tests": 2285,
+  "files": 143,
   "unwiredMethods": 87,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -364,6 +364,11 @@
       "tests": 2278,
       "files": 142,
       "when": "开发C·任务1：定下哪套是真相。仓库里同时存在三套结局表示，没有一套被真正消费：MythosModule.endings（ModuleEnding{conditionText:string}，自由文本，写进 host.moduleEndings，零读者）、ModuleData.endings（Ending{conditions:string[]}，自由文本，buildEndings() 产出，零读者）、END_NARRATIONS（EndNarration{condition:{requiredClues,...}}，声明式，唯一可机器求值，但 condition 是死字段——见任务3）。实际驱动结局的只有 play-module.ts 的 support.evaluateEnding(...)（剧本杀路径），GameSession（自由跑团）够不着任何一套。决定：EndNarration=判定真相（唯一可机器求值）；ModuleEnding.conditionText=展示/渲染文本（给人和LLM读）；ModuleData.endings=保留但降为受判据约束的展示文本（不能删——必填字段，摄取管线B也在用，删除会牵连不在本轮范围的流水线），id集合必须与 END_NARRATIONS 一致，用测试钉住不让两者悄悄长出矛盾。host.moduleEndings（mythos-module.ts:280/691-698）删除——只写不读，GameSession 这条路径目前压根没有判定结局这回事（另一轮范围），不留一个谁都不读的注册表；module.endings 数据本身不删，只是不再复制进这个 Map。在 barn-of-premier.ts 的 buildEndings() 前加长注释陈述三套表示的分工与理由。导出 END_NARRATIONS（原为私有 const）供测试直接访问其 id 集合。新增 module-endings-consistency.test.ts（5条）：ModuleData.endings 的 id 集合与 END_NARRATIONS 完全一致；MythosModule.endings（premiers_barn.ts）的 id 集合与 END_NARRATIONS 完全一致；红线——id 集合缺一个必须报错，不是大致相似就算过；加载带 endings 的模组后 host 上不再出现 moduleEndings 字段；对照——模组的 endings 数据本身没有被删掉，只是不再复制进 Map。变异检验两轮：① 把 host.moduleEndings 的写入块加回去，「host.moduleEndings 已删除」测试精确变红；② 给 BARN_OF_PREMIER.endings 里一个 id 加后缀造成漂移，一致性测试精确变红；两轮均 Copy-Item 还原后回归绿。typecheck exit 0；bun test 2273→2278（+5）、141→142 文件；unwiredMethods 87 不变（接口字段删除不计入类方法探针）。"
+    },
+    {
+      "tests": 2285,
+      "files": 143,
+      "when": "开发C·任务2：定死 requiredScenes 的 AND/OR。types.ts:449 注释「必须访问过的场景 ID 列表（AND）」与 barn-of-premier.ts 的实现 `requiredScenes.some(...)`（OR）矛盾，没有任何测试钉住过。选 AND：字面意思是「必须访问过」，且 requiredClues 已经是 AND，两个同名字段（都是 conditon 里的 requiredXxx）语义一致比各自实现方便更重要。复查了改动前后现有数据的匹配结果：全仓只有 3 处 requiredScenes 给了非空数组——两处单元素（AND/OR 对单元素数组没有区别：migo_escaped、END_NARRATIONS 的 true 条目）；唯一的双元素数组是 evaluateEpilogues 用到的 adrian_fate 条目（hospital + adrian_hospital_meeting）——但场景图里唯一指向 adrian_hospital_meeting 的连接来自 hospital（前往艾德里安的病房），isSceneVisited() 查的是从不清空的累计历史（WorldState.sceneHistory），所以能到达 adrian_hospital_meeting 就必然已经访问过 hospital——AND 与 OR 在这条真实数据上给出完全相同的结果，跑前跑后无变化，改动是安全的。evaluateEpilogues 的 hasScenes 判断从 `.some(...)` 改成 `.every(...)`，加长注释陈述理由与复查结论。新增 epilogue-required-scenes-and.test.ts（7条）：合成用例——两个必须场景都访问过才匹配、只访问其中一个不匹配（AND 与 OR 的分歧点，红线）、一个都没访问不匹配、空/未声明 requiredScenes 不受影响；真实数据——adrian_fate 在访问过两个场景时仍匹配（拓扑保证 AND/OR 结果相同）、只访问 hospital 不访问 adrian_hospital_meeting 时在 AND 语义下不匹配（红线，AND 生效的直接证据）、migo_escaped（单元素）不受切换影响。变异检验：改回 `.some(...)`，7 条里 2 条精确变红（含真实数据那条）；revert 后 7/7 回归绿。剧本杀路径不受影响：module-loop.test.ts 16 条全绿。typecheck exit 0；bun test 2278→2285（+7）、142→143 文件。"
     }
   ]
 }
