@@ -1,6 +1,6 @@
 {
-  "tests": 2363,
-  "files": 150,
+  "tests": 2376,
+  "files": 151,
   "unwiredMethods": 87,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -394,6 +394,11 @@
       "tests": 2363,
       "files": 150,
       "when": "开发A·任务3：移动代价——弱版邻接 + 按场景图跳数计时。src/play/move-graph.ts：buildSceneGraph() 把 WorldStateManager.listScenes() 建成无向邻接表（节点集是全部已注册场景，不只是出现在某条边里的那些——否则「奇怪的卡片」这类零出口场景会被判成压根不存在而不是存在但孤立）；shortestHops() 做 BFS，0=原地不动，null=不连通或未注册（图上量不出到达方式时拒绝移动并说明，不编代价，不猜一个固定数字）。tryResolveModuleScene()（模块模式移动的唯一入口）接入：算出 hops，null 则回一句「没有已知路线可达」并 return true（不落到 LLM 叙事）；否则正常移动，hops>1 时额外 advanceTime(hops-1)——1 跳 = act() 每回合本来就有的那 1 tick，相邻移动因此与改动前逐字一致。顺带修一个真 bug：handleMove()（自由模式无模组路径）的 intent.target ?? \"\" 为空时，原防线在自动注册之后，空字符串被注册成真场景、setScene(\"\") 必然通过，打出「你移动到了场景: 」且 state.scene=\"\"（实跑抓到过，见 analysis/sim/2026-08-28-barn-long-input-abort.md）；防线移到自动注册之前，trim 后长度为 0 一律拒绝。新增 move-graph.test.ts（10条，BFS 本体：无向化/孤立节点/未注册目标/原地不动/多路径取最短）+ move-cost-integration.test.ts（5条，接真实 GameSession：相邻移动时间不变、8 跳移动多花 7 tick、孤立目标拒绝、handleMove 空目标不再产生空场景）。变异检验：临时把 tryResolveModuleScene 的额外 advanceTime 调用整段删掉，「8 跳的移动比 1 跳的移动多花 7 tick」精确变红；Copy-Item 还原后回归绿。剧本杀路径不受影响（不碰 play-module.ts / src/world/state.ts）。typecheck exit 0；bun test 2348→2363（+15）、148→150 文件。"
+    },
+    {
+      "tests": 2376,
+      "files": 151,
+      "when": "开发A·任务4+5：脱离判定+确认门+结局播报+终态。合并提交是因为二者功能上不可分——确认门的处理分支本来就要调用结局判定，拆开会让中间态引用一个还不存在的方法。src/play/module-departure.ts：isExplicitLeaveIntent() 只认明确写出\"离开/结束调查/放弃调查/回家/收工\"这类词，故意收得比通用移动正则窄——宁可漏判也不可误判（意图误判率约20%，todo-29，第一次实跑就把一句纯调查的话判成过移动）；isConfirmReply() 只认清楚的肯定，其它任何话（含否定、新行动）一律按取消处理；MODULE_ENDING_SUPPORT 登记表（目前只有 premiers_barn→BARN_SUPPORT）+ GENERIC_DEPARTURE_LINES 通用收场文案。act() 顶部加两段检查：① pendingLeaveConfirm 非空时优先处理确认/取消，代价对称（两种结果都已经花掉本回合 advanceTime 那 1 tick）；② isExplicitLeaveIntent 检查**不挂在 case \"move\" 下面**——\"结束这次调查\"这类句子会被意图解析里\"调查\"关键词命中判成 skill_check，挂在 move case 永远碰不到，必须在 handleIntent 之前、不依赖 intent.action 独立检查。resolveModuleDeparture()：查 MODULE_ENDING_SUPPORT 有没有登记这个模组，有则调 evaluateEnding(isClueFound, isSceneVisited) 拿 EndNarration，没有则通用收场（阿卡姆/印斯茅斯目前如此——这是待补不是按设计没有结局）；播报 lines；this.dead=true（复用既有终态字段，不造第三种）；有 careerStore 时按 handleSkillAdvancement 的既有形状记一条履历，endingId/endingName 填真实判定结果而非硬编码\"completed\"。新增 module-departure-flow.test.ts（13条）：判据单测（应报/不应报，含本仓真实误判样本原句）、确认门完整往返（问确认不直接结束/确认后dead=true/不确认留在原地不消耗结局/误判类输入不触发结局/模组内正常移动不受影响）、谷仓早退落Normal End、无endings模组走通用收场不报错不空播、变异检验（临时给阿卡姆登记一份假结局支持，确认它改走结局分支而不是通用收场，finally块还原登记表）。剧本杀路径不受影响（module-loop.test.ts 16条全绿，不碰 play-module.ts）。typecheck exit 0；bun test 2363→2376（+13）、150→151 文件。"
     }
   ]
 }

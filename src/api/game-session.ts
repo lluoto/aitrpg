@@ -47,6 +47,7 @@ import { getModule as getCustomModule } from "../rules/custom-modules/index";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
 import { resolveSceneTarget, type SceneRow } from "../play/scene-resolve";
 import { buildSceneGraph, shortestHops } from "../play/move-graph";
+import { isExplicitLeaveIntent, isConfirmReply, MODULE_ENDING_SUPPORT, GENERIC_DEPARTURE_LINES } from "../play/module-departure";
 
 import type { WorldEntity, ActionIntent, CombatPersonalityTraits } from "../types";
 import type { NPCPersonality, AgentMessage, MessageType, NPCMood } from "../agent/types";
@@ -272,6 +273,11 @@ export class GameSession {
   round: number = 0;
   dead: boolean = false;
   combatActive: boolean = false;
+  /**
+   * 待确认的"离开模组范围"请求。非 null 时，下一次 act() 优先处理
+   * 确认/取消回复，其它命令都先搁置——见 act() 顶部与 resolveModuleDeparture()。
+   */
+  private pendingLeaveConfirm: boolean = false;
 
   private characters: Map<string, any> = new Map();
   /**
@@ -1517,6 +1523,38 @@ export class GameSession {
     const activePlayer = this.session.getActive();
     const playerName = activePlayer?.characterName ?? "调查员";
 
+    // 确认门：上一回合问过"你确定要离开吗"，这一回合优先处理确认/取消，
+    // 其它命令一律先搁置。代价对称——不管确认还是取消，这一回合本来就会
+    // 推进的那 1 tick（上面的 advanceTime）已经花掉了。
+    if (this.pendingLeaveConfirm) {
+      this.pendingLeaveConfirm = false;
+      turnMessages.push({ speaker: playerName, content: input, type: "action" });
+      if (isConfirmReply(input)) {
+        this.resolveModuleDeparture(turnMessages);
+      } else {
+        turnMessages.push({ speaker: "系统", content: "你们决定还是先留下，继续这次调查。", type: "system" });
+      }
+      return this.buildActionResponse(turnMessages);
+    }
+
+    // 脱离模组请求：只认输入本身有没有明确表达"离开/结束调查"（见
+    // isExplicitLeaveIntent 的注释），**不依赖意图解析把这句话分到哪个
+    // action**——"结束这次调查"这类句子会被意图解析里"调查"关键词命中
+    // 判成 skill_check，如果把这条检查挂在 case "move" 下面就永远碰不到。
+    // 只在有模组注册时才有意义（"超出模组写明的位置"这个概念本身要有
+    // 模组才成立），且只在没有待确认请求时才触发（上面已经处理过了）。
+    if (this.registeredModules.length > 0 && isExplicitLeaveIntent(input)) {
+      turnMessages.push({ speaker: playerName, content: input, type: "action" });
+      this.pendingLeaveConfirm = true;
+      turnMessages.push({
+        speaker: "系统",
+        content: "你确定要离开这里吗？这会结束这次调查。（回复「确定」继续，其它任何话都视为取消）",
+        type: "system",
+      });
+      this.lastNarrative = "KP 在等你确认是否要离开这次调查。";
+      return this.buildActionResponse(turnMessages);
+    }
+
     // 斜杠命令
     if (input.startsWith("/")) {
       const handled = await this.handleSlashCommand(input, turnMessages);
@@ -2183,6 +2221,88 @@ export class GameSession {
     msg(`你移动到了场景: ${this.sceneDisplayNames[sceneId] ?? sceneId}`);
     this.lastNarrative = `你走向了${target}。`;
     return true;
+  }
+
+  /**
+   * 确认离开后：判定结局、播报、置终态（开发 A · 任务 5）。
+   *
+   * 终态复用现有 `dead`——不造第三种终态。结局记录复用
+   * `careerStore.addEntry` 与 `endingId`/`endingName` 这两个既有字段
+   * （原先只在 handleSkillAdvancement 里硬写 "completed"/"模组完成"，
+   * 这里填的是 evaluateEnding 真正判出来的那一个）。
+   *
+   * 早退落到 Normal End 是自然结果，不是特判：END_NARRATIONS 里 Normal
+   * 的 priority 最低、requiredClues 为空，任何状态下都会兜底命中——它的
+   * 文案本来就是"未受干涉的结果"，不用另写。
+   */
+  private resolveModuleDeparture(turnMessages: AgentMessage[]): void {
+    const msg = (s: string) => turnMessages.push({ speaker: "系统", content: s, type: "system" });
+    const modId: string | undefined = this.registeredModules[0]?.id;
+    const support = modId ? MODULE_ENDING_SUPPORT[modId] : undefined;
+
+    let lines: readonly string[];
+    let endingId: string;
+    let endingName: string;
+
+    if (support) {
+      const ending = support.evaluateEnding(
+        (id) => this.isClueFound(id),
+        (id) => this.isSceneVisited(id),
+      );
+      if (ending) {
+        lines = ending.lines;
+        endingId = ending.id;
+        endingName = support.endLabels[ending.id] ?? ending.id;
+      } else {
+        // 理论上不会发生（Normal End 兜底一切非全员倒下的状态），
+        // 真出现时也别空播——通用收场保底。
+        lines = GENERIC_DEPARTURE_LINES;
+        endingId = "left_early";
+        endingName = "提前离开";
+      }
+    } else {
+      // 该模组结局数据为空（阿卡姆/印斯茅斯目前如此）——不是"按设计没有
+      // 结局"，是待补（见 docs/todo.json）。不报错、不空播，走通用收场。
+      lines = GENERIC_DEPARTURE_LINES;
+      endingId = "left_early";
+      endingName = "提前离开";
+    }
+
+    for (const line of lines) msg(line);
+    this.lastNarrative = lines.join("\n");
+    this.dead = true;
+
+    if (this.careerStore) {
+      const targets: Array<{ pid: string; char: any }> = [];
+      for (const [pid, char] of this.characters) if (char) targets.push({ pid, char });
+      if (targets.length === 0 && this.activeCharacter) {
+        targets.push({ pid: this.activePlayerId, char: this.activeCharacter });
+      }
+      for (const { pid, char } of targets) {
+        try {
+          this.careerStore.addEntry({
+            id: `ce_${Date.now().toString(36)}_${pid}`,
+            characterName: char.name,
+            moduleId: modId ?? "unknown",
+            moduleName: this.registeredModules[0]?.name ?? "未知模组",
+            completedAt: new Date().toISOString(),
+            endingId,
+            endingName,
+            sanChange: 0,
+            cmChange: 0,
+            reputationChange: 0,
+            skillChanges: [],
+            rewardIds: [],
+            narrative: lines[0] ?? "提前离开模组",
+          });
+        } catch (e) {
+          // 同 handleSkillAdvancement 的既有先例：写不进去要说出来，
+          // 静默丢数据比报错糟得多。
+          const why = e instanceof Error ? e.message : String(e);
+          msg(`⚠️ ${char.name} 的离场记录没能写进履历（${why}）。`);
+        }
+      }
+    }
   }
 
   // ── 背包 ──
