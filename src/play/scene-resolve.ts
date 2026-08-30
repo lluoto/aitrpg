@@ -141,3 +141,28 @@ export function resolveSceneTarget(input: SceneResolveInput): SceneResolveResult
 
   return { sceneId: null, forced: false, via: "none" };
 }
+
+/**
+ * 找出输入文本里所有被**完整**提到的场景名（子串包含，排除被否定的提及），
+ * 用于复合句回问时列出真实候选（"陆川带队返回特里坎家，把拖车房里发现的
+ * 情况告诉菲碧" 只应该列出「特里坎家」——"拖车房"是"加比的拖车房"的后三个
+ * 字，不是完整子串，不会被算进来；这是有意的窄化，不做部分匹配，
+ * 宁可候选少也不要把话题词也当成目的地列出来）。
+ *
+ * 与 resolveSceneTarget() 的 tier-4（"包含"）复用同一份判断，但那边只挑
+ * 一个"最长的"当结果，这里要的是**全部**命中，好让回问文案能同时展示
+ * 多个候选，而不是替玩家静默选了其中一个。
+ */
+export function mentionedSceneNames(input: string, rows: readonly SceneRow[]): string[] {
+  const usable = rows.filter((r) => r.name && r.name !== "unknown");
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const r of usable) {
+    if (!input.includes(r.name)) continue;
+    if (isRejectedMention(input, r.name)) continue;
+    if (seen.has(r.name)) continue;
+    seen.add(r.name);
+    out.push(r.name);
+  }
+  return out;
+}

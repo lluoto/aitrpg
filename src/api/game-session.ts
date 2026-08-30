@@ -45,7 +45,7 @@ import { PoliticoEconomyEngine } from "../economy/politic-economy-engine";
 import { PREMIERS_BARN_MODULE, ARKHAM_LIBRARY_MODULE, INNSMOUTH_MODULE } from "../rules/mythos-module";
 import { getModule as getCustomModule } from "../rules/custom-modules/index";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
-import { resolveSceneTarget, type SceneRow } from "../play/scene-resolve";
+import { resolveSceneTarget, mentionedSceneNames, type SceneRow } from "../play/scene-resolve";
 import { buildSceneGraph, shortestHops } from "../play/move-graph";
 import { isExplicitLeaveIntent, isConfirmReply, MODULE_ENDING_SUPPORT, GENERIC_DEPARTURE_LINES } from "../play/module-departure";
 
@@ -118,6 +118,20 @@ export interface SessionSummary {
   id: string; round: number; ruleset: string; scene: string; playerName: string;
   archetype: string | null; messageCount: number; npcCount: number; createdAt: number;
 }
+
+/**
+ * 统一的"待确认"状态——act() 顶部按 kind 分派，处理完立即清空。
+ * 见 GameSession.pendingConfirm 字段的注释：单字段是为了让"两个 pending
+ * 同时开互相打架"这件事在结构上就不可能发生，不是靠约定优先级做到的。
+ */
+type PendingConfirm =
+  | { kind: "leave" }
+  | {
+      kind: "compound-move";
+      /** 触发回问时的原始输入与解析出的意图——回答的不是地点时，照它在原地执行，不卡住。 */
+      originalInput: string;
+      originalIntent: ActionIntent;
+    };
 
 /**
  * 建一个 PC 需要同时诞生的八件事的登记项，供 createPartyMember() 统一填。
@@ -274,10 +288,16 @@ export class GameSession {
   dead: boolean = false;
   combatActive: boolean = false;
   /**
-   * 待确认的"离开模组范围"请求。非 null 时，下一次 act() 优先处理
-   * 确认/取消回复，其它命令都先搁置——见 act() 顶部与 resolveModuleDeparture()。
+   * 统一的"待确认"门——非 null 时下一次 act() 优先处理这一件事，
+   * 其它命令都先搁置，处理完立即清空（见 act() 顶部）。
+   *
+   * ⚠ 只用一个字段而不是"离开确认""复合句回问"各开一个 boolean：
+   * 两个 pending 各写一份是本仓反复修的形状（结局三套表示、可见性两套、
+   * 世界状态两套，都记在 docs/todo.json 里）。单字段结构上就不可能
+   * 同时有两个 pending 打架——act() 顶部一进来就检查并清空它，
+   * 新的 pending 只会在**没有**旧 pending 的那次 act() 调用里被设置。
    */
-  private pendingLeaveConfirm: boolean = false;
+  private pendingConfirm: PendingConfirm | null = null;
 
   private characters: Map<string, any> = new Map();
   /**
@@ -1523,16 +1543,23 @@ export class GameSession {
     const activePlayer = this.session.getActive();
     const playerName = activePlayer?.characterName ?? "调查员";
 
-    // 确认门：上一回合问过"你确定要离开吗"，这一回合优先处理确认/取消，
-    // 其它命令一律先搁置。代价对称——不管确认还是取消，这一回合本来就会
-    // 推进的那 1 tick（上面的 advanceTime）已经花掉了。
-    if (this.pendingLeaveConfirm) {
-      this.pendingLeaveConfirm = false;
+    // 统一确认门：上一回合留下过 pendingConfirm（离开确认/复合句回问），
+    // 这一回合优先处理，其它命令一律先搁置。代价对称——不管答的是什么，
+    // 这一回合本来就会推进的那 1 tick（上面的 advanceTime）已经花掉了。
+    // 单字段设计见 pendingConfirm 字段本身的注释：两个 pending 不可能
+    // 同时存在，这里不需要也不该出现"谁优先"的判断。
+    if (this.pendingConfirm) {
+      const pending = this.pendingConfirm;
+      this.pendingConfirm = null;
       turnMessages.push({ speaker: playerName, content: input, type: "action" });
-      if (isConfirmReply(input)) {
-        this.resolveModuleDeparture(turnMessages);
+      if (pending.kind === "leave") {
+        if (isConfirmReply(input)) {
+          this.resolveModuleDeparture(turnMessages);
+        } else {
+          turnMessages.push({ speaker: "系统", content: "你们决定还是先留下，继续这次调查。", type: "system" });
+        }
       } else {
-        turnMessages.push({ speaker: "系统", content: "你们决定还是先留下，继续这次调查。", type: "system" });
+        await this.resolveCompoundMoveReply(pending, input, turnMessages);
       }
       return this.buildActionResponse(turnMessages);
     }
@@ -1545,7 +1572,7 @@ export class GameSession {
     // 模组才成立），且只在没有待确认请求时才触发（上面已经处理过了）。
     if (this.registeredModules.length > 0 && isExplicitLeaveIntent(input)) {
       turnMessages.push({ speaker: playerName, content: input, type: "action" });
-      this.pendingLeaveConfirm = true;
+      this.pendingConfirm = { kind: "leave" };
       turnMessages.push({
         speaker: "系统",
         content: "你确定要离开这里吗？这会结束这次调查。（回复「确定」继续，其它任何话都视为取消）",
@@ -1686,6 +1713,68 @@ export class GameSession {
 
     // ── 意图派发（意图解析 → 结构化处理器）──
     const intent = await parseIntent(input);
+
+    // 复合句回问：先移动再做事（开发·复合意图回问，任务1）。
+    //
+    // 引擎是"一句话=一个意图"的模型。玩家自然会说复合句（"陆川带大家前往
+    // 农场外围，沿着...寻找可疑足迹"），LLM 只能二选一，通常执行后半段、
+    // 丢掉前半段的移动，scene 不变。这不纯是模型判错——引擎没有"先移动
+    // 再做事"的表达方式，是设计缺口。已裁决走 B 方案（明确回问），不是
+    // A（返回动作序列，那是独立一轮）：拿一个回合换掉一次静默误判，
+    // 与离开确认门、线索歧义反问（resolveSceneClueMatch 的"你想找什么？"）
+    // 是同一个模式。
+    //
+    // 检测：intent.action 命中下面这份**白名单**（不是"排除 move/look 之外
+    // 全都算"）时，对原始输入跑 resolveSceneTarget 能找到一个**有把握**
+    // （!forced）、且不是当前场景的地点——这多半是"提到了要去哪，但意图
+    // 被判成了别的动作"。forced=true（没把握、猜的）故意不算：那种情况下
+    // "到底提没提地名"本身就不确定，再叠一层回问只会让本来能通过 LLM
+    // 判对的输入也开始被追问。
+    //
+    // ⚠ 白名单而不是"排除 move/look"：第一版就是这么写的，"加载模组
+    // 普瑞米尔的谷仓"这句里"普瑞米尔"恰好也是一个真实场景名（镇子枢纽），
+    // intent.action="load_module" 不是 move/look，于是被错误地问成
+    // "你是要先去「普瑞米尔」吗？"——覆盖了本该正常执行的模组加载，
+    // coc-spells.test.ts 的"同一个模组不应重复加载"当场变红。只在真实
+    // 报告里出现过的、语义上"做一件与当前地点绑定的事"的动作里触发：
+    // talk（对话，"陆川带队返回特里坎家，把拖车房里发现的情况告诉菲碧"
+    // 就是这一类）、skill_check（调查/检定，"沿着通往深处的道路寻找可疑
+    // 足迹"同类）、unknown（LLM 完全没判出动作，回落询问比回落 LLM 叙事
+    // 更明确，且不存在"覆盖掉本该正常执行的动作"这个风险）。
+    const COMPOUND_ELIGIBLE_ACTIONS = new Set(["talk", "skill_check", "unknown"]);
+    if (
+      this.registeredModules.length > 0 &&
+      COMPOUND_ELIGIBLE_ACTIONS.has(intent.action)
+    ) {
+      let rows: SceneRow[] = [];
+      try { rows = this.world.listScenes().map((r) => ({ id: r.id, name: r.name })); } catch { /* 忽略 DB 错误 */ }
+      const hit = resolveSceneTarget({
+        said: input,
+        displayNames: this.sceneDisplayNames,
+        aliases: this.sceneAliases,
+        rows,
+      });
+      const currentScene = this.getDisplayedScene();
+      if (hit.sceneId && !hit.forced && hit.sceneId !== currentScene) {
+        // 风险1（误报）：句子里可能提到不止一个地名（目的地 + 话题内容），
+        // 回问要展示真实候选而不是替玩家静默选中 resolveSceneTarget 挑的
+        // 那一个——mentionedSceneNames 只认完整子串，不做部分匹配。
+        const candidates = mentionedSceneNames(input, rows);
+        const shown = candidates.length > 0
+          ? candidates
+          : [this.sceneDisplayNames[hit.sceneId] ?? hit.sceneId];
+        turnMessages.push({ speaker: playerName, content: input, type: "action" });
+        this.pendingConfirm = { kind: "compound-move", originalInput: input, originalIntent: intent };
+        turnMessages.push({
+          speaker: "系统",
+          content: `你是要先去「${shown.join("」「")}」吗？（回复目的地名字继续，其它话按原意图在原地执行）`,
+          type: "system",
+        });
+        this.lastNarrative = "KP 在等你确认要不要先移动过去。";
+        return this.buildActionResponse(turnMessages);
+      }
+    }
+
     if (intent.action !== "unknown") {
       const handled = await this.handleIntent(intent, input, turnMessages);
       if (handled) return this.buildActionResponse(turnMessages);
@@ -2221,6 +2310,31 @@ export class GameSession {
     msg(`你移动到了场景: ${this.sceneDisplayNames[sceneId] ?? sceneId}`);
     this.lastNarrative = `你走向了${target}。`;
     return true;
+  }
+
+  /**
+   * 复合句回问的答复处理（开发·复合意图回问，任务1）。
+   *
+   * 两条分支收敛成一段代码，不是两个 if：
+   *   回答目的地名（"去农场外围"）→ tryResolveModuleScene 认得出来，
+   *     移动过去（含既有的弱版邻接+按跳数计时），然后继续按原意图执行
+   *     ——"先移动再做事"的"做事"那半句不该被回问吃掉。
+   *   回答别的（"我们再等等"/一句新的话）→ tryResolveModuleScene 认不出
+   *     任何场景，没有移动发生，直接按原意图在原地执行——不阻塞、不卡住。
+   * 两条分支最终都会执行 originalIntent，区别只在于执行前有没有先移动，
+   * 所以不需要分叉成两段几乎相同的代码。
+   */
+  private async resolveCompoundMoveReply(
+    pending: Extract<PendingConfirm, { kind: "compound-move" }>,
+    input: string,
+    turnMessages: AgentMessage[],
+  ): Promise<void> {
+    const msg = (s: string) => turnMessages.push({ speaker: "系统", content: s, type: "system" });
+    // 移动成功、不可达的说明、认不出地点，三种情况 tryResolveModuleScene
+    // 都已经处理并按需 msg() 了，这里显式弃用返回值——不管有没有移动，
+    // 下面都要接着执行原意图，语义上是同一件事："先移动（如果能）再做事"。
+    void this.tryResolveModuleScene(input, msg);
+    await this.handleIntent(pending.originalIntent, pending.originalInput, turnMessages);
   }
 
   /**
