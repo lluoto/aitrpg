@@ -1,15 +1,15 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-08-29 11:19
+> 生成于 2026-08-30 06:36
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | d1a8314 docs: 收尾——todo-29标done补根因链条，新增todo-38记录data/sessions现状 |
-| 测试 | 2405 条 / 152 文件  全绿 |
+| HEAD | 7e2cfec fix: 泛指词(同伴/队友/大家)不当NPC专名查找失败处理 |
+| 测试 | 2428 条 / 155 文件  全绿 |
 | 工作树 | 干净 |
 
 ## 开工前
@@ -73,14 +73,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 7e2cfec fix: 泛指词(同伴/队友/大家)不当NPC专名查找失败处理
+- 884f857 feat: 游戏时间补进玩家侧getState()，与getKPState同一口径
+- 157fb77 feat: 复合句先移动再做事——明确回问(B方案)
+- afd1c91 docs: 刷新now.md（跑在其余提交之后）
 - d1a8314 docs: 收尾——todo-29标done补根因链条，新增todo-38记录data/sessions现状
 - d3e59b7 feat: 服务器启停写成可复用脚本scripts/dev-server.ps1
 - c24693e test: 补Good End vs Normal End判别测试
 - fb41e6b fix: 收紧chase/flee正则，别再把追问/跑团/逃避这类词判成追逐
-- b267e90 fix: 围栏解析收敛到src/llm/json.ts一处，接入intent.ts和generate-llm-expanded.ts
-- ecbcde7 docs: 刷新now.md（跑在其余提交之后）
-- 6a8f6c9 docs: 收尾——更新todo-26/todo-03，记录时间系统与孤立场景两个已知缺口
-- c7f3e2c feat: 脱离判定+确认门+结局播报+终态
 
 ## 找东西
 
