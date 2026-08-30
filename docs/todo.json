@@ -32,6 +32,69 @@
       "text": "提交信息用英文、格式兼容 GitHub（只对新提交生效，不追溯历史）：subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chore）+ 冒号 + 空格，≤72 字符；允许在 `\"...\"` 或「...」内引用中文术语/原文（如 `fix: \"潜行\" was listed as an attack verb`）。空一行。body 每行 ≤72 字符手动换行——正文长不是问题，不换行才是（GitHub 不折行，会横向滚动）。**body 不用 markdown 粗体/斜体**：GitHub 提交消息不渲染 markdown，`**x**` 会原样显示成星号；「」中文引号没问题，继续用。模板见 `.gitmessage`（生效需手动 `git config commit.template .gitmessage`，这条配置不随提交走，新 clone 默认不生效）。实测最近 80 条：英文标题 55 条平均 82 字符、超 72 的 30 条（55%），说明「英文」不等于「兼容 GitHub」，是两件事，这条约定对两者都管。已有 347 条英文历史提交（含切到中文前那 320+ 条）与 28 条中文提交（`9afbe9e` 起）都不按这条约定判违规——切换点 `0880f75`（最后一条英文）→`9afbe9e`（第一条中文）是有意决策，不是事故，中文提交保留原样不重写。机器判据见 `.githooks/commit-msg` + `core.hooksPath`，preflight 第 12 项检查是否真的装上；未装上时这条只能靠人遵守。"
     },
     {
+      "id": "rule-05",
+      "category": "工作约定",
+      "severity": "warn",
+      "status": "by-design",
+      "text": "先想再写——不确定就问，把多种理解都列出来。pendingConfirm 统一成单字段时没想过多 PC 场景，跨 PC 泄漏拖了一整轮才现形（5f01296）。"
+    },
+    {
+      "id": "rule-06",
+      "category": "工作约定",
+      "severity": "warn",
+      "status": "by-design",
+      "text": "只改必须改的——顺手做的事一旦超出任务范围，副作用大概率不会被自己发现。索引轮静默把 index-world-model.md 从 348 行精简到 178 行，留下两处悬空引用（aca5d68）。"
+    },
+    {
+      "id": "rule-07",
+      "category": "工作约定",
+      "severity": "warn",
+      "status": "by-design",
+      "text": "答案已经确定就用代码，别再问模型一遍。模组名里的「检查」把「加载模组」判成技能检定，改成前缀直接判定（src/llm/intent.ts:457-467）。"
+    },
+    {
+      "id": "rule-08",
+      "category": "工作约定",
+      "severity": "warn",
+      "status": "by-design",
+      "text": "token 预算是硬约束，加一条先考虑删一条。index-program.md 曾 2152 行/每次读约 40k token，拆成 JSON + 只追加的 log（f6f5a7a）。"
+    },
+    {
+      "id": "rule-09",
+      "category": "工作约定",
+      "severity": "warn",
+      "status": "by-design",
+      "text": "先读再写，别只看片段就断言。「两套世界状态」读了字段才发现是一份状态两半实现，四处同一事实各存一份（todo-03）。"
+    },
+    {
+      "id": "rule-10",
+      "category": "工作约定",
+      "severity": "warn",
+      "status": "by-design",
+      "text": "测试要验意图，不是验现状。32 态穷举发现声明式结局数据与硬编码 if 链有 10 态不一致，修的是数据不是判据（4f68eda）。"
+    },
+    {
+      "id": "rule-11",
+      "category": "工作约定",
+      "severity": "warn",
+      "status": "by-design",
+      "text": "长流程要设检查点。模拟写死「跑满 30 回合」，第 6 回合已经脱轨，后面 23 回合都是在噪音里空转（docs/notes/engine.md:780）。"
+    },
+    {
+      "id": "rule-12",
+      "category": "工作约定",
+      "severity": "warn",
+      "status": "by-design",
+      "text": "惯例优先于个人品味。提交信息在 0880f75→9afbe9e 之间无声从英文切到中文，354 条对 21 条一直没人察觉（todo-40）。"
+    },
+    {
+      "id": "rule-13",
+      "category": "工作约定",
+      "severity": "warn",
+      "status": "by-design",
+      "text": "失败要主动喊出来，别指望别人从\"零条 warn\"里猜。围栏解析静默回落 regex 两轮模拟没定性（todo-29）；同一个\"零\"曾表示两种相反状态（0dbd2b8）；本轮启动挂起 8 分半没有任何信号（ebe9b95）。"
+    },
+    {
       "id": "risk-01",
       "category": "工作目录",
       "severity": "warn",

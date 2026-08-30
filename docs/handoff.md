@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-30 08:46  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-30 13:08  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：642e5a3 feat: add deterministic run harness for GameSession free-roam path  ·  **测试**：2455 条 / 158 文件，全绿（基线 2455，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：fb46583 fix: compound-move re-ask should not fire on incidental scene mentions  ·  **测试**：2467 条 / 159 文件，全绿（基线 2467，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -36,7 +36,25 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 
 4. 提交信息用英文、格式兼容 GitHub（只对新提交生效，不追溯历史）：subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chore）+ 冒号 + 空格，≤72 字符；允许在 `"..."` 或「...」内引用中文术语/原文（如 `fix: "潜行" was listed as an attack verb`）。空一行。body 每行 ≤72 字符手动换行——正文长不是问题，不换行才是（GitHub 不折行，会横向滚动）。**body 不用 markdown 粗体/斜体**：GitHub 提交消息不渲染 markdown，`**x**` 会原样显示成星号；「」中文引号没问题，继续用。模板见 `.gitmessage`（生效需手动 `git config commit.template .gitmessage`，这条配置不随提交走，新 clone 默认不生效）。实测最近 80 条：英文标题 55 条平均 82 字符、超 72 的 30 条（55%），说明「英文」不等于「兼容 GitHub」，是两件事，这条约定对两者都管。已有 347 条英文历史提交（含切到中文前那 320+ 条）与 28 条中文提交（`9afbe9e` 起）都不按这条约定判违规——切换点 `0880f75`（最后一条英文）→`9afbe9e`（第一条中文）是有意决策，不是事故，中文提交保留原样不重写。机器判据见 `.githooks/commit-msg` + `core.hooksPath`，preflight 第 12 项检查是否真的装上；未装上时这条只能靠人遵守。
 
-5. 提交信息的语言在 `0880f75`（最后一条英文）→ `9afbe9e`（第一条中文）之间无声切换，此后（2026-08-30 实测，`git rev-list --count 9afbe9e..HEAD`=20，加 9afbe9e 本身共 21）21 条全中文，之前 354 条全英文（含 7 条在英文句子里用 `"..."`/「...」引用中文术语，如 `fix: "潜行" was listed as an attack verb`——那 7 条整体仍算英文，不是例外）。**已裁决保留这 21 条中文提交原样，不重写历史**：正文信息密度很高（根因链条、变异检验记录、实测数字），重写的收益是"好看"，风险是"弄坏一批高质量记录"。往后新提交按 rule-04 用英文——这是两件独立的事："保留旧的"和"新的怎么写"不冲突，也不代表旧的违反了当时不存在的规则。免得后人翻 git log 时以为切换点是一次事故。
+5. 先想再写——不确定就问，把多种理解都列出来。pendingConfirm 统一成单字段时没想过多 PC 场景，跨 PC 泄漏拖了一整轮才现形（5f01296）。
+
+6. 只改必须改的——顺手做的事一旦超出任务范围，副作用大概率不会被自己发现。索引轮静默把 index-world-model.md 从 348 行精简到 178 行，留下两处悬空引用（aca5d68）。
+
+7. 答案已经确定就用代码，别再问模型一遍。模组名里的「检查」把「加载模组」判成技能检定，改成前缀直接判定（src/llm/intent.ts:457-467）。
+
+8. token 预算是硬约束，加一条先考虑删一条。index-program.md 曾 2152 行/每次读约 40k token，拆成 JSON + 只追加的 log（f6f5a7a）。
+
+9. 先读再写，别只看片段就断言。「两套世界状态」读了字段才发现是一份状态两半实现，四处同一事实各存一份（todo-03）。
+
+10. 测试要验意图，不是验现状。32 态穷举发现声明式结局数据与硬编码 if 链有 10 态不一致，修的是数据不是判据（4f68eda）。
+
+11. 长流程要设检查点。模拟写死「跑满 30 回合」，第 6 回合已经脱轨，后面 23 回合都是在噪音里空转（docs/notes/engine.md:780）。
+
+12. 惯例优先于个人品味。提交信息在 0880f75→9afbe9e 之间无声从英文切到中文，354 条对 21 条一直没人察觉（todo-40）。
+
+13. 失败要主动喊出来，别指望别人从"零条 warn"里猜。围栏解析静默回落 regex 两轮模拟没定性（todo-29）；同一个"零"曾表示两种相反状态（0dbd2b8）；本轮启动挂起 8 分半没有任何信号（ebe9b95）。
+
+14. 提交信息的语言在 `0880f75`（最后一条英文）→ `9afbe9e`（第一条中文）之间无声切换，此后（2026-08-30 实测，`git rev-list --count 9afbe9e..HEAD`=20，加 9afbe9e 本身共 21）21 条全中文，之前 354 条全英文（含 7 条在英文句子里用 `"..."`/「...」引用中文术语，如 `fix: "潜行" was listed as an attack verb`——那 7 条整体仍算英文，不是例外）。**已裁决保留这 21 条中文提交原样，不重写历史**：正文信息密度很高（根因链条、变异检验记录、实测数字），重写的收益是"好看"，风险是"弄坏一批高质量记录"。往后新提交按 rule-04 用英文——这是两件独立的事："保留旧的"和"新的怎么写"不冲突，也不代表旧的违反了当时不存在的规则。免得后人翻 git log 时以为切换点是一次事故。
 
 ## 启动后端做实跑（模拟局/手动测试）
 
@@ -169,6 +187,10 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- fb46583 fix: compound-move re-ask should not fire on incidental scene mentions
+- 5f01296 fix: pendingConfirm must know who asked (cross-PC leakage)
+- ebe9b95 fix: stop dev-server.ps1 from hanging its caller (plan B)
+- 25db89b docs: wrap up scene-id bridge and run-harness round
 - 642e5a3 feat: add deterministic run harness for GameSession free-roam path
 - f522b78 fix: bridge scene ids so True End is reachable (todo-34)
 - c19997a docs: refresh handoff.md and now.md
@@ -177,10 +199,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - bc6de84 docs: define commit message convention (rule-04)
 - f40bcb3 docs: 刷新now.md（跑在其余提交之后）
 - 7e2cfec fix: 泛指词(同伴/队友/大家)不当NPC专名查找失败处理
-- 884f857 feat: 游戏时间补进玩家侧getState()，与getKPState同一口径
-- 157fb77 feat: 复合句先移动再做事——明确回问(B方案)
-- afd1c91 docs: 刷新now.md（跑在其余提交之后）
-- d1a8314 docs: 收尾——todo-29标done补根因链条，新增todo-38记录data/sessions现状
 
 ## 代码地图
 

@@ -1,19 +1,20 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-08-30 08:46
+> 生成于 2026-08-30 13:09
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 642e5a3 feat: add deterministic run harness for GameSession free-roam path |
-| 测试 | 2455 条 / 158 文件  全绿 |
-| 工作树 | **2 个文件未提交** |
+| HEAD | fb46583 fix: compound-move re-ask should not fire on incidental scene mentions |
+| 测试 | 2467 条 / 159 文件  全绿 |
+| 工作树 | **3 个文件未提交** |
 
 未提交：
 - `M docs/handoff.md`
+- `M docs/now.md`
 - `M docs/todo.json`
 
 ## 开工前
@@ -52,12 +53,21 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - ️ 一直在报的那个数不衡量目标：可运行性是 1/27（2026-08-20）
   `docs/notes/ingest.md:745`
 
-## 动手前先扫一眼的坑（21）
+## 动手前先扫一眼的坑（30）
 
 - 改动前后各跑一次 `bun scripts/preflight.ts`。它把反复犯的几类错做成了机器判据：切割截断语义单元、搬运残渣、循环依赖、语法错。别靠记性。
 - 同一类失误连着犯到第 3 次就停手，换一双眼睛（另一个模型 review diff）。本轮机械切割边界连错 5 次才自己发现——失效模式相同的人查不出自己的系统性错误。
 - **判据没验过就不算数**。写完诊断脚本先确认它能区分对错两种情形：第一版「切割截断」判据出了 174 个假阳性，第一版「倒下仍行动」判据永远报警。判据本身要做变异检验。
 - 提交信息用英文、格式兼容 GitHub（只对新提交生效，不追溯历史）：subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chore）+ 冒号 + 空格，≤72 字符；允许在 `"..."` 或「...」内引用中文术语/原文（如 `
+- 先想再写——不确定就问，把多种理解都列出来。pendingConfirm 统一成单字段时没想过多 PC 场景，跨 PC 泄漏拖了一整轮才现形（5f01296）。
+- 只改必须改的——顺手做的事一旦超出任务范围，副作用大概率不会被自己发现。索引轮静默把 index-world-model.md 从 348 行精简到 178 行，留下两处悬空引用（aca5d68）。
+- 答案已经确定就用代码，别再问模型一遍。模组名里的「检查」把「加载模组」判成技能检定，改成前缀直接判定（src/llm/intent.ts:457-467）。
+- token 预算是硬约束，加一条先考虑删一条。index-program.md 曾 2152 行/每次读约 40k token，拆成 JSON + 只追加的 log（f6f5a7a）。
+- 先读再写，别只看片段就断言。「两套世界状态」读了字段才发现是一份状态两半实现，四处同一事实各存一份（todo-03）。
+- 测试要验意图，不是验现状。32 态穷举发现声明式结局数据与硬编码 if 链有 10 态不一致，修的是数据不是判据（4f68eda）。
+- 长流程要设检查点。模拟写死「跑满 30 回合」，第 6 回合已经脱轨，后面 23 回合都是在噪音里空转（docs/notes/engine.md:780）。
+- 惯例优先于个人品味。提交信息在 0880f75→9afbe9e 之间无声从英文切到中文，354 条对 21 条一直没人察觉（todo-40）。
+- 失败要主动喊出来，别指望别人从"零条 warn"里猜。围栏解析静默回落 regex 两轮模拟没定性（todo-29）；同一个"零"曾表示两种相反状态（0dbd2b8）；本轮启动挂起 8 分半没有任何信号（ebe9b95）。
 - C:\aitrpg 下只有 poc/ 有版本控制和远端，其余 3.7GB 裸奔。**已分层，不必全备**：不可再生的只有 5239 个文件 / 500MB（源材料 474MB + 脚本 13MB + 手写设计 12MB），其余 3.2GB 是能重跑的抽取产物。执行 `bun scripts/back
 - `src/__tests__/coc-engine.test.ts:131`「失败时损失 = sanCost 后半部分」：用 `new SanityEngine(1)` 凑「几乎必失败」，但 `coc-engine.ts:669` 的 `regularD100()` 没有种子，判定是 `roll <
 - **先例存在、本轮不修**：它早于摄取管线，属规则引擎，修它要改 d100 的注入方式，是另一轮的活。依据：同 todo-08，已在后续某轮修掉（见 todo-08 的复核记录）。
@@ -78,14 +88,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- fb46583 fix: compound-move re-ask should not fire on incidental scene mentions
+- 5f01296 fix: pendingConfirm must know who asked (cross-PC leakage)
+- ebe9b95 fix: stop dev-server.ps1 from hanging its caller (plan B)
+- 25db89b docs: wrap up scene-id bridge and run-harness round
 - 642e5a3 feat: add deterministic run harness for GameSession free-roam path
 - f522b78 fix: bridge scene ids so True End is reachable (todo-34)
 - c19997a docs: refresh handoff.md and now.md
 - 02033b9 docs: record two facts about history and the remote gap
-- b1a4455 feat: add a machine judge for the commit message convention
-- bc6de84 docs: define commit message convention (rule-04)
-- f40bcb3 docs: 刷新now.md（跑在其余提交之后）
-- 7e2cfec fix: 泛指词(同伴/队友/大家)不当NPC专名查找失败处理
 
 ## 找东西
 
