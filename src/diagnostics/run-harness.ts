@@ -17,16 +17,23 @@ import type { ModuleData, ModuleSupport } from "../module/types";
 import type { PlayEvent } from "../play/events";
 import type { PlayerDecision } from "../agent/player-agent";
 
-/** 决策步数打满 —— 当作疑似死循环，不是正常结束 */
-class DecisionCapError extends Error {
+/**
+ * 决策步数打满 —— 当作疑似死循环，不是正常结束。
+ * 导出：GameSession 的确定性跑局装置（game-session-run-harness.ts）复用
+ * 同一个错误类型语义（步数上限=疑似死循环），不复制一份同形状的类。
+ */
+export class DecisionCapError extends Error {
   constructor(public readonly cap: number) {
     super(`决策步数超过上限 ${cap}，疑似死循环`);
     this.name = "DecisionCapError";
   }
 }
 
-/** 单局超时 —— 在决策点协作式中断 */
-class RunTimeoutError extends Error {
+/**
+ * 单局超时 —— 在决策点协作式中断。
+ * 导出：同上，GameSession 装置复用而非复制。
+ */
+export class RunTimeoutError extends Error {
   constructor(public readonly ms: number) {
     super(`单局超过 ${ms}ms，疑似死循环`);
     this.name = "RunTimeoutError";
