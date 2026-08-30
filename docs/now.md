@@ -1,22 +1,24 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-08-30 13:16
+> 生成于 2026-08-30 14:06
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | bbdd492 docs: add rule-05..rule-13, repo-specific coding lessons |
-| 测试 | 2467 条 / 159 文件  全绿 |
-| 工作树 | **4 个文件未提交** |
+| HEAD | 09b4d2b feat: generate AGENTS.md from todo.json rule-* entries |
+| 测试 | 2476 条 / 160 文件  全绿 |
+| 工作树 | **6 个文件未提交** |
 
 未提交：
 - `M docs/handoff.md`
+- `M docs/test-baseline.json`
 - `M docs/todo.json`
-- `?? AGENTS.md`
-- `?? scripts/agents-md.ts`
+- `M src/api/game-session.ts`
+- `M src/api/server.ts`
+- `?? src/__tests__/scene-suggestions.test.ts`
 
 ## 开工前
 
@@ -54,7 +56,7 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - ️ 一直在报的那个数不衡量目标：可运行性是 1/27（2026-08-20）
   `docs/notes/ingest.md:745`
 
-## 动手前先扫一眼的坑（30）
+## 动手前先扫一眼的坑（31）
 
 - 改动前后各跑一次 `bun scripts/preflight.ts`。它把反复犯的几类错做成了机器判据：切割截断语义单元、搬运残渣、循环依赖、语法错。别靠记性。
 - 同一类失误连着犯到第 3 次就停手，换一双眼睛（另一个模型 review diff）。本轮机械切割边界连错 5 次才自己发现——失效模式相同的人查不出自己的系统性错误。
@@ -86,9 +88,11 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 「经历模组: 0」这条统计是否仍然存在——未验证。`career.ts:265` 的相关逻辑挂在从不实例化的 `CareerStore` 类里（见 todo-02/todo-05），实际在用的是 `CareerFileStore`，需要先确认「经历模组」这个统计口径在 `CareerFileStor
 - 开发A实测发现：`END_NARRATIONS`（barn-of-premier.ts）requiredScenes 引用的场景 id 是 ASCII（如 "maintenance_room"），而 GameSession 加载模组时经 bridgeBarnOfPremierClues() 只桥接了
 - 服务端口是 **3099**，不是 3000（`src/api/server.ts:1037`，用环境变量 `PORT` 覆盖）。模拟实跑用的 prompt 模板里从来没写过这一点，容易按习惯默认成 3000 去连。启停服务器用 `bun run dev-server:start` / `:stop
+- 维森酒吧的运行时在场实体只有 `酒吧保镖`，但可发现线索的 findMethods/叙述仍指向不存在的「前台」「其他人」（clue_bar_mass_booking / clue_bar_guest_identity / clue_bar_ask_around），实跑还出现保镖编造「老板锁进抽屉」—
 
 ## 最近提交
 
+- 09b4d2b feat: generate AGENTS.md from todo.json rule-* entries
 - bbdd492 docs: add rule-05..rule-13, repo-specific coding lessons
 - fb46583 fix: compound-move re-ask should not fire on incidental scene mentions
 - 5f01296 fix: pendingConfirm must know who asked (cross-PC leakage)
@@ -96,7 +100,6 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 25db89b docs: wrap up scene-id bridge and run-harness round
 - 642e5a3 feat: add deterministic run harness for GameSession free-roam path
 - f522b78 fix: bridge scene ids so True End is reachable (todo-34)
-- c19997a docs: refresh handoff.md and now.md
 
 ## 找东西
 

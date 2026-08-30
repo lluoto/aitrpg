@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-30 13:16  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-30 14:05  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：bbdd492 docs: add rule-05..rule-13, repo-specific coding lessons  ·  **测试**：2467 条 / 159 文件，全绿（基线 2467，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：09b4d2b feat: generate AGENTS.md from todo.json rule-* entries  ·  **测试**：2476 条 / 160 文件，全绿（基线 2476，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -187,6 +187,7 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- 09b4d2b feat: generate AGENTS.md from todo.json rule-* entries
 - bbdd492 docs: add rule-05..rule-13, repo-specific coding lessons
 - fb46583 fix: compound-move re-ask should not fire on incidental scene mentions
 - 5f01296 fix: pendingConfirm must know who asked (cross-PC leakage)
@@ -198,7 +199,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - 02033b9 docs: record two facts about history and the remote gap
 - b1a4455 feat: add a machine judge for the commit message convention
 - bc6de84 docs: define commit message convention (rule-04)
-- f40bcb3 docs: 刷新now.md（跑在其余提交之后）
 
 ## 代码地图
 

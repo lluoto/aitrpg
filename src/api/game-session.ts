@@ -1503,12 +1503,48 @@ export class GameSession {
   // getSuggestions (行动提示)
   // ============================================================
 
-  getSuggestions(): string[] {
+  /**
+   * 当前场景的行动锚点。
+   *
+   * ⚠ 这是给前端直接点的：App.vue 会把 suggestions 里的字符串**原样**送回
+   * act()，所以不能返回「这里还有没查过的东西」这种不可执行的描述句；每条
+   * 都必须是合法的自由文本动作。中粒度提示靠可点击动作本身表达：有本 PC
+   * 尚未发现的场景线索时说「仔细搜查这里」，全部发现后降成「环顾四周」——
+   * 这确实告诉玩家“还有没有”，但不说是什么（不泄露任何线索名称），正是
+   * 本轮裁定的中粒度，不是意外剧透。
+   *
+   * pcId 缺省时取 activePlayerId，保持 GET /suggestions 既有客户端行为；
+   * 调用方传 pcId 时只用于读取该 PC 的私密线索发现状态，不切换 active PC，
+   * 避免 GET 请求触发 todo 里已记录的 activePlayerId 粘性问题。未知 pcId
+   * 由 server.ts 在路由层翻成 404（同 GET /history?pcId= 的口径）。
+   */
+  getSuggestions(pcId: string = this.activePlayerId): string[] {
     const following: string[] = [];
     if (this.combatActive) {
+      // 战斗分支是已修回归（npc-fights-back.test.ts）：逐字保持，不能把
+      // 场景锚点混进来，否则打起来又会提示调查/聊天。
       following.push("⚔️ 攻击敌人", "🛡️ 防御", "💊 使用物品", "🏃 撤退");
     } else {
-      following.push("🔍 调查四周", "💬 与 NPC 交流", "🚶 前往其他场景");
+      const pos = this.getDisplayedScene();
+      // 按 pcId 查，不按整个会话：发现者私密的线索状态不能透给另一个 PC。
+      // 不展示 clue id/name，只用“还有可搜内容”改变动作措辞，避免剧透。
+      const undiscovered = this.investigation.getUndiscoveredSceneClues(pos, pcId);
+      following.push(undiscovered.length > 0 ? "仔细搜查这里" : "环顾四周");
+
+      // 只给真实在场、活着的 NPC 生成可点击对话动作；不编“老板”“前台”
+      // 之类模组文本提到但运行时不存在的对象，也不拿 monster 当可交谈 NPC。
+      for (const npc of this.world.getEntitiesInScene(pos).filter((e) => e.type === "npc")) {
+        following.push(`与 ${npc.name} 交谈`);
+      }
+
+      // exits 是 SceneRecord 的权威连接数据。目标展示名可能与运行时 id 不同，
+      // 统一经 sceneDisplayNames 显示；原样提交的“前往 <name>”仍由既有移动
+      // 解析路径处理。没有场景/出口时安静地少给动作，不编造“其他场景”。
+      const scene = this.world.getScene(pos);
+      for (const exit of scene?.exits ?? []) {
+        const target = this.sceneDisplayNames[exit.target] ?? exit.target;
+        following.push(`前往 ${target}`);
+      }
     }
     const comps = this.companionManager.getActiveCompanions();
     if (comps.length > 0) following.push(`👥 指挥同伴 (${comps.length}人)`);

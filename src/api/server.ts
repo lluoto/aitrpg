@@ -343,7 +343,8 @@ async function handleRequest(req: Request): Promise<Response> {
 
     // GET /api/sessions/:id/suggestions — 当前可选行动
     if (method === "GET" && segments[3] === "suggestions") {
-      return respondJson({ suggestions: session.getSuggestions() });
+      const result = runSuggestions(session, query.get("pcId"));
+      return respondJson(result.body, result.status);
     }
 
     // GET /api/sessions/:id/character — 角色属性
@@ -829,6 +830,25 @@ export async function runAction(
   return { status: 200, body: { ...result, summary: session.getSummary() } };
 }
 
+/**
+ * GET /suggestions 的核心（可直接单测，无需真的绑 HTTP 端口）。
+ *
+ * `pcId` 可选：不传保持旧行为，getSuggestions() 读取 activePlayerId；传了则
+ * 只为读取该 PC 私密的未发现线索状态，不切换会话活跃 PC。未知值不能静默
+ * 回空 suggestions——那和“这个 PC 在空场景里确实没有建议”对外完全一样，
+ * 与 /history?pcId= 同口径明确 404。
+ */
+export function runSuggestions(
+  session: GameSession,
+  rawPcId: string | null,
+): { status: number; body: Record<string, unknown> } {
+  const pcId = rawPcId?.trim() || undefined;
+  if (pcId && !session.session.get(pcId)) {
+    return { status: 404, body: { error: `未知 pcId: ${pcId}` } };
+  }
+  return { status: 200, body: { suggestions: session.getSuggestions(pcId) } };
+}
+
 // ============================================================
 // 测试页 // ============================================================
 
@@ -1093,4 +1113,3 @@ console.log(`  Port: ${PORT}`);
 console.log(`  CORS: *\n`);
 
 }
-
