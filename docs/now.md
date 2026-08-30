@@ -1,16 +1,19 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-08-30 06:36
+> 生成于 2026-08-30 07:59
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 7e2cfec fix: 泛指词(同伴/队友/大家)不当NPC专名查找失败处理 |
-| 测试 | 2428 条 / 155 文件  全绿 |
-| 工作树 | 干净 |
+| HEAD | 02033b9 docs: record two facts about history and the remote gap |
+| 测试 | 2442 条 / 156 文件  全绿 |
+| 工作树 | **1 个文件未提交** |
+
+未提交：
+- `M docs/handoff.md`
 
 ## 开工前
 
@@ -48,11 +51,12 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - ️ 一直在报的那个数不衡量目标：可运行性是 1/27（2026-08-20）
   `docs/notes/ingest.md:745`
 
-## 动手前先扫一眼的坑（20）
+## 动手前先扫一眼的坑（21）
 
 - 改动前后各跑一次 `bun scripts/preflight.ts`。它把反复犯的几类错做成了机器判据：切割截断语义单元、搬运残渣、循环依赖、语法错。别靠记性。
 - 同一类失误连着犯到第 3 次就停手，换一双眼睛（另一个模型 review diff）。本轮机械切割边界连错 5 次才自己发现——失效模式相同的人查不出自己的系统性错误。
 - **判据没验过就不算数**。写完诊断脚本先确认它能区分对错两种情形：第一版「切割截断」判据出了 174 个假阳性，第一版「倒下仍行动」判据永远报警。判据本身要做变异检验。
+- 提交信息用英文、格式兼容 GitHub（只对新提交生效，不追溯历史）：subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chore）+ 冒号 + 空格，≤72 字符；允许在 `"..."` 或「...」内引用中文术语/原文（如 `
 - C:\aitrpg 下只有 poc/ 有版本控制和远端，其余 3.7GB 裸奔。**已分层，不必全备**：不可再生的只有 5239 个文件 / 500MB（源材料 474MB + 脚本 13MB + 手写设计 12MB），其余 3.2GB 是能重跑的抽取产物。执行 `bun scripts/back
 - `src/__tests__/coc-engine.test.ts:131`「失败时损失 = sanCost 后半部分」：用 `new SanityEngine(1)` 凑「几乎必失败」，但 `coc-engine.ts:669` 的 `regularD100()` 没有种子，判定是 `roll <
 - **先例存在、本轮不修**：它早于摄取管线，属规则引擎，修它要改 d100 的注入方式，是另一轮的活。依据：同 todo-08，已在后续某轮修掉（见 todo-08 的复核记录）。
@@ -73,14 +77,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 02033b9 docs: record two facts about history and the remote gap
+- b1a4455 feat: add a machine judge for the commit message convention
+- bc6de84 docs: define commit message convention (rule-04)
+- f40bcb3 docs: 刷新now.md（跑在其余提交之后）
 - 7e2cfec fix: 泛指词(同伴/队友/大家)不当NPC专名查找失败处理
 - 884f857 feat: 游戏时间补进玩家侧getState()，与getKPState同一口径
 - 157fb77 feat: 复合句先移动再做事——明确回问(B方案)
 - afd1c91 docs: 刷新now.md（跑在其余提交之后）
-- d1a8314 docs: 收尾——todo-29标done补根因链条，新增todo-38记录data/sessions现状
-- d3e59b7 feat: 服务器启停写成可复用脚本scripts/dev-server.ps1
-- c24693e test: 补Good End vs Normal End判别测试
-- fb41e6b fix: 收紧chase/flee正则，别再把追问/跑团/逃避这类词判成追逐
 
 ## 找东西
 
