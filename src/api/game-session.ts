@@ -127,18 +127,13 @@ export interface SessionSummary {
 }
 
 /**
- * 统一的"待确认"状态——act() 顶部按 kind 分派，处理完立即清空。
- * 见 GameSession.pendingConfirm 字段的注释：单字段是为了让"两个 pending
- * 同时开互相打架"这件事在结构上就不可能发生，不是靠约定优先级做到的。
+ * 复合句回问的待确认状态。触发回问时的原始输入与解析出的意图——回答的
+ * 不是地点时，照它在原地执行，不卡住（见 resolveCompoundMoveReply）。
  */
-type PendingConfirm =
-  | { kind: "leave" }
-  | {
-      kind: "compound-move";
-      /** 触发回问时的原始输入与解析出的意图——回答的不是地点时，照它在原地执行，不卡住。 */
-      originalInput: string;
-      originalIntent: ActionIntent;
-    };
+interface PendingCompoundMove {
+  originalInput: string;
+  originalIntent: ActionIntent;
+}
 
 /**
  * 建一个 PC 需要同时诞生的八件事的登记项，供 createPartyMember() 统一填。
@@ -295,16 +290,40 @@ export class GameSession {
   dead: boolean = false;
   combatActive: boolean = false;
   /**
-   * 统一的"待确认"门——非 null 时下一次 act() 优先处理这一件事，
-   * 其它命令都先搁置，处理完立即清空（见 act() 顶部）。
-   *
-   * ⚠ 只用一个字段而不是"离开确认""复合句回问"各开一个 boolean：
-   * 两个 pending 各写一份是本仓反复修的形状（结局三套表示、可见性两套、
-   * 世界状态两套，都记在 docs/todo.json 里）。单字段结构上就不可能
-   * 同时有两个 pending 打架——act() 顶部一进来就检查并清空它，
-   * 新的 pending 只会在**没有**旧 pending 的那次 act() 调用里被设置。
+   * 两种"待确认"门，改回两个独立字段——不再是上一轮统一进的单个
+   * `pendingConfirm` 联合类型。原因（跨 PC 泄漏，2026-08-30 实测
+   * lcmj2joi）：单字段只记"有没有待确认"，不记"是谁提的"，导致 p1
+   * 的复合句回问被 p2 完全无关的一句话答掉。上一轮把两种 pending 统一
+   * 成一个字段是为了让"两个 pending 同时开互相打架"在结构上不可能——
+   * 这个理由只在单 PC 模型下成立；多 PC 场景下，`compound-move` 与
+   * `leave` 本来就是两种不同范围的决定（见各自字段的注释），会同时
+   * 存在是正常状态，不是要避免的"打架"。
    */
-  private pendingConfirm: PendingConfirm | null = null;
+  /**
+   * 复合句回问——**认人**：只有触发它的那个 PC 的下一次输入才算回答。
+   * key 是 pcId，值是触发时的原始输入与意图（回答不是地点时用来在
+   * 原地执行，见 resolveCompoundMoveReply）。
+   *
+   * 用 Map 而不是单个 `{pcId, ...}` 字段：不同 PC 各自可能有一个尚未
+   * 回答的回问——p1 问完还没答，p2 自己又触发一次，两者互不干扰、
+   * 各自等自己的人回答，不会互相覆盖。
+   *
+   * ⚠ 已知且接受的缺口：如果触发回问的那个 PC 后续再也不行动了
+   * （或者被移出队伍——本轮无删除入口，见 todo.json 建号相关记录），
+   * 这条 Map 里的项会一直留着、系统消息会一直提醒"XX 还有问题没答"。
+   * 没有做自动过期/超时清理——那是需要先决定"多久算过期"的另一个设计
+   * 决定，本轮不做，如实记录风险而不是假装它不存在。
+   */
+  private pendingCompoundMove: Map<string, PendingCompoundMove> = new Map();
+  /**
+   * 离开确认——**不认人**，party 级的决定：谁确认/取消都算数。
+   * 用一个 boolean 就够，因为语义上不需要记"是谁提的"——"要不要结束
+   * 这次调查"影响的是整个队伍，不是某个 PC 自己的行动，任何一个 PC
+   * 出面确认或取消都是队伍做出的决定，不存在"只有提问的那个人能回答"
+   * 这回事（对照 compound-move：那是某个 PC 自己的动作要不要先移动，
+   * 天然只该问那个 PC）。
+   */
+  private pendingLeaveConfirm: boolean = false;
 
   private characters: Map<string, any> = new Map();
   /**
@@ -1563,25 +1582,42 @@ export class GameSession {
     const activePlayer = this.session.getActive();
     const playerName = activePlayer?.characterName ?? "调查员";
 
-    // 统一确认门：上一回合留下过 pendingConfirm（离开确认/复合句回问），
-    // 这一回合优先处理，其它命令一律先搁置。代价对称——不管答的是什么，
-    // 这一回合本来就会推进的那 1 tick（上面的 advanceTime）已经花掉了。
-    // 单字段设计见 pendingConfirm 字段本身的注释：两个 pending 不可能
-    // 同时存在，这里不需要也不该出现"谁优先"的判断。
-    if (this.pendingConfirm) {
-      const pending = this.pendingConfirm;
-      this.pendingConfirm = null;
+    // 确认门 1/2：离开确认——party 级，不认人，谁的下一句都算数（见
+    // pendingLeaveConfirm 字段注释）。代价对称——不管答的是什么，这一回合
+    // 本来就会推进的那 1 tick（上面的 advanceTime）已经花掉了。
+    if (this.pendingLeaveConfirm) {
+      this.pendingLeaveConfirm = false;
       turnMessages.push({ speaker: playerName, content: input, type: "action" });
-      if (pending.kind === "leave") {
-        if (isConfirmReply(input)) {
-          this.resolveModuleDeparture(turnMessages);
-        } else {
-          turnMessages.push({ speaker: "系统", content: "你们决定还是先留下，继续这次调查。", type: "system" });
-        }
+      if (isConfirmReply(input)) {
+        this.resolveModuleDeparture(turnMessages);
       } else {
-        await this.resolveCompoundMoveReply(pending, input, turnMessages);
+        turnMessages.push({ speaker: "系统", content: "你们决定还是先留下，继续这次调查。", type: "system" });
       }
       return this.buildActionResponse(turnMessages);
+    }
+
+    // 确认门 2/2：复合句回问——**认人**，只有触发它的那个 PC
+    // （this.activePlayerId，已在上面按 actingPcId 切换过）的下一句才算
+    // 回答。这正是要修的跨 PC 泄漏：p1 的回问此前会被 p2 完全无关的一句
+    // 话答掉（2026-08-30 实测会话 lcmj2joi，回合 7→8）。
+    const myPendingMove = this.pendingCompoundMove.get(this.activePlayerId);
+    if (myPendingMove) {
+      this.pendingCompoundMove.delete(this.activePlayerId);
+      turnMessages.push({ speaker: playerName, content: input, type: "action" });
+      await this.resolveCompoundMoveReply(myPendingMove, input, turnMessages);
+      return this.buildActionResponse(turnMessages);
+    }
+    // 别的 PC 还有没回答的回问：不拦截这个 PC 自己的行动（照常往下走，
+    // 按它自己的意图执行），但提醒一句——"可能永远挂着"是已知且接受的
+    // 风险（见 pendingCompoundMove 字段注释），不做成静默等待，让玩家
+    // 至少知道还有一个问题没人接。
+    if (this.pendingCompoundMove.size > 0) {
+      const openFor = [...this.pendingCompoundMove.keys()].join("、");
+      turnMessages.push({
+        speaker: "系统",
+        content: `（提醒：${openFor} 还有一个"要不要先移动"的问题没有回答。）`,
+        type: "system",
+      });
     }
 
     // 脱离模组请求：只认输入本身有没有明确表达"离开/结束调查"（见
@@ -1589,10 +1625,12 @@ export class GameSession {
     // action**——"结束这次调查"这类句子会被意图解析里"调查"关键词命中
     // 判成 skill_check，如果把这条检查挂在 case "move" 下面就永远碰不到。
     // 只在有模组注册时才有意义（"超出模组写明的位置"这个概念本身要有
-    // 模组才成立），且只在没有待确认请求时才触发（上面已经处理过了）。
+    // 模组才成立），且只在这个 PC 自己没有待确认请求时才触发（上面已经
+    // 处理过了；不检查别的 PC 是否有未答的 compound-move——两者范围不同，
+    // 见 pendingCompoundMove/pendingLeaveConfirm 字段注释）。
     if (this.registeredModules.length > 0 && isExplicitLeaveIntent(input)) {
       turnMessages.push({ speaker: playerName, content: input, type: "action" });
-      this.pendingConfirm = { kind: "leave" };
+      this.pendingLeaveConfirm = true;
       turnMessages.push({
         speaker: "系统",
         content: "你确定要离开这里吗？这会结束这次调查。（回复「确定」继续，其它任何话都视为取消）",
@@ -1784,7 +1822,7 @@ export class GameSession {
           ? candidates
           : [this.sceneDisplayNames[hit.sceneId] ?? hit.sceneId];
         turnMessages.push({ speaker: playerName, content: input, type: "action" });
-        this.pendingConfirm = { kind: "compound-move", originalInput: input, originalIntent: intent };
+        this.pendingCompoundMove.set(this.activePlayerId, { originalInput: input, originalIntent: intent });
         turnMessages.push({
           speaker: "系统",
           content: `你是要先去「${shown.join("」「")}」吗？（回复目的地名字继续，其它话按原意图在原地执行）`,
@@ -2345,7 +2383,7 @@ export class GameSession {
    * 所以不需要分叉成两段几乎相同的代码。
    */
   private async resolveCompoundMoveReply(
-    pending: Extract<PendingConfirm, { kind: "compound-move" }>,
+    pending: PendingCompoundMove,
     input: string,
     turnMessages: AgentMessage[],
   ): Promise<void> {

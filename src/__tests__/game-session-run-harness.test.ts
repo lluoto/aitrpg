@@ -29,6 +29,20 @@ function makeSession(id: string): GameSession {
   }, undefined, "调查员");
 }
 
+/**
+ * 多 PC 脚本用——p1 必须带 archetype（"创建角色"走过真实建卡）才能被
+ * act(input, "p1") 按 pcId 路由：空壳 p1（无 archetype 构造）根本不在
+ * `characters` Map 里，传 pcId="p1" 会被判成 unknown_target 直接拒绝
+ * （实测过，见 pendingConfirm 认人那组用例的注释）。
+ */
+function makeMultiPcSession(id: string): GameSession {
+  process.env.LLM_API_KEY = "";
+  process.env.OPENAI_API_KEY = "";
+  return new GameSession(id, "cosmic-horror", {
+    apiKey: "sk-placeholder", baseUrl: "http://localhost:9999", model: "mock", maxTokens: 1024, temperature: 0.7,
+  }, "investigator", "甲");
+}
+
 const LOAD_MODULE: GameSessionScriptStep = { input: "加载模组 普瑞米尔的谷仓" };
 const OPTS = { seed: 20260830, timeoutMs: 30_000, maxSteps: 100 };
 
@@ -163,5 +177,76 @@ describe("③ 脱离结局：显式离开→确认→结局，脚本能走到 Tr
 
     const trueEndNarration = END_NARRATIONS.find((e) => e.id === "true")!;
     expect(r2.steps[1].narrative).toBe(trueEndNarration.lines.join("\n"));
+  });
+});
+
+// 开发·pendingConfirm 认人 —— 任务2验收（跨 PC 泄漏）。
+//
+// 背景：2026-08-30 实跑（会话 lcmj2joi）：回合 7 p1 说"回家汇报并问马克"
+// 触发复合句回问（KP 在等确认要不要先移动过去），回合 8 p2 说"问菲碧
+// 酒吧派对"——这句与 p1 的回问毫无关系，却被当成了回答，p1 的问题被
+// 悄悄吃掉。根因：pendingConfirm 是会话级单字段，只记"有没有待确认"，
+// 不记"是谁提的"。已裁决：compound-move 认人（Map<pcId, ...>，只有
+// 触发它的那个 PC 能回答，其它 PC 照常行动 + 收到提醒）；leave 不认人
+// （party 级决定，谁确认/取消都算数）——见 pendingCompoundMove/
+// pendingLeaveConfirm 两个字段各自的注释。
+describe("pendingConfirm 认人：compound-move 只认发起的 PC，leave 谁都能答", () => {
+  it("p1 开门→p2 行动→p2 按自己的意图执行，不被当成对 p1 问题的回答；p1 随后再答仍然生效", async () => {
+    const session = makeMultiPcSession("pending-confirm-cross-pc");
+    const script: GameSessionScriptStep[] = [
+      LOAD_MODULE,
+      { input: "创建队友 乙 investigator" }, // p2，默认以 p1 身份发出这条指令
+      { input: "检查加比的拖车房里的床底和柜子，看有没有藏东西。", pcId: "p1" }, // p1 开门
+      { input: "陈岳跟菲碧打听一下加比最近的近况", pcId: "p2" }, // p2 无关行动
+      { input: "加比的拖车房", pcId: "p1" }, // p1 回答
+    ];
+    const r = await runGameSessionScript(session, script, OPTS);
+    expect(r.threw).toBe(false);
+
+    const openStep = r.steps[2];
+    expect(openStep.scene).toBe("特里坎家"); // 还没真的移动
+    const openSys = openStep.events.filter((e) => e.speaker === "系统").map((e) => e.content).join("\n");
+    expect(openSys).toContain("你是要先去");
+
+    // 关键断言：p2 那一步没有被当成对 p1 问题的回答——
+    // 场景没变（没有被 p2 的话误移动去加比的拖车房），且能看到
+    // "p1 还有问题没答"的提醒，同时 p2 自己的行动（对话）正常执行了。
+    const p2Step = r.steps[3];
+    expect(p2Step.scene).toBe("特里坎家");
+    const p2Sys = p2Step.events.filter((e) => e.speaker === "系统").map((e) => e.content).join("\n");
+    expect(p2Sys).toContain("p1");
+    expect(p2Sys).toContain("没有回答");
+    const p2Action = p2Step.events.find((e) => e.type === "action" && e.content.includes("菲碧"));
+    expect(p2Action).toBeDefined(); // p2 自己的输入被当成自己的行动记下了
+
+    // p1 随后回答仍然生效：真的移动了。
+    const answerStep = r.steps[4];
+    expect(answerStep.scene).toBe("加比的拖车房");
+  });
+
+  it("p1 开门→p1 自己回答→正常生效（回归：不能因为加了认人就连同 PC 都答不了）", async () => {
+    const session = makeMultiPcSession("pending-confirm-same-pc");
+    const script: GameSessionScriptStep[] = [
+      LOAD_MODULE,
+      { input: "检查加比的拖车房里的床底和柜子，看有没有藏东西。", pcId: "p1" },
+      { input: "加比的拖车房", pcId: "p1" },
+    ];
+    const r = await runGameSessionScript(session, script, OPTS);
+    expect(r.threw).toBe(false);
+    expect(r.steps[1].scene).toBe("特里坎家");
+    expect(r.steps[2].scene).toBe("加比的拖车房");
+  });
+
+  it("leave 不认人：p1 开门，p2 确认，照样结束调查（party 级决定）", async () => {
+    const session = makeMultiPcSession("pending-leave-any-pc");
+    const script: GameSessionScriptStep[] = [
+      LOAD_MODULE,
+      { input: "创建队友 乙 investigator" },
+      { input: "我们决定离开这里，结束这次调查", pcId: "p1" }, // p1 开门
+      { input: "确定", pcId: "p2" }, // p2 确认——leave 不认人，这应当算数
+    ];
+    const r = await runGameSessionScript(session, script, OPTS);
+    expect(r.threw).toBe(false);
+    expect(r.steps[3].dead).toBe(true); // 真的结束了，没有因为"不是同一个人"被拒绝
   });
 });

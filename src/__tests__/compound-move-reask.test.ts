@@ -137,22 +137,24 @@ describe("回归：两份实跑报告里判对的输入，判定结果逐条不�
   });
 });
 
-describe("与离开确认门统一 pending 机制：不会互相打架", () => {
+describe("两道确认门（compound-move 认人 Map / leave 单 boolean）不会互相打架", () => {
   it("复合回问 pending 期间的回复只会被当成回问的答复，不会被误判成离开确认", async () => {
     await session.act("检查加比的拖车房里的床底和柜子，看有没有藏东西。");
-    expect((session as any).pendingConfirm?.kind).toBe("compound-move");
-    // 回复一句"确定"——如果两套 pending 机制没统一好，这里可能被错误地
-    // 当成"确认离开"处理（isConfirmReply("确定") 为 true）。统一到一个
-    // 字段后，当前 pending 只可能是 compound-move，不会被岔到 leave 分支。
+    expect((session as any).pendingCompoundMove.has("p1")).toBe(true);
+    // 回复一句"确定"——act() 顶部先检查 myPendingMove（当前 PC 自己的
+    // compound-move），命中就直接消费掉，不会走到下面的 leave 分支
+    // （isConfirmReply("确定") 本来也为 true，如果两道门顺序反了就会被
+    // 误判成"确认离开"）。
     await session.act("确定");
     expect(session.dead).toBe(false); // 没有被误判成"确认离开"从而结束会话
   });
 
   it("离开确认 pending 期间不会触发复合回问检测", async () => {
     await session.act("我们决定放弃调查，收工回家。");
-    expect((session as any).pendingConfirm?.kind).toBe("leave");
+    expect((session as any).pendingLeaveConfirm).toBe(true);
     // 这一步即使回复内容里提到别的场景名，也应该只走确认/取消分支，
-    // 不会被复合回问检测拦截（因为 pendingConfirm 非空时 act() 顶部就短路了）。
+    // 不会被复合回问检测拦截（pendingLeaveConfirm 为真时 act() 顶部就
+    // 短路返回，压根不会跑到复合句检测那一段代码）。
     const res = await session.act("再等等，我们去农场外围看看");
     expect(res.events.some((e) => e.content.includes("先留下"))).toBe(true);
   });
