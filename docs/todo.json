@@ -297,6 +297,13 @@
       "severity": "info",
       "status": "open",
       "text": "`data/sessions` 目录已累积到 94 个 `.json` 文件（`Get-ChildItem` 实测，2026-08-29）。`listStoredSessions()`（session-store.ts:42）在服务器启动时无条件读取并 `JSON.parse` 每一个，不做失败跳过——任何一份损坏会让启动直接抛异常崩掉，不是优雅降级。实测启动一次：日志打的是「Loaded 94 stored session(s) from disk」，94/94 全部成功——本条据实记录当前状态，不代表任何时刻都是这个数字（文件数会随更多局跑起来持续增长，也可能有人手动清过）。**如实记录现状与影响，不要顺手删**：这些文件可能对应正在被别人使用的会话，删除前没有核实哪些是过期的、哪些还有人在用。真要处理，至少先补：① 加过期策略（比如按 createdAt 清理超过 N 天的）、② 让单个文件损坏不拖垮整个启动（逐个 try/catch，报出坏文件名而不是让进程整体崩掉）。这两件事本身不在这一轮范围内。"
+    },
+    {
+      "id": "todo-39",
+      "category": "未验证",
+      "severity": "info",
+      "status": "open",
+      "text": "Good End 判别仍未实证：analysis/sim/2026-08-30-barn-a-retest.md 的对照会话用「前往中控室，寻找那批补给和能说明用途的物品」触发检定，但拿到的是拉杆说明（clue_control_lever 附近的检定路径），不是 Good End 需要的 clue_control_supplies——线索真名是「冰箱与储物柜」（barn-of-premier.ts:662-666），唯一的 findMethod 是「检查冰箱与储物柜」（observation）。「补给」这个措辞与线索的 matchTexts（名字+findMethods 描述）都对不上，resolveSceneClueMatch 因此没能命中它。下一局要用「检查冰箱」「检查储物柜」这类贴近原文措辞的输入才能验证 Good End 分支真的可达；module-departure-flow.test.ts 里的 Good End 判别测试是直接调 session.investigation.markDiscovered() 绕开了检定匹配这一步，测的是「结局是否按状态选」，不是「玩家能不能用自然语言真正触发这个状态」，两者是不同的验证目标，不能互相替代。"
     }
   ]
 }

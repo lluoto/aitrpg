@@ -1,6 +1,6 @@
 {
-  "tests": 2422,
-  "files": 154,
+  "tests": 2428,
+  "files": 155,
   "unwiredMethods": 87,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -434,6 +434,11 @@
       "tests": 2422,
       "files": 154,
       "when": "开发·游戏时间补进玩家侧 任务2。移动计时已实现（弱版邻接+按跳数付时间，接在tryResolveModuleScene），单测也验了内部字段，但getState()（玩家侧API）此前没有暴露gameTime——LLM提示词里有(injectWorldModelForScene)、KP视图里有(getKPState():1257)，唯独玩家看不见。实跑报告(2026-08-30-barn-a-retest.md)因此把移动计时判成说不准：从API输出无法比较相邻与远距离的消耗。ActionResponse[\"state\"]加gameTime字段(与getKPState()同一口径{day,period,label}，不新造一种表示)，getState()构造函数补上同样的赋值。新增game-time-in-state.test.ts(5条)：getState()暴露gameTime；getKPState()与getState()的gameTime字段结构一致(toEqual)；act()响应本身(state字段)也带gameTime；相邻移动(1跳)前后day/period不变；跨图移动(8跳)与相邻移动(1跳)从同一起点出发，终点gameTime必须不同且8跳推进量大于1跳——这正是实跑没能验成的那一项。typecheck exit 0；bun test 2417→2422（+5）、153→154文件。"
+    },
+    {
+      "tests": 2428,
+      "files": 155,
+      "when": "开发·泛指词不当作NPC专名 任务3。实跑报告第15回合，「陈岳起身准备动身出发，但先等待同伴确认具体要前往的地点。」被答成「这里没有「同伴」」——handleTalk()把intent.target当专名去在场NPC里找，找不到就报「这里没有「X」」，但同伴/队友/大家/伙伴/他们/众人是泛指队伍成员不是名字，队伍是已知的(this.party)。加GameSession.GENERIC_PARTY_WORDS静态集合，命中时给一个符合处境的回应（列出this.party里的队伍成员），照既有空目标分支「要跟谁说话？在场的有：…」的思路做，不放宽下面.includes的模糊匹配。⚠该真实句子在regex兜底路径下解析成action=unknown(已用bun -e实测)，不会走到handleTalk——用能在regex路径下触发talk+泛指目标的句子（跟同伴说话/和队友聊聊）测handleTalk本身的行为，比测能不能凑巧让regex把原句判成talk更直接更不脆弱。新增generic-party-words-not-npc-name.test.ts(6条)：泛指词得到符合处境回应；回应里能看到队伍成员；正例真实NPC名仍照常匹配；干扰——一个真的不存在的名字（张三）仍报这里没有「张三」（npc-talk-wiring.test.ts:37同款判据，确认不被破坏）。npc-talk-wiring.test.ts全部7条继续绿。typecheck exit 0；bun test 2422→2428（+6）、154→155文件。"
     }
   ]
 }

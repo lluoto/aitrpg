@@ -2753,6 +2753,13 @@ export class GameSession {
    *   找不到人时分清楚三种情况（参照 notFoundLine() 的分辨方式，不用万金油）：
    *   没指定对象 / 这里没这个人 / 这个人在场但没有可用人格数据。
    */
+  /**
+   * 泛指整个队伍的说法，不是 NPC 专名——"陈岳起身准备动身出发，但先等待
+   * 同伴确认具体要前往的地点"这类句子里，"同伴"指的是其他 PC，用它去
+   * NPC 名单里找必然找不到，报"这里没有「同伴」"是把泛指词当成了专名。
+   */
+  private static readonly GENERIC_PARTY_WORDS = new Set(["同伴", "队友", "大家", "伙伴", "他们", "众人"]);
+
   private async handleTalk(
     intent: ActionIntent,
     input: string,
@@ -2776,6 +2783,24 @@ export class GameSession {
           : "这里没有人可以交谈。",
       );
       this.lastNarrative = "要跟谁说话？";
+      return true;
+    }
+
+    // 「同伴/队友/大家/伙伴/他们/众人」是泛指，不是专名——不该走下面的
+    // NPC 专名查找然后报"这里没有「同伴」"。队伍成员是已知的（this.party），
+    // 照上面空目标分支的思路给个符合处境的回应，不是专名查找失败。
+    // ⚠ 只改这一类词的处理，不放宽下面 `.includes` 的模糊匹配——那条已经
+    // 够松，再松会把"同伴"这类词也模糊配进某个真实 NPC 名里去。
+    if (GameSession.GENERIC_PARTY_WORDS.has(want)) {
+      const partyNames = [...this.party.values()]
+        .map((m) => m.sheet?.name)
+        .filter((n): n is string => typeof n === "string" && n.length > 0);
+      msg(
+        partyNames.length > 0
+          ? `队伍里目前有：${partyNames.join("、")}。想问点什么，或者是想商量接下来怎么走？`
+          : "现在只有你自己一个人，没有其他队友。",
+      );
+      this.lastNarrative = "确认队伍情况";
       return true;
     }
 
