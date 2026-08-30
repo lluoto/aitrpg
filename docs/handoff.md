@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-30 13:08  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-30 13:16  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：fb46583 fix: compound-move re-ask should not fire on incidental scene mentions  ·  **测试**：2467 条 / 159 文件，全绿（基线 2467，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：bbdd492 docs: add rule-05..rule-13, repo-specific coding lessons  ·  **测试**：2467 条 / 159 文件，全绿（基线 2467，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -36,9 +36,9 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 
 4. 提交信息用英文、格式兼容 GitHub（只对新提交生效，不追溯历史）：subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chore）+ 冒号 + 空格，≤72 字符；允许在 `"..."` 或「...」内引用中文术语/原文（如 `fix: "潜行" was listed as an attack verb`）。空一行。body 每行 ≤72 字符手动换行——正文长不是问题，不换行才是（GitHub 不折行，会横向滚动）。**body 不用 markdown 粗体/斜体**：GitHub 提交消息不渲染 markdown，`**x**` 会原样显示成星号；「」中文引号没问题，继续用。模板见 `.gitmessage`（生效需手动 `git config commit.template .gitmessage`，这条配置不随提交走，新 clone 默认不生效）。实测最近 80 条：英文标题 55 条平均 82 字符、超 72 的 30 条（55%），说明「英文」不等于「兼容 GitHub」，是两件事，这条约定对两者都管。已有 347 条英文历史提交（含切到中文前那 320+ 条）与 28 条中文提交（`9afbe9e` 起）都不按这条约定判违规——切换点 `0880f75`（最后一条英文）→`9afbe9e`（第一条中文）是有意决策，不是事故，中文提交保留原样不重写。机器判据见 `.githooks/commit-msg` + `core.hooksPath`，preflight 第 12 项检查是否真的装上；未装上时这条只能靠人遵守。
 
-5. 先想再写——不确定就问，把多种理解都列出来。pendingConfirm 统一成单字段时没想过多 PC 场景，跨 PC 泄漏拖了一整轮才现形（5f01296）。
+5. 先想再写：不确定就问，把多种理解都列出来再动手。pendingConfirm 统一成单字段时没想过多 PC 场景——跨 PC 泄漏拖了一整轮才现形（5f01296）。
 
-6. 只改必须改的——顺手做的事一旦超出任务范围，副作用大概率不会被自己发现。索引轮静默把 index-world-model.md 从 348 行精简到 178 行，留下两处悬空引用（aca5d68）。
+6. 只改必须改的：顺手做的事一旦超出任务范围，副作用大概率不会被自己发现。索引轮静默把 index-world-model.md 从 348 行精简到 178 行，留下两处悬空引用（aca5d68）。
 
 7. 答案已经确定就用代码，别再问模型一遍。模组名里的「检查」把「加载模组」判成技能检定，改成前缀直接判定（src/llm/intent.ts:457-467）。
 
@@ -187,6 +187,7 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- bbdd492 docs: add rule-05..rule-13, repo-specific coding lessons
 - fb46583 fix: compound-move re-ask should not fire on incidental scene mentions
 - 5f01296 fix: pendingConfirm must know who asked (cross-PC leakage)
 - ebe9b95 fix: stop dev-server.ps1 from hanging its caller (plan B)
@@ -198,7 +199,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - b1a4455 feat: add a machine judge for the commit message convention
 - bc6de84 docs: define commit message convention (rule-04)
 - f40bcb3 docs: 刷新now.md（跑在其余提交之后）
-- 7e2cfec fix: 泛指词(同伴/队友/大家)不当NPC专名查找失败处理
 
 ## 代码地图
 

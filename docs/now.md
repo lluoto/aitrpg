@@ -1,21 +1,22 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-08-30 13:09
+> 生成于 2026-08-30 13:16
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | fb46583 fix: compound-move re-ask should not fire on incidental scene mentions |
+| HEAD | bbdd492 docs: add rule-05..rule-13, repo-specific coding lessons |
 | 测试 | 2467 条 / 159 文件  全绿 |
-| 工作树 | **3 个文件未提交** |
+| 工作树 | **4 个文件未提交** |
 
 未提交：
 - `M docs/handoff.md`
-- `M docs/now.md`
 - `M docs/todo.json`
+- `?? AGENTS.md`
+- `?? scripts/agents-md.ts`
 
 ## 开工前
 
@@ -59,8 +60,8 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 同一类失误连着犯到第 3 次就停手，换一双眼睛（另一个模型 review diff）。本轮机械切割边界连错 5 次才自己发现——失效模式相同的人查不出自己的系统性错误。
 - **判据没验过就不算数**。写完诊断脚本先确认它能区分对错两种情形：第一版「切割截断」判据出了 174 个假阳性，第一版「倒下仍行动」判据永远报警。判据本身要做变异检验。
 - 提交信息用英文、格式兼容 GitHub（只对新提交生效，不追溯历史）：subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chore）+ 冒号 + 空格，≤72 字符；允许在 `"..."` 或「...」内引用中文术语/原文（如 `
-- 先想再写——不确定就问，把多种理解都列出来。pendingConfirm 统一成单字段时没想过多 PC 场景，跨 PC 泄漏拖了一整轮才现形（5f01296）。
-- 只改必须改的——顺手做的事一旦超出任务范围，副作用大概率不会被自己发现。索引轮静默把 index-world-model.md 从 348 行精简到 178 行，留下两处悬空引用（aca5d68）。
+- 先想再写：不确定就问，把多种理解都列出来再动手。pendingConfirm 统一成单字段时没想过多 PC 场景——跨 PC 泄漏拖了一整轮才现形（5f01296）。
+- 只改必须改的：顺手做的事一旦超出任务范围，副作用大概率不会被自己发现。索引轮静默把 index-world-model.md 从 348 行精简到 178 行，留下两处悬空引用（aca5d68）。
 - 答案已经确定就用代码，别再问模型一遍。模组名里的「检查」把「加载模组」判成技能检定，改成前缀直接判定（src/llm/intent.ts:457-467）。
 - token 预算是硬约束，加一条先考虑删一条。index-program.md 曾 2152 行/每次读约 40k token，拆成 JSON + 只追加的 log（f6f5a7a）。
 - 先读再写，别只看片段就断言。「两套世界状态」读了字段才发现是一份状态两半实现，四处同一事实各存一份（todo-03）。
@@ -88,6 +89,7 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- bbdd492 docs: add rule-05..rule-13, repo-specific coding lessons
 - fb46583 fix: compound-move re-ask should not fire on incidental scene mentions
 - 5f01296 fix: pendingConfirm must know who asked (cross-PC leakage)
 - ebe9b95 fix: stop dev-server.ps1 from hanging its caller (plan B)
@@ -95,7 +97,6 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 642e5a3 feat: add deterministic run harness for GameSession free-roam path
 - f522b78 fix: bridge scene ids so True End is reachable (todo-34)
 - c19997a docs: refresh handoff.md and now.md
-- 02033b9 docs: record two facts about history and the remote gap
 
 ## 找东西
 

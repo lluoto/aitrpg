@@ -36,14 +36,14 @@
       "category": "工作约定",
       "severity": "warn",
       "status": "by-design",
-      "text": "先想再写——不确定就问，把多种理解都列出来。pendingConfirm 统一成单字段时没想过多 PC 场景，跨 PC 泄漏拖了一整轮才现形（5f01296）。"
+      "text": "先想再写：不确定就问，把多种理解都列出来再动手。pendingConfirm 统一成单字段时没想过多 PC 场景——跨 PC 泄漏拖了一整轮才现形（5f01296）。"
     },
     {
       "id": "rule-06",
       "category": "工作约定",
       "severity": "warn",
       "status": "by-design",
-      "text": "只改必须改的——顺手做的事一旦超出任务范围，副作用大概率不会被自己发现。索引轮静默把 index-world-model.md 从 348 行精简到 178 行，留下两处悬空引用（aca5d68）。"
+      "text": "只改必须改的：顺手做的事一旦超出任务范围，副作用大概率不会被自己发现。索引轮静默把 index-world-model.md 从 348 行精简到 178 行，留下两处悬空引用（aca5d68）。"
     },
     {
       "id": "rule-07",
