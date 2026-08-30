@@ -1,0 +1,30 @@
+<type>: <subject, imperative mood, <=72 chars total with prefix>
+
+<body, wrap every line at 72 chars manually -- GitHub does not wrap
+commit messages, long unwrapped lines scroll horizontally instead>
+
+# Commit message convention (docs/todo.json rule-04). New commits only,
+# does not apply retroactively to history.
+#
+# subject:
+#   - English, imperative mood, <type>: prefix
+#   - type is one of: feat fix docs test refactor chore
+#   - <=72 characters total (prefix + colon + space + text)
+#   - short Chinese terms/quotes are fine INSIDE "..." or 「...」
+#     e.g. fix: "潜行" was listed as an attack verb
+#
+# body:
+#   - one blank line after subject
+#   - wrap every line at 72 chars by hand; content can be as detailed
+#     as needed, length is not the problem, unwrapped lines are
+#   - do NOT use markdown **bold**/*italic* -- GitHub commit messages
+#     do not render markdown, "**x**" shows up as literal asterisks.
+#     Chinese corner quotes「」are fine, keep using them.
+#
+# This file only takes effect after running once (does not travel
+# with commits, must be set up again on a fresh clone):
+#   git config commit.template .gitmessage
+#
+# Delete this comment block before committing; it is here to guide
+# interactive commits (git commit without -m), not to end up in the
+# final message.

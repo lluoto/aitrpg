@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-29 09:25  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-30 07:39  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：c24693e test: 补Good End vs Normal End判别测试  ·  **测试**：2405 条 / 152 文件，全绿（基线 2405，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：f40bcb3 docs: 刷新now.md（跑在其余提交之后）  ·  **测试**：2442 条 / 156 文件，全绿（基线 2428 —— 记得上调）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -34,6 +34,8 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 
 3. **判据没验过就不算数**。写完诊断脚本先确认它能区分对错两种情形：第一版「切割截断」判据出了 174 个假阳性，第一版「倒下仍行动」判据永远报警。判据本身要做变异检验。
 
+4. 提交信息用英文、格式兼容 GitHub（只对新提交生效，不追溯历史）：subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chore）+ 冒号 + 空格，≤72 字符；允许在 `"..."` 或「...」内引用中文术语/原文（如 `fix: "潜行" was listed as an attack verb`）。空一行。body 每行 ≤72 字符手动换行——正文长不是问题，不换行才是（GitHub 不折行，会横向滚动）。**body 不用 markdown 粗体/斜体**：GitHub 提交消息不渲染 markdown，`**x**` 会原样显示成星号；「」中文引号没问题，继续用。模板见 `.gitmessage`（生效需手动 `git config commit.template .gitmessage`，这条配置不随提交走，新 clone 默认不生效）。实测最近 80 条：英文标题 55 条平均 82 字符、超 72 的 30 条（55%），说明「英文」不等于「兼容 GitHub」，是两件事，这条约定对两者都管。已有 347 条英文历史提交（含切到中文前那 320+ 条）与 28 条中文提交（`9afbe9e` 起）都不按这条约定判违规——切换点 `0880f75`（最后一条英文）→`9afbe9e`（第一条中文）是有意决策，不是事故，中文提交保留原样不重写。机器判据见 `.githooks/commit-msg` + `core.hooksPath`，preflight 第 12 项检查是否真的装上；未装上时这条只能靠人遵守。
+
 ## 启动后端做实跑（模拟局/手动测试）
 
 **不要**用 `start "" /b bun run server > out.log 2> err.log`——这条写法
@@ -51,6 +53,24 @@ bun run dev-server:status    看还在不在
 
 服务端口默认 **3099**（不是 3000），见 `src/api/server.ts:1037`，用环境变量
 `PORT` 覆盖。脚本本体：`scripts/dev-server.ps1`。
+
+## 提交信息（rule-04，只对新提交生效，不追溯历史）
+
+subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chore）+
+冒号 + 空格，**≤72 字符**；允许在 `"..."` 或「...」内引用中文术语/原文
+（如 `fix: "潜行" was listed as an attack verb`）。空一行。body 每行 ≤72
+字符手动换行——正文长不是问题，不换行才是（GitHub 不折行会横向滚动）。
+**body 不用 markdown 粗体/斜体**：GitHub 提交消息不渲染 markdown，
+`**x**` 会原样显示成星号；「」中文引号没问题。模板：`.gitmessage`
+（生效需手动 `git config commit.template .gitmessage`，不随提交走）。
+
+⚠ 「回到英文」不等于「兼容 GitHub」：已有 347 条英文历史提交里，最近
+80 条的英文标题平均 82 字符、超 72 的占 55%——本身就不兼容这条规则，
+只是没人量过。这条约定不追溯：历史提交（含 28 条中文，切换点
+`0880f75`→`9afbe9e`，有意决策不是事故）一律不重写。
+
+机器判据：`.githooks/commit-msg` + `core.hooksPath`，preflight 第 12 项
+检查是否真的装上——没装上时这条纯靠人遵守，装了没配置和没装看不出区别。
 
 ## 环境坑
 
@@ -147,18 +167,18 @@ bun run dev-server:status    看还在不在
 
 ## 最近做了什么
 
+- f40bcb3 docs: 刷新now.md（跑在其余提交之后）
+- 7e2cfec fix: 泛指词(同伴/队友/大家)不当NPC专名查找失败处理
+- 884f857 feat: 游戏时间补进玩家侧getState()，与getKPState同一口径
+- 157fb77 feat: 复合句先移动再做事——明确回问(B方案)
+- afd1c91 docs: 刷新now.md（跑在其余提交之后）
+- d1a8314 docs: 收尾——todo-29标done补根因链条，新增todo-38记录data/sessions现状
+- d3e59b7 feat: 服务器启停写成可复用脚本scripts/dev-server.ps1
 - c24693e test: 补Good End vs Normal End判别测试
 - fb41e6b fix: 收紧chase/flee正则，别再把追问/跑团/逃避这类词判成追逐
 - b267e90 fix: 围栏解析收敛到src/llm/json.ts一处，接入intent.ts和generate-llm-expanded.ts
 - ecbcde7 docs: 刷新now.md（跑在其余提交之后）
 - 6a8f6c9 docs: 收尾——更新todo-26/todo-03，记录时间系统与孤立场景两个已知缺口
-- c7f3e2c feat: 脱离判定+确认门+结局播报+终态
-- 8c30de6 feat: 移动代价——弱版邻接+按场景图跳数计时，顺带修空目标bug
-- a4b2d6e feat: 线索发现与场景访问历史真迁进真相源 + 队伍视图谓词
-- 18fa6e2 docs: 补回索引整理时弄丢的约束层覆盖面记录，核实原材料清单未丢
-- 65836f0 docs: 刷新now.md（跑在任务1-4提交之后）
-- 98cfa55 docs: index-program.md补status字段说明与新增文档入表
-- 4dd7cac diag: preflight补反向判据——文档引用文档的存在性
 
 ## 代码地图
 

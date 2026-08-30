@@ -97,6 +97,24 @@ bun run dev-server:status    看还在不在
 服务端口默认 **3099**（不是 3000），见 \`src/api/server.ts:1037\`，用环境变量
 \`PORT\` 覆盖。脚本本体：\`scripts/dev-server.ps1\`。
 
+## 提交信息（rule-04，只对新提交生效，不追溯历史）
+
+subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chore）+
+冒号 + 空格，**≤72 字符**；允许在 \`"..."\` 或「...」内引用中文术语/原文
+（如 \`fix: "潜行" was listed as an attack verb\`）。空一行。body 每行 ≤72
+字符手动换行——正文长不是问题，不换行才是（GitHub 不折行会横向滚动）。
+**body 不用 markdown 粗体/斜体**：GitHub 提交消息不渲染 markdown，
+\`**x**\` 会原样显示成星号；「」中文引号没问题。模板：\`.gitmessage\`
+（生效需手动 \`git config commit.template .gitmessage\`，不随提交走）。
+
+⚠ 「回到英文」不等于「兼容 GitHub」：已有 347 条英文历史提交里，最近
+80 条的英文标题平均 82 字符、超 72 的占 55%——本身就不兼容这条规则，
+只是没人量过。这条约定不追溯：历史提交（含 28 条中文，切换点
+\`0880f75\`→\`9afbe9e\`，有意决策不是事故）一律不重写。
+
+机器判据：\`.githooks/commit-msg\` + \`core.hooksPath\`，preflight 第 12 项
+检查是否真的装上——没装上时这条纯靠人遵守，装了没配置和没装看不出区别。
+
 ## 环境坑
 
 - **PowerShell 5.1**。仓库源码 UTF-8 **无 BOM**，\`Select-String\`/\`Get-Content\`
