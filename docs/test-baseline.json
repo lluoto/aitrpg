@@ -1,6 +1,6 @@
 {
-  "tests": 2442,
-  "files": 156,
+  "tests": 2449,
+  "files": 157,
   "unwiredMethods": 87,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -454,6 +454,11 @@
       "tests": 2442,
       "files": 156,
       "when": "开发·定下提交信息约定 任务3（docs-only，无新测试，条数不变）：记录两条现状，只记账不还账。①更新risk-01：poc/虽然配了远端，但47个提交（本轮开工时实测，git rev-list --count origin/master..master）只在本机，远端仍停在更早版本，这让risk-01\"只有poc/有版本控制和远端\"这个前提打了折扣——真出问题这些提交跟没远端一样丢得干干净净；如实记录数字会随每轮工作持续增长，不推送是使用者的决定不是这一轮的活。②新增todo-40：提交语言切换点0880f75(最后一条英文)→9afbe9e(第一条中文)，本轮实测21条全中文、之前354条全英文(含7条英文句子里引号内嵌中文术语，整体仍算英文不是例外)，已裁决保留21条中文原样不重写历史(正文信息密度高，重写收益是好看风险是弄坏高质量记录)，与rule-04(新提交用英文)是两件独立的事，不代表旧提交违反了当时不存在的规则。typecheck exit 0；bun test 2442（不变）、156文件不变；preflight 12/12全过。"
+    },
+    {
+      "tests": 2449,
+      "files": 157,
+      "when": "fix scene id bridge so True End is reachable (todo-34). Runtime registers 26 scenes with Chinese ids (via premiers_barn.ts/MythosModuleLoader); BARN_OF_PREMIER.scenes has 20 ASCII ids. Measured: 0 ids match directly, 17 match via display name, 3 never match (farm_periphery/barn_interior/maintenance_room, all with a bracketed suffix like \"维修间（终局场景）\" vs runtime \"维修间\"). END_NARRATIONS[true].condition.requiredScenes=[\"maintenance_room\"] therefore never matched, so True End was permanently unreachable. Extracted the bracket-stripping regex already used by bridgeBarnOfPremierClues() into a shared static GameSession.stripBracketSuffix(), added a lazily-cached barnSceneIdMap() built from BARN_OF_PREMIER.scenes, and made isSceneVisited() translate ASCII ids through this map only when the loaded module is premiers_barn (checked the same way as recommendedPartySize()'s existing special case), falling back to the raw id otherwise. Added scene-id-bridge.test.ts (7 tests): exhaustively asserts all 20 ASCII ids map to their runtime scene (not a spot check), confirms True End is reachable given the diary+old-doc clues plus a visit to 维修间, confirms it is NOT reached without the scene visit, confirms Bad End remains unreachable for an unrelated reason (bad_lever_pulled has no producer, KNOWN_UNREACHABLE unchanged), and an end-to-end run through the explicit-leave confirmation flow. Updated ending-namespace-truth-source.test.ts's former \"known gap\" test: the raw scene ids genuinely still differ (that fact doesn't change and is the reason the translation layer exists), but isSceneVisited() now resolves the ASCII id correctly after the translation, so the test now pins both halves instead of only the gap. Mutation check: reverted stripBracketSuffix to an identity function, all 4 True-End-related assertions in scene-id-bridge.test.ts went red as expected (the two \"still false\" tests correctly stayed green); Copy-Item restored. Recorded in todo-34: this bridging, like the earlier clue bridging, only applies to premiers_barn — the two module type systems (ModuleData vs MythosModule, todo-19) aren't unified, so loading a different module gets none of this treatment. typecheck exit 0; bun test 2442->2449 (+7), 156->157 files."
     }
   ]
 }

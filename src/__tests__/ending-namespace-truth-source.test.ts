@@ -47,20 +47,18 @@ describe("命名空间一致性：END_NARRATIONS 引用的每个 clue id，真�
   });
 
   /**
-   * ⚠ 真实核对出的反例，不是本轮制造的：requiredScenes 引用的场景 id
-   * （目前只有 True End 一条，"maintenance_room"）与 GameSession 实际注册
-   * 的场景 id **不是同一套**。bridgeBarnOfPremierClues() 只桥接了线索
-   * （clue.id 直接复用），从未桥接场景——GameSession 加载模组时注册的场景
-   * 来自 mythos-module.ts 的 PREMIERS_BARN_MODULE（中文展示名当 id，如
-   * "维修间"），不是 barn-of-premier.ts 的 BARN_OF_PREMIER（ASCII id，如
-   * "maintenance_room"）。两者说的是同一个地点，id 却完全不同——这正是
-   * todo-19"两份谷仓模组表示"的一个具体后果，本轮范围不含收敛它
-   * （"不在本轮范围"明确排除拆 WorldState/收敛四处重复存储）。
-   * 后果：True End 目前在 GameSession 的自由跑团路径下**不可达**，
-   * 已记入 docs/todo.json 新条目。这条测试如实记录这个事实，
-   * 不假装它不存在。
+   * requiredScenes 引用的场景 id（目前只有 True End 一条，
+   * "maintenance_room"）与 GameSession 实际注册的场景 id **原始数据上
+   * 确实不是同一套**（一套 ASCII、一套中文展示名）——这一半仍然真实，
+   * 两套模组类型（ModuleData vs MythosModule，todo-19）没统一之前不会变。
+   * **但这不再是"缺口"**：isSceneVisited() 现在会先经 barnSceneIdMap()
+   * 把 ASCII id 翻译成运行时 id 再查（todo-34 已修，见
+   * scene-id-bridge.test.ts 的完整验收），原始数据层面的差异被这层翻译
+   * 盖住了，True End 因此变得可达。这条测试改成同时钉住两件事：原始
+   * 数据确实不同（翻译存在的理由），但经 isSceneVisited() 查询后能查到
+   * （翻译真的在起作用）。
    */
-  it("**已知缺口**：requiredScenes 引用的 ASCII id 与实际注册的中文场景 id 不是同一套", () => {
+  it("requiredScenes 的 ASCII id 与运行时原始场景 id 不同，但经 isSceneVisited() 桥接后可查（todo-34 已修）", () => {
     const allRequiredSceneIds = new Set<string>();
     for (const en of END_NARRATIONS) {
       for (const id of en.condition.requiredScenes ?? []) allRequiredSceneIds.add(id);
@@ -68,9 +66,16 @@ describe("命名空间一致性：END_NARRATIONS 引用的每个 clue id，真�
     expect(allRequiredSceneIds.size).toBeGreaterThan(0);
 
     const registeredIds = new Set(session.world.listScenes().map((s) => s.id));
+    // 目前 END_NARRATIONS 里 requiredScenes 只有这一条（"maintenance_room"→
+    // "维修间"），这里直接写死对应的运行时场景名；scene-id-bridge.test.ts
+    // 覆盖了全部 20 个场景的映射，不依赖这条测试是否穷举。
     for (const sceneId of allRequiredSceneIds) {
-      // 如实记录：不在真相源里——不是我们没找对查询方式，是两套数据本来就没对齐。
+      // 原始数据确实不同——翻译存在的理由，不是这条判据的错。
       expect(registeredIds.has(sceneId)).toBe(false);
+      // 但走到对应的运行时场景后，isSceneVisited(ASCII id) 必须能查到——
+      // 翻译层真的在起作用，不是摆设。
+      (session as any).movePlayerToScene("维修间");
+      expect(session.isSceneVisited(sceneId)).toBe(true);
     }
   });
 

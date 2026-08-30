@@ -988,15 +988,26 @@ export class GameSession {
    * 用 `clue.id` 原样注册进 InvestigationEngine（见该方法注释），
    * END_NARRATIONS 引用的正是同一份 `clue.id`，两边不会对不上——
    * 已用真实模组数据验过（ending-namespace-truth-source.test.ts）。
-   * ⚠ requiredScenes 那半边目前有个已知缺口：GameSession 实际注册的场景 id
-   * 与 BARN_OF_PREMIER 的场景 id 不是同一套，见 docs/todo.json todo-34。
+   * requiredScenes 那半边此前有个已知缺口（todo-34）：GameSession 实际
+   * 注册的场景 id 与 BARN_OF_PREMIER 的场景 id 不是同一套——已修，见
+   * isSceneVisited() 与 barnSceneIdMap()。
    */
   isClueFound(clueId: string): boolean {
     return this.world.isClueDiscoveredByAnyone(clueId);
   }
 
+  /**
+   * ⚠ sceneId 可能是两种命名空间之一：GameSession 自己注册的运行时 id
+   * （中文展示名），或者 BARN_OF_PREMIER.scenes 用的 ASCII id（历史遗留，
+   * END_NARRATIONS.requiredScenes 引用的正是这一套，见 barnSceneIdMap()）。
+   * 只在加载的是 premiers_barn 时才做这层翻译——查不到映射（不是这个
+   * 模组、或 id 本来就不在映射表里）就原样查，不装作对别的场景 id 也通用。
+   */
   isSceneVisited(sceneId: string): boolean {
-    return this.world.isSceneVisitedByAnyone(sceneId);
+    const runtimeSceneId = this.registeredModules.some((m) => m?.id === "premiers_barn")
+      ? this.barnSceneIdMap().get(sceneId) ?? sceneId
+      : sceneId;
+    return this.world.isSceneVisitedByAnyone(runtimeSceneId);
   }
 
   /**
@@ -3601,6 +3612,50 @@ export class GameSession {
   }
 
   /**
+   * 去掉展示名尾部的「（备注）」后缀——BARN_OF_PREMIER.scenes 里 3 个场景名
+   * 带这种后缀（"农场外围（陷阱区）"），而运行时（premiers_barn.ts 经
+   * MythosModuleLoader）注册的是不带后缀的短名（"农场外围"）。
+   * bridgeBarnOfPremierClues() 与 barnSceneIdMap() 共用这一份，不各写一份
+   * （"同一段各存一份"是 llm/json.ts 那轮刚收敛掉的形状）。
+   */
+  private static stripBracketSuffix(name: string): string {
+    return name.replace(/（[^）]*）$/, "");
+  }
+
+  /**
+   * ASCII 场景 id（BARN_OF_PREMIER.scenes[].id，如 "maintenance_room"）→
+   * 运行时场景 id（去括号后缀的中文展示名，如"维修间"）的映射（todo-34）。
+   *
+   * ⚠ 只对 premiers_barn 成立——和线索桥接（bridgeBarnOfPremierClues）
+   * 同样是硬编码特例：BARN_OF_PREMIER 是 ModuleData 类型、运行时场景来自
+   * premiers_barn.ts 这份 MythosModule，两套模组类型系统没统一之前
+   * （todo-19），这层映射也没法对别的模组通用，别把它写成看起来通用的样子。
+   *
+   * 实测核对过（2026-08-30）：运行时注册 26 个场景，BARN_OF_PREMIER.scenes
+   * 20 个——id 直接对上 0 个（一套 ASCII 一套中文），靠展示名对上 17 个，
+   * 完全对不上 3 个，全部是带括号后缀的那几个（farm_periphery/农场外围
+   * （陷阱区）、barn_interior/建筑内（谷仓大厅）、maintenance_room/维修间
+   * （终局场景）——去括号后 20 个全部对上，与线索桥接的结论一致
+   * （bridgeBarnOfPremierClues 的 docstring 早就写过这句话，只是结局条件
+   * 没用上）。
+   *
+   * 懒建 + 缓存：这是从静态数据（BARN_OF_PREMIER.scenes）算出来的纯映射，
+   * 不随会话状态变化，没必要每次调用 isSceneVisited 都重算一遍。
+   */
+  private barnSceneIdMapCache: Map<string, string> | null = null;
+
+  private barnSceneIdMap(): Map<string, string> {
+    if (!this.barnSceneIdMapCache) {
+      const map = new Map<string, string>();
+      for (const scene of BARN_OF_PREMIER.scenes) {
+        map.set(scene.id, GameSession.stripBracketSuffix(scene.name));
+      }
+      this.barnSceneIdMapCache = map;
+    }
+    return this.barnSceneIdMapCache;
+  }
+
+  /**
    * 幸运/力量是 CoC 属性，不在 skillValues 里（见 coc-character.ts 的
    * ATTRIBUTE_NAME_MAP）。BARN_OF_PREMIER 里两条线索的唯一 findMethod 恰好是
    * 这两个属性；investigateCoC 按 skillValues[key] ?? 20 处理，查不到时退回
@@ -3631,12 +3686,13 @@ export class GameSession {
    * 带「（备注）」后缀（如"农场外围（陷阱区）"）；而 mythos-module.ts:461
    * 的 registerScene(sid, sid, ...) 用不带后缀的短名（"农场外围"）——
    * state.scene 运行时存的正是这个短名。去掉尾部「（…）」即可对齐，
-   * 20 个场景全部核对过能对上。
+   * 20 个场景全部核对过能对上。同一个去括号函数（stripBracketSuffix）
+   * 也被 barnSceneIdMap() 用来建 ASCII→运行时场景 id 的映射（见该方法），
+   * 两处共用一份，不各写一份。
    */
   private bridgeBarnOfPremierClues(): void {
-    const stripBracketSuffix = (name: string) => name.replace(/（[^）]*）$/, "");
     for (const scene of BARN_OF_PREMIER.scenes) {
-      const sceneName = stripBracketSuffix(scene.name);
+      const sceneName = GameSession.stripBracketSuffix(scene.name);
       for (const clue of scene.clues) {
         // 优先挑一条真正的技能路径；只有属性（幸运/力量）可用时才退回属性名。
         const skillMethods = clue.findMethods.filter((f) => f.type === "skill" && f.skillName);
