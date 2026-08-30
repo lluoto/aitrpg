@@ -1,19 +1,20 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-08-30 07:59
+> 生成于 2026-08-30 08:46
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 02033b9 docs: record two facts about history and the remote gap |
-| 测试 | 2442 条 / 156 文件  全绿 |
-| 工作树 | **1 个文件未提交** |
+| HEAD | 642e5a3 feat: add deterministic run harness for GameSession free-roam path |
+| 测试 | 2455 条 / 158 文件  全绿 |
+| 工作树 | **2 个文件未提交** |
 
 未提交：
 - `M docs/handoff.md`
+- `M docs/todo.json`
 
 ## 开工前
 
@@ -77,14 +78,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 642e5a3 feat: add deterministic run harness for GameSession free-roam path
+- f522b78 fix: bridge scene ids so True End is reachable (todo-34)
+- c19997a docs: refresh handoff.md and now.md
 - 02033b9 docs: record two facts about history and the remote gap
 - b1a4455 feat: add a machine judge for the commit message convention
 - bc6de84 docs: define commit message convention (rule-04)
 - f40bcb3 docs: 刷新now.md（跑在其余提交之后）
 - 7e2cfec fix: 泛指词(同伴/队友/大家)不当NPC专名查找失败处理
-- 884f857 feat: 游戏时间补进玩家侧getState()，与getKPState同一口径
-- 157fb77 feat: 复合句先移动再做事——明确回问(B方案)
-- afd1c91 docs: 刷新now.md（跑在其余提交之后）
 
 ## 找东西
 

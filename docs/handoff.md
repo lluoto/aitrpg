@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-30 07:59  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-30 08:46  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：02033b9 docs: record two facts about history and the remote gap  ·  **测试**：2442 条 / 156 文件，全绿（基线 2442，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：642e5a3 feat: add deterministic run harness for GameSession free-roam path  ·  **测试**：2455 条 / 158 文件，全绿（基线 2455，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -169,6 +169,9 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- 642e5a3 feat: add deterministic run harness for GameSession free-roam path
+- f522b78 fix: bridge scene ids so True End is reachable (todo-34)
+- c19997a docs: refresh handoff.md and now.md
 - 02033b9 docs: record two facts about history and the remote gap
 - b1a4455 feat: add a machine judge for the commit message convention
 - bc6de84 docs: define commit message convention (rule-04)
@@ -178,9 +181,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - 157fb77 feat: 复合句先移动再做事——明确回问(B方案)
 - afd1c91 docs: 刷新now.md（跑在其余提交之后）
 - d1a8314 docs: 收尾——todo-29标done补根因链条，新增todo-38记录data/sessions现状
-- d3e59b7 feat: 服务器启停写成可复用脚本scripts/dev-server.ps1
-- c24693e test: 补Good End vs Normal End判别测试
-- fb41e6b fix: 收紧chase/flee正则，别再把追问/跑团/逃避这类词判成追逐
 
 ## 代码地图
 
