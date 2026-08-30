@@ -1,0 +1,9 @@
+#!/bin/sh
+# commit-msg 钩子——只是个薄壳，判断逻辑在 scripts/check-commit-msg.ts /
+# src/diagnostics/commit-msg.ts（入库、可测，见 rule-03 的分层原则）。
+#
+# 生效需要手动跑一次（不随提交走，新 clone 默认不生效）：
+#   git config core.hooksPath .githooks
+# preflight 第 12 项会检查这条配置是否真的指过来，没配置时判据形同虚设。
+
+exec bun "$(dirname "$0")/../scripts/check-commit-msg.ts" "$1"

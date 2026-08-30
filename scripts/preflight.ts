@@ -6,7 +6,8 @@
 //
 // 检查项：切割残渣 / 占位注释 / 反向 import / PowerShell 读中文 / typecheck /
 //         测试条数基线 / 文档引用的脚本是否入库 / 丢掉的成功与否返回值 /
-//         无声吞错的 catch / 源码引用的证据文件是否存在 / 断线的公开方法
+//         无声吞错的 catch / 源码引用的证据文件是否存在 / 断线的公开方法 /
+//         提交信息 commit-msg 判据是否真的装上（core.hooksPath）
 //
 // ⚠ 这份脚本自己返工过一次。上一版六项检查里，**五项能被同一段坏代码骗过**：
 //   1. 切割残渣：只认 `return|await|赋值` 四种起手式 → 函数头被删后留下
@@ -370,6 +371,28 @@ if (!quick) {
           : `断线 ${now} 处，与基线一致（判法是不许增长，不是必须为 0 —— 理由见 preflight 第 11 项）`,
       );
     }
+  }
+}
+
+// ── 12. 提交信息约定的机器判据是否真的在跑（docs/todo.json rule-04）──
+//
+// `.githooks/commit-msg` 生效靠 `git config core.hooksPath .githooks`——
+// 这条配置**不随提交走**，新 clone 下来默认不生效。一个可能没装上的
+// hook，正是本仓反复修的那种「看着在检查、其实什么也没量」：装了和
+// 没装，从提交历史上看不出区别。这条检查把「判据没在跑」本身变成
+// 能被 preflight 抓到的事，不靠人记得去核对。
+{
+  const hooksPath = spawnSync("git", ["config", "--get", "core.hooksPath"], { encoding: "utf8", shell: true });
+  const configured = (hooksPath.stdout ?? "").trim();
+  if (configured !== ".githooks") {
+    problems.push(
+      `core.hooksPath 没有指向 .githooks（当前：「${configured || "(未设置)"}」）—— ` +
+      `commit-msg 判据没有真的在跑。跑一次 \`git config core.hooksPath .githooks\`。`,
+    );
+  } else if (!existsSync(".githooks/commit-msg")) {
+    problems.push("core.hooksPath 已指向 .githooks，但 .githooks/commit-msg 文件不存在——判据丢了。");
+  } else {
+    notes.push("core.hooksPath 已指向 .githooks，commit-msg 判据在跑（未装上时这条只能靠人遵守）。");
   }
 }
 

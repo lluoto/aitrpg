@@ -1,6 +1,6 @@
 {
-  "tests": 2428,
-  "files": 155,
+  "tests": 2442,
+  "files": 156,
   "unwiredMethods": 87,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -444,6 +444,11 @@
       "tests": 2428,
       "files": 155,
       "when": "开发·定下提交信息约定 任务1（docs-only，无新测试，条数不变）。docs/todo.json加rule-04：subject英文祈使句+conventional前缀（feat/fix/docs/test/refactor/chore）+冒号+空格≤72字符，允许在\"...\"或「...」内引用中文术语；body每行≤72字符手动换行；不用markdown粗体/斜体（GitHub不渲染提交消息markdown，**x**会原样显示成星号）。实测最近80条：英文标题n=55平均82字符超72的30条(55%)、中文标题n=25平均39字符超72的1条——回到英文不等于兼容GitHub，是两件事，约定对两者都管。写在三处：todo.json rule-04（依据）、scripts/handoff.ts生成器模板（docs/handoff.md是生成的，直接改.md会被下次刷新冲掉，已验证改生成器后重新生成能看到这条约定出现在两处：工作纪律列表第4条+新增的专门小节）、.gitmessage模板入库（生效需手动git config commit.template .gitmessage，不随提交走）。约定只对新提交生效，不追溯已有347条英文历史+21条中文历史（切换点0880f75→9afbe9e，任务3记录）。typecheck exit 0；preflight 11/11（本提交先于任务2新增的hook判据）；bun test 2428（不变）。"
+    },
+    {
+      "tests": 2442,
+      "files": 156,
+      "when": "开发·定下提交信息约定 任务2：机器判据，方案甲（hook+preflight检查hook是否真的装上，不接受方案丙——装了hook却不保证在跑）。src/diagnostics/commit-msg.ts导出纯函数validateCommitMessage()（subject长度/conventional前缀/引号外中文/body行长/markdown强调五项检查，允许\"...\"或「...」内的中文术语，跳过交互式提交的#注释行）；scripts/check-commit-msg.ts是薄壳CLI（读文件→调用验证→打印→退出码，判断逻辑与脚本分层，同preflight自己的分层原则）；.githooks/commit-msg是shell薄壳（exec bun调CLI）。⚠踩过一个新坑：.githooks/commit-msg含shebang，若被autocrlf转成CRLF会变成#!/bin/sh\\r，破坏interpreter识别——加.gitattributes对.githooks/*和*.sh强制eol=lf，git add --renormalize重新入库后用bun -e核实blob内容确认没有\\r。用git update-index --chmod=+x标记可执行位（Windows无原生unix权限位，但git索引层面的mode仍然生效）。preflight加第12项：检查core.hooksPath是否指向.githooks且commit-msg文件存在，两种异常各自给出明确提示（未配置/文件丢失），全部正常时notes里确认判据在跑。实测端到端：git commit --allow-empty用不合规subject(缺前缀)真实被hook拒绝(exit 1，HEAD未变)；用合规subject真实提交成功(exit 0)后用git reset --soft HEAD^撤销(这是纯测试用的commit，内容不是本轮要交付的东西)。新增commit-msg.test.ts(14条，三侧齐全：合规通过/违规拦截/文本相似但合法不误报，含边界值72字符测试)。变异检验：git config --unset core.hooksPath后preflight精确变红，指出\"当前：(未设置)\"；还原后回归绿；另外验证了删除.githooks/commit-msg文件本身也会被preflight单独识别成不同的错误信息。typecheck exit 0；bun test 2428→2442（+14）、155→156文件。"
     }
   ]
 }

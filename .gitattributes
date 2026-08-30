@@ -1,0 +1,6 @@
+# Shell scripts must keep LF endings — a CRLF line ending after the
+# shebang ("#!/bin/sh\r") breaks execution ("bad interpreter" errors).
+# Everything else in this repo has no line-ending convention enforced
+# here; this file only exists because of .githooks/commit-msg.
+.githooks/* text eol=lf
+*.sh text eol=lf
