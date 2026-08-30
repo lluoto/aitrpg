@@ -18,7 +18,7 @@
 //   · 被否定／已去过的提及不再算命中（「**别去**警察局」）
 //   · 把握不足的命中标 `forced`，由调用方说出来
 
-import { isRejectedMention } from "./move-util";
+import { isRejectedMention, hasMoveIntent } from "./move-util";
 
 export interface SceneRow { id: string; name: string }
 
@@ -153,6 +153,42 @@ export function resolveSceneTarget(input: SceneResolveInput): SceneResolveResult
  * 一个"最长的"当结果，这里要的是**全部**命中，好让回问文案能同时展示
  * 多个候选，而不是替玩家静默选了其中一个。
  */
+/** 紧跟在地名后面的方位后缀——"就在那地方里面"，不是单纯提一嘴。 */
+const LOCATIVE_AFTER = /^(里|内|当中)/;
+
+/**
+ * 地名附近有没有"要去那儿"的信号，而不是句子顺带提到的一个地名
+ * （开发·复合句检测误报，任务3）。
+ *
+ * 背景：复合句回问此前对"提到了任意一个有把握的地名"就触发，但地名
+ * 经常只是**要找的东西的内容**，不是目的地——"寻找能够指向维森酒吧的
+ * 卡片"里，维森酒吧是线索指向的地方，不是这句话要去的地方。实跑：
+ * 这句话被误问成"你是要先去「维森酒吧」吗？"。
+ *
+ * 两种信号，任一命中即算：
+ *   1. 紧邻移动动词（"返回**特里坎家**"）—— 复用 move-util 的
+ *      hasMoveIntent，同一份判据剧本杀那条路（chooseConnection）也在用。
+ *   2. 紧跟方位后缀"里/内/当中"（"**加比的拖车房**里的床底"）——地名后面
+ *      immediately 跟"里"，说明说的是"在那地方里面做什么"，人得先到那儿，
+ *      即使前面没有一个显式的移动动词（"检查""搜查"这类调查动词本身
+ *      不表达移动，但"检查 X 里的 Y"这个结构隐含"要在 X 里面"）。
+ *
+ * ⚠ 故意收窄：中文正则很滑，宁可漏问（玩家多说一句由 LLM 走原意图
+ * 执行），不可误问（打断一次正常行动）。只认这两种紧邻信号，不做任何
+ * 语义/词向量层面的"猜是不是想去"。
+ */
+export function hasMovementSignalNearMention(said: string, sceneName: string): boolean {
+  if (hasMoveIntent(said, sceneName)) return true;
+  let from = 0;
+  for (;;) {
+    const at = said.indexOf(sceneName, from);
+    if (at < 0) return false;
+    const after = said.slice(at + sceneName.length, at + sceneName.length + 3);
+    if (LOCATIVE_AFTER.test(after)) return true;
+    from = at + sceneName.length;
+  }
+}
+
 export function mentionedSceneNames(input: string, rows: readonly SceneRow[]): string[] {
   const usable = rows.filter((r) => r.name && r.name !== "unknown");
   const out: string[] = [];

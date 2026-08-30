@@ -45,7 +45,7 @@ import { PoliticoEconomyEngine } from "../economy/politic-economy-engine";
 import { PREMIERS_BARN_MODULE, ARKHAM_LIBRARY_MODULE, INNSMOUTH_MODULE } from "../rules/mythos-module";
 import { getModule as getCustomModule } from "../rules/custom-modules/index";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
-import { resolveSceneTarget, mentionedSceneNames, type SceneRow } from "../play/scene-resolve";
+import { resolveSceneTarget, mentionedSceneNames, hasMovementSignalNearMention, type SceneRow } from "../play/scene-resolve";
 import { buildSceneGraph, shortestHops } from "../play/move-graph";
 import { isExplicitLeaveIntent, isConfirmReply, MODULE_ENDING_SUPPORT, GENERIC_DEPARTURE_LINES } from "../play/module-departure";
 
@@ -1813,7 +1813,21 @@ export class GameSession {
         rows,
       });
       const currentScene = this.getDisplayedScene();
-      if (hit.sceneId && !hit.forced && hit.sceneId !== currentScene) {
+      // 风险2（误报，任务3）：地名只是"提到的内容"不该触发回问——
+      // "寻找能够指向维森酒吧的卡片"里，维森酒吧是线索指向的地方，不是
+      // 这句话要去的地方（实跑：被误问成"你是要先去「维森酒吧」吗？"）。
+      // hit 本身只回答"这句话认得出哪个场景"，不回答"这是不是目的地"，
+      // 后者要另外看地名旁边有没有移动信号——见 hasMovementSignalNearMention
+      // 的完整说明（紧邻移动动词，或紧跟"里/内"这类方位后缀）。用
+      // hit.sceneId 对应的展示名 + 全部别名逐个检查，命中任意一个出现处
+      // 即算数，因为玩家可能用别名而不是全名提这个地方。
+      const hitSceneNames = hit.sceneId
+        ? [this.sceneDisplayNames[hit.sceneId], ...(this.sceneAliases[hit.sceneId] ?? [])].filter(
+            (n): n is string => Boolean(n) && input.includes(n),
+          )
+        : [];
+      const hasMovementSignal = hitSceneNames.some((name) => hasMovementSignalNearMention(input, name));
+      if (hit.sceneId && !hit.forced && hit.sceneId !== currentScene && hasMovementSignal) {
         // 风险1（误报）：句子里可能提到不止一个地名（目的地 + 话题内容），
         // 回问要展示真实候选而不是替玩家静默选中 resolveSceneTarget 挑的
         // 那一个——mentionedSceneNames 只认完整子串，不做部分匹配。
