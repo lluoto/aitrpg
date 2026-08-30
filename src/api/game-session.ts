@@ -99,6 +99,13 @@ export interface ActionResponse {
       pcId: string; name: string; control: "auto" | `player:${string}`;
       hp: number; maxHp: number; status: string[]; san: number; maxSan: number;
     }[];
+    /**
+     * 游戏内时间——与 getKPState():1257 同一口径（{day, period, label}），
+     * 不新造一种表示。此前移动计时（弱版邻接+按跳数付时间）功能做了、
+     * LLM 提示词里有、KP 视图里有，唯独玩家侧（这里）没有——而"移动要付
+     * 时间"的全部意义就是玩家能感知到代价，见 docs/todo.json。
+     */
+    gameTime: { day: number; period: string; label: string };
   };
   dead?: boolean;
   sanity?: { currentSAN: number; maxSAN: number; temporaryInsanity: boolean; indefiniteInsanity: boolean; phobias: string[] };
@@ -788,6 +795,8 @@ export class GameSession {
           maxSan: m.san.state.maxSAN,
         };
       }),
+      // 与 getKPState():1257 同一口径——不新造一种时间表示。
+      gameTime: { day: this.gameTime.day, period: this.gameTime.period, label: formatGameTime(this.gameTime) },
     };
   }
 

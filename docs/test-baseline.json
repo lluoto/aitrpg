@@ -1,6 +1,6 @@
 {
-  "tests": 2417,
-  "files": 153,
+  "tests": 2422,
+  "files": 154,
   "unwiredMethods": 87,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -429,6 +429,11 @@
       "tests": 2417,
       "files": 153,
       "when": "开发·复合意图回问 任务1：先移动再做事的复合句，B方案（明确回问）。引擎是一句话=一个意图的模型，玩家自然会说复合句（陆川带大家前往农场外围，沿着...寻找可疑足迹），LLM只能二选一，通常执行后半段丢掉前半段的移动，scene不变——不纯是模型判错，引擎没有先移动再做事的表达方式，是设计缺口。检测：intent.action命中白名单（talk/skill_check/unknown）时对原始输入跑resolveSceneTarget，找到一个有把握(!forced)且不是当前场景的地点→回问。⚠白名单不是排除move/look之外全都算——第一版这么写时撞上真回归：加载模组普瑞米尔的谷仓这句里普瑞米尔恰好也是真实场景名，intent.action=load_module不是move/look，被错误问成你是要先去普瑞米尔吗，覆盖了模组加载，coc-spells.test.ts的同一个模组不应重复加载当场变红，改成白名单只认真实报告里出现过的语义。src/play/scene-resolve.ts加mentionedSceneNames()——只认完整子串不做部分匹配（拖车房是加比的拖车房的后三个字不是完整子串，不会被列为候选，风险1天然规避）。统一pending机制：把原pendingLeaveConfirm(boolean)重构成pendingConfirm(PendingConfirm联合类型)，两种pending共用一个字段，结构上不可能同时存在，不需要写谁优先的判断。resolveCompoundMoveReply()：回答目的地→tryResolveModuleScene移动(含既有弱版邻接+按跳数计时)+继续执行原意图；回答别的→不移动+原地执行原意图，两条分支收敛成一段代码不是两个if。新增compound-move-reask.test.ts(12条)。⚠本仓测试跑regex兜底(无LLM key)，实跑报告的分类结果来自真实LLM，同一句话在两条路径下分类不总一致——已用bun -e实测每句话在regex路径下的真实分类，只用确实会命中白名单的句子验证触发逻辑，如实调整了原计划里两个基于错误假设的回归用例(R13/R14在regex路径下已经是move/status，不是sim报告里LLM给出的skill_check)。变异检验：把检测条件从!hit.forced放宽到forced也算，4条测试精确变红(含R2回归用例与3条不相关的npc-talk-wiring类测试，证明放宽会产生真实误报)；Copy-Item还原后回归绿。剧本杀路径不受影响。typecheck exit 0；bun test 2405→2417（+12）、152→153文件。"
+    },
+    {
+      "tests": 2422,
+      "files": 154,
+      "when": "开发·游戏时间补进玩家侧 任务2。移动计时已实现（弱版邻接+按跳数付时间，接在tryResolveModuleScene），单测也验了内部字段，但getState()（玩家侧API）此前没有暴露gameTime——LLM提示词里有(injectWorldModelForScene)、KP视图里有(getKPState():1257)，唯独玩家看不见。实跑报告(2026-08-30-barn-a-retest.md)因此把移动计时判成说不准：从API输出无法比较相邻与远距离的消耗。ActionResponse[\"state\"]加gameTime字段(与getKPState()同一口径{day,period,label}，不新造一种表示)，getState()构造函数补上同样的赋值。新增game-time-in-state.test.ts(5条)：getState()暴露gameTime；getKPState()与getState()的gameTime字段结构一致(toEqual)；act()响应本身(state字段)也带gameTime；相邻移动(1跳)前后day/period不变；跨图移动(8跳)与相邻移动(1跳)从同一起点出发，终点gameTime必须不同且8跳推进量大于1跳——这正是实跑没能验成的那一项。typecheck exit 0；bun test 2417→2422（+5）、153→154文件。"
     }
   ]
 }
