@@ -449,6 +449,11 @@
       "tests": 2442,
       "files": 156,
       "when": "开发·定下提交信息约定 任务2：机器判据，方案甲（hook+preflight检查hook是否真的装上，不接受方案丙——装了hook却不保证在跑）。src/diagnostics/commit-msg.ts导出纯函数validateCommitMessage()（subject长度/conventional前缀/引号外中文/body行长/markdown强调五项检查，允许\"...\"或「...」内的中文术语，跳过交互式提交的#注释行）；scripts/check-commit-msg.ts是薄壳CLI（读文件→调用验证→打印→退出码，判断逻辑与脚本分层，同preflight自己的分层原则）；.githooks/commit-msg是shell薄壳（exec bun调CLI）。⚠踩过一个新坑：.githooks/commit-msg含shebang，若被autocrlf转成CRLF会变成#!/bin/sh\\r，破坏interpreter识别——加.gitattributes对.githooks/*和*.sh强制eol=lf，git add --renormalize重新入库后用bun -e核实blob内容确认没有\\r。用git update-index --chmod=+x标记可执行位（Windows无原生unix权限位，但git索引层面的mode仍然生效）。preflight加第12项：检查core.hooksPath是否指向.githooks且commit-msg文件存在，两种异常各自给出明确提示（未配置/文件丢失），全部正常时notes里确认判据在跑。实测端到端：git commit --allow-empty用不合规subject(缺前缀)真实被hook拒绝(exit 1，HEAD未变)；用合规subject真实提交成功(exit 0)后用git reset --soft HEAD^撤销(这是纯测试用的commit，内容不是本轮要交付的东西)。新增commit-msg.test.ts(14条，三侧齐全：合规通过/违规拦截/文本相似但合法不误报，含边界值72字符测试)。变异检验：git config --unset core.hooksPath后preflight精确变红，指出\"当前：(未设置)\"；还原后回归绿；另外验证了删除.githooks/commit-msg文件本身也会被preflight单独识别成不同的错误信息。typecheck exit 0；bun test 2428→2442（+14）、155→156文件。"
+    },
+    {
+      "tests": 2442,
+      "files": 156,
+      "when": "开发·定下提交信息约定 任务3（docs-only，无新测试，条数不变）：记录两条现状，只记账不还账。①更新risk-01：poc/虽然配了远端，但47个提交（本轮开工时实测，git rev-list --count origin/master..master）只在本机，远端仍停在更早版本，这让risk-01\"只有poc/有版本控制和远端\"这个前提打了折扣——真出问题这些提交跟没远端一样丢得干干净净；如实记录数字会随每轮工作持续增长，不推送是使用者的决定不是这一轮的活。②新增todo-40：提交语言切换点0880f75(最后一条英文)→9afbe9e(第一条中文)，本轮实测21条全中文、之前354条全英文(含7条英文句子里引号内嵌中文术语，整体仍算英文不是例外)，已裁决保留21条中文原样不重写历史(正文信息密度高，重写收益是好看风险是弄坏高质量记录)，与rule-04(新提交用英文)是两件独立的事，不代表旧提交违反了当时不存在的规则。typecheck exit 0；bun test 2442（不变）、156文件不变；preflight 12/12全过。"
     }
   ]
 }

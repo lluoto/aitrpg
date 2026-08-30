@@ -36,7 +36,7 @@
       "category": "工作目录",
       "severity": "warn",
       "status": "open",
-      "text": "C:\\aitrpg 下只有 poc/ 有版本控制和远端，其余 3.7GB 裸奔。**已分层，不必全备**：不可再生的只有 5239 个文件 / 500MB（源材料 474MB + 脚本 13MB + 手写设计 12MB），其余 3.2GB 是能重跑的抽取产物。执行 `bun scripts/backup-critical.ts --out <目标盘>`（先 --dry 看清单）。**待办：选一个目标盘跑一次。** 分层依据见 docs/archive-world-model-2026-08.md「备份分层：不必全备，只有 ~500MB 是不可再生的」。"
+      "text": "C:\\aitrpg 下只有 poc/ 有版本控制和远端，其余 3.7GB 裸奔。**已分层，不必全备**：不可再生的只有 5239 个文件 / 500MB（源材料 474MB + 脚本 13MB + 手写设计 12MB），其余 3.2GB 是能重跑的抽取产物。执行 `bun scripts/backup-critical.ts --out <目标盘>`（先 --dry 看清单）。**待办：选一个目标盘跑一次。** 分层依据见 docs/archive-world-model-2026-08.md「备份分层：不必全备，只有 ~500MB 是不可再生的」。**⚠ 「有远端」这个前提本身要打折扣**（2026-08-30 实测，本轮开工时）：`git rev-list --count origin/master..master` 报 47——`poc/` 虽然配了远端（`https://github.com/lluoto/aitrpg.git`），但这 47 个提交只在本机，远端仍停在更早的版本。真出问题（本机磁盘损坏/误删 .git），这些提交跟没有远端一样丢得干干净净。这个数字会随每一轮工作持续增长（推送不是日常工作流程的一部分），47 只是某一个时间点的快照，不是固定值——是否推送、什么时候推送是使用者的决定，这里只如实记录现状。"
     },
     {
       "id": "todo-01",
@@ -311,6 +311,13 @@
       "severity": "info",
       "status": "open",
       "text": "Good End 判别仍未实证：analysis/sim/2026-08-30-barn-a-retest.md 的对照会话用「前往中控室，寻找那批补给和能说明用途的物品」触发检定，但拿到的是拉杆说明（clue_control_lever 附近的检定路径），不是 Good End 需要的 clue_control_supplies——线索真名是「冰箱与储物柜」（barn-of-premier.ts:662-666），唯一的 findMethod 是「检查冰箱与储物柜」（observation）。「补给」这个措辞与线索的 matchTexts（名字+findMethods 描述）都对不上，resolveSceneClueMatch 因此没能命中它。下一局要用「检查冰箱」「检查储物柜」这类贴近原文措辞的输入才能验证 Good End 分支真的可达；module-departure-flow.test.ts 里的 Good End 判别测试是直接调 session.investigation.markDiscovered() 绕开了检定匹配这一步，测的是「结局是否按状态选」，不是「玩家能不能用自然语言真正触发这个状态」，两者是不同的验证目标，不能互相替代。"
+    },
+    {
+      "id": "todo-40",
+      "category": "工作约定",
+      "severity": "info",
+      "status": "by-design",
+      "text": "提交信息的语言在 `0880f75`（最后一条英文）→ `9afbe9e`（第一条中文）之间无声切换，此后（2026-08-30 实测，`git rev-list --count 9afbe9e..HEAD`=20，加 9afbe9e 本身共 21）21 条全中文，之前 354 条全英文（含 7 条在英文句子里用 `\"...\"`/「...」引用中文术语，如 `fix: \"潜行\" was listed as an attack verb`——那 7 条整体仍算英文，不是例外）。**已裁决保留这 21 条中文提交原样，不重写历史**：正文信息密度很高（根因链条、变异检验记录、实测数字），重写的收益是\"好看\"，风险是\"弄坏一批高质量记录\"。往后新提交按 rule-04 用英文——这是两件独立的事：\"保留旧的\"和\"新的怎么写\"不冲突，也不代表旧的违反了当时不存在的规则。免得后人翻 git log 时以为切换点是一次事故。"
     }
   ]
 }
