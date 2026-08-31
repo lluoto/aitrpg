@@ -104,8 +104,12 @@ describe("命中多条时要问清楚，不能替玩家选", () => {
       const res = await session.act("检查桌子");
       const all = res.events.map((e) => e.content).join("\n");
       expect(all).not.toMatch(/甲的揭示文本|乙的揭示文本/);
-      expect(all).toMatch(/桌上的东西/);
-      expect(all).toMatch(/桌下的箱子/);
+      // 开发·对象名通向线索 任务2：不再直接报出候选展示名（"桌上的东西"/
+      // "桌下的箱子"）——那是剧透，与行动锚点的"中"粒度标准不一致
+      // （告诉玩家有东西、不说是什么）。改成只说"不止一样东西"，
+      // 不带任何候选名字，见 applyClueDecision 的注释。
+      expect(all).not.toMatch(/桌上的东西|桌下的箱子/);
+      expect(all).toMatch(/不止一样东西/);
     } finally { Math.random = real; }
   });
 });

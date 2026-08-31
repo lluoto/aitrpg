@@ -2864,6 +2864,18 @@ export class GameSession {
    * 三档的措辞与揭示逻辑，不管是从显式技能检定还是从对象名门走到这里都
    * 完全一致，两处不该各写一份。fallback 不在这里处理，见
    * matchCurrentSceneClue 的说明。
+   *
+   * 开发·对象名通向线索 任务2：ask 分支曾经直接列出候选的展示名
+   * （"这里可能有：「冰箱与储物柜」、「中控台拉杆」"）——行动锚点那轮
+   * 专门定过"中"粒度（告诉玩家有东西、不说是什么，见 getSuggestions()
+   * 的注释与 scene-suggestions.test.ts 的剧透判据），这里是同一份信息
+   * （未发现线索），却没守住同一条标准。改成只说"不止一样东西，说清楚
+   * 点"，不带任何候选名字/id——`decision.options` 仍然保留在类型里
+   * （resolveSceneClueMatch 仍然算给它，供其它诊断/未来用途读取候选
+   * 是谁），只是不再把它渲染进玩家能看到的文案。玩家能不能借此把话说得
+   * 更具体，靠的是场景本身的叙述（进场时已经描述过的物件），不依赖这句
+   * 回问替他念一遍候选名单——任务1把"提到对象名不需要动词"这件事做好之
+   * 后，玩家只要把看到的东西说出来就够了，不需要引擎主动剧透。
    */
   private applyClueDecision(
     decision: { kind: "resolve"; clueId: string } | { kind: "ask"; options: string[] } | { kind: "deny" },
@@ -2871,7 +2883,7 @@ export class GameSession {
   ): boolean {
     if (decision.kind === "resolve") return this.resolveSceneClue(decision.clueId, msg);
     if (decision.kind === "ask") {
-      msg(`你想找什么？这里可能有：${decision.options.map((o) => `「${o}」`).join("、")}——说清楚一点。`);
+      msg("你想找什么？这里好像不止一样东西，说清楚一点你想查哪里/什么。");
       this.lastNarrative = "需要说清楚具体想搜哪里/什么";
       return true;
     }
