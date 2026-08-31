@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-31 13:31  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-31 14:16  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：ff28fea feat: route KP narration through the constraint layer  ·  **测试**：2557 条 / 168 文件，全绿（基线 2557，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：97178c2 docs: verify Good End via natural phrasing, mark todo-39 done  ·  **测试**：2565 条 / 169 文件，全绿（基线 2565，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -187,6 +187,10 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- 97178c2 docs: verify Good End via natural phrasing, mark todo-39 done
+- 587de85 fix: probe container cases by result, not by action name
+- a005bc3 fix: widen the object-name gate to look
+- 4dc64e3 docs: refresh handoff.md and now.md after this round
 - ff28fea feat: route KP narration through the constraint layer
 - b2ac5a6 fix: clarify inventory prompt means the player's own bag
 - f1f0777 feat: add a live probe for LLM intent-parsing accuracy
@@ -195,10 +199,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - ba5c2c5 fix: stop action anchor from offering to visit an NPC
 - 4b3d08d test: pin that the long-sentence clue deny is already fixed
 - d8a8964 fix: stop ambiguous clue re-ask from naming candidates
-- e5c0136 fix: clue-match asks "did you name an object" not "did you use a verb"
-- d50c8e5 docs: refresh handoff.md and now.md after the clue-gate round
-- dfdf57e feat: bring the failback ladder into GameSession's clue path (N=2)
-- dd31f3c feat: give a directional hint on early-game skill-check failures
 
 ## 代码地图
 
