@@ -12,7 +12,7 @@ import {
   judgeCluePhrase, addCluePhraseResult, newCluePhraseReport, pct, classifyClueFailure,
   type CluePhraseCase, type CluePhraseOutcome,
 } from "../diagnostics/clue-phrasing";
-import { matchSceneClues, hasSearchIntent, type ClueMatchCandidate } from "../investigation/clue-match";
+import { matchSceneClues, isManipulationMention, type ClueMatchCandidate } from "../investigation/clue-match";
 
 // ── 判据层：只喂构造出来的结果，不碰引擎 ───────────────────────────
 
@@ -244,18 +244,20 @@ describe("端到端 — 加比的拖车房三条线索（实跑症状的真实�
   });
 });
 
-describe("hasSearchIntent — 简称必须紧跟调查动词", () => {
-  test("**正确**：紧跟调查动词的简称算数", () => {
-    expect(hasSearchIntent("侦查卫生间", "卫生间")).toBe(true);
-    expect(hasSearchIntent("检查卫生间", "卫生间")).toBe(true);
+describe("开发·对象名通向线索 任务1：isManipulationMention", () => {
+  // ⚠ hasSearchIntent（简称必须紧邻调查动词）已删除，见 clue-match.ts
+  // 头部背景说明——中控室 clue_control_supplies 的 findMethods 只写
+  // "检查冰箱与储物柜"一种说法，玩家说"打开冰箱""拉一下拉杆"都因为
+  // 动词不在表里被 deny，且这条线索是 Good End 必需项。改问"提没提这个
+  // 对象"，用这条更窄的排除规则挡住真正的假阳性，不再靠动词白名单。
+  test("**正确**：真实搜索动作（含表外动词）不被误伤", () => {
+    expect(isManipulationMention("打开冰箱", "冰箱")).toBe(false);
+    expect(isManipulationMention("检查卫生间", "卫生间")).toBe(false);
   });
 
-  test("**错误行为的红线**：光提一嘴不算——「卫生间坏了」不该被当成要搜这里", () => {
-    expect(hasSearchIntent("卫生间坏了，得叫人来修", "卫生间")).toBe(false);
-  });
-
-  test("**干扰**：动词在更远的地方，不紧邻也不算数", () => {
-    expect(hasSearchIntent("我们侦查了一圈，卫生间那边看着挺干净", "卫生间")).toBe(false);
+  test("**正确**：把对象当道具/障碍用，不是在搜它", () => {
+    expect(isManipulationMention("我把冰箱推开挡住门", "冰箱")).toBe(true);
+    expect(isManipulationMention("藏到储物柜后面", "储物柜")).toBe(true);
   });
 });
 

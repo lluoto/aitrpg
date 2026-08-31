@@ -8,7 +8,7 @@
 // bun test src/__tests__/clue-match.test.ts
 
 import { describe, it, expect } from "bun:test";
-import { matchSceneClues, hasSearchIntent } from "../investigation/clue-match";
+import { matchSceneClues, isManipulationMention } from "../investigation/clue-match";
 
 describe("matchSceneClues — 命中唯一", () => {
   it("玩家的话包含某条线索的关键词，且只有它包含 → 精确命中", () => {
@@ -148,11 +148,17 @@ describe("matchSceneClues — 否定/已完成语境不算命中", () => {
   });
 });
 
-describe("hasSearchIntent — 简称必须紧跟调查动词", () => {
-  it("紧跟「侦查」的关键词算数", () => {
-    expect(hasSearchIntent("侦查卫生间", "卫生间")).toBe(true);
-  });
-  it("单独出现在句中、前面不是调查动词，不算数", () => {
-    expect(hasSearchIntent("他从卫生间走了出来", "卫生间")).toBe(false);
+describe("开发·对象名通向线索 任务1：isManipulationMention", () => {
+  // ⚠ hasSearchIntent（简称必须紧邻调查动词）已删除——那道门是"填不满
+  // 的动词表"，玩家会用的动词远比表能穷举的多（"打开""看看""拉一下"都
+  // 不在任何一份动词表里）。matchSceneClues 现在只看"提没提这个对象"，
+  // 用这条更窄、更有实据的排除规则挡住真正的假阳性（当道具/障碍用，
+  // 不是在搜）。曾经试过再加一条"裸露的主语"排除，会把 diag-clue-
+  // phrasing.ts 的反例套件从 25/25 弄坏到 0/25，已经放弃，理由见
+  // clue-match.ts 里 isExcludedMention 的注释。
+  it("isManipulationMention：把对象当道具/障碍用，不是在搜它", () => {
+    expect(isManipulationMention("我把冰箱推开挡住门", "冰箱")).toBe(true);
+    expect(isManipulationMention("藏到储物柜后面", "储物柜")).toBe(true);
+    expect(isManipulationMention("打开冰箱", "冰箱")).toBe(false); // 干扰：真实搜索动作不能被误伤
   });
 });

@@ -1923,6 +1923,35 @@ export class GameSession {
       }
     }
 
+    // 对象名通向线索（开发·对象名通向线索 任务1）：外层意图解析器认动词，
+    // 认不出就整句判成 unknown——"打开冰箱""看看储物柜""拉一下拉杆"这类
+    // 真实输入统统落进这一档，因为它们用的动词不在 intent.ts 自己的表里。
+    // 继续扩那份表填不满（玩家会用的动词远比任何一份表能穷举的多，
+    // 见 clue-match.ts 头部背景说明——中控室 clue_control_supplies 就是
+    // 这样在实跑里被 deny 死、连累 Good End 不可达）。unknown 不能任由它
+    // 落到下面的攻击检测/LLM 叙事：LLM 编出的叙述一旦否认模组事实（"里面
+    // 空荡荡的"），玩家不会再开第二次，是不可逆的。
+    //
+    // 只在 intent.action === "unknown" 时触发——skill_check 已经在
+    // handleIntent → handleSkillCheck 里走同一份 matchCurrentSceneClue，
+    // 不需要在这里重复处理。fallback（没提到任何具体对象，去掉动词/
+    // 指代词后不剩什么）必须原样放行，不能被这道门强行拉去解一条线索——
+    // 那正是这句话会被判成 unknown 的原因，例如"陆川觉得很紧张"这类与
+    // 场景对象无关的叙述，不该被误当成一次搜索。
+    if (this.registeredModules.length > 0 && intent.action === "unknown") {
+      const match = this.matchCurrentSceneClue(input);
+      if (match && match.decision.kind !== "fallback") {
+        turnMessages.push({ speaker: playerName, content: input, type: "action" });
+        const objMsg = (s: string) => turnMessages.push({ speaker: "系统", content: s, type: "system" });
+        // applyClueDecision() 的返回值只在"要不要继续走别的分支"时有意义
+        // （resolveSceneClue 那套里）；这里已经确定要 return，用不上，
+        // 显式弃用（同 resolveCompoundMoveReply 的 void tryResolveModuleScene
+        // 那处先例），不留一个静默丢掉返回值的调用点。
+        void this.applyClueDecision(match.decision, objMsg);
+        return this.buildActionResponse(turnMessages);
+      }
+    }
+
     if (intent.action !== "unknown") {
       const handled = await this.handleIntent(intent, input, turnMessages);
       if (handled) return this.buildActionResponse(turnMessages);
@@ -2728,32 +2757,15 @@ export class GameSession {
     //
     // 场景没有未发现线索时回落到原来的裸检定，保持既有行为。
     if (GameSession.INVESTIGATIVE_SKILLS.has(skill)) {
-      // 按场景 ID 查，不是显示名：线索是模组用 `scene: "premiers_barn"` 这样的
-      // 场景 ID 注册进来的。（同文件另一处用 sceneDisplayNames[pos] 去查同一份
-      // 数据，对模组场景恒查不到，见下方 getSceneClues 的调用点。）
-      const pos = this.getDisplayedScene();
-      // 只解析有完整定义的线索。模组通过 registerSceneClue 注册的线索只带一句
-      // 描述，没有 ClueDef（技能、成功层级文本、san_cost 都没有），送进
-      // investigateCoC 只会拿到「你没有找到有用的线索」这个兜底失败——
-      // 比原来的裸检定更糟。这类线索继续走下面的通用检定。
-      const candidates = this.investigation
-        .getUndiscoveredSceneClues(pos, this.activePlayerId)
-        .filter((c) => this.investigation.hasClueType(c));
-      if (candidates.length > 0) {
-        const decision = this.resolveSceneClueMatch(input, candidates);
-        if (decision.kind === "resolve") return this.resolveSceneClue(decision.clueId, msg);
+      const match = this.matchCurrentSceneClue(input);
+      if (match) {
+        const { decision, candidates } = match;
+        // fallback：显式技能检定已经明确表达了"要检定"这件事，没说清楚
+        // 查什么就按老规矩取候选首条——这条与"对象名门"（act() 里处理
+        // intent.action==="unknown" 的那支）对 fallback 的处理不同，两处
+        // 各自决定，不能共用同一份收尾。
         if (decision.kind === "fallback") return this.resolveSceneClue(candidates[0]!, msg);
-        if (decision.kind === "ask") {
-          msg(`你想找什么？这里可能有：${decision.options.map((o) => `「${o}」`).join("、")}——说清楚一点。`);
-          this.lastNarrative = "需要说清楚具体想搜哪里/什么";
-          return true;
-        }
-        // kind === "deny"：玩家给了具体提示，但对不上场景里任何一条未发现
-        // 线索——如实说找不到，不能不看输入直接给下一条线索。那正是本仓
-        // 反复修的一类病：报告了一件玩家没做的事，比拒绝更糟。
-        msg("你仔细找了找，这里没什么特别的。");
-        this.lastNarrative = "这里没什么特别的";
-        return true;
+        return this.applyClueDecision(decision, msg);
       }
     }
 
@@ -2815,6 +2827,60 @@ export class GameSession {
       return { kind: "ask", options };
     }
     return decision;
+  }
+
+  /**
+   * 取当前场景 + 当前 PC 视角下"能参与文本匹配的未发现线索"，并派发决策
+   * ——handleSkillCheck（显式技能检定）与对象名门（act() 里
+   * intent.action==="unknown" 那支，开发·对象名通向线索 任务1）共用这一步
+   * "取候选 + 问 decideClueMatch"，不各自维护一份。两个调用方对 fallback
+   * （没提到任何具体对象）的处理不同，留在各自的调用点决定，这里不替
+   * 它们做主。
+   *
+   * 返回 null：场景没有任何"能参与匹配"的未发现线索（全部已发现，或
+   * 剩下的都是没有 matchTexts 的旧版线索）——调用方据此回落到各自的
+   * 默认行为（前者走裸检定，后者原样放行到攻击检测/LLM 叙事）。
+   */
+  private matchCurrentSceneClue(
+    input: string,
+  ): { decision: ReturnType<GameSession["resolveSceneClueMatch"]>; candidates: string[] } | null {
+    // 按场景 ID 查，不是显示名：线索是模组用 `scene: "premiers_barn"` 这样的
+    // 场景 ID 注册进来的。（同文件另一处用 sceneDisplayNames[pos] 去查同一份
+    // 数据，对模组场景恒查不到，见下方 getSceneClues 的调用点。）
+    const pos = this.getDisplayedScene();
+    // 只解析有完整定义的线索。模组通过 registerSceneClue 注册的线索只带一句
+    // 描述，没有 ClueDef（技能、成功层级文本、san_cost 都没有），送进
+    // investigateCoC 只会拿到「你没有找到有用的线索」这个兜底失败——
+    // 比原来的裸检定更糟。这类线索继续走下面的通用检定。
+    const candidates = this.investigation
+      .getUndiscoveredSceneClues(pos, this.activePlayerId)
+      .filter((c) => this.investigation.hasClueType(c));
+    if (candidates.length === 0) return null;
+    return { decision: this.resolveSceneClueMatch(input, candidates), candidates };
+  }
+
+  /**
+   * 把一个（非 fallback 的）ClueMatchDecision 落成消息——resolve/ask/deny
+   * 三档的措辞与揭示逻辑，不管是从显式技能检定还是从对象名门走到这里都
+   * 完全一致，两处不该各写一份。fallback 不在这里处理，见
+   * matchCurrentSceneClue 的说明。
+   */
+  private applyClueDecision(
+    decision: { kind: "resolve"; clueId: string } | { kind: "ask"; options: string[] } | { kind: "deny" },
+    msg: (s: string) => number,
+  ): boolean {
+    if (decision.kind === "resolve") return this.resolveSceneClue(decision.clueId, msg);
+    if (decision.kind === "ask") {
+      msg(`你想找什么？这里可能有：${decision.options.map((o) => `「${o}」`).join("、")}——说清楚一点。`);
+      this.lastNarrative = "需要说清楚具体想搜哪里/什么";
+      return true;
+    }
+    // kind === "deny"：玩家给了具体提示，但对不上场景里任何一条未发现
+    // 线索——如实说找不到，不能不看输入直接给下一条线索。那正是本仓
+    // 反复修的一类病：报告了一件玩家没做的事，比拒绝更糟。
+    msg("你仔细找了找，这里没什么特别的。");
+    this.lastNarrative = "这里没什么特别的";
+    return true;
   }
 
   /**

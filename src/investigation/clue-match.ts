@@ -5,6 +5,19 @@
 // 「侦查卫生间」拿到的是休息区的手枪线索，「侦查餐厅」拿到的是卫生间的
 // 毒品线索。不是偏移一位，是玩家输入从未被读取。
 //
+// ⚠ 开发·对象名通向线索 任务1（2026-08-31-barn-completion-attempt.md）：
+// 判据曾经问"你用了调查动词吗"（简称必须紧邻表内动词才算数，见已删除的
+// hasSearchIntent/SEARCH_VERB）——中控室 `clue_control_supplies` 的
+// findMethods 只写"检查冰箱与储物柜"一种说法，玩家说"打开冰箱""看看
+// 储物柜""拉一下拉杆"都因为动词不在表里被 deny，而这条线索是 Good End
+// 必需项，deny 还伴随一次不可逆的 LLM 叙事（"里面空荡荡的"）把模组事实
+// 否认掉，Good End 就此堵死。上一轮已经把动词表扩过一轮（翻查/翻看/
+// 扒开/掀开/摸索/找找/瞧瞧），**这条路填不满**——玩家会用的动词远比
+// 表能穷举的多。改问"你指名了这儿的一个东西吗"：场景里未发现线索的
+// 名字/唯一简称本身就是"这儿的东西"，被提及（且不是在做别的事）就该走
+// 线索解析，不再要求动词紧邻。见 isExcludedMention 与 matchSceneClues
+// 内部三条 hit 分支的统一处理。
+//
 // 这是移动匹配（src/play/move-util.ts）同一类问题在调查系统里的变体，能复用
 // 的原语直接复用，不重新发明：
 //   isRejectedMention  —— 通用（"别搜卫生间"不该命中），直接复用
@@ -17,38 +30,26 @@
 //                          掉会连带把最短唯一子串切进名词内部。见调用点的
 //                          注释；uniqueAbbrevs 本体没有改，只是调用前多了
 //                          一步 stripSearchVerbs()。
-//   hasMoveIntent      —— 移动专用（认的是"去/前往"这类动词），线索场景要换一套
-//                          "侦查/检查/搜索"这类动词，见下面的 hasSearchIntent
 //   matchKeys/chooseConnection —— 类型绑死 SceneConnection，线索这边的候选是
 //                          纯文本（matchTexts），不是场景连接，另写一份轻量的
 
 import { isRejectedMention, uniqueAbbrevs } from "../play/move-util";
 
 /**
- * 调查类动词：紧跟在关键词前面时才算"确实在找这个"，不是随口提了一嘴。
- *
- * ⚠ bug 1（2026-08-31-barn-action-anchor-abort.md 第 7 回合）：这份表原来
- * 没有「翻查」——"陆川仔细**翻查**餐桌下面和披萨盒的夹层"因为动词不在表
- * 里，简称邻接判定直接失败，三次搜索全部 deny，一次骰子都没掷。
- *
- * 补的是「翻找/翻阅」的常见口语近亲（翻查/翻看）与"掀开遮挡物查看"这类
- * 具体搜索动作（扒开/掀开/摸索），外加更随意的口语搜索用词（找找/瞧瞧）
- * ——都是这份表已有词的同语域变体，不是另开一类。**不收**更生僻或书面语
- * 的词（搜寻、勘察、蒐集……）：没有实跑证据支持要不要收，加了也没法用
- * 真实数据验证有没有用，只会让这份表无限膨胀却测不出收益。
- */
-const SEARCH_VERB = /(侦查|检查|查看|搜索|搜查|寻找|翻找|翻查|翻看|翻阅|扒开|掀开|摸索|找找|瞧瞧|观察|查探|调查|询问|打听)$/;
-/**
- * 同一份动词表 + 少量常见修饰性副词（仔细/认真/再次/好好），不锚定位置——
+ * 调查类动词 + 少量常见修饰性副词（仔细/认真/再次/好好），不锚定位置——
  * 用来从整句话里把"不携带信号的部分"都抠掉，看看还剩不剩内容。
  *
- * ⚠ 任务2：这些副词经常紧贴在调查动词前后（"仔细检查""再次翻查"），本身
- * 不指向任何位置/对象，跟动词一样该被当成"没说什么"——"仔细搜查这里"
- * （行动锚点自己给出的建议文案）抠完"搜查"还剩"仔细这里"，得再抠掉
- * "仔细"才能看出这句话真的没有位置信号。只加进这份"全句抠掉"的表，
- * **不**加进上面 SEARCH_VERB（hasSearchIntent 的动词邻接判定）——那边判
- * 的是"这个简称紧跟着的是不是一个搜索动作"，副词本身不构成搜索动作，
- * 混进去没有事实依据，超出了本轮要修的范围。
+ * ⚠ 任务1之后，这份表**不再**用来判定"是不是搜索动作"（那个角色随
+ * hasSearchIntent 一起删掉了，见头部背景说明）——现在只做一件事：算
+ * "抠掉动词/副词之后还剩多少字"，决定这句话有没有位置/对象信号
+ * （matchSceneClues 的 contentOnly 阈值、decideClueMatch 的入口短路）。
+ * 这个判断与"要不要认动词"无关：即使一句话一个调查动词都没有，只要
+ * 提到了场景里的对象名，一样有信号、一样能命中——见 isExcludedMention。
+ *
+ * ⚠ 任务2：修饰性副词（"仔细检查""再次翻查"）本身不指向任何位置/对象，
+ * 跟动词一样该被当成"没说什么"——"仔细搜查这里"（行动锚点自己给出的
+ * 建议文案）抠完"搜查"还剩"仔细这里"，得再抠掉"仔细"才能看出这句话
+ * 真的没有位置信号。
  */
 const SEARCH_VERB_ANY = /侦查|检查|查看|搜索|搜查|寻找|翻找|翻查|翻看|翻阅|扒开|掀开|摸索|找找|瞧瞧|观察|查探|调查|询问|打听|仔细|认真|再次|好好/g;
 
@@ -84,15 +85,53 @@ export function stripLocationFillers(said: string): string {
   return said.replace(LOCATION_FILLER, "").trim();
 }
 
-/** 这个关键词前面紧挨着调查类动词吗——"侦查**卫生间**"比单纯提一嘴更像是要搜这里。 */
-export function hasSearchIntent(said: string, key: string): boolean {
+/**
+ * 提到了某个对象，但玩家在拿它当道具/障碍用，不是在搜它——开发·对象名
+ * 通向线索 任务1的边界1："我把冰箱推开挡住门""藏到储物柜后面"提到了
+ * 冰箱/储物柜，但玩家想干的是拿它挡门、躲到它后面，不是搜索它内部。
+ *
+ * 与 isRejectedMention（否定/已完成语境）是两种不同的"提了但不算"：
+ * 那边关心"要不要去做"（别搜/已经搜过了），这里关心"这次提及是不是在
+ * 描述一个物理操作/位置关系"。判据看紧邻前后各 6 字——"把X推开"动词在
+ * 提及之后，"藏到X后面"动词在提及之前，两种词序都要覆盖。
+ *
+ * ⚠ 故意收窄成一份小名单，不试图穷举"所有非搜索动词"：宁可漏判（某个
+ * 没列出的操作动词被误当成搜索，走进检定得到"没什么特别的"，玩家再说
+ * 一句就好）也不可反过来把真实搜索意图（"打开冰箱"）也塞进这份表——
+ * 那正是上一轮"填不满的动词表"犯过的错，换了个方向不该重犯一次。
+ */
+const MANIPULATION_VERB = /推开|挡住|藏到|藏在|躲到|躲在|靠着|搬开|搬走/;
+export function isManipulationMention(said: string, key: string): boolean {
   let from = 0;
   for (;;) {
     const at = said.indexOf(key, from);
     if (at < 0) return false;
-    if (SEARCH_VERB.test(said.slice(Math.max(0, at - 6), at))) return true;
+    const before = said.slice(Math.max(0, at - 6), at);
+    const after = said.slice(at + key.length, at + key.length + 6);
+    if (MANIPULATION_VERB.test(before) || MANIPULATION_VERB.test(after)) return true;
     from = at + key.length;
   }
+}
+
+/**
+ * 一次提及该不该被当成"玩家在找这个"——合并两道检查：isRejectedMention
+ * （否定/已完成语境）与 isManipulationMention（当道具/障碍用，不是在搜）。
+ * matchSceneClues 的三条 hit 分支统一走这一个判断，不必各自记两次。
+ *
+ * ⚠ 曾经试过第三道检查——"裸露的主语"（提及前面在它分句里是空的、后面
+ * 跟着一整句描述，比如"卫生间坏了"）——想再挡一类假阳性，但真跑
+ * diag-clue-phrasing.ts 的反例套件（"X已经搜过了，Y还没看过"这类"排除
+ * 一个、指名另一个"的构造）直接从 25/25 掉到 0/25：目标线索 Y 在自己的
+ * 分句里同样是"提及后跟着一整句"（"还没看过"），跟"卫生间坏了"结构上
+ * 是同一种形状，语义却相反（一个是"还没搜"暗示想搜，一个是纯描述）。
+ * 区分这两种需要理解谓语内容是不是"未完成/待办"语义，会滑向又一张
+ * 填不满的词表——与任务1本身要避免的失效模式一样。这不是任务1明确要
+ * 处理的边界（任务只列了"当道具/障碍用"这一类），加了反而弄坏一个
+ * 已经在正常工作、有真实判据背书的功能，权衡之后不做，如实记录这个
+ * 尝试与放弃的理由，别让后人以为没想过。
+ */
+export function isExcludedMention(said: string, key: string): boolean {
+  return isRejectedMention(said, key) || isManipulationMention(said, key);
 }
 
 export interface ClueMatchCandidate {
@@ -186,10 +225,10 @@ export function extractLocationHint(findMethodTexts: string[]): string | null {
  * 床头柜"，玩家等于什么都没说，引擎却擅自挑了一个。
  *
  * 判据必须通用，不能列"侦查"的黑名单——那样"观察""搜查""检查"会一个个
- * 再犯一遍。做法：把 `said` 里所有调查类动词（复用 hasSearchIntent 那份
- * 动词表 SEARCH_VERB_ANY，不新开一份）都抠掉，看看还剩不剩够长的内容。
- * 剩下的才是"位置/对象信号"；一个字都不剩，就是纯动词、没有信号，
- * 老实报"候选是这些，问不该猜"（ambiguous = 全部候选），不往下走匹配。
+ * 再犯一遍。做法：把 `said` 里所有调查类动词/修饰词（SEARCH_VERB_ANY）
+ * 都抠掉，看看还剩不剩够长的内容。剩下的才是"位置/对象信号"；一个字
+ * 都不剩，就是纯动词、没有信号，老实报"候选是这些，问不该猜"
+ * （ambiguous = 全部候选），不往下走匹配。
  *
  * 这与调用方 resolveSceneClueMatch 的"没给提示→回落旧行为"是两件不同的
  * 事：那边处理的是"入口就该不该走到这里"，这里处理的是"就算真走到了
@@ -266,12 +305,12 @@ export function matchSceneClues(said: string, candidates: ClueMatchCandidate[]):
 
     // ⚠ 剥动词修好 bug 2 之后带出一个新回归（同一份测试套件里就有：
     // "侦查卫生间已经搜过了"不该命中）：简称"卫生"只是"卫生间"截断后的
-    // 前缀，isRejectedMention 固定往简称**自己**结束的位置后看 8 字——
-    // 但玩家原句里"卫生"后面还接着"间"字才轮到"已经搜过了"，这 1 个字
-    // 的空隙正好把否定/已完成检测的窗口挤偏，8 字看不到"已经"。
+    // 前缀，isRejectedMention/isManipulationMention 固定往简称**自己**
+    // 结束的位置后看几个字——但玩家原句里"卫生"后面还接着"间"字才轮到
+    // "已经搜过了"，这 1 个字的空隙正好把否定/已完成检测的窗口挤偏。
     // 修法：简称若是从更长的 strippedKeys 项截断来的，且那个完整名词
     // 本身也确实原样出现在 said 里（"卫生间"就在"侦查卫生间已经搜过了"
-    // 里），否定检测就用完整名词的结束位置，不是简称自己截断处的位置——
+    // 里），排除检测就用完整名词的结束位置，不是简称自己截断处的位置——
     // 这样窗口对齐到真正的词尾，不会被截掉的那一两个字拖偏。完整名词不
     // 在 said 里（round 7 的"餐桌"就是这种情况——它的来源"宣言仔细餐桌"
     // 从没原样出现过）时，退回简称自己的位置，行为不变。
@@ -280,23 +319,24 @@ export function matchSceneClues(said: string, candidates: ClueMatchCandidate[]):
       const full = strippedKeys.find((k) => k.length > abbrev.length && (k.startsWith(abbrev) || k.endsWith(abbrev)));
       if (full) abbrevFullNoun.set(abbrev, full);
     }
-    const notRejectedAsAbbrev = (k: string): boolean => {
+    const notExcludedAsAbbrev = (k: string): boolean => {
       const full = abbrevFullNoun.get(k);
       const checkKey = full && said.includes(full) ? full : k;
-      return !isRejectedMention(said, checkKey);
+      return !isExcludedMention(said, checkKey);
     };
 
+    // 任务1：三条分支统一改用 isExcludedMention（否定/已完成 + 操作/障碍
+    // 语境），**不再要求紧邻调查动词**——"你指名了这儿的一个东西吗"才是
+    // 该问的问题，"打开冰箱""看看储物柜""拉一下拉杆"这类真实输入里没有
+    // 表内动词，但确实点名了场景里的对象，理应走到线索解析。
     const hit = [
-      // 完整键出现在玩家话里（"我进去侦查卫生间看看"包含键"卫生间"）——
-      // isRejectedMention 要求 key 是 said 的子串才能检查否定语境，
-      // 只在这个方向调用。
-      ...keys.filter((k) => said.includes(k) && !isRejectedMention(said, k)),
+      // 完整键出现在玩家话里（"我进去侦查卫生间看看"包含键"卫生间"）。
+      ...keys.filter((k) => said.includes(k) && !isExcludedMention(said, k)),
       // 反过来，玩家的话是键的子串（原话摘自描述中段，比键短）——
-      // 这种没有"紧邻上下文"可判否定，跳过 isRejectedMention。
+      // 这种没有"紧邻上下文"可判排除，跳过 isExcludedMention。
       ...keys.filter((k) => !said.includes(k) && k.includes(said)),
-      // 简称必须紧跟调查动词才算数——光秃秃的"卫生间"出现在句子中间，
-      // 多半是在说别的事，不是要搜这里（同 move-util 对简称的处理）。
-      ...uniqueAbbrevList.filter((k) => said.includes(k) && hasSearchIntent(said, k) && notRejectedAsAbbrev(k)),
+      // 简称同样只看"提到了没有、是不是在做别的事"，不再要求动词邻接。
+      ...uniqueAbbrevList.filter((k) => said.includes(k) && notExcludedAsAbbrev(k)),
     ][0];
     if (hit) {
       trace.matched.push({ id: c.id, key: hit });
