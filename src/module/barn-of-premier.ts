@@ -1605,5 +1605,9 @@ export const BARN_SUPPORT: ModuleSupport = {
   finaleSceneId: "maintenance_room",
   finaleClueId: "clue_bedroom_diary",
   bossNpcIdPattern: /mi[_-]?go/i,
-
+  // 到农场（adrian_farm）之前算"前期"——模组正文写着到农场入口就能看见
+  // 那栋刷红漆的谷仓建筑（S.FARM 描述："再稍微往里有两个比较显眼的建筑。
+  // 一间刷着红油漆的类似谷仓的建筑……"），这是叙事上"主线目标现出真身"
+  // 的分界点；barn_building（谷仓本体）已经在终盘范围内，不能拿它当分界。
+  earlyGameEndSceneId: "adrian_farm",
 };

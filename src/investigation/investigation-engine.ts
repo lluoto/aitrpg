@@ -248,6 +248,36 @@ export class InvestigationEngine {
   }
 
   /**
+   * 当前模组范围内的线索 id（开发·线索闸门 任务3）——供"这个模组算不算
+   * 前期"这类需要知道线索总量的上层判定使用，不暴露 ClueDef 内部结构。
+   *
+   * ⚠ 不能直接列 `clueTypes` 全表：那张表是**全局**的，混着
+   * `investigation.yaml` 自带的几条通用/演示线索（scene 是"地下室"/
+   * "书房"/"客厅"，不属于任何已加载模组），把它们算进分母会让比例
+   * 完全失真——实测：ARKHAM 只有 3 条线索，混进演示线索后分母变成 8，
+   * 发现 1 条只是 1/8 而不是 1/3，"前期"永远判不完。
+   *
+   * 改按"关联到世界里已注册场景"的线索取并集——挂了 `world` 时，遍历
+   * 它注册过的全部场景、把每个场景下的线索 id 合起来，天然只包含当前
+   * 加载的这个模组的线索（演示线索关联的场景压根不在这个模组的场景表
+   * 里，不会被并进来）。没挂 `world`（独立引擎/单测，见 constructor 的
+   * 第二个参数）时退回旧行为：列 `clueTypes` 全表——这种用法本来就是在
+   * 测引擎自身，不涉及"当前模组"这个概念。
+   *
+   * `onlyWithMatchTexts` 时进一步只留能参与文本匹配的那批（谷仓桥接过的
+   * 32 条）；YAML 手写线索与 registerSceneClue 合成的旧线索（如
+   * premiers_barn.ts 自带的 clue_0..9）没有 matchTexts，本来就只能靠
+   * fallback 拿到，不该被算进"总量"——调用方决定分母用哪一批。
+   */
+  listModuleClueIds(opts: { onlyWithMatchTexts?: boolean } = {}): string[] {
+    const ids = this.world
+      ? [...new Set(this.world.listScenes().flatMap((s) => this.getSceneClues(s.id)))]
+      : [...this.clueTypes.keys()];
+    if (!opts.onlyWithMatchTexts) return ids;
+    return ids.filter((id) => (this.clueTypes.get(id)?.matchTexts?.length ?? 0) > 0);
+  }
+
+  /**
    * 执行一次调查检定
    * @param clueType 线索类型（匹配 YAML key）
    * @param playerSkills 当前玩家的技能值 Map（skill_name → 0-100）

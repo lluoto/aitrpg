@@ -388,6 +388,13 @@
       "severity": "warn",
       "status": "open",
       "text": "维森酒吧的运行时在场实体只有 `酒吧保镖`，但可发现线索的 findMethods/叙述仍指向不存在的「前台」「其他人」（clue_bar_mass_booking / clue_bar_guest_identity / clue_bar_ask_around），实跑还出现保镖编造「老板锁进抽屉」——行动锚点（本轮 getSuggestions）只能告诉玩家还有可搜内容/可找谁说话，不解决“叙述把人引向不存在对象”。这不是简单补实体：先要裁决模组内容是否补 NPC、改 findMethods，或通用约束层怎样识别叙述凭空发明的名词；ConstraintContext 目前看不见场景内容、npc-agent.ts 也没传 sceneId，白名单无法覆盖「老板」「抽屉」这类新名词。已有第二个实例再单独做，当前只如实记录。"
+    },
+    {
+      "id": "todo-42",
+      "category": "已知缺口",
+      "severity": "info",
+      "status": "open",
+      "text": "GameSession.isEarlyGame() 的\"没有 ModuleSupport → 已发现/可文本匹配线索总数 < 1/3\"分支（开发·线索闸门 任务3），实测对当前仓库里能触发它的两个模组都没有有意义的适用对象：阿卡姆档案检查（arkham_library）与印斯茅斯的阴霾（innsmouth_shadow）各自只有 3 条线索，且全部经 registerSceneClue 合成、没有一条带 matchTexts，denom 因此退回数全部注册线索类型（listModuleClueIds 的兜底分支）= 3，1/3 向下取整=1——玩家发现任意第 1 条线索，\"前期\"就立刻结束，机制字面上在跑，但实际起效窗口窄到可以忽略（0 条已发现 vs 1 条已发现，只有这一步区分）。根因不是这个分支本身写错：这两个模组内容极薄（没有 END_NARRATIONS/结局数据，见 MODULE_ENDING_SUPPORT 里的记录），属 todo-19（两份模组表示/内容深度不均）的下游。有 ModuleSupport 声明 earlyGameEndSceneId 的模组（目前只有普瑞米尔的谷仓，用 adrian_farm）不受此影响，走的是另一条判法。真要让 1/3 分支对这两个模组有意义，得先给它们的线索补 matchTexts 或声明 earlyGameEndSceneId，本轮不做，如实记录现状而不是假装它在正常工作。"
     }
   ]
 }

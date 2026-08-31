@@ -524,6 +524,15 @@ export interface ModuleSupport {
   hubSceneId: string;
   /** 终局触发场景 ID（叙事高潮，进入后渲染即结束） */
   finaleSceneId: string;
+  /**
+   * "早期"结束的标志场景 ID（开发·线索闸门 任务3，与 hubSceneId/
+   * finaleSceneId 同族）——到过这个场景之前算"前期"，前期检定失败时给
+   * 指向性降级信息（"XX 那边似乎还有东西"）而不是干巴巴的"没找到"，
+   * 除了连续大失败以外尽量不在前期阻塞调查。可选：没写这个字段的模组
+   * （目前没有别的模组写过它）改用已发现/可文本匹配线索总数的比例判定，
+   * 见 GameSession.isEarlyGame()。
+   */
+  earlyGameEndSceneId?: string;
   /** 终局触发线索 ID（进入 finale 场景需已发现） */
   finaleClueId: string;
   /** BOSS NPC id 匹配（战斗目标识别，如 /mi[_-]?go/i） */

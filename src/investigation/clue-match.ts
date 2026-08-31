@@ -153,6 +153,30 @@ export function splitKeys(texts: string[]): string[] {
 }
 
 /**
+ * 从线索的 findMethods 描述里抽一个短的位置提示——早期检定失败时用来
+ * 引导玩家再查，而不是直接给出线索本身（开发·线索闸门 任务3）。
+ *
+ * 复用同一套切词/剥词流程（splitKeys + stripSearchVerbs +
+ * stripLocationFillers），不新写一套解析——findMethods 描述本来就是
+ * 这套判据的输入源，抽提示与做匹配是同一件"认出位置名词"的事，只是
+ * 用途不同。挑候选里**最短**的那个：越短越像一个干净的位置名词
+ * （"床底"），越长越可能夹带了动作/内容描述（"可以发现在披萨盒下面
+ * 有一张小卡片"），那种不该被当成"方向"讲给玩家——方向要短、要指
+ * 地方，不要连带说出"能发现什么"。
+ *
+ * `findMethodTexts` 只传 findMethods 的描述，不传线索展示名——名字本身
+ * 就是"这是什么"，正是不该在降级信息里出现的那部分，只给"往哪查"。
+ */
+export function extractLocationHint(findMethodTexts: string[]): string | null {
+  const candidates = splitKeys(findMethodTexts)
+    .map((s) => stripLocationFillers(stripSearchVerbs(s)))
+    .filter((s) => s.length >= 2 && s.length <= 6);
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => a.length - b.length);
+  return candidates[0]!;
+}
+
+/**
  * 把玩家的一句话对到场景里的一条线索上。
  *
  * ⚠ 没有位置/对象信号的输入要老实报"该问不该猜"（歧义），不能因为凑巧

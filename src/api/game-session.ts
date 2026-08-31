@@ -24,7 +24,7 @@ import { NPCCombatEngine, NPC_UNARMED_SKILL } from "../combat/npc-combat";
 import { CompanionManager } from "../combat/companion-manager";
 import { PlayerSession, type VisibilityRule } from "../session/player-session";
 import { InvestigationEngine } from "../investigation/investigation-engine";
-import { decideClueMatch } from "../investigation/clue-match";
+import { decideClueMatch, extractLocationHint } from "../investigation/clue-match";
 import { SpellEngine } from "../spell/spell-engine";
 import { WorldModelLoader, sharedWorldModel, DEFAULT_CTHULHU_PATH } from "../world/world-model-loader";
 import { WorldModelIntegrator, type SceneContext, type NPCPresentProfile } from "../world/world-model-integrator";
@@ -1027,6 +1027,43 @@ export class GameSession {
       ? this.barnSceneIdMap().get(sceneId) ?? sceneId
       : sceneId;
     return this.world.isSceneVisitedByAnyone(runtimeSceneId);
+  }
+
+  /**
+   * 现在算不算"前期"（开发·线索闸门 任务3）——除了连续大失败以外，
+   * 尽量不在前期阻止调查；前期检定失败时 resolveSceneClue() 会给指向性
+   * 降级信息而不是干巴巴的"没找到"，见该方法。
+   *
+   * 两条判法（已裁决）：
+   *   有 ModuleSupport 且声明了 earlyGameEndSceneId → 到过那个场景之前
+   *   算前期（谷仓用 adrian_farm，见 BARN_SUPPORT 的注释：到农场入口就
+   *   能看见红漆谷仓，是叙事上"主线目标现出真身"的分界点，isSceneVisited
+   *   已经处理了 ASCII/运行时场景 id 的桥接，这里直接传 ASCII id）。
+   *
+   *   没有 ModuleSupport（或没声明这个字段）→ 已发现线索 / 可文本匹配的
+   *   线索总数 < 1/3。分母优先数有 matchTexts 的那批（YAML 手写/
+   *   registerSceneClue 合成的线索没有 matchTexts，本来就只能靠
+   *   fallback 拿到，进分母没有意义）；一条 matchTexts 都没有的模组
+   *   （分母会是 0）就退回数全部已注册线索类型。
+   *
+   * ⚠ 如实记账：阿卡姆档案检查/印斯茅斯的阴霾都没有 ModuleSupport 登记，
+   * 也都没有任何一条线索带 matchTexts（各自仅有的 3 条线索都是经
+   * registerSceneClue 合成的），走的是"退回数全部"这一支——3 条线索，
+   * 1/3 约等于 1 条，发现第一条就结束"前期"。这条分支目前没有有意义的
+   * 适用对象，本条注释与 docs/todo.json 如实记录这个事实，不假装它在
+   * 正常工作——根因是这两个模组内容本身极薄（连结局数据都没有，见
+   * MODULE_ENDING_SUPPORT 的注释），是 todo-19 的下游，不在本轮修。
+   */
+  isEarlyGame(): boolean {
+    const modId: string | undefined = this.registeredModules[0]?.id;
+    const support = modId ? MODULE_ENDING_SUPPORT[modId] : undefined;
+    if (support?.earlyGameEndSceneId) return !this.isSceneVisited(support.earlyGameEndSceneId);
+
+    const withMatchTexts = this.investigation.listModuleClueIds({ onlyWithMatchTexts: true });
+    const denomIds = withMatchTexts.length > 0 ? withMatchTexts : this.investigation.listModuleClueIds();
+    if (denomIds.length === 0) return false; // 没有任何线索可数，没有"前期"这个概念
+    const discovered = denomIds.filter((id) => this.isClueFound(id)).length;
+    return discovered / denomIds.length < 1 / 3;
   }
 
   /**
@@ -2810,18 +2847,32 @@ export class GameSession {
    * 单测断言"两个字符串不同"通过了，读者的疑问没通过，以读者为准）。
    * 骰子播报把"检定结果"这件事摆到明面上，不依赖玩家记住两句话哪句代表
    * 哪种含义。只在失败时加这一条——成功路径的输出一个字不变。
+   *
+   * 开发·线索闸门 任务3：前期（isEarlyGame()）检定失败时，把千篇一律的
+   * "没能看出什么名堂"换成指向性降级信息（"XX 那边似乎还有东西"）——
+   * 从这条线索自己的 findMethods 描述里抽位置名词（extractLocationHint），
+   * 只给"往哪查"，不给"能查到什么"。抽不出干净的位置词（没有 matchTexts、
+   * 或候选长度都不落在 2-6 字区间）时静默保留原始 revelation，不硬凑。
+   * 非前期时这一段完全不执行，成功路径同样不受影响。
    */
   private resolveSceneClue(clueType: string, msg: (s: string) => number): boolean {
     const skills = this.activeCharacter?.skillValues ?? this.activeCharacter?.skills ?? {};
     const result = this.investigation.investigateCoC(clueType, skills, this.activePlayerId);
 
     let diceLine = "";
+    let revelation = result.revelation;
     if (!result.success) {
       const skillDisplay = SKILL_DISPLAY_NAMES[result.skillId] ?? result.skillId ?? "调查";
       diceLine = `🎲 ${skillDisplay}检定 d100=${result.roll} (目标=${result.skillValue}%) → 失败`;
       msg(diceLine);
+
+      if (this.isEarlyGame()) {
+        const info = this.investigation.getClueMatchInfo(clueType);
+        const hint = info ? extractLocationHint(info.matchTexts.slice(1)) : null;
+        if (hint) revelation = `你仔细搜查了一番，但这次没能看出什么名堂——不过${hint}那边似乎还有些什么，或许该再仔细找找。`;
+      }
     }
-    const newLength = msg(result.revelation);
+    const newLength = msg(revelation);
     const idx = newLength - 1;
     if (this._turnMessages && this._turnMessages[idx]) {
       this._turnMessages[idx].visibility = "discoverer_only";
@@ -2829,7 +2880,7 @@ export class GameSession {
     }
     // lastNarrative 是很多客户端唯一读的字段（不逐条看 events）——失败时把
     // 骰子播报也折进去，不能只靠 events 里的另一条消息才看得到"掷过骰子"。
-    this.lastNarrative = diceLine ? `${diceLine}\n${result.revelation}` : result.revelation;
+    this.lastNarrative = diceLine ? `${diceLine}\n${revelation}` : revelation;
 
     if (result.sanLost > 0) this.inflictSanLoss(result.sanLost, msg);
     return true;
