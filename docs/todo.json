@@ -387,7 +387,7 @@
       "category": "内容与运行时不一致",
       "severity": "warn",
       "status": "open",
-      "text": "维森酒吧的运行时在场实体只有 `酒吧保镖`，但可发现线索的 findMethods/叙述仍指向不存在的「前台」「其他人」（clue_bar_mass_booking / clue_bar_guest_identity / clue_bar_ask_around），实跑还出现保镖编造「老板锁进抽屉」——行动锚点（本轮 getSuggestions）只能告诉玩家还有可搜内容/可找谁说话，不解决“叙述把人引向不存在对象”。这不是简单补实体：先要裁决模组内容是否补 NPC、改 findMethods，或通用约束层怎样识别叙述凭空发明的名词；ConstraintContext 目前看不见场景内容、npc-agent.ts 也没传 sceneId，白名单无法覆盖「老板」「抽屉」这类新名词。已有第二个实例再单独做，当前只如实记录。"
+      "text": "维森酒吧的运行时在场实体只有 `酒吧保镖`，但可发现线索的 findMethods/叙述仍指向不存在的「前台」「其他人」（clue_bar_mass_booking / clue_bar_guest_identity / clue_bar_ask_around），实跑还出现保镖编造「老板锁进抽屉」——行动锚点（本轮 getSuggestions）只能告诉玩家还有可搜内容/可找谁说话，不解决“叙述把人引向不存在对象”。这不是简单补实体：先要裁决模组内容是否补 NPC、改 findMethods，或通用约束层怎样识别叙述凭空发明的名词；ConstraintContext 目前看不见场景内容、npc-agent.ts 也没传 sceneId，白名单无法覆盖「老板」「抽屉」这类新名词。已有第二个实例再单独做，当前只如实记录。再确认：开发·对象名通向线索 任务5，analysis/sim/2026-08-31-barn-completion-attempt.md 第 18 行同一局里再次实测到——“锚点搜查给出‘询问前台’路线，但运行时没有前台”，与本条描述的表示不一致是同一根因，不再另开一条 todo，只在此追加复现记录。"
     },
     {
       "id": "todo-42",
@@ -395,6 +395,20 @@
       "severity": "info",
       "status": "open",
       "text": "GameSession.isEarlyGame() 的\"没有 ModuleSupport → 已发现/可文本匹配线索总数 < 1/3\"分支（开发·线索闸门 任务3），实测对当前仓库里能触发它的两个模组都没有有意义的适用对象：阿卡姆档案检查（arkham_library）与印斯茅斯的阴霾（innsmouth_shadow）各自只有 3 条线索，且全部经 registerSceneClue 合成、没有一条带 matchTexts，denom 因此退回数全部注册线索类型（listModuleClueIds 的兜底分支）= 3，1/3 向下取整=1——玩家发现任意第 1 条线索，\"前期\"就立刻结束，机制字面上在跑，但实际起效窗口窄到可以忽略（0 条已发现 vs 1 条已发现，只有这一步区分）。根因不是这个分支本身写错：这两个模组内容极薄（没有 END_NARRATIONS/结局数据，见 MODULE_ENDING_SUPPORT 里的记录），属 todo-19（两份模组表示/内容深度不均）的下游。有 ModuleSupport 声明 earlyGameEndSceneId 的模组（目前只有普瑞米尔的谷仓，用 adrian_farm）不受此影响，走的是另一条判法。真要让 1/3 分支对这两个模组有意义，得先给它们的线索补 matchTexts 或声明 earlyGameEndSceneId，本轮不做，如实记录现状而不是假装它在正常工作。"
+    },
+    {
+      "id": "todo-43",
+      "category": "约束层缺口",
+      "severity": "warn",
+      "status": "open",
+      "text": "叙事可以否认模组事实——约束层没有一条“不得与模组事实矛盾”的域。ConstraintEngine.checkDialogue()（world-constraint.ts）签名其实接受 sceneId，但 npc-agent.ts 两处调用 checkDialogueText(response) 都没传（262/320 行），场景内容因此完全进不了约束判断；ConstraintContext 目前只用于时代/物品/黑名单词汇匹配，没有“场景已声明的事实”这个字段可比对。第一个实例：todo-41，酒吧叙事把不存在的 NPC/道具（“老板”“抽屉”）当成真实场景成分说出来。第二个实例：本轮（开发·对象名通向线索）任务1 的起因——玩家说“打开冰箱与储物柜”，意图解析判成 unknown 落到 LLM 叙事，LLM 编出“里面空荡荡的”，直接否认了模组明确写着“储物柜里有十几瓶氧气罐、冰箱里是袋装流食”的事实，且不可逆（玩家看到“空的”就不会再开第二次）。任务1把这条具体路径的问题挡在了叙事之前（改判据后走线索解析，不再落到 LLM），是绕开，不是修复——同样的 unknown 兜底、同样没有场景事实校验的叙事生成，换一个模组/换一句话术仍然会踩中。修复需要：(1) npc-agent.ts 传 sceneId 给 checkDialogueText，(2) ConstraintContext 补一个能读到当前场景已知線索/物件清单的域，(3) 叙事生成命中该域时改口径而不是自由发挥。本轮范围外，只记账。"
+    },
+    {
+      "id": "todo-44",
+      "category": "未验证",
+      "severity": "info",
+      "status": "open",
+      "text": "文化处理未取样。analysis/sim/2026-08-31-barn-completion-attempt.md 第 58 行：本局华人 PC 陆川全程未被叙述否认或改写身份，但也没有产生任何基于族裔的互动样本（NPC 没有因为陆川的族裔说过或做过任何事）——1920 年代美国场景下叙事引擎遇到族裔话题会怎样处理（改写、回避、还是如实呈现当时的偏见语境），目前完全没有实测数据，说不准，不能当成“没问题”记录。需要专门设计会触发族裔互动的场景/NPC 对话来采样（比如让 NPC 主动评论调查员的族裔身份），而不是等自然实跑偶然撞上。本轮范围外，只记账。"
     }
   ]
 }
