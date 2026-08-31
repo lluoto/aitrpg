@@ -143,3 +143,32 @@ describe("端到端：GameSession 里走一遍，Good End 必需线索真的被�
     } finally { Math.random = real; }
   });
 });
+
+// 开发·对象名通向线索 任务3验收——长句是否仍会 deny。
+//
+// 任务描述给的原句"陆川打开中控室的冰箱和储物柜，看看里面有什么"，此前
+// 记录为会被 deny。重新验证：这句话同时提到"冰箱"和"储物柜"两个词，
+// 两者都能匹配到 clue_control_supplies（其展示名正是"冰箱与储物柜"）；
+// isExcludedMention 不命中（既不是已完成/否定语境，也不是道具化用法）。
+// 实测结果是 ask（因为句子里"储物柜"这个简称也同时出现在
+// clue_control_lever 的候选文本里，触发歧义），不是 deny——任务1把
+// hasSearchIntent 动词门删掉之后，这句话已经顺带修好了，不需要再改一次
+// 代码充数。本测试只是把这个结论钉住，防止将来回归。
+describe("任务3：长句「陆川打开中控室的冰箱和储物柜，看看里面有什么」不再 deny", () => {
+  it("端到端：走到线索解析（ask），不是 deny，也不会被 LLM 叙事否认模组事实", async () => {
+    const session = makeSession(`long-sentence-not-deny-${Math.random()}`);
+    await session.act("加载模组 普瑞米尔的谷仓");
+    (session as any).movePlayerToScene("中控室");
+    const res = await session.act("陆川打开中控室的冰箱和储物柜，看看里面有什么", "p1");
+    expect(res.narrative).not.toBe("你仔细找了找，这里没什么特别的。");
+    expect(res.narrative).not.toContain("空荡荡");
+    // 任务2已把这条回问改成不含候选名字，这里只确认走的是"问清楚"这一档。
+    expect(res.narrative).toBe("需要说清楚具体想搜哪里/什么");
+  });
+
+  it("判据层面同样成立：decideClueMatch 直接给出 ask（非 deny/fallback）", () => {
+    const decision = decideClueMatch("陆川打开中控室的冰箱和储物柜，看看里面有什么", controlGroup);
+    expect(decision.kind).toBe("ask");
+    expect(decision.kind).not.toBe("deny");
+  });
+});

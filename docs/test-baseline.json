@@ -1,5 +1,5 @@
 {
-  "tests": 2533,
+  "tests": 2535,
   "files": 166,
   "unwiredMethods": 86,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。",
@@ -514,6 +514,11 @@
       "tests": 2533,
       "files": 166,
       "when": "stop the ambiguous-clue re-ask from spoiling clue names. applyClueDecision()'s \"ask\" branch used to render decision.options (the ambiguous candidates' display names) directly into the message shown to the player -- a real run produced \"你想找什么？这里可能有：「冰箱与储物柜」、「中控台拉杆」——说清楚一点\", handing over exactly the names task 1's action anchor round deliberately kept out of view. That round's own decision (scene-suggestions.test.ts's spoiler redline: tell the player something exists, never say what) applies to the same underlying data (undiscovered clue names) reached through a different code path, and this path wasn't held to it. Replaced the message with a fixed, name-free line (\"你想找什么？这里好像不止一样东西，说清楚一点你想查哪里/什么。\") -- decision.options itself is left in the return type (still computed, still available to callers/diagnostics), just no longer rendered. Updated one pre-existing test (scene-clue-input-match.test.ts) that had asserted the old spoiling behavior as correct, since that assertion encoded exactly the thing being fixed. Added clue-ask-no-spoiler.test.ts (4 tests) using the same standard as scene-suggestions.test.ts's spoiler check (loop over every undiscovered clue in the scene, assert its id and display name are absent from the shown text): the real control-room ambiguity (陆川去翻中控室的储物柜, from task 1) triggers the ask and leaks neither clue id/name nor content, a synthetic two-candidate scene confirms the same, a follow-up round trip shows the player can still succeed by naming a more specific object drawn from the room's own description (not from the ask message, since it no longer contains anything to copy) and the clue actually gets discovered, and the control room's own action-anchor suggestions are cross-checked against the same standard for consistency. Mutation check: restored the old name-listing message text, both spoiler-detection tests went red while the other 2 stayed green; reverted with Copy-Item. typecheck exit 0; bun test 2529->2533 (+4), 165->166 files; preflight 12/12."
+    },
+    {
+      "tests": 2535,
+      "files": 166,
+      "when": "verify (task 3 of the object-name-gate round) whether the long sentence \"陆川打开中控室的冰箱和储物柜，看看里面有什么\" -- previously recorded as denying -- is still broken after task 1's fix. Re-ran it: it now reaches ask (both 冰箱 and 储物柜 match clue_control_supplies, 储物柜 also matches clue_control_lever, hence the ambiguity), not deny. Task 1's removal of the hasSearchIntent verb gate already fixed this sentence as a side effect; no code change made here. Added two pinning tests to clue-object-name-gate.test.ts (end-to-end via GameSession.act and directly via decideClueMatch) so this doesn't silently regress. Mutation check: temporarily restored clue-match.ts to its pre-task-1 version (git checkout d50c8e5), both new tests went red (kind became deny instead of ask), restored with Copy-Item."
     }
   ]
 }
