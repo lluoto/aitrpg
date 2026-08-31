@@ -372,8 +372,8 @@
       "id": "todo-39",
       "category": "未验证",
       "severity": "info",
-      "status": "open",
-      "text": "Good End 判别仍未实证：analysis/sim/2026-08-30-barn-a-retest.md 的对照会话用「前往中控室，寻找那批补给和能说明用途的物品」触发检定，但拿到的是拉杆说明（clue_control_lever 附近的检定路径），不是 Good End 需要的 clue_control_supplies——线索真名是「冰箱与储物柜」（barn-of-premier.ts:662-666），唯一的 findMethod 是「检查冰箱与储物柜」（observation）。「补给」这个措辞与线索的 matchTexts（名字+findMethods 描述）都对不上，resolveSceneClueMatch 因此没能命中它。下一局要用「检查冰箱」「检查储物柜」这类贴近原文措辞的输入才能验证 Good End 分支真的可达；module-departure-flow.test.ts 里的 Good End 判别测试是直接调 session.investigation.markDiscovered() 绕开了检定匹配这一步，测的是「结局是否按状态选」，不是「玩家能不能用自然语言真正触发这个状态」，两者是不同的验证目标，不能互相替代。"
+      "status": "done",
+      "text": "Good End 判别仍未实证：analysis/sim/2026-08-30-barn-a-retest.md 的对照会话用「前往中控室，寻找那批补给和能说明用途的物品」触发检定，但拿到的是拉杆说明（clue_control_lever 附近的检定路径），不是 Good End 需要的 clue_control_supplies——线索真名是「冰箱与储物柜」（barn-of-premier.ts:662-666），唯一的 findMethod 是「检查冰箱与储物柜」（observation）。「补给」这个措辞与线索的 matchTexts（名字+findMethods 描述）都对不上，resolveSceneClueMatch 因此没能命中它。下一局要用「检查冰箱」「检查储物柜」这类贴近原文措辞的输入才能验证 Good End 分支真的可达；module-departure-flow.test.ts 里的 Good End 判别测试是直接调 session.investigation.markDiscovered() 绕开了检定匹配这一步，测的是「结局是否按状态选」，不是「玩家能不能用自然语言真正触发这个状态」，两者是不同的验证目标，不能互相替代。—— 更新（开发·闸门放宽到 look 任务3）：已用贴近原文措辞的输入实证。analysis/sim/2026-08-31-barn-good-end.md（22 回合，「陆川仔细检查冰箱与储物柜…」→「找到备用氧气罐和袋装流食」）先证明了 Good End 分支本身可达；本轮进一步补上了「玩家不用刻意照原文措辞也能触发」这一半——scripts/diag/probe-llm-intent.ts 改成结果导向判据后（不再只看 intent.action，直接跑 GameSession.act() 端到端查 clue_control_supplies/clue_control_lever 是否被发现），针对「陈岳打开冰箱与储物柜，逐一清点…」「打开冰箱」「看看储物柜」「拉一下拉杆」「清点冰箱里的东西」这五句连跑 5 次（model ecnu-plus，2026-08-31），5 条全部在每一次跑里都发现了正确的线索（5/5 稳定，唯一的波动是无关的「话术」分类项，与本条无关，属已知模型噪声）。至此「玩家能不能用自然语言真正触发这个状态」与「结局是否按状态选」两个此前分开的验证目标都有了实证覆盖。"
     },
     {
       "id": "todo-40",
