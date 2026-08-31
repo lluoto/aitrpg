@@ -1,15 +1,15 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-08-31 04:08
+> 生成于 2026-08-31 10:41
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | dfdf57e feat: bring the failback ladder into GameSession's clue path (N=2) |
-| 测试 | 2515 条 / 164 文件  全绿 |
+| HEAD | 9d0ff13 docs: record two new gaps found by the barn completion sim |
+| 测试 | 2537 条 / 166 文件  全绿 |
 | 工作树 | **1 个文件未提交** |
 
 未提交：
@@ -51,7 +51,7 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - ️ 一直在报的那个数不衡量目标：可运行性是 1/27（2026-08-20）
   `docs/notes/ingest.md:745`
 
-## 动手前先扫一眼的坑（31）
+## 动手前先扫一眼的坑（32）
 
 - 改动前后各跑一次 `bun scripts/preflight.ts`。它把反复犯的几类错做成了机器判据：切割截断语义单元、搬运残渣、循环依赖、语法错。别靠记性。
 - 同一类失误连着犯到第 3 次就停手，换一双眼睛（另一个模型 review diff）。本轮机械切割边界连错 5 次才自己发现——失效模式相同的人查不出自己的系统性错误。
@@ -84,17 +84,18 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 开发A实测发现：`END_NARRATIONS`（barn-of-premier.ts）requiredScenes 引用的场景 id 是 ASCII（如 "maintenance_room"），而 GameSession 加载模组时经 bridgeBarnOfPremierClues() 只桥接了
 - 服务端口是 **3099**，不是 3000（`src/api/server.ts:1037`，用环境变量 `PORT` 覆盖）。模拟实跑用的 prompt 模板里从来没写过这一点，容易按习惯默认成 3000 去连。启停服务器用 `bun run dev-server:start` / `:stop
 - 维森酒吧的运行时在场实体只有 `酒吧保镖`，但可发现线索的 findMethods/叙述仍指向不存在的「前台」「其他人」（clue_bar_mass_booking / clue_bar_guest_identity / clue_bar_ask_around），实跑还出现保镖编造「老板锁进抽屉」—
+- 叙事可以否认模组事实——约束层没有一条“不得与模组事实矛盾”的域。ConstraintEngine.checkDialogue()（world-constraint.ts）签名其实接受 sceneId，但 npc-agent.ts 两处调用 checkDialogueText(response) 都
 
 ## 最近提交
 
+- 9d0ff13 docs: record two new gaps found by the barn completion sim
+- ba5c2c5 fix: stop action anchor from offering to visit an NPC
+- 4b3d08d test: pin that the long-sentence clue deny is already fixed
+- d8a8964 fix: stop ambiguous clue re-ask from naming candidates
+- e5c0136 fix: clue-match asks "did you name an object" not "did you use a verb"
+- d50c8e5 docs: refresh handoff.md and now.md after the clue-gate round
 - dfdf57e feat: bring the failback ladder into GameSession's clue path (N=2)
 - dd31f3c feat: give a directional hint on early-game skill-check failures
-- 4b4887c fix: narrow clue-match deny to genuinely-absent objects (scheme B)
-- 6b87e16 fix: two clue-match bugs behind a 7-round sim abort
-- f43299d feat: anchor suggestions to the current scene and PC
-- 09b4d2b feat: generate AGENTS.md from todo.json rule-* entries
-- bbdd492 docs: add rule-05..rule-13, repo-specific coding lessons
-- fb46583 fix: compound-move re-ask should not fire on incidental scene mentions
 
 ## 找东西
 
