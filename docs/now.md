@@ -1,15 +1,15 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-08-31 10:41
+> 生成于 2026-08-31 13:32
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 9d0ff13 docs: record two new gaps found by the barn completion sim |
-| 测试 | 2537 条 / 166 文件  全绿 |
+| HEAD | ff28fea feat: route KP narration through the constraint layer |
+| 测试 | 2557 条 / 168 文件  全绿 |
 | 工作树 | **1 个文件未提交** |
 
 未提交：
@@ -88,14 +88,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- ff28fea feat: route KP narration through the constraint layer
+- b2ac5a6 fix: clarify inventory prompt means the player's own bag
+- f1f0777 feat: add a live probe for LLM intent-parsing accuracy
+- 30fcdc1 docs: refresh handoff.md and now.md after the object-name-gate round
 - 9d0ff13 docs: record two new gaps found by the barn completion sim
 - ba5c2c5 fix: stop action anchor from offering to visit an NPC
 - 4b3d08d test: pin that the long-sentence clue deny is already fixed
 - d8a8964 fix: stop ambiguous clue re-ask from naming candidates
-- e5c0136 fix: clue-match asks "did you name an object" not "did you use a verb"
-- d50c8e5 docs: refresh handoff.md and now.md after the clue-gate round
-- dfdf57e feat: bring the failback ladder into GameSession's clue path (N=2)
-- dd31f3c feat: give a directional hint on early-game skill-check failures
 
 ## 找东西
 
