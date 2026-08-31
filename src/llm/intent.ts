@@ -79,6 +79,12 @@ const INTENT_PATTERNS: Array<{ verb: RegExp; intent: Partial<ActionIntent>; requ
   //   这张表是**先匹配先赢**，宽模式压在窄模式前面就会把它吃掉：
   //   look 里的 `查看` 原先排在 inventory 前面，于是「查看背包」看不到背包。
   //   所以背包、以及带具体技能名的检定，都要排在 look 之前。
+  //
+  //   这条已经是窄的——要求出现「背包」「物品栏」「道具」这几个字面词，
+  //   或「我的/有什么…东西」，不会被「冰箱」「储物柜」这类场景容器词带偏
+  //   （LLM 提示词那份 INTENT_SYSTEM_PROMPT 里对应描述曾经没说清"仅限玩家
+  //   自己的背包"，被模型判宽了，见 analysis/sim/2026-08-31-barn-good-end.md；
+  //   这条 regex 本身没有那个问题，别去改它）。
   { verb: /(?:背包|物品栏|道具|查看.*物品|查看.*背包|我的.*东西|有什么.*东西)/, intent: { action: "inventory" } },
 
   // CoC 技能。这些词原先一个都没有 —— 打「恐吓」「取悦」「聆听」全落 unknown，
@@ -310,7 +316,8 @@ const INTENT_SYSTEM_PROMPT = `你是一个 TRPG 意图解析器。分析玩家�
 - "flee" — 逃跑、逃走、脱离战斗（CoC 模式触发追逐）
 - "chase" — 追逐行动、跑、追（在追逐中继续逃跑或追击）
 - "status" — 角色状态、属性、角色卡
-- "inventory" — 背包、查看物品
+- "inventory" — 仅限玩家自己的背包/物品栏；场景里的容器（冰箱、储物柜、
+  抽屉等）不算，即使用了"清点""查看"这类相似措辞
 - "pickup" — 捡起、拾取物品
 - "help" — 帮助、操作指南
 - "reload" — 装填弹药、换弹匣
