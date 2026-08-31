@@ -66,12 +66,38 @@ type ConstraintAction =
 // 约束定义
 // ============================================================
 
+/**
+ * 约束适用的检查点。
+ *
+ * 开发·意图与约束补漏 任务3：约束系统原本只有一个检查入口
+ * （checkDialogueText，服务 NPC 对话），KP 自由叙事（narrateOutcome，
+ * game-session.ts 里 `this.kp.narrateOutcome(...)`）完全没接进来——
+ * "冰箱里面空荡荡的，只有几层隔板和后壁"就是从这条路出来的，连检查都
+ * 没经过。但不能直接把 KP 叙事也接到 checkDialogueText：那五条默认约束
+ * 全是照着"NPC 对话"的语境写的，`dialogue_meta_location` 拦的是"NPC
+ * 报菜单一样说场景名"，而"旅店"这类词在 KP 叙事里是**合法的**（模组
+ * 场景本来就叫这个名字，`premiers_barn.ts:239`），照搬会把所有提到真实
+ * 场景名的叙事都拦下来。
+ *
+ * 用一个显式的 scope 标记做分流，而不是新写一套平行的约束表——
+ * 省下"两份约束以后各自为政、迟早走岔"的代价。缺省
+ * （不写 scope）= `["dialogue"]`，历史遗留的五条默认约束不用逐条改，
+ * 行为不变；只有明确要给叙事用的约束才需要加 `"narration"`。
+ */
+type ConstraintScope = "dialogue" | "narration";
+
 interface WorldConstraint {
   /** 唯一 ID，用于模组 override 定位 */
   id: string;
   priority: ConstraintPriority;
   /** 来源说明（调试/日志用） */
   source: string;
+
+  /**
+   * 这条约束适用于哪些检查点。缺省 `["dialogue"]`——历史遗留的默认
+   * 约束都是照着 NPC 对话写的，不写这个字段行为不变。
+   */
+  scope?: ConstraintScope[];
 
   // ── 匹配条件（三选一） ──
 
@@ -111,6 +137,15 @@ interface ConstraintContext {
    * 接线的范围——这次只保证调用方想读的时候，这个字段已经在场景里。
    */
   ruleset?: import("../rules/rules-engine").RulesetId;
+  /**
+   * 当前场景（当前 PC 视角）尚未发现的线索的名字/唯一简称——checkNarration
+   * 专用，`narrative_denies_undiscovered_clue` 靠它判断叙事有没有指名
+   * 否认一个具体对象。缺省 `[]`，表示调用方没算这份数据（比如战斗叙事，
+   * 不涉及场景线索）。计算方式见 game-session.ts 的
+   * currentUndiscoveredClueKeys()，复用 clue-match.ts 的 splitKeys——
+   * 与匹配器判定"这是场景里的一个对象"用的同一套认定，不另起一套。
+   */
+  undiscoveredClueKeys?: string[];
 }
 
 // ============================================================
@@ -192,6 +227,10 @@ export class ConstraintEngine {
   /**
    * 检查对话文本是否命中任何约束。
    * 返回最高优先级命中的 action，或 null（无命中）。
+   *
+   * 只看 scope 含 "dialogue" 的约束（缺省 scope = ["dialogue"]，历史
+   * 遗留的五条默认约束因此行为不变）——KP 叙事有自己的 checkNarration，
+   * 不共用这份表，见 ConstraintScope 的说明。
    */
   checkDialogue(
     text: string, sceneId?: string,
@@ -199,6 +238,7 @@ export class ConstraintEngine {
   ): ConstraintAction | null {
     const ctx: ConstraintContext = { text, sceneId, ruleset };
     for (const c of this.constraints) {
+      if (!this.hasScope(c, "dialogue")) continue;
       if (!this.matchesScene(c, ctx)) continue;
       if (c.matchText) {
         const match = typeof c.matchText === "function"
@@ -213,6 +253,45 @@ export class ConstraintEngine {
   }
 
   /**
+   * 检查 KP 自由叙事文本是否命中任何约束。
+   *
+   * 只看 scope 含 "narration" 的约束——不含 dialogue_meta_location 这类
+   * 照着 NPC 对话写的约束（"旅店"在叙事里是合法场景名，不该被拦，见
+   * ConstraintScope 的说明）。同时看 matchText 与 matchPredicate 两种
+   * 匹配方式：`narrative_denies_undiscovered_clue` 用 matchPredicate
+   * （需要 ctx.undiscoveredClueKeys），`anachronistic_tech` 用 matchText，
+   * 两者都可能命中叙事场景。
+   */
+  checkNarration(
+    text: string,
+    opts: {
+      sceneId?: string;
+      ruleset?: import("../rules/rules-engine").RulesetId;
+      undiscoveredClueKeys?: string[];
+    } = {},
+  ): ConstraintAction | null {
+    const ctx: ConstraintContext = {
+      text, sceneId: opts.sceneId, ruleset: opts.ruleset,
+      undiscoveredClueKeys: opts.undiscoveredClueKeys,
+    };
+    for (const c of this.constraints) {
+      if (!this.hasScope(c, "narration")) continue;
+      if (!this.matchesScene(c, ctx)) continue;
+      if (!this.matchesYear(c, ctx)) continue;
+      if (c.matchText) {
+        const match = typeof c.matchText === "function"
+          ? c.matchText(text)
+          : typeof c.matchText === "string"
+            ? text.includes(c.matchText)
+            : c.matchText.test(text);
+        if (match) return c.action;
+      }
+      if (c.matchPredicate && c.matchPredicate(ctx)) return c.action;
+    }
+    return null;
+  }
+
+  /**
    * 通用检查 — 使用 matchPredicate。
    */
   checkPredicate(ctx: ConstraintContext): ConstraintAction | null {
@@ -222,6 +301,10 @@ export class ConstraintEngine {
       if (c.matchPredicate && c.matchPredicate(ctx)) return c.action;
     }
     return null;
+  }
+
+  private hasScope(c: WorldConstraint, scope: ConstraintScope): boolean {
+    return (c.scope ?? ["dialogue"]).includes(scope);
   }
 
   private matchesYear(c: WorldConstraint, ctx: ConstraintContext): boolean {
@@ -271,6 +354,9 @@ export const DEFAULT_CONSTRAINTS: WorldConstraint[] = [
     id: "anachronistic_tech",
     priority: ConstraintPriority.COC_GENERAL,
     source: "CoC 1920s 时代设定：个人移动通讯（手机/短信）与个人端到端电话联系不存在；互联网/电脑等现代科技不应出现在 1920s",
+    // 这份黑名单是字面词表，KP 自由叙事同样不该说"扫码""wifi"这些词，
+    // 误伤风险和 NPC 对话一样低——两个 scope 都给。
+    scope: ["dialogue", "narration"],
     matchText: /手机|移动电话|智能手机|电脑|平板电脑|笔记本电脑|互联网|无线网络|上网|wifi|wi-fi|蓝牙|gps|卫星导航|扫码|二维码|微信|短信|短视频|数码相机|无人机|电子支付|智能设备|打[他她]电话|给[他她]打电话|[他她]打来电话|挂断电话|接起电话|放下听筒/i,
     yearRange: [undefined, 1940],
     action: { type: "block", blockMessage: "现代个人通讯/科技词汇不应出现在 1920s 场景中" },
@@ -311,11 +397,66 @@ export const DEFAULT_CONSTRAINTS: WorldConstraint[] = [
     matchText: /NPC|PC|玩家角色|非玩家角色/i,
     action: { type: "block", blockMessage: "NPC不应出现角色meta词汇" },
   },
+
+  // ── KP 叙事不得指名否认场景里一条尚未发现的线索 ──
+  // 开发·意图与约束补漏 任务3，缺口 B：约束层原本只有"时代错置"与"对话
+  // meta 词汇"两个域，没有"不得与模组事实矛盾"这个域——
+  // "冰箱里面空荡荡的，只有几层隔板和后壁"就是这个洞暴露出来的具体案例
+  // （2026-08-31-barn-completion-attempt.md，todo-43）。
+  //
+  // "凭空发明的名词"（酒吧的"老板""抽屉"）那一半白名单抓不到，本轮不做
+  // （见 todo-43 记录）；这里做的是反向的那一半——叙事不得对**一个具体
+  // 命名的、场景里确实存在但尚未发现的线索对象**下"空/没有/已经搜过"这
+  // 类断言。信号很明确：
+  //   · 未发现线索的名字/唯一简称——matchSceneClues 已经会算
+  //     （splitKeys），不必另起一套判定"这是场景里的对象"。
+  //   · 否认措辞是有限的一小组（空荡荡/空空如也/什么都没有/一无所获/
+  //     已经搜过/已经查过）。
+  //
+  // ⚠ 必须与引擎自己的通用失败播报区分开——"你仔细找了找，这里没什么
+  // 特别的"是合法的，"冰箱里面空荡荡的"不是。区分不是靠短语表本身
+  // （"没什么"和"空荡荡"字面上都是否认），是靠**这条约束只在叙事文本
+  // 同一句里同时出现"否认措辞"与"具体线索名/简称"时才命中**——引擎的
+  // 通用失败文案压根不提任何具体对象名，天然不会撞上。分句而不是整段
+  // 判断：避免一段长叙事里"否认"和"线索名"分别出现在不相关的两句话，
+  // 被错误拼到一起判成命中。
+  {
+    id: "narrative_denies_undiscovered_clue",
+    priority: ConstraintPriority.SCENE_FACT,
+    source: "KP 叙事不得对场景里一条未发现的具体线索对象下空/没有类断言",
+    scope: ["narration"],
+    matchPredicate: (ctx) => {
+      if (!ctx.text || !ctx.undiscoveredClueKeys?.length) return false;
+      return deniesNamedUndiscoveredClue(ctx.text, ctx.undiscoveredClueKeys);
+    },
+    action: {
+      type: "block",
+      blockMessage: "叙事对场景里一条尚未发现的具体线索对象下了空/没有类断言，与模组事实矛盾",
+    },
+  },
 ];
 
+const CLUE_DENIAL_PHRASE = /空荡荡|空空如也|一无所获|什么都没有|没有(?:任何|发现)|已经(?:搜|查|检查)过了?/;
+
 /**
- * 共享对话安全校验 — 供各 LLM 文本输出点（叙事/开场/对话扩展）统一使用。
- * 命中任一对话约束（meta 词汇 / 时代科技黑名单）时返回处置结果，未命中返回 null。
+ * 叙事文本里是否有哪一句同时命中"否认措辞"和"场景里一个未发现线索的
+ * 名字/简称"。按句切分（。！？\n），不整段判断——见上面约束定义处的
+ * 注释，避免"否认"和"对象名"分别出现在无关的两句话里被错误拼到一起。
+ */
+function deniesNamedUndiscoveredClue(text: string, keys: readonly string[]): boolean {
+  const sentences = text.split(/(?<=[。！？\n])/);
+  for (const s of sentences) {
+    if (!CLUE_DENIAL_PHRASE.test(s)) continue;
+    if (keys.some((k) => k.length >= 2 && s.includes(k))) return true;
+  }
+  return false;
+}
+
+/**
+ * 共享对话安全校验 — 供各 NPC 对话文本输出点统一使用。
+ * 命中任一 scope 含 "dialogue" 的约束（meta 词汇 / 时代科技黑名单）时
+ * 返回处置结果，未命中返回 null。KP 自由叙事走 checkNarrationText，
+ * 不是这个函数——两者检查的约束子集不同，见 ConstraintScope 的说明。
  */
 export function checkDialogueText(
   text: string, sceneId?: string,
@@ -323,4 +464,22 @@ export function checkDialogueText(
 ): ConstraintAction | null {
   const engine = new ConstraintEngine(DEFAULT_CONSTRAINTS);
   return engine.checkDialogue(text, sceneId, ruleset);
+}
+
+/**
+ * 共享叙事安全校验 — 供 KP 自由叙事（narrateOutcome 等）统一使用。
+ * 只检查 scope 含 "narration" 的约束（时代科技黑名单 + 线索矛盾），
+ * 不含 dialogue_meta_location 等只该拦 NPC 对话的约束——"旅店"这类
+ * 真实场景名在叙事里是合法的。
+ */
+export function checkNarrationText(
+  text: string,
+  opts: {
+    sceneId?: string;
+    ruleset?: import("../rules/rules-engine").RulesetId;
+    undiscoveredClueKeys?: string[];
+  } = {},
+): ConstraintAction | null {
+  const engine = new ConstraintEngine(DEFAULT_CONSTRAINTS);
+  return engine.checkNarration(text, opts);
 }

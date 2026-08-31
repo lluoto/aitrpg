@@ -39,11 +39,17 @@ describe("ConstraintEngine", () => {
     expect(ids).toContain("dialogue_meta_character");
   });
 
-  it("默认约束的优先级应为 COC_GENERAL", () => {
+  it("默认约束的优先级应为 COC_GENERAL 或 SCENE_FACT", () => {
     // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
     expect(DEFAULT_CONSTRAINTS.length).toBeGreaterThan(0);
+    // 开发·意图与约束补漏 任务3：新增的 narrative_denies_undiscovered_clue
+    // 是"当前场景已确认事实"这一档（ConstraintPriority.SCENE_FACT，比
+    // COC_GENERAL 更高），不是通用规则——它本来就该比"NPC 不该说场景名"
+    // 这类通用措辞约束优先，所以这条断言从"全是 COC_GENERAL"放宽成
+    // "COC_GENERAL 或 SCENE_FACT"，不是削弱判据，是判据原先没预料到会有
+    // 第二个优先级档位。
     for (const c of DEFAULT_CONSTRAINTS) {
-      expect(c.priority).toBe(ConstraintPriority.COC_GENERAL);
+      expect([ConstraintPriority.COC_GENERAL, ConstraintPriority.SCENE_FACT]).toContain(c.priority);
     }
   });
 
@@ -134,6 +140,87 @@ describe("ConstraintEngine", () => {
     const { checkDialogueText } = require("../world/world-constraint");
     expect(checkDialogueText("他用手机联系了接头人")).not.toBeNull();
     expect(checkDialogueText("马车停在酒馆门口，车夫点了一袋烟。")).toBeNull();
+  });
+});
+
+// ============================================================
+// checkNarration — KP 叙事专用检查（开发·意图与约束补漏 任务3）
+// ============================================================
+
+describe("ConstraintEngine.checkNarration", () => {
+  it("旅店等真实场景名不该被拦——dialogue_meta_location 是 NPC 对话专用约束，不在 narration scope 里", () => {
+    const engine = new ConstraintEngine(DEFAULT_CONSTRAINTS);
+    // 对照：同一句话在 checkDialogue 侧确实会被拦（上面已有用例验证过），
+    // 这里验证 checkNarration 不会重蹈覆辙。
+    expect(engine.checkDialogue("前方有个旅店")).not.toBeNull();
+    expect(engine.checkNarration("前方有个旅店")).toBeNull();
+    expect(engine.checkNarration("你来到了「旅店」。")).toBeNull();
+  });
+
+  it("其余四条 NPC-only meta 约束同样不该拦叙事", () => {
+    const engine = new ConstraintEngine(DEFAULT_CONSTRAINTS);
+    expect(engine.checkNarration("这个线索很重要")).toBeNull();
+    expect(engine.checkNarration("你是一个NPC")).toBeNull();
+    expect(engine.checkNarration("我想存档")).toBeNull();
+  });
+
+  it("时代科技黑名单同样拦叙事（scope 含 narration）", () => {
+    const engine = new ConstraintEngine(DEFAULT_CONSTRAINTS);
+    expect(engine.checkNarration("他掏出了手机")).not.toBeNull();
+    expect(engine.checkNarration("电视里正在播放新闻")).toBeNull(); // 模组内合理例外，同 checkDialogue
+  });
+
+  it("narrative_denies_undiscovered_clue：指名否认场景里一条未发现线索的对象要被拦", () => {
+    const engine = new ConstraintEngine(DEFAULT_CONSTRAINTS);
+    const hit = engine.checkNarration(
+      "陈岳打开了冰箱与储物柜，冰箱里面空荡荡的，只有几层隔板和后壁。",
+      { undiscoveredClueKeys: ["冰箱与储物柜", "冰箱", "储物柜"] },
+    );
+    expect(hit).not.toBeNull();
+    expect(hit!.type).toBe("block");
+  });
+
+  it("同一句话没有 undiscoveredClueKeys（没算/场景没有未发现线索）时不拦——没有可比对的对象名就没有信号", () => {
+    const engine = new ConstraintEngine(DEFAULT_CONSTRAINTS);
+    expect(engine.checkNarration("冰箱里面空荡荡的，只有几层隔板和后壁。")).toBeNull();
+    expect(engine.checkNarration("冰箱里面空荡荡的，只有几层隔板和后壁。", { undiscoveredClueKeys: [] })).toBeNull();
+  });
+
+  it("否认措辞在，但没提到任何未发现线索的名字——不拦（泛指的否认放行）", () => {
+    const engine = new ConstraintEngine(DEFAULT_CONSTRAINTS);
+    // 引擎自己的通用失败播报的形状：不点名任何具体对象。
+    const hit = engine.checkNarration(
+      "你仔细找了找，这里没什么特别的。",
+      { undiscoveredClueKeys: ["冰箱与储物柜", "冰箱", "储物柜"] },
+    );
+    expect(hit).toBeNull();
+  });
+
+  it("提到了线索名字，但不是否认语气——不拦", () => {
+    const engine = new ConstraintEngine(DEFAULT_CONSTRAINTS);
+    const hit = engine.checkNarration(
+      "你打开了冰箱与储物柜的柜门，里面似乎还有些东西。",
+      { undiscoveredClueKeys: ["冰箱与储物柜", "冰箱", "储物柜"] },
+    );
+    expect(hit).toBeNull();
+  });
+
+  it("否认与对象名分别出现在无关的两句话里——不按整段拼接判断，不拦", () => {
+    const engine = new ConstraintEngine(DEFAULT_CONSTRAINTS);
+    const hit = engine.checkNarration(
+      "远处的天空空荡荡的，没有一丝云彩。你注意到墙角有一个储物柜，柜门虚掩着。",
+      { undiscoveredClueKeys: ["储物柜"] },
+    );
+    expect(hit).toBeNull();
+  });
+
+  it("checkNarrationText：共享校验函数行为与 engine.checkNarration 一致", () => {
+    const { checkNarrationText } = require("../world/world-constraint");
+    expect(checkNarrationText("前方有个旅店")).toBeNull();
+    expect(checkNarrationText("他掏出了手机")).not.toBeNull();
+    expect(
+      checkNarrationText("冰箱里面空荡荡的，只有几层隔板和后壁。", { undiscoveredClueKeys: ["冰箱"] }),
+    ).not.toBeNull();
   });
 });
 

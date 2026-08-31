@@ -400,8 +400,8 @@
       "id": "todo-43",
       "category": "约束层缺口",
       "severity": "warn",
-      "status": "open",
-      "text": "叙事可以否认模组事实——约束层没有一条“不得与模组事实矛盾”的域。ConstraintEngine.checkDialogue()（world-constraint.ts）签名其实接受 sceneId，但 npc-agent.ts 两处调用 checkDialogueText(response) 都没传（262/320 行），场景内容因此完全进不了约束判断；ConstraintContext 目前只用于时代/物品/黑名单词汇匹配，没有“场景已声明的事实”这个字段可比对。第一个实例：todo-41，酒吧叙事把不存在的 NPC/道具（“老板”“抽屉”）当成真实场景成分说出来。第二个实例：本轮（开发·对象名通向线索）任务1 的起因——玩家说“打开冰箱与储物柜”，意图解析判成 unknown 落到 LLM 叙事，LLM 编出“里面空荡荡的”，直接否认了模组明确写着“储物柜里有十几瓶氧气罐、冰箱里是袋装流食”的事实，且不可逆（玩家看到“空的”就不会再开第二次）。任务1把这条具体路径的问题挡在了叙事之前（改判据后走线索解析，不再落到 LLM），是绕开，不是修复——同样的 unknown 兜底、同样没有场景事实校验的叙事生成，换一个模组/换一句话术仍然会踩中。修复需要：(1) npc-agent.ts 传 sceneId 给 checkDialogueText，(2) ConstraintContext 补一个能读到当前场景已知線索/物件清单的域，(3) 叙事生成命中该域时改口径而不是自由发挥。本轮范围外，只记账。"
+      "status": "done",
+      "text": "叙事可以否认模组事实——约束层没有一条“不得与模组事实矛盾”的域。ConstraintEngine.checkDialogue()（world-constraint.ts）签名其实接受 sceneId，但 npc-agent.ts 两处调用 checkDialogueText(response) 都没传（262/320 行），场景内容因此完全进不了约束判断；ConstraintContext 目前只用于时代/物品/黑名单词汇匹配，没有“场景已声明的事实”这个字段可比对。第一个实例：todo-41，酒吧叙事把不存在的 NPC/道具（“老板”“抽屉”）当成真实场景成分说出来。第二个实例：本轮（开发·对象名通向线索）任务1 的起因——玩家说“打开冰箱与储物柜”，意图解析判成 unknown 落到 LLM 叙事，LLM 编出“里面空荡荡的”，直接否认了模组明确写着“储物柜里有十几瓶氧气罐、冰箱里是袋装流食”的事实，且不可逆（玩家看到“空的”就不会再开第二次）。任务1把这条具体路径的问题挡在了叙事之前（改判据后走线索解析，不再落到 LLM），是绕开，不是修复——同样的 unknown 兜底、同样没有场景事实校验的叙事生成，换一个模组/换一句话术仍然会踩中。修复需要：(1) npc-agent.ts 传 sceneId 给 checkDialogueText，(2) ConstraintContext 补一个能读到当前场景已知線索/物件清单的域，(3) 叙事生成命中该域时改口径而不是自由发挥。本轮范围外，只记账。—— 更新（开发·意图与约束补漏 任务3）：反向的那一半已经修——KP 自由叙事（kp-agent.ts narrateOutcome，game-session.ts:2092 那个真正的自由跑团主叙事路径）现在会经过新的 checkNarrationText（新 scope 分流机制 + narrative_denies_undiscovered_clue 约束：叙事同一句里同时出现否认措辞与场景里一个未发现线索的具体名字/简称就拦并重生成一次，重生成仍不干净则退回不点名任何对象的安全兜底），不再是“连检查都没经过”。“凭空发明的名词”那一半（酒吧的“老板”“抽屉”，白名单抓不到）仍未做，是本条与 todo-41 剩下的部分，状态改 done 只覆盖“否认已知对象”这半，不代表整条约束层缺口已经清零。"
     },
     {
       "id": "todo-44",

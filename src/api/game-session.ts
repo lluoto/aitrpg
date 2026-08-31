@@ -24,7 +24,7 @@ import { NPCCombatEngine, NPC_UNARMED_SKILL } from "../combat/npc-combat";
 import { CompanionManager } from "../combat/companion-manager";
 import { PlayerSession, type VisibilityRule } from "../session/player-session";
 import { InvestigationEngine } from "../investigation/investigation-engine";
-import { decideClueMatch, extractLocationHint } from "../investigation/clue-match";
+import { decideClueMatch, extractLocationHint, splitKeys } from "../investigation/clue-match";
 import { SpellEngine } from "../spell/spell-engine";
 import { WorldModelLoader, sharedWorldModel, DEFAULT_CTHULHU_PATH } from "../world/world-model-loader";
 import { WorldModelIntegrator, type SceneContext, type NPCPresentProfile } from "../world/world-model-integrator";
@@ -2092,7 +2092,8 @@ export class GameSession {
       const narration = await this.kp.narrateOutcome(
         input,
         `玩家行动: ${input}${epicContext}`,
-        [...recentDialogues, ...turnMessages]
+        [...recentDialogues, ...turnMessages],
+        { sceneId: this.getDisplayedScene(), undiscoveredClueKeys: this.currentUndiscoveredClueKeys() }
       );
       this.lastNarrative = narration;
       turnMessages.push({ speaker: "守秘人", content: narration, type: "narration" });
@@ -2892,6 +2893,34 @@ export class GameSession {
       .filter((c) => this.investigation.hasClueType(c));
     if (candidates.length === 0) return null;
     return { decision: this.resolveSceneClueMatch(input, candidates), candidates };
+  }
+
+  /**
+   * 当前场景（当前 PC 视角）尚未发现线索的名字/唯一简称——喂给 KP 叙事的
+   * 约束检查（开发·意图与约束补漏 任务3，缺口 B：
+   * `narrative_denies_undiscovered_clue`）。复用 clue-match.ts 的
+   * splitKeys，与匹配器判定"这是场景里的一个对象"用同一套认定，不另起
+   * 一套——两处标准一旦走岔，会出现"匹配器认得这是个对象，约束层却认
+   * 不出来"这种自相矛盾的状态。
+   *
+   * 只取有 matchTexts 的线索（同 matchCurrentSceneClue 的过滤）：没有
+   * matchTexts 的旧版线索本来就不参与文本匹配，也没有"名字"可供约束层
+   * 比对。场景没有任何未发现线索，或全是这种旧版线索时返回空数组——
+   * 约束的 matchPredicate 会因为 `undiscoveredClueKeys.length === 0`
+   * 直接放行，不误伤。
+   */
+  private currentUndiscoveredClueKeys(): string[] {
+    const pos = this.getDisplayedScene();
+    const candidateIds = this.investigation
+      .getUndiscoveredSceneClues(pos, this.activePlayerId)
+      .filter((c) => this.investigation.hasClueType(c));
+    const keys: string[] = [];
+    for (const id of candidateIds) {
+      const info = this.investigation.getClueMatchInfo(id);
+      if (!info) continue;
+      keys.push(...splitKeys([info.displayName, ...info.matchTexts]));
+    }
+    return [...new Set(keys)];
   }
 
   /**

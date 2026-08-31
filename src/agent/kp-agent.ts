@@ -9,7 +9,31 @@
 import type { LLMLike, Message as LLMMessage } from "../llm/client";
 import type { KPDirective, TurnRecord, AgentMessage } from "./types";
 import { fallbackNarrative, fallbackSceneDescription, DEGRADATION_NOTICE } from "../llm/fallback";
+import { checkNarrationText } from "../world/world-constraint";
+import type { RulesetId } from "../rules/rules-engine";
 import { log } from "../log";
+
+/**
+ * narrateOutcome 的可选约束上下文——开发·意图与约束补漏 任务3。
+ * 不传时（CLI 侧 index.ts 的调用点，本轮没有改）checkNarrationText 拿不到
+ * undiscoveredClueKeys，新约束天然不命中，行为与改动前一致。
+ */
+export interface NarrateConstraintOpts {
+  sceneId?: string;
+  ruleset?: RulesetId;
+  /** 当前场景（当前 PC 视角）尚未发现的线索名字/唯一简称，见 world-constraint.ts */
+  undiscoveredClueKeys?: string[];
+}
+
+/** 约束拦截且重生成仍未通过时的安全兜底——不点名任何具体对象，只描述"事情发生了"。 */
+const SAFE_NARRATION_FALLBACK = [
+  "你采取了行动，但一时还看不出明确的结果——或许需要再仔细一点。",
+  "事情发生了，只是眼下还说不清究竟意味着什么。",
+  "你的动作引起了一些变化，具体是什么，得再观察观察。",
+];
+function pickSafeFallback(): string {
+  return SAFE_NARRATION_FALLBACK[Math.floor(Math.random() * SAFE_NARRATION_FALLBACK.length)];
+}
 
 const KP_SYSTEM_PROMPT = `你是一个 TRPG 主持人（KP/DM）。你的任务是描述场景、推进剧情、控制节奏。
 
@@ -103,11 +127,25 @@ export class KPAgent {
     }
   }
 
-  /** 玩家行动后，KP 推进叙事 */
+  /**
+   * 玩家行动后，KP 推进叙事。
+   *
+   * 开发·意图与约束补漏 任务3，缺口 A：这是自由跑团的主叙事路径，此前
+   * 完全没有过约束层——"冰箱里面空荡荡的，只有几层隔板和后壁"（否认了
+   * 模组已写明"储物柜里有十几瓶氧气罐"的事实）就是从这里出来的，连检查
+   * 都没经过。`constraintOpts` 缺省不传时（CLI 侧 index.ts 未改）新约束
+   * 天然不命中，行为与改动前一致。
+   *
+   * 命中约束时重生成一次（带上"不要这样说"的具体指正），而不是直接拿一句
+   * 固定安全文案顶替——LLM 换一次措辞更可能真的推进叙事而不是打断节奏。
+   * 重生成后仍然命中（LLM 没听懂/继续瞎编），才退回不点名任何具体对象的
+   * 安全兜底——绝不能放一句踩线的话出去，"重试过一次"不构成放行理由。
+   */
   async narrateOutcome(
     playerAction: string,
     outcome: string,
-    recentMessages: AgentMessage[] = []
+    recentMessages: AgentMessage[] = [],
+    constraintOpts?: NarrateConstraintOpts,
   ): Promise<string> {
     const messages: LLMMessage[] = [
       { role: "system", content: KP_SYSTEM_PROMPT },
@@ -146,13 +184,38 @@ export class KPAgent {
       ].join("\n"),
     });
 
-    try {
-      const response = await this.llm.chat(messages, {
-        temperature: this.worldModelContext.includes("[叙事输出最终约束]") ? 0.2 : 0.8,
-        maxTokens: 500,
-        timeout: 120000,
+    const temperature = this.worldModelContext.includes("[叙事输出最终约束]") ? 0.2 : 0.8;
+    const callOnce = async (extra?: LLMMessage): Promise<string> => {
+      const raw = await this.llm.chat(extra ? [...messages, extra] : messages, {
+        temperature, maxTokens: 500, timeout: 120000,
       });
-      return response.trim();
+      return raw.trim();
+    };
+
+    try {
+      let response = await callOnce();
+      const hit = checkNarrationText(response, {
+        sceneId: constraintOpts?.sceneId,
+        ruleset: constraintOpts?.ruleset,
+        undiscoveredClueKeys: constraintOpts?.undiscoveredClueKeys,
+      });
+      if (hit) {
+        log.warn("kp", `KP 叙事约束拦截，重生成一次: ${hit.type === "block" ? hit.blockMessage : hit.type}`);
+        response = await callOnce({
+          role: "system",
+          content: "上一次回答对场景里一件尚未被发现的东西下了「空的/没有/已经搜过」这类断言，这与模组事实矛盾——不要否认任何具体物件的存在或内容，只描述玩家这个动作本身，把细节留到玩家真正检定成功时再揭示。",
+        });
+        const hit2 = checkNarrationText(response, {
+          sceneId: constraintOpts?.sceneId,
+          ruleset: constraintOpts?.ruleset,
+          undiscoveredClueKeys: constraintOpts?.undiscoveredClueKeys,
+        });
+        if (hit2) {
+          log.warn("kp", "KP 叙事重生成后仍命中约束，退回安全兜底文案");
+          response = pickSafeFallback();
+        }
+      }
+      return response;
     } catch (err: any) {
       log.warn("kp", `KP 叙事 LLM 失败: ${err.message}`);
       return DEGRADATION_NOTICE + "\n\n" + fallbackNarrative(playerAction + " " + outcome);
