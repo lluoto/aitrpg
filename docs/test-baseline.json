@@ -1,5 +1,5 @@
 {
-  "tests": 2535,
+  "tests": 2537,
   "files": 166,
   "unwiredMethods": 86,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。",
@@ -519,6 +519,11 @@
       "tests": 2535,
       "files": 166,
       "when": "verify (task 3 of the object-name-gate round) whether the long sentence \"陆川打开中控室的冰箱和储物柜，看看里面有什么\" -- previously recorded as denying -- is still broken after task 1's fix. Re-ran it: it now reaches ask (both 冰箱 and 储物柜 match clue_control_supplies, 储物柜 also matches clue_control_lever, hence the ambiguity), not deny. Task 1's removal of the hasSearchIntent verb gate already fixed this sentence as a side effect; no code change made here. Added two pinning tests to clue-object-name-gate.test.ts (end-to-end via GameSession.act and directly via decideClueMatch) so this doesn't silently regress. Mutation check: temporarily restored clue-match.ts to its pre-task-1 version (git checkout d50c8e5), both new tests went red (kind became deny instead of ask), restored with Copy-Item."
+    },
+    {
+      "tests": 2537,
+      "files": 166,
+      "when": "action anchor no longer treats an NPC as a place (task 4 of the object-name-gate round). premiers_barn.ts (the custom-modules copy, see todo-19) stuffs NPCs into the scene nav graph as pseudo-destinations purely so on_enter_scene hooks have a condition key to hang narration on -- 特里坎家's exits include 菲碧_特里坎/米尔_特里坎. A real 25-turn run produced \"前往 菲碧_特里坎\"; a person isn't a place, clicking it goes nowhere. Extracted the existing NPC-name-vs-hook-condition normalizer (buildPresentNPCProfiles's local `norm`, which already handled the same 菲碧·特里坎 (dot) vs 菲碧_特里坎 (underscore) mismatch) into a shared normalizeNpcNameSeparators method, and used it in getSuggestions()'s exit loop: any exit target whose normalized form matches a normalized alive-NPC name is skipped. Deliberately not keyed on \"empty scene description\", since real places like 农场外围/报亭 also have none and would be false positives. Added scene-suggestions.test.ts coverage: 特里坎家 no longer offers 前往 to either NPC while still offering 与 X 交谈 and the real exits (加比的拖车房/普瑞米尔); 普瑞米尔 cross-check keeps 特里坎家/报亭/艾德里安的农场 all present. Mutation check: dropped the filter, the NPC-exclusion test went red (前往 菲碧_特里坎 reappeared), restored."
     }
   ]
 }

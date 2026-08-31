@@ -141,3 +141,39 @@ describe("战斗回归：四条建议逐字保持", () => {
     ]);
   });
 });
+
+// 开发·对象名通向线索 任务4验收——行动锚点不把 NPC 当地点。
+//
+// 背景：premiers_barn.ts（rules/custom-modules 那份自定义模组，见
+// todo-19"两份模组表示未统一"）的 nav 表把 NPC 也塞进了场景导航图当
+// "目的地"——"特里坎家"的 exits 里有"菲碧_特里坎"/"米尔_特里坎"，纯粹
+// 是给 on_enter_scene hook 一个可以挂描写的 condition key，不是真地点。
+// 25 回合实跑（analysis/sim/2026-08-31-barn-completion-attempt.md）打出
+// 过"前往 菲碧_特里坎"，人不是地方，玩家点了也走不到哪去。
+describe("行动锚点不把 NPC 当地点（任务4）", () => {
+  it("特里坎家：不出现「前往 菲碧_特里坎」「前往 米尔_特里坎」，但「与 X 交谈」和真地点都在", async () => {
+    const session = await barnAt("特里坎家");
+    const suggestions = session.getSuggestions("p1");
+    for (const s of suggestions) {
+      expect(s).not.toContain("菲碧_特里坎");
+      expect(s).not.toContain("米尔_特里坎");
+      expect(s).not.toMatch(/^前往 菲碧/);
+      expect(s).not.toMatch(/^前往 米尔/);
+    }
+    expect(suggestions).toContain("与 菲碧·特里坎 交谈");
+    expect(suggestions).toContain("与 米尔·特里坎 交谈");
+    expect(suggestions).toContain("前往 加比的拖车房");
+    expect(suggestions).toContain("前往 普瑞米尔");
+  });
+
+  it("普瑞米尔（NPC 过滤的判据不是「description 为空」）：农场外围、报亭这类真地点一个不少", async () => {
+    const session = await barnAt("特里坎家");
+    (session as any).movePlayerToScene("普瑞米尔");
+    const suggestions = session.getSuggestions("p1");
+    // 农场外围、报亭本身没写场景描述，跟"菲碧_特里坎"表面特征相似
+    // （都是"平平无奇的字符串"），但它们是真场景，不该被 NPC 过滤误伤。
+    expect(suggestions).toContain("前往 特里坎家");
+    expect(suggestions).toContain("前往 报亭");
+    expect(suggestions).toContain("前往 艾德里安的农场");
+  });
+});

@@ -1198,7 +1198,7 @@ export class GameSession {
    */
   private buildPresentNPCProfiles(presentNPCs: string[]): NPCPresentProfile[] {
     if (!presentNPCs || presentNPCs.length === 0) return [];
-    const norm = (s: string) => s.replace(/[·、_\- ]/g, "");
+    const norm = this.normalizeNpcNameSeparators;
     const profiles: NPCPresentProfile[] = [];
     for (const mod of this.registeredModules) {
       if (!mod?.npcs || !Array.isArray(mod.npcs)) continue;
@@ -1544,6 +1544,18 @@ export class GameSession {
   // ============================================================
 
   /**
+   * NPC 名字/场景条件文本里"·"和"_"混用时的归一化比较键——同一个人（如
+   * "菲碧·特里坎"）在模组数据里，NPC 实体名用"·"，但部分自定义模组
+   * （premiers_barn.ts 的 nav 表）把 NPC 也塞进了场景导航图里当"目的地"，
+   * 那份表里的 key 用的是"_"（"菲碧_特里坎"）。两处原本各写一份归一化，
+   * 现在共用同一个，getSuggestions() 的 NPC-非地点 过滤（任务4）与
+   * buildPresentNPCProfiles() 的 hook 匹配都靠它。
+   */
+  private normalizeNpcNameSeparators(s: string): string {
+    return s.replace(/[·、_\- ]/g, "");
+  }
+
+  /**
    * 当前场景的行动锚点。
    *
    * ⚠ 这是给前端直接点的：App.vue 会把 suggestions 里的字符串**原样**送回
@@ -1580,9 +1592,32 @@ export class GameSession {
       // exits 是 SceneRecord 的权威连接数据。目标展示名可能与运行时 id 不同，
       // 统一经 sceneDisplayNames 显示；原样提交的“前往 <name>”仍由既有移动
       // 解析路径处理。没有场景/出口时安静地少给动作，不编造“其他场景”。
+      //
+      // 开发·对象名通向线索 任务4：premiers_barn.ts 那份自定义模组的 nav
+      // 表把 NPC 也当"目的地"塞进了场景图（"特里坎家"的 exits 里有
+      // "菲碧_特里坎"/"米尔_特里坎"，纯粹是给 on_enter_scene hook 一个
+      // 可以挂描写的 condition key，不是真地点）——25 回合实跑打出过
+      // "前往 菲碧_特里坎"，人不是地方，玩家点了也走不到哪去。
+      // 判据：目标（原始 id 或翻译后的展示名，两个都试）经
+      // normalizeNpcNameSeparators 归一化后，命中任意一个在场景图里出现过
+      // 的 NPC 全名，就不生成"前往"建议——不能用"description 为空"当信号，
+      // 农场外围/报亭这类真地点同样没写描述，会被误伤。NPC 名单来自
+      // getAllAliveEntities()（不按当前场景过滤，因为特里坎家的 NPC
+      // "目的地"通常还没被当成实体注册在当前场景里）。
       const scene = this.world.getScene(pos);
+      const npcNameKeys = new Set(
+        this.world.getAllAliveEntities()
+          .filter((e) => e.type === "npc")
+          .map((e) => this.normalizeNpcNameSeparators(e.name)),
+      );
       for (const exit of scene?.exits ?? []) {
         const target = this.sceneDisplayNames[exit.target] ?? exit.target;
+        if (
+          npcNameKeys.has(this.normalizeNpcNameSeparators(exit.target)) ||
+          npcNameKeys.has(this.normalizeNpcNameSeparators(target))
+        ) {
+          continue;
+        }
         following.push(`前往 ${target}`);
       }
     }
