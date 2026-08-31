@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-30",
+  "generated": "2026-08-31",
   "note": "问题记录索引。按 file+line 取正文，不必整份读。正文只追加，改动请重跑 bun scripts/docs-index.ts",
   "statusLegend": {
     "fixed": "已修，有实测数",

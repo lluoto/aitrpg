@@ -1,24 +1,19 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-08-30 14:06
+> 生成于 2026-08-31 04:08
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 09b4d2b feat: generate AGENTS.md from todo.json rule-* entries |
-| 测试 | 2476 条 / 160 文件  全绿 |
-| 工作树 | **6 个文件未提交** |
+| HEAD | dfdf57e feat: bring the failback ladder into GameSession's clue path (N=2) |
+| 测试 | 2515 条 / 164 文件  全绿 |
+| 工作树 | **1 个文件未提交** |
 
 未提交：
 - `M docs/handoff.md`
-- `M docs/test-baseline.json`
-- `M docs/todo.json`
-- `M src/api/game-session.ts`
-- `M src/api/server.ts`
-- `?? src/__tests__/scene-suggestions.test.ts`
 
 ## 开工前
 
@@ -92,14 +87,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- dfdf57e feat: bring the failback ladder into GameSession's clue path (N=2)
+- dd31f3c feat: give a directional hint on early-game skill-check failures
+- 4b4887c fix: narrow clue-match deny to genuinely-absent objects (scheme B)
+- 6b87e16 fix: two clue-match bugs behind a 7-round sim abort
+- f43299d feat: anchor suggestions to the current scene and PC
 - 09b4d2b feat: generate AGENTS.md from todo.json rule-* entries
 - bbdd492 docs: add rule-05..rule-13, repo-specific coding lessons
 - fb46583 fix: compound-move re-ask should not fire on incidental scene mentions
-- 5f01296 fix: pendingConfirm must know who asked (cross-PC leakage)
-- ebe9b95 fix: stop dev-server.ps1 from hanging its caller (plan B)
-- 25db89b docs: wrap up scene-id bridge and run-harness round
-- 642e5a3 feat: add deterministic run harness for GameSession free-roam path
-- f522b78 fix: bridge scene ids so True End is reachable (todo-34)
 
 ## 找东西
 

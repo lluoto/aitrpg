@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-08-30 14:05  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-08-31 04:07  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：09b4d2b feat: generate AGENTS.md from todo.json rule-* entries  ·  **测试**：2476 条 / 160 文件，全绿（基线 2476，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：dfdf57e feat: bring the failback ladder into GameSession's clue path (N=2)  ·  **测试**：2515 条 / 164 文件，全绿（基线 2515，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -187,6 +187,11 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- dfdf57e feat: bring the failback ladder into GameSession's clue path (N=2)
+- dd31f3c feat: give a directional hint on early-game skill-check failures
+- 4b4887c fix: narrow clue-match deny to genuinely-absent objects (scheme B)
+- 6b87e16 fix: two clue-match bugs behind a 7-round sim abort
+- f43299d feat: anchor suggestions to the current scene and PC
 - 09b4d2b feat: generate AGENTS.md from todo.json rule-* entries
 - bbdd492 docs: add rule-05..rule-13, repo-specific coding lessons
 - fb46583 fix: compound-move re-ask should not fire on incidental scene mentions
@@ -194,11 +199,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - ebe9b95 fix: stop dev-server.ps1 from hanging its caller (plan B)
 - 25db89b docs: wrap up scene-id bridge and run-harness round
 - 642e5a3 feat: add deterministic run harness for GameSession free-roam path
-- f522b78 fix: bridge scene ids so True End is reachable (todo-34)
-- c19997a docs: refresh handoff.md and now.md
-- 02033b9 docs: record two facts about history and the remote gap
-- b1a4455 feat: add a machine judge for the commit message convention
-- bc6de84 docs: define commit message convention (rule-04)
 
 ## 代码地图
 
