@@ -38,8 +38,19 @@ import { isRejectedMention, uniqueAbbrevs } from "../play/move-util";
  * 真实数据验证有没有用，只会让这份表无限膨胀却测不出收益。
  */
 const SEARCH_VERB = /(侦查|检查|查看|搜索|搜查|寻找|翻找|翻查|翻看|翻阅|扒开|掀开|摸索|找找|瞧瞧|观察|查探|调查|询问|打听)$/;
-/** 同一份动词表，不锚定位置——用来从整句话里把动词都抠掉，看看还剩不剩内容。 */
-const SEARCH_VERB_ANY = /侦查|检查|查看|搜索|搜查|寻找|翻找|翻查|翻看|翻阅|扒开|掀开|摸索|找找|瞧瞧|观察|查探|调查|询问|打听/g;
+/**
+ * 同一份动词表 + 少量常见修饰性副词（仔细/认真/再次/好好），不锚定位置——
+ * 用来从整句话里把"不携带信号的部分"都抠掉，看看还剩不剩内容。
+ *
+ * ⚠ 任务2：这些副词经常紧贴在调查动词前后（"仔细检查""再次翻查"），本身
+ * 不指向任何位置/对象，跟动词一样该被当成"没说什么"——"仔细搜查这里"
+ * （行动锚点自己给出的建议文案）抠完"搜查"还剩"仔细这里"，得再抠掉
+ * "仔细"才能看出这句话真的没有位置信号。只加进这份"全句抠掉"的表，
+ * **不**加进上面 SEARCH_VERB（hasSearchIntent 的动词邻接判定）——那边判
+ * 的是"这个简称紧跟着的是不是一个搜索动作"，副词本身不构成搜索动作，
+ * 混进去没有事实依据，超出了本轮要修的范围。
+ */
+const SEARCH_VERB_ANY = /侦查|检查|查看|搜索|搜查|寻找|翻找|翻查|翻看|翻阅|扒开|掀开|摸索|找找|瞧瞧|观察|查探|调查|询问|打听|仔细|认真|再次|好好/g;
 
 /**
  * 把一句话里所有调查类动词抠掉，剩下的才是"位置/对象信号"。
@@ -51,6 +62,26 @@ const SEARCH_VERB_ANY = /侦查|检查|查看|搜索|搜查|寻找|翻找|翻查
  */
 export function stripSearchVerbs(said: string): string {
   return said.replace(SEARCH_VERB_ANY, "").trim();
+}
+
+/**
+ * 指代词——占字数但不携带任何位置/对象信号（开发·线索闸门 任务2）。
+ *
+ * 背景：行动锚点（GameSession.getSuggestions）给的"仔细搜查这里"是一句
+ * 合法可执行的动作，但 stripSearchVerbs 只抠掉"搜查"，剩下"仔细这里"
+ * （4 字）——过了 ≥2 的无信号阈值，被当成"给了具体提示"，而"这里"根本
+ * 不是任何线索的位置名词，匹配不上任何候选，直接 deny：**锚点自己推荐
+ * 了一个必然失败的动作**。这份表与"那儿/那里/四周/周围"同理——它们在
+ * 中文里的作用是指代"当前所在的地方"，不指代任何具体名词，天然不该被
+ * 算进"玩家给了什么提示"。
+ *
+ * 不管它出现在句子哪个位置都不算信号，用 stripLocationFillers 统一处理，
+ * 供 decideClueMatch 的入口判定与 matchSceneClues 内部的 no-signal 判定
+ * 共用（同 stripSearchVerbs 的设计理由——两处各自维护一份迟早会走岔）。
+ */
+const LOCATION_FILLER = /这里|那里|那儿|四周|周围/g;
+export function stripLocationFillers(said: string): string {
+  return said.replace(LOCATION_FILLER, "").trim();
 }
 
 /** 这个关键词前面紧挨着调查类动词吗——"侦查**卫生间**"比单纯提一嘴更像是要搜这里。 */
@@ -155,7 +186,13 @@ export function matchSceneClues(said: string, candidates: ClueMatchCandidate[]):
   //     实测调高到 3 会让"侦查床底"这类已验证过的正例反过来变成误判的
   //     "无信号"——这不是假设，是本轮之前跑真实数据时踩过的坑。
   // 边界钉在测试里：剩 1 字 → 无信号；剩 2 字 → 正常参与匹配。
-  const contentOnly = stripSearchVerbs(said);
+  //
+  // 任务2：指代词（这里/那儿/那里/四周/周围）同样不携带信号，跟调查动词
+  // 与副词一起抠掉——"仔细搜查这里"先抠"仔细""搜查"剩"这里"，再抠掉
+  // "这里"就是 0 字，正确判定无信号（而不是被"这里"两个字凑够阈值，
+  // 走到下面的精确匹配，最终一条都对不上又落到 deny——锚点自己给的建议
+  // 因此曾经必然失败，见头部背景说明）。
+  const contentOnly = stripLocationFillers(stripSearchVerbs(said));
   if (contentOnly.length < 2) {
     trace.noSignal = true;
     return { hit: null, ambiguous: candidates.map((c) => c.id), trace };
@@ -263,8 +300,16 @@ export function matchSceneClues(said: string, candidates: ClueMatchCandidate[]):
  * 内部那条 no-signal 分支；判据却直接调 matchSceneClues("侦查", ...)，
  * 命中的是 matchSceneClues 自己的 no-signal（报 ambiguous=全部候选），
  * 判据看着"歧义正确处理"，实际测的是生产从不会执行到的一条路。
+ *
+ * ⚠ 任务2：开头允许一个可选的修饰性副词（仔细/认真/再次/好好）先于动词——
+ * "仔细搜查这里"要在这里被截住变成 fallback，不是先剥"搜查"剩下"仔细
+ * 这里"再落进 matchSceneClues 内部去问"你想找什么"（那不是行动锚点这个
+ * 一键动作该有的反馈，见 game-session.ts getSuggestions 的背景说明）。
+ * 仍然只认**紧跟在动词前面**的这一个副词，不是全句扫描——"陆川仔细
+ * 检查床底"这类完整叙述句不以副词/动词开头，这条正则本来就匹配不上，
+ * 不受影响。
  */
-const ENTRY_VERB_PREFIX = /^(?:侦查|观察|搜索|寻找|搜查|调查|检查|查看|翻找|翻阅|询问|打听|使用|尝试)\s*/;
+const ENTRY_VERB_PREFIX = /^(?:仔细|认真|再次|好好)?\s*(?:侦查|观察|搜索|寻找|搜查|调查|检查|查看|翻找|翻查|翻看|翻阅|扒开|掀开|摸索|找找|瞧瞧|询问|打听|使用|尝试)\s*/;
 
 export type ClueMatchDecision =
   | { kind: "resolve"; clueId: string }
@@ -282,14 +327,19 @@ export type ClueMatchDecision =
  *   resolve  —— 唯一命中，解析这一条
  *   ask      —— 命中多条，问清楚，不猜
  *   deny     —— 给了具体提示但一条都不中，如实说没有
- *   fallback —— 没给提示（剥掉开头动词后不剩什么）——不是"匹配失败"，
- *               是玩家压根没说要找什么。调用方按既有行为取候选首条，
- *               不在这个函数里做（会不会取首条是调用方的策略，不是
- *               "匹配"这件事本身）。
+ *   fallback —— 没给提示（剥掉开头动词/副词与指代词后不剩什么）——不是
+ *               "匹配失败"，是玩家压根没说要找什么。调用方按既有行为取
+ *               候选首条，不在这个函数里做（会不会取首条是调用方的策略，
+ *               不是"匹配"这件事本身）。
  */
 export function decideClueMatch(input: string, candidates: ClueMatchCandidate[]): ClueMatchDecision {
   const said = input.replace(ENTRY_VERB_PREFIX, "").trim();
-  if (said.length < 2) return { kind: "fallback" };
+  // 任务2：长度判断额外抠掉指代词——"仔细搜查这里"剥完开头的"仔细搜查"
+  // 剩"这里"（2 字，字面过阈值），但"这里"不是位置信号，得再抠一层才能
+  // 看出这句话其实什么都没说。传给 matchSceneClues() 的仍是未抠指代词的
+  // said——那边自己的 no-signal 判定（同样已经在任务2改过）会用一致的
+  // 判法，这里只是提前避免走进那个函数再绕一圈。
+  if (stripLocationFillers(said).length < 2) return { kind: "fallback" };
   if (candidates.length === 0) return { kind: "fallback" };
 
   const result = matchSceneClues(said, candidates);
