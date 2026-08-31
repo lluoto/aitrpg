@@ -1974,15 +1974,7 @@ export class GameSession {
     // 那正是这句话会被判成 unknown 的原因，例如"陆川觉得很紧张"这类与
     // 场景对象无关的叙述，不该被误当成一次搜索。
     if (this.registeredModules.length > 0 && intent.action === "unknown") {
-      const match = this.matchCurrentSceneClue(input);
-      if (match && match.decision.kind !== "fallback") {
-        turnMessages.push({ speaker: playerName, content: input, type: "action" });
-        const objMsg = (s: string) => turnMessages.push({ speaker: "系统", content: s, type: "system" });
-        // applyClueDecision() 的返回值只在"要不要继续走别的分支"时有意义
-        // （resolveSceneClue 那套里）；这里已经确定要 return，用不上，
-        // 显式弃用（同 resolveCompoundMoveReply 的 void tryResolveModuleScene
-        // 那处先例），不留一个静默丢掉返回值的调用点。
-        void this.applyClueDecision(match.decision, objMsg);
+      if (this.applyObjectNameGate(input, turnMessages, playerName, { allowDeny: true })) {
         return this.buildActionResponse(turnMessages);
       }
     }
@@ -1990,6 +1982,31 @@ export class GameSession {
     if (intent.action !== "unknown") {
       const handled = await this.handleIntent(intent, input, turnMessages);
       if (handled) return this.buildActionResponse(turnMessages);
+
+      // 开发·闸门放宽到 look 任务1：提示词修好 inventory 之后，"看看储物柜"
+      // "陈岳打开冰箱与储物柜，逐一清点…"这类容器输入在 LLM 意图解析下
+      // 落到了 look（而不是 unknown），上面那道门够不着——handleIntent 的
+      // case "look" 已经先试过 tryResolveModuleScene（"看看维森酒吧"这种
+      // 真场景名在这一步就该赢，走到这里说明没赢），返回 false 才轮到这里。
+      //
+      // ⚠ 只放宽到 look，不放宽到 attack/move/inventory 等：那些动作有
+      // 明确的自身语义，被线索匹配劫持的代价是"做了玩家没说的事"，比
+      // "没做玩家想做的事"严重得多（本仓反复吃过这类亏）。look 语义上
+      // 就是"我在看/找某个东西"，与搜索几乎重合，劫持风险最低。
+      //
+      // ⚠ 只在 resolve/ask 时拦截，deny 不算——"环顾四周"这类纯粹的
+      // look（不针对任何具体对象）如果被扫进这道门，decideClueMatch 会
+      // 因为凑够 2 字信号阈值而落到 deny（"你仔细找了找，这里没什么
+      // 特别的"），把玩家没问过的东西"没有"报出去，比原来落到 LLM 叙事
+      // 更糟。unknown 那道门放行 deny，是因为 unknown 本来就不知道玩家
+      // 想干嘛，deny 好过 LLM 瞎编；look 不同——已经知道玩家在"看"，
+      // 只有明确对上了场景对象（resolve/ask）才值得打断默认的
+      // 场景描述/叙事，猜不中就不该抢答。
+      if (this.registeredModules.length > 0 && intent.action === "look") {
+        if (this.applyObjectNameGate(input, turnMessages, playerName, { allowDeny: false })) {
+          return this.buildActionResponse(turnMessages);
+        }
+      }
     }
 
     // 战斗检测：只有输入本身看起来像"攻击"才会走这条自动检定分支——
@@ -2893,6 +2910,35 @@ export class GameSession {
       .filter((c) => this.investigation.hasClueType(c));
     if (candidates.length === 0) return null;
     return { decision: this.resolveSceneClueMatch(input, candidates), candidates };
+  }
+
+  /**
+   * 对象名闸门的落地——把 matchCurrentSceneClue 的结果落成消息并返回
+   * "有没有拦下这一回合"，供 unknown 与 look 两处调用方共用（开发·闸门
+   * 放宽到 look 任务1）。两处唯一的差异是 `allowDeny`：
+   *   unknown：`{allowDeny: true}`——本来就不知道玩家想干嘛，一个诚实的
+   *            "没什么特别的"好过放行到 LLM 瞎编。
+   *   look：   `{allowDeny: false}`——已经知道玩家在"看"，只有明确对上
+   *            场景对象（resolve/ask）才值得打断默认的场景描述，猜不中
+   *            （deny）就不该抢答，见调用点的注释（"环顾四周"那个例子）。
+   */
+  private applyObjectNameGate(
+    input: string,
+    turnMessages: AgentMessage[],
+    playerName: string,
+    opts: { allowDeny: boolean },
+  ): boolean {
+    const match = this.matchCurrentSceneClue(input);
+    if (!match || match.decision.kind === "fallback") return false;
+    if (match.decision.kind === "deny" && !opts.allowDeny) return false;
+    turnMessages.push({ speaker: playerName, content: input, type: "action" });
+    const objMsg = (s: string) => turnMessages.push({ speaker: "系统", content: s, type: "system" });
+    // applyClueDecision() 的返回值只在"要不要继续走别的分支"时有意义
+    // （resolveSceneClue 那套里）；这里已经确定要 return true，用不上，
+    // 显式弃用（同 resolveCompoundMoveReply 的 void tryResolveModuleScene
+    // 那处先例），不留一个静默丢掉返回值的调用点。
+    void this.applyClueDecision(match.decision, objMsg);
+    return true;
   }
 
   /**
