@@ -8,7 +8,15 @@
 // 这是移动匹配（src/play/move-util.ts）同一类问题在调查系统里的变体，能复用
 // 的原语直接复用，不重新发明：
 //   isRejectedMention  —— 通用（"别搜卫生间"不该命中），直接复用
-//   uniqueAbbrevs      —— 通用（"卫生间"→场景里唯一能对应的完整描述），直接复用
+//   uniqueAbbrevs      —— 复用，但**先剥动词再传进去**（"卫生间"→场景里
+//                          唯一能对应的完整名词片段）。⚠ 这条注释曾经声称
+//                          "直接复用"能产出「卫生间」，实测却产出「生间」
+//                          （bug 2，2026-08-31-barn-action-anchor-abort.md
+//                          第 6 回合）——它是给移动匹配（场景名"中心词在
+//                          后"）设计的，线索描述常是"动词+名词"，动词不剥
+//                          掉会连带把最短唯一子串切进名词内部。见调用点的
+//                          注释；uniqueAbbrevs 本体没有改，只是调用前多了
+//                          一步 stripSearchVerbs()。
 //   hasMoveIntent      —— 移动专用（认的是"去/前往"这类动词），线索场景要换一套
 //                          "侦查/检查/搜索"这类动词，见下面的 hasSearchIntent
 //   matchKeys/chooseConnection —— 类型绑死 SceneConnection，线索这边的候选是
@@ -16,10 +24,22 @@
 
 import { isRejectedMention, uniqueAbbrevs } from "../play/move-util";
 
-/** 调查类动词：紧跟在关键词前面时才算"确实在找这个"，不是随口提了一嘴。 */
-const SEARCH_VERB = /(侦查|检查|查看|搜索|搜查|寻找|翻找|翻阅|观察|查探|调查|询问|打听)$/;
+/**
+ * 调查类动词：紧跟在关键词前面时才算"确实在找这个"，不是随口提了一嘴。
+ *
+ * ⚠ bug 1（2026-08-31-barn-action-anchor-abort.md 第 7 回合）：这份表原来
+ * 没有「翻查」——"陆川仔细**翻查**餐桌下面和披萨盒的夹层"因为动词不在表
+ * 里，简称邻接判定直接失败，三次搜索全部 deny，一次骰子都没掷。
+ *
+ * 补的是「翻找/翻阅」的常见口语近亲（翻查/翻看）与"掀开遮挡物查看"这类
+ * 具体搜索动作（扒开/掀开/摸索），外加更随意的口语搜索用词（找找/瞧瞧）
+ * ——都是这份表已有词的同语域变体，不是另开一类。**不收**更生僻或书面语
+ * 的词（搜寻、勘察、蒐集……）：没有实跑证据支持要不要收，加了也没法用
+ * 真实数据验证有没有用，只会让这份表无限膨胀却测不出收益。
+ */
+const SEARCH_VERB = /(侦查|检查|查看|搜索|搜查|寻找|翻找|翻查|翻看|翻阅|扒开|掀开|摸索|找找|瞧瞧|观察|查探|调查|询问|打听)$/;
 /** 同一份动词表，不锚定位置——用来从整句话里把动词都抠掉，看看还剩不剩内容。 */
-const SEARCH_VERB_ANY = /侦查|检查|查看|搜索|搜查|寻找|翻找|翻阅|观察|查探|调查|询问|打听/g;
+const SEARCH_VERB_ANY = /侦查|检查|查看|搜索|搜查|寻找|翻找|翻查|翻看|翻阅|扒开|掀开|摸索|找找|瞧瞧|观察|查探|调查|询问|打听/g;
 
 /**
  * 把一句话里所有调查类动词抠掉，剩下的才是"位置/对象信号"。
@@ -147,9 +167,63 @@ export function matchSceneClues(said: string, candidates: ClueMatchCandidate[]):
   candidates.forEach((c, i) => {
     const keys = allKeys[i]!;
     const rivals = allKeys.filter((_, j) => j !== i).flat();
-    // 唯一简称：本场景其它候选都不沾边的短前后缀，允许玩家不照念全文
-    const abbrevs = uniqueAbbrevs(keys, rivals);
-    trace.candidates.push({ id: c.id, keys: [...keys, ...abbrevs] });
+    // 唯一简称：本场景其它候选都不沾边的短前后缀，允许玩家不照念全文。
+    //
+    // ⚠ bug 2（同一份实跑报告，第 6 回合）：uniqueAbbrevs 是给移动匹配写的
+    // （src/play/move-util.ts:188 一段的 docstring：「中文地名中心词在
+    // 后面」，如"维森酒吧"/"霍姆斯医院"，最短唯一后缀天然落在有意义的
+    // 2 字中心词上）。线索的 findMethods 描述形状不同——常是"动词+名词"
+    // （"侦查卫生间"），最短唯一子串算法会先吃掉共享的动词前缀再找唯一
+    // 前缀（"侦查卫生间"→"侦查卫"，把动词也切了进去），后缀更糟：从
+    // "卫生间"（头字"间"只有 1 字，够不到 minLen=2）硬切 2 字后缀会切穿
+    // "卫生"这个不可再拆的双字词内部，产出"生间"——玩家说"检查卫生间"，
+    // "生间"前 6 字是"检查卫"，不以任何调查动词收尾，邻接判定必然失败。
+    //
+    // 修法：不改 uniqueAbbrevs 本体（它仍要正确服务移动匹配，diag-
+    // phrasing.ts 前后对比过，见 clue-match.ts 头注释与本轮报告），只在
+    // 线索这边调用前先用 stripSearchVerbs() 把动词从 key/rival 两侧都
+    // 剥掉——最短唯一子串算法从此在纯名词上找边界，"侦查卫生间"先变成
+    // "卫生间"，前缀扫描第一步就能在"卫生"（双字词，不再被动词占掉长度
+    // 预算）上找到唯一值，不必被迫吃穿到"生间"。原始（未剥动词）的
+    // `keys`/`rivals` 仍然原样传给 trace 与上面的精确匹配分支——只有喂
+    // 给 uniqueAbbrevs 的输入被剥过，"这条线索到底长什么样"这件事不变。
+    const strippedKeys = keys.map(stripSearchVerbs).filter((k) => k.length >= 2);
+    const strippedRivals = rivals.map(stripSearchVerbs);
+    const abbrevs = uniqueAbbrevs(strippedKeys, strippedRivals);
+
+    // uniqueAbbrevs 的截断循环要求 `len < key.length`——去动词后剩下恰好
+    // 2 字的名词（比如"侦查餐桌"只有这一条描述、别处压根没有"餐桌"这个
+    // 词时）永远进不了循环，一条简称都产不出来，即便这个 2 字名词本身在
+    // 本场景已经唯一。补一条：去动词后的完整名词本身，只要在本场景唯一，
+    // 直接收进候选——不再依赖截断算法凑巧覆盖到它。这也是本来就该有的
+    // 「卫生间」全词候选（不只是截断出的「卫生」/「生间」两个片段）。
+    for (const key of strippedKeys) {
+      if (!strippedRivals.some((r) => r.includes(key))) abbrevs.push(key);
+    }
+    const uniqueAbbrevList = [...new Set(abbrevs)];
+    trace.candidates.push({ id: c.id, keys: [...keys, ...uniqueAbbrevList] });
+
+    // ⚠ 剥动词修好 bug 2 之后带出一个新回归（同一份测试套件里就有：
+    // "侦查卫生间已经搜过了"不该命中）：简称"卫生"只是"卫生间"截断后的
+    // 前缀，isRejectedMention 固定往简称**自己**结束的位置后看 8 字——
+    // 但玩家原句里"卫生"后面还接着"间"字才轮到"已经搜过了"，这 1 个字
+    // 的空隙正好把否定/已完成检测的窗口挤偏，8 字看不到"已经"。
+    // 修法：简称若是从更长的 strippedKeys 项截断来的，且那个完整名词
+    // 本身也确实原样出现在 said 里（"卫生间"就在"侦查卫生间已经搜过了"
+    // 里），否定检测就用完整名词的结束位置，不是简称自己截断处的位置——
+    // 这样窗口对齐到真正的词尾，不会被截掉的那一两个字拖偏。完整名词不
+    // 在 said 里（round 7 的"餐桌"就是这种情况——它的来源"宣言仔细餐桌"
+    // 从没原样出现过）时，退回简称自己的位置，行为不变。
+    const abbrevFullNoun = new Map<string, string>();
+    for (const abbrev of uniqueAbbrevList) {
+      const full = strippedKeys.find((k) => k.length > abbrev.length && (k.startsWith(abbrev) || k.endsWith(abbrev)));
+      if (full) abbrevFullNoun.set(abbrev, full);
+    }
+    const notRejectedAsAbbrev = (k: string): boolean => {
+      const full = abbrevFullNoun.get(k);
+      const checkKey = full && said.includes(full) ? full : k;
+      return !isRejectedMention(said, checkKey);
+    };
 
     const hit = [
       // 完整键出现在玩家话里（"我进去侦查卫生间看看"包含键"卫生间"）——
@@ -161,7 +235,7 @@ export function matchSceneClues(said: string, candidates: ClueMatchCandidate[]):
       ...keys.filter((k) => !said.includes(k) && k.includes(said)),
       // 简称必须紧跟调查动词才算数——光秃秃的"卫生间"出现在句子中间，
       // 多半是在说别的事，不是要搜这里（同 move-util 对简称的处理）。
-      ...abbrevs.filter((k) => said.includes(k) && hasSearchIntent(said, k) && !isRejectedMention(said, k)),
+      ...uniqueAbbrevList.filter((k) => said.includes(k) && hasSearchIntent(said, k) && notRejectedAsAbbrev(k)),
     ][0];
     if (hit) {
       trace.matched.push({ id: c.id, key: hit });
