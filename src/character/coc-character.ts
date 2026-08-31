@@ -124,6 +124,13 @@ const ATTRIBUTE_NAME_MAP: Record<string, string> = {
   "敏捷": "dexterity", "DEX": "dexterity", "dexterity": "dexterity",
   "外貌": "appearance", "APP": "appearance", "appearance": "appearance",
   "智力": "intelligence", "INT": "intelligence", "intelligence": "intelligence",
+  // 灵感（Idea roll）在 CoC 7e 里就是智力值本身（智力已经是 3d6×5 生成的
+  // 百分比，不需要再乘 5）——开发·线索闸门 任务4 补的别名，顺带修好一个
+  // 已存在的死分支：src/play/traps.ts:78 的 alternativeSkill:"灵感" 此前
+  // 一直把 resolveCheckValue(pc,"灵感") 解析成 0（既不在这份表也不在
+  // SKILL_NAME_MAP 里，落进 skillValues["灵感"] 这个从不存在的键），
+  // 陷阱预警的"军事背景走灵感"这条替代路径实际从未生效过。
+  "灵感": "intelligence",
   "意志": "power", "POW": "power", "power": "power",
   "教育": "education", "EDU": "education", "education": "education",
   "幸运": "luck", "LUCK": "luck", "luck": "luck",

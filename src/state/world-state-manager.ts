@@ -271,6 +271,32 @@ export class WorldStateManager {
       .get(clueId);
   }
 
+  /**
+   * 记一次线索检定失败，返回累计失败次数（开发·线索闸门 任务4）。
+   * 与 src/world/state.ts 的 WorldState.incrementClueFail 同一语义
+   * （按 clue_id 计数，不分玩家），真相源从进程内 Map 换成这张表。
+   */
+  incrementClueFail(clueId: string): number {
+    this.db.run(
+      `INSERT INTO clue_fail_counts (clue_id, fail_count) VALUES (?1, 1)
+       ON CONFLICT(clue_id) DO UPDATE SET fail_count = fail_count + 1, updated_at = unixepoch()`,
+      [clueId],
+    );
+    const row = this.db.query("SELECT fail_count FROM clue_fail_counts WHERE clue_id=?1").get(clueId) as { fail_count: number } | null;
+    return row?.fail_count ?? 0;
+  }
+
+  /** 查询某线索累计失败次数。 */
+  getClueFailCount(clueId: string): number {
+    const row = this.db.query("SELECT fail_count FROM clue_fail_counts WHERE clue_id=?1").get(clueId) as { fail_count: number } | null;
+    return row?.fail_count ?? 0;
+  }
+
+  /** 线索被发现后清零失败计数——与 WorldState.resetClueFails 同一时机。 */
+  resetClueFails(clueId: string): void {
+    this.db.run("DELETE FROM clue_fail_counts WHERE clue_id=?1", [clueId]);
+  }
+
   /** 记一次场景访问。同一 (player, scene) 重复记录是幂等的。 */
   recordSceneVisit(playerId: string, sceneId: string) {
     this.db.run(

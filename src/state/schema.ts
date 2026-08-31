@@ -86,6 +86,20 @@ export function createSchema(db: Database) {
       PRIMARY KEY (player_id, scene_id)
     );
 
+    -- 线索检定失败计数——failback 阶梯用（开发·线索闸门 任务4）。
+    -- 剧本杀路径（src/world/state.ts 的 WorldState）一直有这份计数，是
+    -- 进程内 Map；自由跑团路径（GameSession/WorldStateManager）此前完全
+    -- 没有，是"两个运行时各持一半"的第三次（前两次是线索发现、场景
+    -- 访问，见上面 clue_discoveries/scene_visits 的注释）。按同一个方向
+    -- 迁进真相源，不在 GameSession 再开一个内存 Map。按 clue_id 计数，
+    -- 不分玩家——阶梯是"这条线索被这支队伍试了几次"，与谁掷的骰子无关，
+    -- 与 WorldState.clueFailCounts 同一语义（该文件同样不分玩家）。
+    CREATE TABLE IF NOT EXISTS clue_fail_counts (
+      clue_id     TEXT PRIMARY KEY,
+      fail_count  INTEGER NOT NULL DEFAULT 0,
+      updated_at  INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
     CREATE TABLE IF NOT EXISTS scenes (
       id          TEXT PRIMARY KEY,
       name        TEXT NOT NULL,

@@ -248,6 +248,15 @@ export class InvestigationEngine {
   }
 
   /**
+   * 这条线索是不是 core（主线必得）——failback 阶梯（开发·线索闸门
+   * 任务4）只对 core 线索生效，与剧本杀路径 clue-check.ts 的
+   * `clue.importance === "core"` 同一判据。不存在的线索一律 false。
+   */
+  isCoreClue(id: string): boolean {
+    return this.clueTypes.get(id)?.importance === "core";
+  }
+
+  /**
    * 当前模组范围内的线索 id（开发·线索闸门 任务3）——供"这个模组算不算
    * 前期"这类需要知道线索总量的上层判定使用，不暴露 ClueDef 内部结构。
    *
@@ -544,13 +553,26 @@ export class InvestigationEngine {
   // ==========================================================
 
   /**
-   * CoC 7e 风格调查 — 使用 CoCEngine.skillCheck + 成功层级
+   * CoC 7e 风格调查 — 使用 CoCEngine.skillCheck + 成功层级。
+   *
+   * `overrideSkill`（开发·线索闸门 任务4）：failback 阶梯的"灵感检定"/
+   * "无副作用重试"两档要检的技能值不是这条线索自己声明的 coc_primary
+   * 技能——前者是智力（灵感），后者是同一个技能但不走"孤注一掷"那套逻辑。
+   * 传了就整体替换 skillName/skillValue，其余（revelation 按成功层级选、
+   * SAN 处理、markDiscovered）照旧复用同一份逻辑，不重复实现一遍。
+   * `pushed` 原样转发给 `CoCEngine.skillCheck`（默认 false，与不传时的
+   * 既有行为一致）——调用方靠这个字段拿到的 `CoCCheckResult.pushed`
+   * 机器验证"这次重试没有被算成孤注一掷"。`forceSuccess` 是阶梯最后一档
+   * ("直接给")：完全不掷骰（`roll` 恒为 0，可与真实投骰 1-100 区分），
+   * 直接按 regular 成功层级给揭示文本，SAN 仍按 regular 那一侧计——"直接
+   * 给"给的是"终于找到了"，不是"侥幸大成功"，不该按更重的失败档扣 SAN。
    * @returns 带有 CoC 层级信息的结果
    */
   investigateCoC(
     clueType: string,
     playerSkills: Record<string, number>,
     playerName: string,
+    overrideSkill?: { id: string; value: number; pushed?: boolean; forceSuccess?: boolean },
   ): {
     success: boolean;
     // 这里原本写的是 string。值本来就来自 CoCEngine 的成功层级，放宽成 string
@@ -570,10 +592,14 @@ export class InvestigationEngine {
      * 单靠 roll/skillValue 报不出来，加这个字段。
      */
     skillId: string;
+    /** 是否为推动检定（transmitted from CoCEngine.skillCheck）——failback 阶梯的"无副作用重试"靠它验证自己没有被算成孤注一掷。 */
+    pushed: boolean;
+    /** 燃运消耗的点数——同上，验证"无副作用"没有偷偷烧运气。不传 luckSpend 参数，这里恒为 0。 */
+    luckSpent: number;
   } {
     const clue = this.clueTypes.get(clueType);
     if (!clue) {
-      return { success: false, successLevel: "fail", revelation: "你没有找到有用的线索。", sanLost: 0, sanCost: "", clue: null, roll: 0, skillValue: 0, skillId: "" };
+      return { success: false, successLevel: "fail", revelation: "你没有找到有用的线索。", sanLost: 0, sanCost: "", clue: null, roll: 0, skillValue: 0, skillId: "", pushed: false, luckSpent: 0 };
     }
 
     // 如果已发现，返回重看但不重复 SAN
@@ -589,12 +615,19 @@ export class InvestigationEngine {
       fail: clue.primary.fail,
     };
 
-    const skillName = primary.skill;
-    const skillValue = playerSkills[skillName] ?? 20;
+    const skillName = overrideSkill?.id ?? primary.skill;
+    const skillValue = overrideSkill?.value ?? (playerSkills[skillName] ?? 20);
     const profile = this.effectiveProfile;
 
-    // CoC skillCheck —— 加入难度导致的惩罚骰
-    const check = CoCEngine.skillCheck(skillValue, "regular", 0, profile.penaltyDice);
+    // CoC skillCheck —— 加入难度导致的惩罚骰。不传 luckSpend（第 5 参，
+    // 恒为 0）——investigateCoC 从不烧运气，那是 handleAttack 战斗路的
+    // 机制。pushed 原样转发 overrideSkill?.pushed（不传时 CoCEngine 自己
+    // 默认 false），失败阶梯的"无副作用重试"靠这个字段回传 false 证明
+    // 自己没有被算成孤注一掷。forceSuccess 时完全不掷骰——`roll` 恒为 0，
+    // 与真实投骰（1-100）在结果里就能区分开，不用另开一个字段。
+    const check = overrideSkill?.forceSuccess
+      ? { roll: 0, successLevel: "regular" as CoCSuccessLevel, pushed: false, luckSpent: 0 }
+      : CoCEngine.skillCheck(skillValue, "regular", 0, profile.penaltyDice, 0, overrideSkill?.pushed);
     const sl = check.successLevel;
 
     // 根据成功层级选择文本
@@ -644,6 +677,8 @@ export class InvestigationEngine {
       roll: check.roll,
       skillValue,
       skillId: skillName,
+      pushed: check.pushed,
+      luckSpent: check.luckSpent,
     };
   }
 

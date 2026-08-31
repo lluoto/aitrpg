@@ -34,7 +34,7 @@ import type { DifficultyProfile } from "../rules/module-difficulty";
 import { applyAction, type GateState, type RejectReason, type Result, type StateDelta } from "../rules/apply-action";
 import { boundedIntegerGateState, boundedIntegerScenario, buildDifficultyGateState, COC_SESSION_SCENARIO, isDifficultyLabel } from "../rules/coc-session-scenario";
 import { CharacterFactory, getArchetype, type LegendaryAction } from "../character/character-factory";
-import { buildCoCCharacter, SKILL_NAME_MAP, getCoCArchetypes } from "../character/coc-character";
+import { buildCoCCharacter, SKILL_NAME_MAP, getCoCArchetypes, resolveCheckValue } from "../character/coc-character";
 import { StoryGenerator } from "../rules/story-generator";
 import { CareerFileStore } from "../character/career-file";
 import { createGameTime, advanceTime, formatGameTime, periodAtmosphere, type GameTime } from "../rules/game-time";
@@ -202,6 +202,9 @@ const SKILL_DISPLAY_NAMES: Record<string, string> = {
   stealth: "潜行", perception: "侦查", investigation: "调查", persuasion: "说服",
   medicine: "医学", history: "历史", occult: "神秘", library_use: "图书馆使用",
   listen: "聆听", psychology: "心理学", library: "图书馆", fight: "格斗",
+  // "idea" 不是 CoC 技能键，是 failback 阶梯（开发·线索闸门 任务4）里
+  // 灵感检定用的合成 skillId——见 resolveSceneClue 的阶梯分支。
+  idea: "灵感",
 };
 
 /**
@@ -2854,14 +2857,49 @@ export class GameSession {
    * 只给"往哪查"，不给"能查到什么"。抽不出干净的位置词（没有 matchTexts、
    * 或候选长度都不落在 2-6 字区间）时静默保留原始 revelation，不硬凑。
    * 非前期时这一段完全不执行，成功路径同样不受影响。
+   *
+   * 开发·线索闸门 任务4：failback 阶梯（N=2），只对 core 线索生效——与
+   * 剧本杀路径 play/clue-check.ts 的同名机制对齐，此前自由跑团这条路
+   * 完全没有（InvestigationEngine 只有 DifficultyProfile，是"两个运行时
+   * 各持一半"的第三次，见 docs/todo.json todo-03）。失败计数进真相源
+   * （WorldStateManager.incrementClueFail，见该方法注释），不在 GameSession
+   * 再开一个内存 Map：
+   *   failCount 0/1 → 正常检定（本方法原有的那条路，不变）
+   *   failCount 2   → 灵感检定（智力）代替这条线索自己声明的技能
+   *   failCount 3   → "无副作用重试"：技能与正常检定完全相同——
+   *                   investigateCoC 本来就不烧运气、不传 pushed 时
+   *                   CoCEngine 默认就是 false，机制上字面等同一次正常
+   *                   检定，这里只是明确标注这次尝试的性质（叙述 + 断言
+   *                   用），不是另开一套判定
+   *   failCount >=4 → 直接给（overrideSkill.forceSuccess，见 investigateCoC
+   *                   注释）：不再掷骰，roll 恒为 0
+   * 时间照常推进——这四档全部走同一个 act() 回合，advanceTime 在 act()
+   * 顶部统一处理，这里不做任何例外。
    */
   private resolveSceneClue(clueType: string, msg: (s: string) => number): boolean {
     const skills = this.activeCharacter?.skillValues ?? this.activeCharacter?.skills ?? {};
-    const result = this.investigation.investigateCoC(clueType, skills, this.activePlayerId);
+    const isCore = this.investigation.isCoreClue(clueType);
+    const failCount = isCore ? this.world.getClueFailCount(clueType) : 0;
+
+    let overrideSkill: { id: string; value: number; pushed?: boolean; forceSuccess?: boolean } | undefined;
+    let ladderNote = "";
+    if (isCore && failCount >= 4) {
+      overrideSkill = { id: "grant", value: 0, forceSuccess: true };
+      ladderNote = "（屡次尝试后，你们终于想通了关键——）\n";
+    } else if (isCore && failCount === 3) {
+      ladderNote = "（你们决定换个思路，再试一次——）\n";
+    } else if (isCore && failCount === 2) {
+      const ideaPc = this.activeCharacter ?? { attributes: {}, luck: 0, skillValues: {} };
+      overrideSkill = { id: "idea", value: resolveCheckValue(ideaPc, "灵感") };
+      ladderNote = "（反复搜寻无果，你们停下来仔细想了想——）\n";
+    }
+
+    const result = this.investigation.investigateCoC(clueType, skills, this.activePlayerId, overrideSkill);
 
     let diceLine = "";
     let revelation = result.revelation;
     if (!result.success) {
+      if (isCore) this.world.incrementClueFail(clueType);
       const skillDisplay = SKILL_DISPLAY_NAMES[result.skillId] ?? result.skillId ?? "调查";
       diceLine = `🎲 ${skillDisplay}检定 d100=${result.roll} (目标=${result.skillValue}%) → 失败`;
       msg(diceLine);
@@ -2871,7 +2909,10 @@ export class GameSession {
         const hint = info ? extractLocationHint(info.matchTexts.slice(1)) : null;
         if (hint) revelation = `你仔细搜查了一番，但这次没能看出什么名堂——不过${hint}那边似乎还有些什么，或许该再仔细找找。`;
       }
+    } else if (isCore) {
+      this.world.resetClueFails(clueType);
     }
+    revelation = ladderNote + revelation;
     const newLength = msg(revelation);
     const idx = newLength - 1;
     if (this._turnMessages && this._turnMessages[idx]) {
