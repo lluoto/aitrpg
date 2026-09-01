@@ -35,17 +35,19 @@ const res = await new PDFParse({ data: buffer }).getText();
 | LLM 插槽 · 块分类 | `src/ingest/classify-sections.ts` | **已完成**，20 测试。实跑 **命中 20 / 误报 7 / 漏报 0**（口径：按块内容认地点） |
 | id 命名 | `src/ingest/ids.ts` | **已完成**，16 测试。`scene_NN` 按块编号、`item_NN` 按条目编号（键是 `p9:L13`） |
 | 场景骨架 | `src/ingest/build-scenes.ts` | **已完成**，14 测试。实跑 **严格 17 + 名字变体 3 = 身份覆盖 20/20，真漏报 0，真误报 7**（**与上面那行不同口径**：name 严格配。非确定性，详见下） |
-| LLM 回复取 JSON | `src/ingest/llm-json.ts` | **已完成**，13 测试。两个分类器共用，避免两份副本各自漂 |
+| LLM 回复取 JSON | `src/llm/json.ts` | **已完成**，20 测试（`ingest-llm-json.test.ts`，文件名没跟着搬）。2026-08-29 从 `src/ingest/llm-json.ts` 收敛到这里——不再是摄取专属，intent.ts / generate-llm-expanded.ts 等六处消费方共用同一份，避免各自拷贝各自漂（见该测试文件头部注释） |
 | 条目分类（`▶` 是什么） | `src/ingest/classify-items.ts` | **已完成**，21 测试。实跑 37 送分类 / **返回 37**，分布 item 15 / clue 11 / event 4 / trap 4 / connection 3（与下面 §实跑数 那张表同一次跑；先前这里写的 `item 13 / clue 12 / event 5` 是更早一轮的数，两处对不上） |
 | ModuleItem 抽取 | `src/ingest/build-items.ts` | **已完成**，22 测试。实跑 **基准 10 个物品覆盖 9**（上限 9）、生成 19 个、**精确率 9/19**、误报 9。补跨页续行（`joinPages`）之前是 9/17，那两个数**不能直接比**——见下面「分类器的逐条输出不是独立的」 |
 
 | LLM 插槽 · 其余语义字段 | — | 未做（线索与 `findMethods`、NPC 字段、`connections`） |
 
-> ingest 测试合计 **239**（上表逐文件相加）。这个数是逐文件 `bun test` 实测的，不是估的——
+> ingest 测试合计 **246**（上表逐文件相加）。这个数是逐文件 `bun test` 实测的，不是估的——
 > 而它已经被算错过三次：先前两处是表内数字本身写错（`build-scenes` 写成 16 实为 14、
 > `build-items` 写成 20 实为 22），第三次是合计没跟着表走（写 **219**，而当时表实际相加是 230）。
 > 逐文件实测值：pdf-source 2 / clean-text 41 / calibrate 46 / sectionize 22 / extract-trap 22 /
-> classify 20 / ids 16 / build-scenes 14 / llm-json 13 / classify-items 21 / build-items 22。
+> classify 20 / ids 16 / build-scenes 14 / llm-json（现 `src/llm/json.ts`）20 / classify-items 21 /
+> build-items 22。llm-json 13→20 是开发·摄取管线校准阶段4 核实时改的，其余十项本轮未重新逐一
+> 复核，如实沿用旧值，不代表都还准确。
 > 改这张表时请照着 `bun test <path>` 的实测值写，并把合计重新加一遍。
 
 > **关于 LLM 可用性**：`bun test` 输出里的 `[config] No LLM_API_KEY set` 是**测试在验证无 key 的降级路径**，
@@ -963,7 +965,10 @@ connections 那边一度也是分叉状态（F1 是脚本成绩、管线产 0 �
 在这之前，「场景走不通」一直是拿摄取产物跟手写基准**对着算指标**，
 从来没有真的跑过。运行时只跑过硬编码的 `BARN_OF_PREMIER`。
 `src/ingest/assemble-module.ts`（`assembleModule` + `neutralSupport`）
-把零件装配成 `ModuleData` + `ModuleSupport`，`tools/_e2e-ingested-module.ts` 跑它。
+把零件装配成 `ModuleData` + `ModuleSupport`，`scripts/ingest/e2e-run.ts` 跑它
+（原先在 `tools/_e2e-ingested-module.ts`——那份路径在 .gitignore 外，`neutralSupport`
+因此在编译器眼里"无人引用"，一次死代码清理误删了它，脚本崩溃到没有任何判据发现，
+开发·摄取管线校准 阶段4 时搬回来并补上 `src/__tests__/ingest-e2e-module.test.ts`）。
 
 **先澄清一个走了弯路的地方**：`data/modules` + `loadModuleFile` **不通向可玩模组**。
 它存的是 `MythosModule`（`src/rules/mythos-module.ts:163`），是另一套东西。

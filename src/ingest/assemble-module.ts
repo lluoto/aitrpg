@@ -106,3 +106,40 @@ export function assembleModule(input: AssembleInput, opts: AssembleOptions): Ass
 
   return { module, warnings };
 }
+
+/**
+ * 中性的 ModuleSupport。
+ *
+ * `runModule` 除了 ModuleData 还要一份 ModuleSupport，里面全是模组专属逻辑：
+ * 恐怖线索的 SAN 代价、结局评估、遭遇战、枢纽/终局场景 id……摄取一样都没抽。
+ *
+ * 这里给的是一份**什么都不做**的：没有结局评估、没有遭遇战、没有终局。
+ * 它让摄取出来的模组能跑起来、能走动、能看描述，但不会自己结束，也不会打起来。
+ * 同样不编 —— 编一个 finaleSceneId 出来，跑到那个场景就会莫名其妙地终局。
+ *
+ * 开发·摄取管线校准 阶段4：这份函数曾经在 60c7ed4（清理死导出）被删掉——
+ * 判据当时说它是死的（全仓无 import），但真实调用方 `tools/_e2e-ingested-
+ * module.ts` 躺在 .gitignore 外，编译器看不见那条依赖，"判据说死、编译器
+ * 说活"两边打架。恢复原样：evaluateEnding 仍然只返回 null，不假装判断过
+ * 任何具体条件——`assembleModule()` 现在确实会把 extract-endings.ts 抽出的
+ * 结局文本塞进 `module.endings`（见该字段），但那是自然语言 conditions
+ * （"调查员在中控室拉下了拉杆"），不是 EndNarration 要求的结构化谓词
+ * （requiredClues/excludeClues 这类具体线索 id）——两种"结局"表示不是同一
+ * 回事（barn-of-premier.ts:1207"仓库里同时存在三套结局表示"），把自然语言
+ * 猜成结构化条件就是在编，比留空更糟，所以这里仍然不做。
+ */
+export function neutralSupport(): import("../module/types").ModuleSupport {
+  return {
+    traumaticClues: {},
+    evaluateEnding: () => null,
+    endLabels: {},
+    encounters: [],
+    // 枢纽留空：模型认枢纽验过 5/5，但那还没接进管线。
+    // 空串的效果是不做「回镇上重分派」的移动排序，不影响能不能走。
+    hubSceneId: "",
+    finaleSceneId: "",
+    finaleClueId: "",
+    // 匹配不到任何东西 —— 摄取没有做 BOSS 识别。
+    bossNpcIdPattern: /(?!)/,
+  };
+}
