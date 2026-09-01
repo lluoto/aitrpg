@@ -1539,6 +1539,25 @@ export class GameSession {
     return result;
   }
 
+  /**
+   * 每回合意图路径的本地复现轨迹（开发·每回合意图的可观测性）。
+   *
+   * scope 固定为 `intent-trace`，一局里同一回合的行都带 round/pc，便于：
+   *
+   *   rg '\[intent-trace\].*round=17' server-out.log
+   *
+   * ⚠ 必须是 debug，不是 info/warn：log.ts:11 已裁定 debug 是"本地复现用，
+   * 默认不输出"，这一轮只加观察、玩家可见行为和默认日志行数都必须是零变更。
+   * log.ts:38 的 sink 还决定了 debug/info 进 stdout（服务端是 server-out.log），
+   * 而 LLM 回落 warn 进 stderr（server-err.log）——两份文件不能混看；过去有
+   * 模拟 prompt 把这件事指错过，特此钉在产生轨迹的地方。
+   *
+   * 不记 narrative 正文（会淹没路径）；input 原文例外，它是复现的关键。
+   */
+  private traceIntent(message: string): void {
+    log.debug("intent-trace", `round=${this.round} pc=${this.activePlayerId} ${message}`);
+  }
+
   // ============================================================
   // getSuggestions (行动提示)
   // ============================================================
@@ -1698,6 +1717,7 @@ export class GameSession {
     // 本来就会推进的那 1 tick（上面的 advanceTime）已经花掉了。
     if (this.pendingLeaveConfirm) {
       this.pendingLeaveConfirm = false;
+      this.traceIntent(`route=confirmation type=leave reply=${JSON.stringify(input)} confirmed=${isConfirmReply(input)}`);
       turnMessages.push({ speaker: playerName, content: input, type: "action" });
       if (isConfirmReply(input)) {
         this.resolveModuleDeparture(turnMessages);
@@ -1714,6 +1734,7 @@ export class GameSession {
     const myPendingMove = this.pendingCompoundMove.get(this.activePlayerId);
     if (myPendingMove) {
       this.pendingCompoundMove.delete(this.activePlayerId);
+      this.traceIntent(`route=confirmation type=compound reply=${JSON.stringify(input)} originalAction=${myPendingMove.originalIntent.action}`);
       turnMessages.push({ speaker: playerName, content: input, type: "action" });
       await this.resolveCompoundMoveReply(myPendingMove, input, turnMessages);
       return this.buildActionResponse(turnMessages);
@@ -1882,6 +1903,7 @@ export class GameSession {
 
     // ── 意图派发（意图解析 → 结构化处理器）──
     const intent = await parseIntent(input);
+    this.traceIntent(`input=${JSON.stringify(input)} action=${intent.action} target=${JSON.stringify(intent.target ?? null)} skill=${JSON.stringify(intent.skill ?? null)}`);
 
     // 复合句回问：先移动再做事（开发·复合意图回问，任务1）。
     //
@@ -1948,6 +1970,7 @@ export class GameSession {
           : [this.sceneDisplayNames[hit.sceneId] ?? hit.sceneId];
         turnMessages.push({ speaker: playerName, content: input, type: "action" });
         this.pendingCompoundMove.set(this.activePlayerId, { originalInput: input, originalIntent: intent });
+        this.traceIntent(`route=compound-reask action=${intent.action} scene=${hit.sceneId}`);
         turnMessages.push({
           speaker: "系统",
           content: `你是要先去「${shown.join("」「")}」吗？（回复目的地名字继续，其它话按原意图在原地执行）`,
@@ -1974,13 +1997,18 @@ export class GameSession {
     // 那正是这句话会被判成 unknown 的原因，例如"陆川觉得很紧张"这类与
     // 场景对象无关的叙述，不该被误当成一次搜索。
     if (this.registeredModules.length > 0 && intent.action === "unknown") {
+      this.traceIntent("route=object-gate action=unknown allowDeny=true");
       if (this.applyObjectNameGate(input, turnMessages, playerName, { allowDeny: true })) {
+        this.traceIntent("route=object-gate intercepted=true");
         return this.buildActionResponse(turnMessages);
       }
+      this.traceIntent("route=object-gate intercepted=false");
     }
 
     if (intent.action !== "unknown") {
+      this.traceIntent(`route=handler name=${intent.action} start`);
       const handled = await this.handleIntent(intent, input, turnMessages);
+      this.traceIntent(`route=handler name=${intent.action} handled=${handled}`);
       if (handled) return this.buildActionResponse(turnMessages);
 
       // 开发·闸门放宽到 look 任务1：提示词修好 inventory 之后，"看看储物柜"
@@ -2003,9 +2031,12 @@ export class GameSession {
       // 只有明确对上了场景对象（resolve/ask）才值得打断默认的
       // 场景描述/叙事，猜不中就不该抢答。
       if (this.registeredModules.length > 0 && intent.action === "look") {
+        this.traceIntent("route=object-gate action=look allowDeny=false");
         if (this.applyObjectNameGate(input, turnMessages, playerName, { allowDeny: false })) {
+          this.traceIntent("route=object-gate intercepted=true");
           return this.buildActionResponse(turnMessages);
         }
+        this.traceIntent("route=object-gate intercepted=false");
       }
     }
 
@@ -2097,6 +2128,7 @@ export class GameSession {
     }
 
     // LLM 叙事（含传奇模板上下文注入 + 世界模型权威事实注入）
+    this.traceIntent(`route=llm-narration action=${intent.action} reason=${intent.action === "unknown" ? "unknown-fell-through" : "handler-unhandled"}`);
     this.injectWorldModelForScene();
     const epicContext = this.buildEpicContext();
     try {
@@ -2563,8 +2595,10 @@ export class GameSession {
     // 移动成功、不可达的说明、认不出地点，三种情况 tryResolveModuleScene
     // 都已经处理并按需 msg() 了，这里显式弃用返回值——不管有没有移动，
     // 下面都要接着执行原意图，语义上是同一件事："先移动（如果能）再做事"。
-    void this.tryResolveModuleScene(input, msg);
-    await this.handleIntent(pending.originalIntent, pending.originalInput, turnMessages);
+    const moved = this.tryResolveModuleScene(input, msg);
+    this.traceIntent(`route=compound-reply movementHandled=${moved} originalAction=${pending.originalIntent.action}`);
+    const handled = await this.handleIntent(pending.originalIntent, pending.originalInput, turnMessages);
+    this.traceIntent(`route=compound-reply handler=${pending.originalIntent.action} handled=${handled}`);
   }
 
   /**
@@ -2800,6 +2834,7 @@ export class GameSession {
 
   private handleSkillCheck(intent: ActionIntent, input: string, msg: (s: string) => number): boolean {
     const skill = intent.skill ?? "investigation";
+    this.traceIntent(`handler=skill_check skill=${skill} investigative=${GameSession.INVESTIGATIVE_SKILLS.has(skill)}`);
 
     // 调查类检定优先交给 InvestigationEngine 解析场景线索。
     //
@@ -2813,6 +2848,8 @@ export class GameSession {
       const match = this.matchCurrentSceneClue(input);
       if (match) {
         const { decision, candidates } = match;
+        const clueId = decision.kind === "resolve" ? decision.clueId : null;
+        this.traceIntent(`clue-decision source=skill_check kind=${decision.kind} clueId=${JSON.stringify(clueId)} candidates=${candidates.length}`);
         // fallback：显式技能检定已经明确表达了"要检定"这件事，没说清楚
         // 查什么就按老规矩取候选首条——这条与"对象名门"（act() 里处理
         // intent.action==="unknown" 的那支）对 fallback 的处理不同，两处
@@ -2820,6 +2857,7 @@ export class GameSession {
         if (decision.kind === "fallback") return this.resolveSceneClue(candidates[0]!, msg);
         return this.applyClueDecision(decision, msg);
       }
+      this.traceIntent("clue-decision source=skill_check kind=no-candidates clueId=null candidates=0");
     }
 
     const skillDisplay = SKILL_DISPLAY_NAMES[skill] ?? skill;
@@ -2929,8 +2967,14 @@ export class GameSession {
     opts: { allowDeny: boolean },
   ): boolean {
     const match = this.matchCurrentSceneClue(input);
-    if (!match || match.decision.kind === "fallback") return false;
-    if (match.decision.kind === "deny" && !opts.allowDeny) return false;
+    if (!match) {
+      this.traceIntent("clue-decision source=object-gate kind=no-candidates clueId=null candidates=0 intercepted=false");
+      return false;
+    }
+    const clueId = match.decision.kind === "resolve" ? match.decision.clueId : null;
+    const intercepted = match.decision.kind !== "fallback" && !(match.decision.kind === "deny" && !opts.allowDeny);
+    this.traceIntent(`clue-decision source=object-gate kind=${match.decision.kind} clueId=${JSON.stringify(clueId)} candidates=${match.candidates.length} intercepted=${intercepted}`);
+    if (!intercepted || match.decision.kind === "fallback") return false;
     turnMessages.push({ speaker: playerName, content: input, type: "action" });
     const objMsg = (s: string) => turnMessages.push({ speaker: "系统", content: s, type: "system" });
     // applyClueDecision() 的返回值只在"要不要继续走别的分支"时有意义
