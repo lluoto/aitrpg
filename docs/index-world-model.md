@@ -196,9 +196,10 @@ no_transfer
 3. 为规则执行器与世界模型补齐物理/社会派生事件模板；保持 LLM 无直接写状态权限。
 4. 完成《绝对牧师》v2 双管线，再按书迁移其他语料。
 5. 获取具体原始描述后，才定义数据化躯体的伤害事件、弱点覆盖和致死伤延缓规则。
-6. 每次迁移或清理后更新本索引、`docs/todo.json` 和 `worldmodel/HANDOFF_DEVICE_TRANSFER.md`，避免 C/D 路径、历史产物和当前主线再次断层。
-7. `mythos-expansion.ts`（原著世界内容库）接进剧本引擎——现在剧本引擎零引用，只有 LLM prompt 层在用。
-8. 6 张模组附件图（`MikuFan-普瑞米尔的谷仓/附件/`）未接入任何摄取或展示路径。
+6. 至少两本书完成 v2 registry 后，用固定前提的跨书对撞评测检验世界模型可用性，不做主角战力排行。
+7. 每次迁移或清理后更新本索引、`docs/todo.json` 和 `worldmodel/HANDOFF_DEVICE_TRANSFER.md`，避免 C/D 路径、历史产物和当前主线再次断层。
+8. `mythos-expansion.ts`（原著世界内容库）接进剧本引擎——现在剧本引擎零引用，只有 LLM prompt 层在用。
+9. 6 张模组附件图（`MikuFan-普瑞米尔的谷仓/附件/`）未接入任何摄取或展示路径。
 
 更早的旧清点、一次性核对记录与 `relics/` 遗物母版子工程见
 `docs/archive-world-model-2026-08.md`。

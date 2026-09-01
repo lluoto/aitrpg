@@ -409,6 +409,13 @@
       "severity": "info",
       "status": "open",
       "text": "文化处理未取样。analysis/sim/2026-08-31-barn-completion-attempt.md 第 58 行：本局华人 PC 陆川全程未被叙述否认或改写身份，但也没有产生任何基于族裔的互动样本（NPC 没有因为陆川的族裔说过或做过任何事）——1920 年代美国场景下叙事引擎遇到族裔话题会怎样处理（改写、回避、还是如实呈现当时的偏见语境），目前完全没有实测数据，说不准，不能当成“没问题”记录。需要专门设计会触发族裔互动的场景/NPC 对话来采样（比如让 NPC 主动评论调查员的族裔身份），而不是等自然实跑偶然撞上。本轮范围外，只记账。"
+    },
+    {
+      "id": "todo-45",
+      "category": "跨书世界模型可用性评测",
+      "severity": "info",
+      "status": "open",
+      "text": "待至少两本书完成 v2 registry 后，建立固定前提的跨书对撞评测。它用于检验能力契约、资源记账、反制、证据追溯和未知处理，不是主角战力排行。默认排除 narrative_privilege_candidate；裁决只能输出 decisive、conditional 或 unresolved。详见 D:\\aitrpg\\世界模型\\worldmodel\\CROSS_BOOK_COLLISION_EVALUATION.md。"
     }
   ]
 }
