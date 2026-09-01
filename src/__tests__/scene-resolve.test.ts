@@ -121,6 +121,42 @@ describe("回归 — 修复过程中真的踩到的两个坑", () => {
   });
 });
 
+describe("别名参与包含匹配，且优先于场景真名（开发·卧室线索修复 任务②a）", () => {
+  // 背景：「前往下水道维修室」曾经只在真实场景名这一档命中"下水道"
+  // （句子前半段），玩家实际要去的"维修间"因为场景表里没有"维修室"这个
+  // 写法，连候选都进不去。额外登记的别名要能参与包含匹配，且命中时
+  // 优先于同一句里恰好也出现的别的场景真名——不用比长度。
+  const maintenanceAliases = { ...aliases, maintenance_room: [...aliases.maintenance_room, "维修室"] };
+
+  test("额外别名命中时优先于句子里同时出现的其它场景真名", () => {
+    const r = resolveSceneTarget({ said: "前往下水道维修室", displayNames, aliases: maintenanceAliases, rows });
+    expect(r.sceneId).toBe("maintenance_room");
+    expect(r.via).toBe("alias-contains");
+  });
+
+  test("大多数场景 alias 就是自身 name（默认 fixture），这条分支对它们没有影响——既有用例不变", () => {
+    expect(go("警察局了解案情")).toEqual({ sceneId: "police_station", forced: false, via: "contains" });
+    expect(go("移动到谷仓").via).toBe("bigram"); // 反向包含仍然走 4b，不受 4a 影响
+  });
+
+  test("被否定的别名同样要排除，不能因为换了个字段就绕过 isRejectedMention", () => {
+    const r = resolveSceneTarget({ said: "别去维修室，去下水道", displayNames, aliases: maintenanceAliases, rows });
+    expect(r.sceneId).not.toBe("maintenance_room");
+  });
+
+  test("多个额外别名同时命中时标 forced（启发式挑的，得承认）", () => {
+    // 两个场景都额外挂了一个会在同一句里出现的别名，构造出真正的歧义。
+    const twoAliases = {
+      ...aliases,
+      maintenance_room: [...aliases.maintenance_room, "维修室"],
+      sewer: [...aliases.sewer, "下水道深处"],
+    };
+    const r = resolveSceneTarget({ said: "前往下水道深处的维修室", displayNames, aliases: twoAliases, rows });
+    expect(r.via).toBe("alias-contains");
+    expect(r.forced).toBe(true);
+  });
+});
+
 describe("bigramScore", () => {
   test("共有二元组计数", () => {
     expect(bigramScore("谷仓形建筑", "谷仓形建筑")).toBe(4);

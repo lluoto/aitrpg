@@ -69,6 +69,22 @@ interface ClueDef {
    * 未消费——留给后续"新手辅助"功能用（如提示玩家优先查 core 线索）。
    */
   importance?: "core" | "bonus" | "color";
+  /**
+   * 发现本线索后解锁的线索 id（模组数据自带的前置关系，如
+   * clue_bedroom_diary.unlocks = ["clue_bedroom_old_doc"]）。
+   *
+   * 开发·卧室线索修复 任务①：这份数据此前只喂给 world/state.ts 的剧本杀
+   * 路径（discoverClue() 用它做"一级自动连锁"——发现 A 自动带发现 B），
+   * GameSession/InvestigationEngine 这条自由跑团路径从未读过它，桥接层
+   * （bridgeBarnOfPremierClues）此前直接把这个字段丢在地上。
+   *
+   * 这里只复用"谁依赖谁"这份关系数据本身，不复用 state.ts 的自动连锁
+   * 行为——见 isLockedByUndiscoveredPrerequisite() 的说明：只用来算
+   * "前置未发现时不进候选集"，不会在玩家找到 A 时顺手把 B 也标记发现。
+   * 自动连锁会让任何摸到日记的人自动读懂米-戈联络术，抹平 Good/True End
+   * 的分界，还白拿一次该扣 SAN 的法术。
+   */
+  unlocks?: string[];
 }
 
 interface ClueTypesYAML {
@@ -221,6 +237,7 @@ export class InvestigationEngine {
       matchTexts: def.matchTexts,
       displayName: def.displayName,
       importance: def.importance,
+      unlocks: def.unlocks,
     });
     if (def.scene) {
       const list = this.sceneClues.get(def.scene) ?? [];
@@ -254,6 +271,38 @@ export class InvestigationEngine {
    */
   isCoreClue(id: string): boolean {
     return this.clueTypes.get(id)?.importance === "core";
+  }
+
+  /**
+   * 这条线索是否被某条【尚未被该玩家发现】的线索通过 unlocks 声明为前置
+   * 依赖（开发·卧室线索修复 任务①）。
+   *
+   * 背景：clue_bedroom_diary.unlocks 里有 clue_bedroom_old_doc，且
+   * old_doc 的展示名/findMethods 文本（"老旧文件（米-戈联络术）"/"从日记本
+   * 中取出老旧文件"）与 diary 的文本（"日记本与老旧文件"）高度重叠——
+   * uniqueAbbrevs 找不出"日记""文件"这类短唯一片段，逼出"日记本与"这种
+   * 没人会说的碎片，自然句因此被 clue-match.ts 判 deny。old_doc 在叙事上
+   * 本就该在 diary 之后才拿到（模组原文写的是"从日记本中取出老旧文件"），
+   * 让它提前跟 diary 一起抢候选位置本身就不对。
+   *
+   * 只做前置门（候选集过滤），不做自动连锁（state.ts:discoverClue 那种
+   * "发现 A 自动发现 B"）——这两件事分开是有意的，见 ClueDef.unlocks 的
+   * 说明：clue_bedroom_old_doc 是 Good End / True End 的分界线
+   * （BARN_OF_PREMIER 的 END_NARRATIONS 用 excludeClues 排除它），自动连锁
+   * 会让任何摸到日记的人自动读懂米-戈联络术，把两个结局的区别抹平，还会
+   * 白送一次该扣 SAN 的法术。
+   *
+   * 全表扫描（clueTypes 目前 30+ 条，遍历一次的开销可以忽略）：找出所有
+   * unlocks 里含 id 的线索，只要其中任意一条对 playerName 还没发现，
+   * 就判定为"被锁住"。没有任何线索把它列为 unlocks 时，天然不锁。
+   */
+  isLockedByUndiscoveredPrerequisite(id: string, playerName: string): boolean {
+    for (const [otherId, def] of this.clueTypes) {
+      if (otherId === id) continue;
+      if (!def.unlocks?.includes(id)) continue;
+      if (!this.isDiscoveredBy(otherId, playerName)) return true;
+    }
+    return false;
   }
 
   /**

@@ -43,7 +43,7 @@ interface SceneResolveResult {
    */
   forced: boolean;
   /** 命中哪条规则。报告与测试钉它 —— 分类碰巧对了但走错规则同样是坏的 */
-  via: "display-name" | "alias" | "row-exact" | "contains" | "bigram" | "none";
+  via: "display-name" | "alias" | "row-exact" | "alias-contains" | "contains" | "bigram" | "none";
 }
 
 /**
@@ -93,7 +93,34 @@ export function resolveSceneTarget(input: SceneResolveInput): SceneResolveResult
 
   const usable = input.rows.filter((r) => r.name && r.name !== "unknown");
 
-  // 4. 包含：目标包含场景名（「警察局了解案情」→ 警察局）
+  // 4a. 别名包含：登记过的额外别名（不同于场景自身 name 的那些，比如
+  // 「维修间」额外登记「维修室」）参与包含匹配，且优先于 4b 的真实场景名
+  // 包含匹配——别名本来就是专门登记来消解"玩家嘴里的词"与"场景表里的
+  // 正式名字"之间落差的，命中就该采纳，不用跟别的场景比长度。
+  //
+  // 背景：「前往下水道维修室」原来只在 4b 命中「下水道」（真场景名，
+  // 句子前半段），玩家实际要去的「维修间」因为场景表里没有"维修室"这个
+  // 写法，连候选都进不去。多数场景目前 alias 就是自己的 name（历史遗留
+  // 的初始化写法，见 game-session.ts 填充 sceneAliases 那处）——这里只挑
+  // "跟本场景 name 不同"的别名，对绝大多数场景等价于什么都没发生，只有
+  // 真正额外登记的别名才会产生新候选，不影响任何既有场景的既有行为。
+  const aliasHits: SceneRow[] = [];
+  for (const [id, list] of Object.entries(input.aliases)) {
+    const ownName = usable.find((r) => r.id === id)?.name;
+    for (const alias of list) {
+      if (!alias || alias === ownName) continue;
+      if (!t.includes(alias)) continue;
+      if (isRejectedMention(t, alias)) continue;
+      aliasHits.push({ id, name: alias });
+    }
+  }
+  if (aliasHits.length > 0) {
+    let bestAlias = aliasHits[0];
+    for (const r of aliasHits) if (r.name.length > bestAlias.name.length) bestAlias = r;
+    return { sceneId: bestAlias.id, forced: aliasHits.length > 1, via: "alias-contains" };
+  }
+
+  // 4b. 包含：目标包含场景名（「警察局了解案情」→ 警察局）
   //    或场景名包含目标（「谷仓」→ 谷仓形建筑）
   //
   // ⚠ **提到 ≠ 要去**。「别去警察局」「警察局那边已经去过了」都含「警察局」。

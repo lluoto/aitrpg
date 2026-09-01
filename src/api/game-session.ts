@@ -2458,10 +2458,25 @@ export class GameSession {
     });
     if (!hit.sceneId) return false;
 
+    // 开发·卧室线索修复 任务②b：模糊匹配（alias-contains/contains/bigram）
+    // 解析结果如果正好等于当前所在场景，本身就是可疑信号——
+    // "前往下水道维修室"曾经只在"包含"这一档命中"下水道"（句子前半段，
+    // 玩家当时就站在下水道），实际要去的"维修间"因为场景表里没有"维修室"
+    // 这个写法，连候选都进不去，于是"前往"变成"原地不动"却仍然报成功。
+    // 任务②a 已经用别名把"维修室"接进候选、且让别名匹配优先于同名场景的
+    // 包含匹配，正常情况下这句话现在直接命中"维修间"，走不到这条分支——
+    // 这里留着是防同类问题的通用兜底：exact 三档（display-name/alias/
+    // row-exact）要求整句话字面就是场景名/别名/id，是玩家明确的陈述，
+    // 不受这条限制；只有三档启发式匹配（把"顺带提到了自己所在地方"当成
+    // "要去的地方"）会被拦下，当成未命中交回调用方（对象名门/LLM 叙事），
+    // 而不是假装"移动"成功却其实原地没动。
+    const fromSceneId = this.getDisplayedScene();
+    const heuristicVia = hit.via === "alias-contains" || hit.via === "contains" || hit.via === "bigram";
+    if (hit.sceneId === fromSceneId && heuristicVia) return false;
+
     // 弱版邻接 + 按跳数计时（开发 A · 任务 3）：目标在场景表内就能去，
     // 不要求与当前场景有出口直连，但按最短跳数付时间，不是瞬移。
     // 图上量不出到达方式（孤立场景/不连通）时拒绝移动并说明，不编代价。
-    const fromSceneId = this.getDisplayedScene();
     const graph = buildSceneGraph(this.world.listScenes());
     const hops = shortestHops(graph, fromSceneId, hit.sceneId);
     if (hops === null) {
@@ -2943,9 +2958,19 @@ export class GameSession {
     // 描述，没有 ClueDef（技能、成功层级文本、san_cost 都没有），送进
     // investigateCoC 只会拿到「你没有找到有用的线索」这个兜底失败——
     // 比原来的裸检定更糟。这类线索继续走下面的通用检定。
+    //
+    // 开发·卧室线索修复 任务①：候选集还要排掉"被某条尚未发现的线索
+    // unlocks 声明为前置"的那些——clue_bedroom_diary 与 clue_bedroom_old_doc
+    // 名字高度重叠，old_doc 混进候选会把 diary 本该唯一的简称也搅浑，
+    // 逼出没人会说的碎片，自然句被 clue-match.ts 判 deny。old_doc 本就该
+    // 在 diary 之后才拿到（模组原文"从日记本中取出老旧文件"）。这里只是
+    // 过滤候选，不是自动发现：diary 一旦真被发现，isLockedByUndiscoveredPrerequisite
+    // 对 old_doc 就会转 false（前置已满足），old_doc 自然重新有资格参与
+    // 匹配——玩家还是得自己再说一句话去找它，不会被顺手带出。
     const candidates = this.investigation
       .getUndiscoveredSceneClues(pos, this.activePlayerId)
-      .filter((c) => this.investigation.hasClueType(c));
+      .filter((c) => this.investigation.hasClueType(c))
+      .filter((c) => !this.investigation.isLockedByUndiscoveredPrerequisite(c, this.activePlayerId));
     if (candidates.length === 0) return null;
     return { decision: this.resolveSceneClueMatch(input, candidates), candidates };
   }
@@ -4003,6 +4028,17 @@ export class GameSession {
           if (!r.name || r.name === "unknown") continue;
           this.sceneDisplayNames[r.id] = r.name;
           if (r.description.length > 0) this.sceneAliases[r.id] = [r.name];
+          // 开发·卧室线索修复 任务②a："维修间"额外登记别名"维修室"——
+          // clue_bedroom_diary 的揭示文本教玩家"打开下水道维修室门"，
+          // 玩家自然会用这个词，但场景表里的正式名字是"维修间"，两个字
+          // 长度相同、真实场景"下水道"又恰好也是句子的一部分，此前会被
+          // "下水道"抢先命中（见 resolveSceneTarget 新增的 alias-contains
+          // 分支，和 tryResolveModuleScene 的自匹配保护）。只加这一条，
+          // 不给别的场景批量加别名——这是本轮明确要修的这一个词，不是
+          // 顺手扩展别名机制的使用面。
+          if (r.id === "维修间" && !this.sceneAliases[r.id]!.includes("维修室")) {
+            this.sceneAliases[r.id]!.push("维修室");
+          }
         }
       } catch { /* 忽略 DB 错误 */ }
       // 玩家初始位置 → 模组入口场景（优先 sceneDescriptions 第一个 key，兜底 scenes 表第一行），确保场景描写可注入
@@ -4129,6 +4165,7 @@ export class GameSession {
           matchTexts: [clue.name, ...clue.findMethods.map((f) => f.description)],
           displayName: clue.name,
           importance: clue.importance,
+          unlocks: clue.unlocks,
           coc_primary: {
             skill: skillKey,
             regular: clue.revelation,

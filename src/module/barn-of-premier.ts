@@ -709,17 +709,23 @@ function buildScenes(): Scene[] {
     {
       id: "clue_bedroom_diary",
       name: "日记本与老旧文件",
-      description: "在床头柜的日记本中夹杂着一份老旧的文件与一把上锈的钥匙。钥匙可以用来打开下水道中的维修室门。日记本中都是一些对文件的翻译，似乎是一些音译。需要过一个困难的母语，才可以对照日记本观看文件。",
+      description: "在床头柜的日记本中夹杂着一份老旧的文件与一把上锈的钥匙。钥匙可以用来打开下水道中的维修间门。日记本中都是一些对文件的翻译，似乎是一些音译。需要过一个困难的母语，才可以对照日记本观看文件。",
       findMethods: [
         { type: "observation", description: "侦查或挪开床头柜" },
         { type: "skill", skillName: "母语", difficulty: "hard", description: "困难的母语来对照日记本观看文件" },
       ],
-      revelation: "发现日记本、老旧文件（与Mi-Go联络术相关）、生锈钥匙（打开下水道维修室门）。",
+      // 开发·卧室线索修复 任务②c：这句原文是"打开下水道维修室门"——与场景
+      // 表里的正式场景名"维修间"不一致（那个词本身是引擎自己教出去的，见
+      // resolveSceneTarget 新增的别名分支）。统一成"维修间"，别名"维修室"
+      // 仍然保留在场景解析里当兜底，两边都认。不改 MAINTENANCE_ROOM 那段
+      // 房间描述本身（那是原文叙述房间里挂着的生锈铁牌写着"维修室"，是
+      // 场景细节，不是场景名，本阶段不动 PDF 内容判断）。
+      revelation: "发现日记本、老旧文件（与Mi-Go联络术相关）、生锈钥匙（打开下水道维修间门）。",
       unlocks: ["clue_bedroom_old_doc"],
       found: false,
       importance: "core",
       // 剧情状态联动（DESIGN-LOG §2 示范）：找到生锈钥匙 → 卧室剧情状态写入"钥匙已到手"。
-      // 下游旁白可据此承接（下水道维修室门可开），不会误写"钥匙已丢失/尚未找到"。
+      // 下游旁白可据此承接（下水道维修间门可开），不会误写"钥匙已丢失/尚未找到"。
       setStateVar: { key: "sewerKeyFound", value: true },
     },
     {
@@ -770,7 +776,7 @@ function buildScenes(): Scene[] {
     npcIds: ["ghoul"],
     connections: [
       { targetSceneId: "adrian_bedroom", condition: "从绳梯向上返回卧室" },
-      { targetSceneId: "maintenance_room", condition: "使用生锈钥匙打开下水道深处的维修室门" },
+      { targetSceneId: "maintenance_room", condition: "使用生锈钥匙打开下水道深处的维修间门" },
     ],
     atmosphere: "下水道中弥漫着腐烂与死亡的气息。",
   });
