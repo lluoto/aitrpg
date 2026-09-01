@@ -1,15 +1,15 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-08-31 14:17
+> 生成于 2026-09-01 07:16
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 97178c2 docs: verify Good End via natural phrasing, mark todo-39 done |
-| 测试 | 2565 条 / 169 文件  全绿 |
+| HEAD | 6814d09 feat: add debug traces for each turn's intent path |
+| 测试 | 2569 条 / 170 文件  全绿 |
 | 工作树 | **1 个文件未提交** |
 
 未提交：
@@ -88,14 +88,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 6814d09 feat: add debug traces for each turn's intent path
+- 4d6aabd docs: refresh handoff.md and now.md after this round
 - 97178c2 docs: verify Good End via natural phrasing, mark todo-39 done
 - 587de85 fix: probe container cases by result, not by action name
 - a005bc3 fix: widen the object-name gate to look
 - 4dc64e3 docs: refresh handoff.md and now.md after this round
 - ff28fea feat: route KP narration through the constraint layer
 - b2ac5a6 fix: clarify inventory prompt means the player's own bag
-- f1f0777 feat: add a live probe for LLM intent-parsing accuracy
-- 30fcdc1 docs: refresh handoff.md and now.md after the object-name-gate round
 
 ## 找东西
 
