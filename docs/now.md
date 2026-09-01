@@ -1,19 +1,19 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-01 08:28
+> 生成于 2026-09-01 14:22
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 45b3b9c docs: record cross-book collision evaluation as a future todo |
-| 测试 | 2572 条 / 171 文件  全绿 |
+| HEAD | 2cb0f9a fix: reconnect the ingest pipeline's broken e2e path |
+| 测试 | 2613 条 / 174 文件  全绿 |
 | 工作树 | **1 个文件未提交** |
 
 未提交：
-- `M docs/now.md`
+- `M docs/handoff.md`
 
 ## 开工前
 
@@ -88,14 +88,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 2cb0f9a fix: reconnect the ingest pipeline's broken e2e path
+- 8aec58f feat: add a three-way audit for the ingest calibration report
+- 2c38d2c fix: bedroom clue gate respects unlocks prerequisites
+- 90cf3ad docs: refresh now.md after the cross-book todo commit
 - 45b3b9c docs: record cross-book collision evaluation as a future todo
 - 79429c2 fix: forward selected environment through the WMI launcher
 - 76d638c docs: refresh handoff.md and now.md after intent tracing
 - 6814d09 feat: add debug traces for each turn's intent path
-- 4d6aabd docs: refresh handoff.md and now.md after this round
-- 97178c2 docs: verify Good End via natural phrasing, mark todo-39 done
-- 587de85 fix: probe container cases by result, not by action name
-- a005bc3 fix: widen the object-name gate to look
 
 ## 找东西
 

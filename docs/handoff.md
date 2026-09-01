@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-01 07:15  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-01 14:22  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：6814d09 feat: add debug traces for each turn's intent path  ·  **测试**：2569 条 / 170 文件，全绿（基线 2569，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：2cb0f9a fix: reconnect the ingest pipeline's broken e2e path  ·  **测试**：2613 条 / 174 文件，全绿（基线 2613，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -187,18 +187,18 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- 2cb0f9a fix: reconnect the ingest pipeline's broken e2e path
+- 8aec58f feat: add a three-way audit for the ingest calibration report
+- 2c38d2c fix: bedroom clue gate respects unlocks prerequisites
+- 90cf3ad docs: refresh now.md after the cross-book todo commit
+- 45b3b9c docs: record cross-book collision evaluation as a future todo
+- 79429c2 fix: forward selected environment through the WMI launcher
+- 76d638c docs: refresh handoff.md and now.md after intent tracing
 - 6814d09 feat: add debug traces for each turn's intent path
 - 4d6aabd docs: refresh handoff.md and now.md after this round
 - 97178c2 docs: verify Good End via natural phrasing, mark todo-39 done
 - 587de85 fix: probe container cases by result, not by action name
 - a005bc3 fix: widen the object-name gate to look
-- 4dc64e3 docs: refresh handoff.md and now.md after this round
-- ff28fea feat: route KP narration through the constraint layer
-- b2ac5a6 fix: clarify inventory prompt means the player's own bag
-- f1f0777 feat: add a live probe for LLM intent-parsing accuracy
-- 30fcdc1 docs: refresh handoff.md and now.md after the object-name-gate round
-- 9d0ff13 docs: record two new gaps found by the barn completion sim
-- ba5c2c5 fix: stop action anchor from offering to visit an NPC
 
 ## 代码地图
 
