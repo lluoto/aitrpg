@@ -1,6 +1,6 @@
 {
-  "tests": 2569,
-  "files": 170,
+  "tests": 2572,
+  "files": 171,
   "unwiredMethods": 86,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -539,6 +539,11 @@
       "tests": 2569,
       "files": 170,
       "when": "add per-turn intent-path observability only: GameSession.traceIntent() emits log.debug under one grep-friendly scope (intent-trace), with round/pc on every line. It records parsed input/action/target/skill, confirmation gate route, compound re-execution route, object-gate entry/result, handler name/start/handled, investigative clue decision kind/clueId/candidate count, and the final LLM narration fallback reason. It deliberately never logs narrative body; input is retained for reproduction. Debug is default-silent (log.ts threshold defaults to info), so player-visible behavior and normal log output stay unchanged. Comments document that debug/info go stdout/server-out.log while warn fallbacks go stderr/server-err.log. Added 4 tests: abort report's two original phrases demonstrate skill_check -> clue_bedroom_diary versus read -> read handler (not clue matcher); forced action:look shows handler false -> look object gate -> supplies clue; unknown narration fallback records its reason but no body; and default debug emits no console.log. Attempted deterministic offline reproduction of report's confirmation symptom using the closest registered scene (农场主别墅 -> 艾德里安的卧室): no confirmation gate triggered and 确定 fell to ordinary narration, so no todo and no behavior change; the new trace is the required evidence if it recurs live. Mutation check removed parsed-intent trace and its corresponding assertion went red; restored. typecheck 0; bun test 2565->2569 (+4, 169->170); preflight 12/12; intent coverage and both phrasing diagnostics unchanged."
+    },
+    {
+      "tests": 2572,
+      "files": 171,
+      "when": "fix dev-server.ps1 WMI environment forwarding. Win32_Process.Create inherits WmiPrvSE.exe's environment, not the caller PowerShell environment: existing WORLD_MODEL_PATH/CTHULHU_MODEL_PATH assignment was inert, and LOG_LEVEL was never forwarded, so intent-trace could not be enabled through the documented launcher. Kept solution B (WMI detachment / no caller Job Object hang) and PID cleanup untouched; built a bounded cmd.exe prefix from an explicit whitelist only: LOG_LEVEL, WORLD_MODEL_PATH, CTHULHU_MODEL_PATH, PORT. Each populated value becomes cmd's standard set \"X=Y\" form chained directly with && (no space before &&, because cmd would store it as a trailing value space), before bun src/api/server.ts redirection. Escapes caller-provided double quotes with ^. Corrected the preceding world-model comment: explicit paths are only genuinely more robust now that the cmd child receives them; before this change that claim was backwards. Added 3 static script-shape tests for whitelist/process-env lookup, exact no-space && prefix plus wrapper insertion, and corrected WMI inheritance comment; mutation removing envPrefix made wrapper test red, restored. Primary live acceptance ran 3 WMI start/stop cycles: (1) caller LOG_LEVEL=debug, create session/action, server-out.log contained intent-trace; (2) no LOG_LEVEL, same action, server-out.log contained no trace; (3) caller WORLD_MODEL_PATH=C:aitrpgdefinitely-missing-model.jsonl, GET /api/config returned that exact path and exists=false (previous behavior would have remained true). Every stop removed both PID files and returned promptly; every start returned promptly. typecheck 0; bun test 2569->2572 (+3, 170->171); preflight 12/12."
     }
   ]
 }

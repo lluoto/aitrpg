@@ -59,9 +59,12 @@ function Start-DevServer {
     }
   }
 
-  # 世界模型路径默认已经能通过 C→D 的 Junction 解析（../世界模型/...），
-  # 这里显式指定只是更稳，不依赖 Junction/相对路径假设。已经设过就不覆盖，
-  # 让调用方可以按需指向别的路径做对照测试。
+  # 世界模型路径默认已经能通过 C→D 的 Junction 解析（../世界模型/...）。
+  # 下面显式指定的前提是：它们随后会被写进 cmd.exe 的命令行环境；WMI 的
+  # Win32_Process.Create 创建的是 WmiPrvSE.exe 环境里的进程，不继承这份
+  # PowerShell 调用方环境。修好透传后，显式指定才真的更稳、不依赖
+  # Junction/相对路径假设。已经设过就不覆盖，让调用方可以按需指向别的路径
+  # 做对照测试。
   if (-not $env:WORLD_MODEL_PATH) {
     $env:WORLD_MODEL_PATH = "D:\aitrpg\世界模型\v18_output\v18_all_master.jsonl"
   }
@@ -95,7 +98,24 @@ function Start-DevServer {
   # 自己退出，所以正常情况下杀掉 bun.exe 之后 cmd.exe 会自己跟着消失；
   # 但 Stop-DevServer 不依赖"通常会"，两个 PID 都记下来、stop 时都显式
   # 杀一遍，见该函数）。
-  $wrapperCmdLine = "cmd.exe /c bun src/api/server.ts > `"$OutLog`" 2> `"$ErrLog`""
+  # WMI 只给 CreateProcess 一条命令行，不能像 Start-Process 那样单独传环境块。
+  # 白名单而不是全量转发：只把服务器明确消费、且调用方需要覆盖的变量拼进
+  # cmd.exe /c。全量转发会把调用方无关的环境/密钥都塞进命令行，既难审计也
+  # 增加 cmd 转义面。
+  #
+  # `set "X=Y"&&` 的 `&&` 前**不能有空格**：cmd 会把空格吃进 Y 的尾部。
+  # 双引号是 cmd 的标准 set 形式，既不会把引号存进值，也能保住路径里的空格。
+  $forwardedEnvNames = @("LOG_LEVEL", "WORLD_MODEL_PATH", "CTHULHU_MODEL_PATH", "PORT")
+  $envPrefix = ""
+  foreach ($name in $forwardedEnvNames) {
+    $value = [Environment]::GetEnvironmentVariable($name, "Process")
+    if ($null -eq $value -or $value.Length -eq 0) { continue }
+    # cmd 的引号本身只有调用方手工塞入时才需要处理；用 ^ 转义，别让一条
+    # 测试路径把 set 语句提前截断。
+    $escaped = $value.Replace('"', '^"')
+    $envPrefix += "set `"$name=$escaped`"&&"
+  }
+  $wrapperCmdLine = "cmd.exe /c ${envPrefix}bun src/api/server.ts > `"$OutLog`" 2> `"$ErrLog`""
   $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
     CommandLine = $wrapperCmdLine
     CurrentDirectory = $RepoRoot.Path
