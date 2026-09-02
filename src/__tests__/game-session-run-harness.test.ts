@@ -217,6 +217,72 @@ describe("③ 脱离结局：显式离开→确认→结局，脚本能走到 Tr
   });
 });
 
+// 开发·真相链路 任务②：True End 至今没有一次是靠玩家输入走到的——上面
+// ③ 的两条测试（含 scene-id-bridge.test.ts:66/79/105）全部用
+// markDiscovered 直接标旗标，验的是"旗标齐了就出 True End"，不是"玩家
+// 能不能把旗标挣到"。这条判据补上之前，"True End 可达"这个结论都只是
+// 单元层的。
+//
+// 全链路纯自然语句（不含任何 markDiscovered / 内部 clue id 字面量）：
+//   卧室拿 diary → 读 old_doc → 前往维修间 → 查看缸中脑 → 离开确认 → True End
+//
+// seed=187 是穷举 1..500 找到的、三处技能检定都在第一次输入就成功的
+// 种子（暴力搜索脚本已删除，不留在仓库里；判据不依赖脚本本身，只依赖
+// 这个种子在这份固定脚本下的确定性结果）——不追求"运气好蒙对"，追求
+// 的是"同一份脚本、同一个种子，每次跑结果都一样"这件事本身可验证：
+// 下面第二条用例连跑两次比较逐步输出，就是在验证这一点，而不是假设
+// LCG 天生确定就够了。
+describe("④ 全链路：纯自然语句从卧室走到 True End（开发·真相链路 任务②）", () => {
+  const TRUE_END_CHAIN_SEED = 187;
+  const trueEndScript: GameSessionScriptStep[] = [
+    LOAD_MODULE,
+    { input: "前往艾德里安的卧室" },
+    { input: "林娜翻开卧室书桌上的日记和旧文件，想知道地下室里到底发生过什么。" },
+    { input: "陆川从日记本中取出老旧文件仔细查看。" },
+    { input: "前往维修间" },
+    { input: "陆川走近那两个培养缸，看清里面泡着什么" },
+    { input: "我们决定离开这里，结束这次调查" },
+    { input: "确定" },
+  ];
+
+  it("**主判据**：全程只用自然语句和 act()，不调用 markDiscovered、不出现内部 clue id，最终得到 True End", async () => {
+    const session = makeSession("true-end-natural-language-chain");
+    const r = await runGameSessionScript(session, trueEndScript, { ...OPTS, seed: TRUE_END_CHAIN_SEED });
+    expect(r.threw).toBe(false);
+
+    // 逐步核对每一次自然语句确实命中了它该命中的那条线索，不是靠运气
+    // 蒙对了最终结局——中途任何一步走岔都要在这里现形，不能只看最后
+    // 一步的文本。
+    // 逐步核对只靠叙事文本本身——不读任何内部 clue id/investigation
+    // 状态，revelation 原文逐字匹配就是"这一步真的命中了它该命中的
+    // 那条线索"的证据，比读内部状态更直接，也不给"用 id 抄近路验证"
+    // 留任何空间。
+    expect(r.steps[1].scene).toBe("艾德里安的卧室");
+    expect(r.steps[2].narrative).toBe("发现日记本、老旧文件（与Mi-Go联络术相关）、生锈钥匙（打开下水道维修间门）。");
+    expect(r.steps[3].narrative).toBe("发现Mi-Go联络术（sc1/1d3+1，研究2周可学会，CM+3）。");
+    expect(r.steps[4].scene).toBe("维修间");
+
+    // 任务①之前，这句话（引擎叙事自己反复用的"培养缸"）会被 deny——
+    // 这一步是本条判据的关键，也是变异检验要盯住的那一步。
+    expect(r.steps[5].narrative).toBe("发现艾米丽和爱莉的缸中脑（Sc1/1d6）。艾米丽以为自己只是失去了视觉触觉。");
+
+    expect(r.steps[7].dead).toBe(true);
+    const trueEndNarration = END_NARRATIONS.find((e) => e.id === "true")!;
+    expect(r.steps[7].narrative).toBe(trueEndNarration.lines.join("\n"));
+  });
+
+  it("确定性回归：同一份脚本、同一个种子，两次独立会话逐步输出完全相同", async () => {
+    const a = await runGameSessionScript(makeSession("true-end-chain-determinism-a"), trueEndScript, { ...OPTS, seed: TRUE_END_CHAIN_SEED });
+    const b = await runGameSessionScript(makeSession("true-end-chain-determinism-b"), trueEndScript, { ...OPTS, seed: TRUE_END_CHAIN_SEED });
+    expect(a.threw).toBe(false);
+    expect(b.threw).toBe(false);
+    for (let i = 0; i < a.steps.length; i++) {
+      expect(a.steps[i].narrative).toBe(b.steps[i].narrative);
+      expect(a.steps[i].scene).toBe(b.steps[i].scene);
+    }
+  });
+});
+
 // 开发·pendingConfirm 认人 —— 任务2验收（跨 PC 泄漏）。
 //
 // 背景：2026-08-30 实跑（会话 lcmj2joi）：回合 7 p1 说"回家汇报并问马克"
