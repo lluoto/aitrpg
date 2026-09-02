@@ -416,6 +416,13 @@
       "severity": "info",
       "status": "open",
       "text": "待至少两本书完成 v2 registry 后，建立固定前提的跨书对撞评测。它用于检验能力契约、资源记账、反制、证据追溯和未知处理，不是主角战力排行。默认排除 narrative_privilege_candidate；裁决只能输出 decisive、conditional 或 unresolved。详见 D:\\aitrpg\\世界模型\\worldmodel\\CROSS_BOOK_COLLISION_EVALUATION.md。"
+    },
+    {
+      "id": "todo-46",
+      "category": "叙事规范与社会思潮分析",
+      "severity": "info",
+      "status": "open",
+      "text": "后续可从已审核小说证据中分析角色行动、叙事框架、剧情奖惩、制度激励和主角道德例外，形成 social_norm_candidate 等下游记录。不得由作品文本推断作者私人信念或读者整体认同；读者倾向需要独立、合规的公开反馈语料和采样限制。分析结果不自动成为运行时社会规则。详见 D:\\aitrpg\\世界模型\\worldmodel\\SOCIAL_NORM_ANALYSIS_POLICY.md。"
     }
   ]
 }
