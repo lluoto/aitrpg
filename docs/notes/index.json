@@ -19,7 +19,7 @@
       "id": "ingest",
       "name": "模组摄取",
       "file": "docs/notes/ingest.md",
-      "count": 45
+      "count": 46
     },
     {
       "id": "rules",
@@ -842,6 +842,17 @@
       "line": 1718,
       "lines": 28,
       "summary": "验证上一条时用真实 PDF + 真实 LLM（ecnu-plus）跑了一次活体管线：43"
+    },
+    {
+      "id": "ingest-46",
+      "title": "展示格式渗进输出契约——这是第三次（2026-09-02）",
+      "date": "2026-09-02",
+      "status": "warn",
+      "group": "ingest",
+      "file": "docs/notes/ingest.md",
+      "line": 1746,
+      "lines": 42,
+      "summary": "发作：LLM 的输出里混进了给人看的展示格式，解析器只认一种字面形态，"
     },
     {
       "id": "rules-01",

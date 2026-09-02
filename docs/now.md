@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-02 09:19
+> 生成于 2026-09-02 10:10
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,13 +13,14 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | afe7d30 feat: let the ingest pipeline inherit baseline ids by name |
-| 测试 | 2740 条 / 178 文件  全绿 |
-| 工作树 | **4 个文件未提交** |
+| HEAD | 8208fc4 docs: remeasure block classification after the key-parsing fix |
+| 测试 | 2744 条 / 178 文件  全绿 |
+| 工作树 | **5 个文件未提交** |
 
 未提交：
 - `M docs/notes/index.json`
 - `M docs/notes/ingest.md`
+- `M docs/now.md`
 - `M docs/test-baseline.json`
 - `M docs/todo.json`
 
@@ -30,7 +31,7 @@ bun scripts/preflight.ts     # 改动前后各跑一次，机器判据挡住反�
 bun scripts/now.ts           # 收工前刷新这份文件
 ```
 
-## 已定位未修（20）
+## 已定位未修（21）
 
 - ️ 「引擎别再替玩家挪窝」这一步单独做不成立（2026-08-20）
   `docs/notes/engine.md:514`
@@ -72,6 +73,8 @@ bun scripts/now.ts           # 收工前刷新这份文件
   `docs/notes/ingest.md:1679`
 - 块分类几乎全灭：JSON 键带正文，不是 token 截断（2026-09-02）
   `docs/notes/ingest.md:1718`
+- 展示格式渗进输出契约——这是第三次（2026-09-02）
+  `docs/notes/ingest.md:1746`
 
 ## 动手前先扫一眼的坑（35）
 
@@ -113,14 +116,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 8208fc4 docs: remeasure block classification after the key-parsing fix
+- 8b480bb fix: extract classify keys from anywhere, not just string ends
+- 38fb219 feat: probe whether the classify-key parsing bug reproduces
+- b134d80 docs: refresh notes/now/handoff after phase-5 id inheritance
 - afe7d30 feat: let the ingest pipeline inherit baseline ids by name
 - 156a0db docs: update todo-19 with the current premiers_barn special-case count
 - 78e12ff docs: log the engine's unrecognized-narrative-word pattern
 - 723dd0d docs: refresh handoff.md and now.md after this round
-- 498dbc4 test: add a registry judge for narrative-vocabulary drift
-- d141dd2 test: add a pure natural-language True End replay
-- 7d9e6f1 fix: teach clue_final_brain_jars the names the engine itself uses
-- dd04683 docs: backfill notes/todo for phases 1-7's ingest calibration
 
 ## 找东西
 

@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-02 09:20  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-02 10:11  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：afe7d30 feat: let the ingest pipeline inherit baseline ids by name  ·  **测试**：2740 条 / 178 文件，全绿（基线 2740，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：8208fc4 docs: remeasure block classification after the key-parsing fix  ·  **测试**：2744 条 / 178 文件，全绿（基线 2744，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -160,7 +160,7 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 用法：跑局类脚本都收 `[局数] [起始局号]`，
 `bun scripts/diag/diag-downed.ts 3 4` = 第 4~6 局，便于分批跑而不重叠。
 
-## 手上还挂着的（20）
+## 手上还挂着的（21）
 
 - ️ 「引擎别再替玩家挪窝」这一步单独做不成立（2026-08-20）
   `docs/notes/engine.md:514`
@@ -202,9 +202,15 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
   `docs/notes/ingest.md:1679`
 - 块分类几乎全灭：JSON 键带正文，不是 token 截断（2026-09-02）
   `docs/notes/ingest.md:1718`
+- 展示格式渗进输出契约——这是第三次（2026-09-02）
+  `docs/notes/ingest.md:1746`
 
 ## 最近做了什么
 
+- 8208fc4 docs: remeasure block classification after the key-parsing fix
+- 8b480bb fix: extract classify keys from anywhere, not just string ends
+- 38fb219 feat: probe whether the classify-key parsing bug reproduces
+- b134d80 docs: refresh notes/now/handoff after phase-5 id inheritance
 - afe7d30 feat: let the ingest pipeline inherit baseline ids by name
 - 156a0db docs: update todo-19 with the current premiers_barn special-case count
 - 78e12ff docs: log the engine's unrecognized-narrative-word pattern
@@ -213,10 +219,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - d141dd2 test: add a pure natural-language True End replay
 - 7d9e6f1 fix: teach clue_final_brain_jars the names the engine itself uses
 - dd04683 docs: backfill notes/todo for phases 1-7's ingest calibration
-- 0cdbdc1 docs: log the narrative-norm analysis policy as todo-46
-- bfc8dbd docs: refresh handoff.md and now.md after this round
-- 6ad200f feat: add a calibrated semantic-contradiction probe
-- 23400a4 feat: require sourceRef for new or edited ending narration
 
 ## 代码地图
 
