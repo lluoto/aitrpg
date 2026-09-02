@@ -423,6 +423,34 @@
       "severity": "info",
       "status": "open",
       "text": "后续可从已审核小说证据中分析角色行动、叙事框架、剧情奖惩、制度激励和主角道德例外，形成 social_norm_candidate 等下游记录。不得由作品文本推断作者私人信念或读者整体认同；读者倾向需要独立、合规的公开反馈语料和采样限制。分析结果不自动成为运行时社会规则。详见 D:\\aitrpg\\世界模型\\worldmodel\\SOCIAL_NORM_ANALYSIS_POLICY.md。"
+    },
+    {
+      "id": "todo-47",
+      "category": "摄取管线缺陷",
+      "severity": "warn",
+      "status": "open",
+      "text": "全仓只有 1 个 ModuleData 模组（`barn-of-premier.ts`），而它同时是摄取管线的校准基准——拿它验证管线通用性等于自我验证，管线对「没见过的模组」表现如何完全没有独立证据。另外两个可加载模组（`ARKHAM_LIBRARY_MODULE`/`INNSMOUTH_MODULE`，`src/rules/mythos-module.ts`）是 MythosModule 格式（不是 ModuleData），各仅 3 条线索，结局数据为空（`src/play/module-departure.ts:44-46` 的登记表注释：「阿卡姆档案检查/印斯茅斯的阴影结局数据为空——这是待补，不是按设计没有结局」）。摄取管线要证明自己不是只对这一份手抄基准过拟合，需要第二个独立的 ModuleData 级模组。"
+    },
+    {
+      "id": "todo-48",
+      "category": "摄取管线缺陷",
+      "severity": "warn",
+      "status": "open",
+      "text": "管线 id 体系未统一：摄取管线生成侧用 `scene_NN`/`item_NN`（按位置编号，`src/ingest/ids.ts`），手写基准用人工意译 id（如 `clue_bedroom_diary`、`maintenance_room`）。实测（`bun` 脚本扫 `src/`+`scripts/`，排除定义文件本身）：基准的 73 个手写 id 在全仓被引用约 681 次、涉及 66 个源文件（其中 45 个测试文件）——`scoring-key.ts` 这把摄取管线自己的度量尺子本身就绑死在这套意译 id 上（`ActualKind.id: string` 直接存的是基准 id）。阶段5「管线继承基准 id」（让生成侧产出的 id 直接对齐基准，而不是另起一套编号再靠 diff 配对）尚未开始——只要没做，摄取产物就没法直接替换手写基准，calibrate.ts 的逐字段 diff 会一直是唯一的桥梁。"
+    },
+    {
+      "id": "todo-49",
+      "category": "工作约定",
+      "severity": "info",
+      "status": "open",
+      "text": "语义矛盾探针（`scripts/diag/probe-semantic-contradiction.ts`）是非确定性判据（LLM 驱动），只能告警、不能当 preflight 门禁——不接入 `bun test`，产物落 `analysis/`（gitignored），任何候选都需要人工核对原文后裁决。引用它的结论（准确率、误判数）时必须记模型名/日期/样本数，不能当常量用：实测 ecnu-plus 即使 temperature=0，同一批校准样本连跑 3 轮结果都有波动（校准命中率 15/21，两个已知阳性均在多数轮次里被正确标出），单轮结果不足以判断探针灵不灵。"
+    },
+    {
+      "id": "todo-50",
+      "category": "工作约定",
+      "severity": "info",
+      "status": "open",
+      "text": "`end-narration-32-states.test.ts` 里的旧 `oldIfChainOracle` 32 态穷举已 `describe.skip` 退役（开发·摄取管线校准 阶段3，`966f9e0`）——它冻结的是「if 链 → 声明式求值器」那次重构的行为基准，这一轮 True End 条件被故意改变，继续拿它当基准等于用上一次的契约阻止这一次的变更。文件里保留但跳过（不删除），是为了让后人知道这段历史存在、不是被随手抹掉。`bun test` 报的 32 条 skip 均来自这里，是有意为之，不是被跳过的失败——回归核查时看到 32 skip 不必追查，看到这个数字变化（无论增减）才需要关注。"
     }
   ]
 }

@@ -1,21 +1,30 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-02 03:51
+> 生成于 2026-09-02 05:39
+>
+> ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
+> 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
+> 上一个"，工作树里也总会看到 `docs/now.md`（有时还有 `docs/handoff.md`）
+> 自己待提交。这是工具固有的生成顺序，不是 bug，也不代表遗漏了什么。
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 6ad200f feat: add a calibrated semantic-contradiction probe |
+| HEAD | 0cdbdc1 docs: log the narrative-norm analysis policy as todo-46 |
 | 测试 | 2705 条 / 176 文件  全绿 |
-| 工作树 | **3 个文件未提交** |
+| 工作树 | **7 个文件未提交** |
 
 未提交：
 - `M docs/handoff.md`
-- `M docs/index-world-model.md`
+- `M docs/notes/engine.md`
+- `M docs/notes/index.json`
+- `M docs/notes/ingest.md`
+- `M docs/now.md`
 - `M docs/todo.json`
+- `M scripts/now.ts`
 
 ## 开工前
 
@@ -24,7 +33,7 @@ bun scripts/preflight.ts     # 改动前后各跑一次，机器判据挡住反�
 bun scripts/now.ts           # 收工前刷新这份文件
 ```
 
-## 已定位未修（13）
+## 已定位未修（17）
 
 - ️ 「引擎别再替玩家挪窝」这一步单独做不成立（2026-08-20）
   `docs/notes/engine.md:514`
@@ -50,10 +59,18 @@ bun scripts/now.ts           # 收工前刷新这份文件
   `docs/notes/engine.md:794`
 - 整理索引的那一轮自己制造了悬空引用（2026-08-29）
   `docs/notes/engine.md:818`
+- 两个运行时各持一半——这是第四次（2026-09-01）
+  `docs/notes/engine.md:836`
 - ️ 一直在报的那个数不衡量目标：可运行性是 1/27（2026-08-20）
-  `docs/notes/ingest.md:745`
+  `docs/notes/ingest.md:747`
+- 手抄本没有校验源就必然漂移（2026-09-02）
+  `docs/notes/ingest.md:1584`
+- 工具绿灯 ≠ 没问题——三方审计的能力边界撞上真实案例（2026-09-02）
+  `docs/notes/ingest.md:1616`
+- 改一处漏同文件另一处（2026-09-02）
+  `docs/notes/ingest.md:1647`
 
-## 动手前先扫一眼的坑（32）
+## 动手前先扫一眼的坑（34）
 
 - 改动前后各跑一次 `bun scripts/preflight.ts`。它把反复犯的几类错做成了机器判据：切割截断语义单元、搬运残渣、循环依赖、语法错。别靠记性。
 - 同一类失误连着犯到第 3 次就停手，换一双眼睛（另一个模型 review diff）。本轮机械切割边界连错 5 次才自己发现——失效模式相同的人查不出自己的系统性错误。
@@ -87,17 +104,19 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 服务端口是 **3099**，不是 3000（`src/api/server.ts:1037`，用环境变量 `PORT` 覆盖）。模拟实跑用的 prompt 模板里从来没写过这一点，容易按习惯默认成 3000 去连。启停服务器用 `bun run dev-server:start` / `:stop
 - 维森酒吧的运行时在场实体只有 `酒吧保镖`，但可发现线索的 findMethods/叙述仍指向不存在的「前台」「其他人」（clue_bar_mass_booking / clue_bar_guest_identity / clue_bar_ask_around），实跑还出现保镖编造「老板锁进抽屉」—
 - 叙事可以否认模组事实——约束层没有一条“不得与模组事实矛盾”的域。ConstraintEngine.checkDialogue()（world-constraint.ts）签名其实接受 sceneId，但 npc-agent.ts 两处调用 checkDialogueText(response) 都
+- 全仓只有 1 个 ModuleData 模组（`barn-of-premier.ts`），而它同时是摄取管线的校准基准——拿它验证管线通用性等于自我验证，管线对「没见过的模组」表现如何完全没有独立证据。另外两个可加载模组（`ARKHAM_LIBRARY_MODULE`/`INNSMOUTH_MODU
+- 管线 id 体系未统一：摄取管线生成侧用 `scene_NN`/`item_NN`（按位置编号，`src/ingest/ids.ts`），手写基准用人工意译 id（如 `clue_bedroom_diary`、`maintenance_room`）。实测（`bun` 脚本扫 `src/`+`scri
 
 ## 最近提交
 
+- 0cdbdc1 docs: log the narrative-norm analysis policy as todo-46
+- bfc8dbd docs: refresh handoff.md and now.md after this round
 - 6ad200f feat: add a calibrated semantic-contradiction probe
 - 23400a4 feat: require sourceRef for new or edited ending narration
 - 0114c6e feat: widen the entity audit past barn-of-premier.ts
 - 34dbcad fix: correct Adrian's secret to match his actual ignorance
 - fa1fd85 docs: refresh now.md after this round
 - 966f9e0 test: rebase the 32-state ending oracle to 64 states
-- a0fd9f9 fix: rewrite True End around the source's triple deception
-- 911f57d docs: refresh handoff.md and now.md after this round
 
 ## 找东西
 

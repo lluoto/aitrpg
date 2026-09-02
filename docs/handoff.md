@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-02 03:50  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-02 05:38  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：6ad200f feat: add a calibrated semantic-contradiction probe  ·  **测试**：2705 条 / 176 文件，全绿（基线 2705，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：0cdbdc1 docs: log the narrative-norm analysis policy as todo-46  ·  **测试**：2705 条 / 176 文件，全绿（基线 2705，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -55,6 +55,10 @@ bun scripts/docs-index.ts log <关键词>     查某问题记录过没有（搜�
 13. 失败要主动喊出来，别指望别人从"零条 warn"里猜。围栏解析静默回落 regex 两轮模拟没定性（todo-29）；同一个"零"曾表示两种相反状态（0dbd2b8）；本轮启动挂起 8 分半没有任何信号（ebe9b95）。
 
 14. 提交信息的语言在 `0880f75`（最后一条英文）→ `9afbe9e`（第一条中文）之间无声切换，此后（2026-08-30 实测，`git rev-list --count 9afbe9e..HEAD`=20，加 9afbe9e 本身共 21）21 条全中文，之前 354 条全英文（含 7 条在英文句子里用 `"..."`/「...」引用中文术语，如 `fix: "潜行" was listed as an attack verb`——那 7 条整体仍算英文，不是例外）。**已裁决保留这 21 条中文提交原样，不重写历史**：正文信息密度很高（根因链条、变异检验记录、实测数字），重写的收益是"好看"，风险是"弄坏一批高质量记录"。往后新提交按 rule-04 用英文——这是两件独立的事："保留旧的"和"新的怎么写"不冲突，也不代表旧的违反了当时不存在的规则。免得后人翻 git log 时以为切换点是一次事故。
+
+15. 语义矛盾探针（`scripts/diag/probe-semantic-contradiction.ts`）是非确定性判据（LLM 驱动），只能告警、不能当 preflight 门禁——不接入 `bun test`，产物落 `analysis/`（gitignored），任何候选都需要人工核对原文后裁决。引用它的结论（准确率、误判数）时必须记模型名/日期/样本数，不能当常量用：实测 ecnu-plus 即使 temperature=0，同一批校准样本连跑 3 轮结果都有波动（校准命中率 15/21，两个已知阳性均在多数轮次里被正确标出），单轮结果不足以判断探针灵不灵。
+
+16. `end-narration-32-states.test.ts` 里的旧 `oldIfChainOracle` 32 态穷举已 `describe.skip` 退役（开发·摄取管线校准 阶段3，`966f9e0`）——它冻结的是「if 链 → 声明式求值器」那次重构的行为基准，这一轮 True End 条件被故意改变，继续拿它当基准等于用上一次的契约阻止这一次的变更。文件里保留但跳过（不删除），是为了让后人知道这段历史存在、不是被随手抹掉。`bun test` 报的 32 条 skip 均来自这里，是有意为之，不是被跳过的失败——回归核查时看到 32 skip 不必追查，看到这个数字变化（无论增减）才需要关注。
 
 ## 启动后端做实跑（模拟局/手动测试）
 
@@ -156,7 +160,7 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 用法：跑局类脚本都收 `[局数] [起始局号]`，
 `bun scripts/diag/diag-downed.ts 3 4` = 第 4~6 局，便于分批跑而不重叠。
 
-## 手上还挂着的（13）
+## 手上还挂着的（17）
 
 - ️ 「引擎别再替玩家挪窝」这一步单独做不成立（2026-08-20）
   `docs/notes/engine.md:514`
@@ -182,11 +186,21 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
   `docs/notes/engine.md:794`
 - 整理索引的那一轮自己制造了悬空引用（2026-08-29）
   `docs/notes/engine.md:818`
+- 两个运行时各持一半——这是第四次（2026-09-01）
+  `docs/notes/engine.md:836`
 - ️ 一直在报的那个数不衡量目标：可运行性是 1/27（2026-08-20）
-  `docs/notes/ingest.md:745`
+  `docs/notes/ingest.md:747`
+- 手抄本没有校验源就必然漂移（2026-09-02）
+  `docs/notes/ingest.md:1584`
+- 工具绿灯 ≠ 没问题——三方审计的能力边界撞上真实案例（2026-09-02）
+  `docs/notes/ingest.md:1616`
+- 改一处漏同文件另一处（2026-09-02）
+  `docs/notes/ingest.md:1647`
 
 ## 最近做了什么
 
+- 0cdbdc1 docs: log the narrative-norm analysis policy as todo-46
+- bfc8dbd docs: refresh handoff.md and now.md after this round
 - 6ad200f feat: add a calibrated semantic-contradiction probe
 - 23400a4 feat: require sourceRef for new or edited ending narration
 - 0114c6e feat: widen the entity audit past barn-of-premier.ts
@@ -197,8 +211,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - 911f57d docs: refresh handoff.md and now.md after this round
 - 2cb0f9a fix: reconnect the ingest pipeline's broken e2e path
 - 8aec58f feat: add a three-way audit for the ingest calibration report
-- 2c38d2c fix: bedroom clue gate respects unlocks prerequisites
-- 90cf3ad docs: refresh now.md after the cross-book todo commit
 
 ## 代码地图
 

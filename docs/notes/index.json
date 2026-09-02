@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-31",
+  "generated": "2026-09-02",
   "note": "问题记录索引。按 file+line 取正文，不必整份读。正文只追加，改动请重跑 bun scripts/docs-index.ts",
   "statusLegend": {
     "fixed": "已修，有实测数",
@@ -13,13 +13,13 @@
       "id": "engine",
       "name": "运行引擎 / 主循环",
       "file": "docs/notes/engine.md",
-      "count": 27
+      "count": 28
     },
     {
       "id": "ingest",
       "name": "模组摄取",
       "file": "docs/notes/ingest.md",
-      "count": 40
+      "count": 43
     },
     {
       "id": "rules",
@@ -323,8 +323,19 @@
       "group": "engine",
       "file": "docs/notes/engine.md",
       "line": 818,
-      "lines": 19,
+      "lines": 18,
       "summary": "上一轮把 `docs/index-world-model.md` 从 348 行/48KB 精简到 178 行/10.8KB，"
+    },
+    {
+      "id": "engine-28",
+      "title": "两个运行时各持一半——这是第四次（2026-09-01）",
+      "date": "2026-09-01",
+      "status": "warn",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 836,
+      "lines": 36,
+      "summary": "[\"clue_bedroom_old_doc\"]`），但这份声明只被剧本杀路径"
     },
     {
       "id": "ingest-01",
@@ -345,7 +356,7 @@
       "group": "ingest",
       "file": "docs/notes/ingest.md",
       "line": 25,
-      "lines": 40,
+      "lines": 42,
       "summary": "终止标点后的右引号（场景描述整段是引文，只认句号会把描述和 KP 说明粘住）、`▶` 条目标记、冒号。"
     },
     {
@@ -355,7 +366,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 65,
+      "line": 67,
       "lines": 111,
       "summary": "400+ 字的团块，把 4 段结局叙述 + 3 个结局标签 + 整张 9 行奖励表全焊在一起："
     },
@@ -366,7 +377,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 176,
+      "line": 178,
       "lines": 29,
       "summary": "场景描述大多以整段朗读引文开头（`农场主别墅：“从远处观察别墅…”`），"
     },
@@ -377,7 +388,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 205,
+      "line": 207,
       "lines": 36,
       "summary": "首次把整条链跑通（PDF → 清洗 → 切分 → 分类 → 骨架 → 对基准 diff）："
     },
@@ -388,7 +399,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 241,
+      "line": 243,
       "lines": 18,
       "summary": "基准的场景 id 是带上下文的人工意译：`霍姆斯医院 → hospital`（人名丢了）、"
     },
@@ -399,7 +410,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 259,
+      "line": 261,
       "lines": 63,
       "summary": "有了评分键之后，验一个修法变得很便宜：换 prompt 跑一次、拿键算分就有对比数。"
     },
@@ -410,7 +421,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 322,
+      "line": 324,
       "lines": 19,
       "summary": "追到底之后，最后 2 个错都是根因 B（同页续句）的下游："
     },
@@ -421,7 +432,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 341,
+      "line": 343,
       "lines": 41,
       "summary": "可运行性 1/27 的唯一入口是 `connections`（生成侧总数 0，基准 44）。"
     },
@@ -432,7 +443,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 382,
+      "line": 384,
       "lines": 43,
       "summary": "而且被人名污染——「艾德里安」出现在 4 个场景名里，他是反派不是地点。"
     },
@@ -443,7 +454,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 425,
+      "line": 427,
       "lines": 31,
       "summary": "顺着上一节的诊断试了两条修法。"
     },
@@ -454,7 +465,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 456,
+      "line": 458,
       "lines": 22,
       "summary": "把追问 prompt 改成明确要求克制——「只给最可能的那一条入口，至多两条，"
     },
@@ -465,7 +476,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 478,
+      "line": 480,
       "lines": 28,
       "summary": "把基准 44 条边拆开看，它是三样东西，没有一样是地理："
     },
@@ -476,7 +487,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 506,
+      "line": 508,
       "lines": 31,
       "summary": "一直把块分类的成绩记成「命中 20 / 误报 7 / 漏报 0」，并据此说"
     },
@@ -487,7 +498,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 537,
+      "line": 539,
       "lines": 32,
       "summary": "——「看调查员是走进去还是拿起来」。只加一类没有一次加四类，"
     },
@@ -498,7 +509,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 569,
+      "line": 571,
       "lines": 28,
       "summary": "换个问法：不问「能从哪走到哪」，只问「谁在谁里面」，边由两条规则机械导出"
     },
@@ -509,7 +520,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 597,
+      "line": 599,
       "lines": 28,
       "summary": "上一节把 connections 拆成三类后，枢纽模式那 15 条（34%）只要认出枢纽就能按规则生成。"
     },
@@ -520,7 +531,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 625,
+      "line": 627,
       "lines": 54,
       "summary": "查原文发现关键信息常在 90 字之后——农场的「再稍微往里有两个比较显眼的建筑。"
     },
@@ -531,7 +542,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 679,
+      "line": 681,
       "lines": 34,
       "summary": "前两个判据（diff 差异数、可达性）都是提出之后才被自己的测量证伪的，各浪费一轮方向。"
     },
@@ -542,7 +553,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 713,
+      "line": 715,
       "lines": 32,
       "summary": "1 █████████9    2 ████4    3 ██2    4 ██2    5 ██2"
     },
@@ -553,7 +564,7 @@
       "status": "warn",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 745,
+      "line": 747,
       "lines": 36,
       "summary": "到目前为止所有指标都是内容相似度——「生成的 `ModuleData` 离基准有多远」。"
     },
@@ -564,7 +575,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 781,
+      "line": 783,
       "lines": 33,
       "summary": "修法验证成功不等于生效。分族追问验成 31/33 之后一直躺在 `_exp-clue-followup.ts` 里，"
     },
@@ -575,7 +586,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 814,
+      "line": 816,
       "lines": 30,
       "summary": "条目分类 31/33、评分键左手边 39/39、页数 18 / 块 44 / 送分类 43 / 分类返回 43。"
     },
@@ -586,7 +597,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 844,
+      "line": 846,
       "lines": 31,
       "summary": "加了 item 类之后剩 4 个误报，一度以为还是「体系缺格子」，"
     },
@@ -597,7 +608,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 875,
+      "line": 877,
       "lines": 39,
       "summary": "两条候选路线各跑 3 次（都是真调用，`_exp-conn-infer.ts` 无缓存、temperature 0.1）："
     },
@@ -608,7 +619,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 914,
+      "line": 916,
       "lines": 31,
       "summary": "要按原文活化 —— 但活化的前提是有原文，所以先量比例。"
     },
@@ -619,7 +630,7 @@
       "status": "rejected",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 945,
+      "line": 947,
       "lines": 16,
       "summary": "逐个 `runClueCheck`。走到 `:2924` 那个决策点时，线索已经全部检定过了。"
     },
@@ -630,8 +641,8 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 961,
-      "lines": 42,
+      "line": 963,
+      "lines": 45,
       "summary": "在这之前，「场景走不通」一直是拿摄取产物跟手写基准对着算指标，"
     },
     {
@@ -641,7 +652,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 1003,
+      "line": 1008,
       "lines": 26,
       "summary": "不花钱，连接要问模型，放进去会破坏它的性质。改在 `classifyAndBuild` 里补。"
     },
@@ -652,7 +663,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 1029,
+      "line": 1034,
       "lines": 34,
       "summary": "即「一个块是不是属于它前面最近的那个场景」。真值取自基准"
     },
@@ -663,7 +674,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 1063,
+      "line": 1068,
       "lines": 42,
       "summary": "干净检出上 `tools/` 不存在，glob 匹配不到就是空集，不会报错 ——"
     },
@@ -674,7 +685,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 1105,
+      "line": 1110,
       "lines": 42,
       "summary": "上一节推断「剩下 2 个分类错误都是根因 B（同页续句）的下游」，并据此预测："
     },
@@ -685,7 +696,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 1147,
+      "line": 1152,
       "lines": 40,
       "summary": "评分键（`src/ingest/scoring-key.ts`）落地之后，`tools/_run-ingest.ts` 每次实跑都会算这一项。"
     },
@@ -696,7 +707,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 1187,
+      "line": 1192,
       "lines": 40,
       "summary": "三条实质发现："
     },
@@ -707,7 +718,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 1227,
+      "line": 1232,
       "lines": 77,
       "summary": "键建完之后逐条复核了一遍，抓到一个把正确答案判成错的标注，并顺带把覆盖面量清楚了。"
     },
@@ -718,7 +729,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 1304,
+      "line": 1309,
       "lines": 43,
       "summary": "开线索轮时的直觉是先做 `findMethods`——技能名与难度词是死板形态、与 `extract-trap` 同一类，"
     },
@@ -729,7 +740,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 1347,
+      "line": 1352,
       "lines": 40,
       "summary": "上一轮把 39 个 `▶` 条目整批丢弃，理由写的是「属线索/物品，留给下一轮」。"
     },
@@ -740,7 +751,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 1387,
+      "line": 1392,
       "lines": 25,
       "summary": "一个块从 npc 挪到了 rule。判成场景数（27）与全部物品数字都没动，但这说明"
     },
@@ -751,7 +762,7 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 1412,
+      "line": 1417,
       "lines": 123,
       "summary": "取证显示：第 6 页原始文本的最后一行就是那个 `▶` 行，页面在「防盗门可」处结束，"
     },
@@ -762,9 +773,42 @@
       "status": "note",
       "group": "ingest",
       "file": "docs/notes/ingest.md",
-      "line": 1535,
+      "line": 1540,
       "lines": 44,
       "summary": "查 A 的修法时顺手发现的，而且这条比 A 本身重要：`sourceKey` 产出的 `p9:L13` 里，"
+    },
+    {
+      "id": "ingest-41",
+      "title": "手抄本没有校验源就必然漂移（2026-09-02）",
+      "date": "2026-09-02",
+      "status": "warn",
+      "group": "ingest",
+      "file": "docs/notes/ingest.md",
+      "line": 1584,
+      "lines": 32,
+      "summary": "读 PDF 后手写数据，不是摄取管线跑出来的产物。手抄本一旦写下就没有再回头"
+    },
+    {
+      "id": "ingest-42",
+      "title": "工具绿灯 ≠ 没问题——三方审计的能力边界撞上真实案例（2026-09-02）",
+      "date": "2026-09-02",
+      "status": "warn",
+      "group": "ingest",
+      "file": "docs/notes/ingest.md",
+      "line": 1616,
+      "lines": 31,
+      "summary": "本轮全程报绿，但同一轮里有两处真实的语义矛盾从它眼皮底下溜过去，都是"
+    },
+    {
+      "id": "ingest-43",
+      "title": "改一处漏同文件另一处（2026-09-02）",
+      "date": "2026-09-02",
+      "status": "warn",
+      "group": "ingest",
+      "file": "docs/notes/ingest.md",
+      "line": 1647,
+      "lines": 32,
+      "summary": "件事写反了：`:1006` 附近的 `truth_revealed` 线索描述曾说\"艾米丽的脑罐"
     },
     {
       "id": "rules-01",

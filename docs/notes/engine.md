@@ -833,3 +833,38 @@ this.world.registerScene(sceneId, target, ...)`——**用空串当 id 把它注
 "文档陈述与实现不符"，前三次都是文档写的和代码对不上，这次是文档写的
 和另一份文档对不上——同一类判据缺口换了个方向出现。
 
+### ⚠ 两个运行时各持一半——这是第四次（2026-09-01）
+
+`ClueDef.unlocks` 声明了线索间的前置关系（`clue_bedroom_diary.unlocks =
+["clue_bedroom_old_doc"]`），但这份声明只被**剧本杀路径**
+（`src/world/state.ts:97-104` 的 `discoverClue()`）读取，用来做"发现 A
+自动连锁发现 B"。**自由跑团路径**（`GameSession`/`InvestigationEngine`）
+从来没读过这个字段——`clue-match.ts` 的候选池里 `clue_bedroom_diary` 与
+`clue_bedroom_old_doc` 的 `matchTexts` 高度重叠（"日记本与老旧文件" vs
+"老旧文件（米-戈联络术）"），`uniqueAbbrevs` 找不出短唯一片段，逼出
+"日记本与"这种没人会说的碎片，玩家怎么说都被 `clue-match.ts` 判 deny。
+根因不是匹配算法不够聪明，是**模组数据本就声明了"old_doc 该在 diary 之
+后才能拿到"，但自由跑团这条路完全不知道有这条声明**，两个字段候选一直
+在互相抢位置。
+
+修法（开发·卧室线索修复 任务①，`2c38d2c`）：给
+`InvestigationEngine` 加 `isLockedByUndiscoveredPrerequisite()`，只做
+前置门（候选集过滤：old_doc 未满足前置就不参与匹配），不做
+`state.ts` 那种自动连锁——两者故意不同，因为 `clue_bedroom_old_doc` 是
+Good End / True End 的分界线，自动连锁会让摸到日记的人顺带读懂米-戈联络
+术，把结局分界抹平（详见 `investigation-engine.ts:276-297` 的注释）。
+
+**这不是第一次**——本仓"两个运行时各持一半"已经是第四次实例，前三次
+分别是：世界状态（`todo-03`，两套世界状态各存一份、四处同一事实各自
+维护）、结局判定（声明式 `END_NARRATIONS` vs 硬编码 if 链，见上面
+"声明式数据是装饰品——这是第五次"一条）、以及线索失败救济阶梯
+（`dfdf57e`「bring the failback ladder into GameSession's clue path
+(N=2)」，其提交信息自称"a third instance", 2026-08-31）。这一条按时间
+顺序排在 `dfdf57e` 之后（`2c38d2c` 是 2026-09-01），是第四次。
+
+**可推广的判断**：本仓存在两条并行的游戏推进路径（剧本杀/`play-module`
+体系 vs 自由跑团/`GameSession`体系），任何"游戏机制"（结局判定、线索
+救济、线索前置门……）如果只在其中一条路径的数据结构或求值器里实现，
+另一条路径会表现得**看起来完全不知道这条规则存在**——不会报错，只是
+静默按更简单的逻辑运作。新增一条依赖模组数据字段的机制时，要显式检查
+两条路径是不是都读了它，不能默认"这份数据是全局的所以两边都能看到"。
