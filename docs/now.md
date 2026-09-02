@@ -1,16 +1,21 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-02 02:27
+> 生成于 2026-09-02 03:51
 
 ## 状态
 
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 966f9e0 test: rebase the 32-state ending oracle to 64 states |
-| 测试 | 2683 条 / 174 文件  全绿 |
-| 工作树 | 干净 |
+| HEAD | 6ad200f feat: add a calibrated semantic-contradiction probe |
+| 测试 | 2705 条 / 176 文件  全绿 |
+| 工作树 | **3 个文件未提交** |
+
+未提交：
+- `M docs/handoff.md`
+- `M docs/index-world-model.md`
+- `M docs/todo.json`
 
 ## 开工前
 
@@ -85,14 +90,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 6ad200f feat: add a calibrated semantic-contradiction probe
+- 23400a4 feat: require sourceRef for new or edited ending narration
+- 0114c6e feat: widen the entity audit past barn-of-premier.ts
+- 34dbcad fix: correct Adrian's secret to match his actual ignorance
+- fa1fd85 docs: refresh now.md after this round
 - 966f9e0 test: rebase the 32-state ending oracle to 64 states
 - a0fd9f9 fix: rewrite True End around the source's triple deception
 - 911f57d docs: refresh handoff.md and now.md after this round
-- 2cb0f9a fix: reconnect the ingest pipeline's broken e2e path
-- 8aec58f feat: add a three-way audit for the ingest calibration report
-- 2c38d2c fix: bedroom clue gate respects unlocks prerequisites
-- 90cf3ad docs: refresh now.md after the cross-book todo commit
-- 45b3b9c docs: record cross-book collision evaluation as a future todo
 
 ## 找东西
 
