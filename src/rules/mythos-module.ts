@@ -1058,7 +1058,14 @@ export const PREMIERS_BARN_MODULE: MythosModule = {
         background: "生物学教授，妻难产濒死，使用一战遗迹笔记召唤米-戈，被欺骗后绑架10人。第11次时与警交火弹片击中头部导致瘫痪。",
         goals: ["让妻女复活"],
         speech_style: "无法说话",
-        secrets: ["意识到被米-戈欺骗"],
+        // 开发·三档约束 阶段7：原文写的是"完全没有意识到自己完全是被利用了"
+        // （section_01:15-18），这条曾经写反了——"意识到被米-戈欺骗"直接与
+        // 原文和 barn-of-premier.ts True End 第2行（"艾德里安直到瘫痪在病床
+        // 上，都没有意识到自己不过是被利用的工具"）矛盾。secrets 会原样注入
+        // NPC Agent 的系统提示（npc-agent.ts:43「你的秘密（绝不主动透露）」），
+        // 不只是数据错误——写反了会让扮演艾德里安的 LLM 表现得像个知情者，
+        // 是可玩性缺陷。
+        secrets: ["坚信米-戈会兑现承诺救回妻女，至今没有意识到自己不过是被利用的工具"],
         traits: { courage: 3, friendliness: 2, suspicion: 8, curiosity: 5, stability: 1 },
         // 原写 "paralyzed_terrified"：恐惧的程度由 stability: 1 表达，
         // 情绪字段只需要说清是哪一种情绪。
