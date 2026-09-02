@@ -19,7 +19,7 @@
       "id": "ingest",
       "name": "模组摄取",
       "file": "docs/notes/ingest.md",
-      "count": 46
+      "count": 47
     },
     {
       "id": "rules",
@@ -853,6 +853,17 @@
       "line": 1746,
       "lines": 42,
       "summary": "发作：LLM 的输出里混进了给人看的展示格式，解析器只认一种字面形态，"
+    },
+    {
+      "id": "ingest-47",
+      "title": "线索产出从 0 到 15——范围决策与第一版实测（2026-09-02）",
+      "date": "2026-09-02",
+      "status": "note",
+      "group": "ingest",
+      "file": "docs/notes/ingest.md",
+      "line": 1788,
+      "lines": 41,
+      "summary": "todo-28 记的缺口：`build-scenes.ts` 把 `clues: []` 硬写死，"
     },
     {
       "id": "rules-01",

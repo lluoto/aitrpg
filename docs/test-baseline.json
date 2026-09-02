@@ -1,6 +1,6 @@
 {
-  "tests": 2744,
-  "files": 178,
+  "tests": 2769,
+  "files": 179,
   "unwiredMethods": 86,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -584,6 +584,11 @@
       "tests": 2744,
       "files": 178,
       "when": "修 todo-51（阶段6前置）：classify-sections.ts 块分类几乎全灭（43送分类仅解析出1条）的复现与修复。①新增 scripts/diag/probe-classify-key-format.ts，跑 N=8 轮真实分类（model ecnu-plus，2026-09-02），确认稳定复现（8/8 轮回复字节长度与键形态分布完全相同：每轮1条clean/42条extra-content），报告生成逻辑本身也修了一处bug（把「同一轮内混合形态」误判成「跨轮次不一致」，改前会把稳定复现误报成说不准）。②normalizeKey 换成 extractKnownTitle：不再要求方括号贴字符串首尾，改成任意位置抽取全部【...】片段+要求在knownTitles里唯一命中才采纳，零命中/多命中一律丢弃不做模糊匹配；VALID.includes(v) 值侧比对未动。用探针实测的真实键形态原文写4条新单测（ingest-classify.test.ts），变异检验：改回旧实现，2条依赖新形态的测试精确变红。③真实管线首次端到端跑通：块分类命中20/误报3/漏报0（较此前误报4少1个，成因分不清是解析放宽的连带效应还是模型跨次波动，两种可能如实记录）；物品覆盖9/10、精确率9/11、评分键左手边39/39三个数未变。④docs/notes/ingest.md 记「展示格式渗进输出契约——这是第三次」（自行核实：搜过notes确认无既有同名家族，第一次是classify-sections.ts自己2026-08-19的方括号收窄bug，第二次是todo-29/llm/json.ts 2026-08-29的markdown围栏bug，这次是第三次）；todo-51标记done并记录①②③结果。typecheck 0；bun test 2740->2744（+4，178文件不变）；preflight 12/12。"
+    },
+    {
+      "tests": 2769,
+      "files": 179,
+      "when": "阶段6：写build-clues.ts解决线索产出恒为0的问题(todo-28)，5个提交(①a①b②③④)。①a核实ingest.md汇总表陈旧数字(误报7→3同步classify-sections.ts:144)，顺带核查发现classify-items.ts行(:39)是追问前分布、build-items.ts行(:40)的9/19是followup接入前的单独测量，两处都补充说明区分测量点而非互相覆盖。①b给probe-classify-key-format.md新增缓存排除对照实验(prompt加尾随空格+temperature换0.9各跑一轮对比轮次1)，结果两组信号不一致(A组仍逐字节相同、B组不同)，如实报「部分证据不下结论」。②新增src/ingest/build-clues.ts，范围明确收窄只产name/description/revelation三字段，findMethods/unlocks/importance/hint/failback/setStateVar一律不产(unlocks关联2c38d2c卧室线索bug根源，尤其不碰)，importance因类型不允许留空占位为color并在warnings声明非真实评估；场景归属复用toItemInputs既有的scene块过滤+防御性核对，找不到场景就跳过报warning不猜；每条线索产Provenance记录sourceRef可追溯到原始▶条目。接入pipeline.ts的classifyAndBuild(复用itemInputs/itemKinds/itemIds不新开分类)与scripts/ingest/run.ts；扩展inherit-ids.ts新增applyClueIdInheritance处理Scene.clues[]嵌套结构；变异检验：build-clues.ts的clue过滤条件改成discard-everything(镜像build-items.ts:82的丢弃形状)，19条测试里14条精确变红。③真实管线端到端首次跑通并落盘：产出15条线索，基准32条线索中仅21条在评分口径表(p{page}:L{line}→clue id)有坐标(另11条原文无对应▶条目，方法论上够不到，不算漏)，按坐标覆盖12/21，精确率11/15，线索id按name继承基准的仅1/15(生成线索名是▶条目简短标签、基准线索名是描述性短语，写法差异导致name匹配失败在预期内)；数字记入build-clues.ts文件头注释，未为让数字好看调prompt，评分口径边界判据(ingest-scoring-key-boundary.test.ts)全程绿。④docs/notes/ingest.md记录范围决策与第一版实测；todo-28标记「进展，未完全解决，仍open」，如实写清仍缺六个字段(含玩法关键的findMethods/unlocks)。typecheck 0；bun test 2744->2769（+25，178->179文件）；preflight 12/12。"
     }
   ]
 }

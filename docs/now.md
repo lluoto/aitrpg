@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-02 10:10
+> 生成于 2026-09-02 11:43
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,14 +13,13 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 8208fc4 docs: remeasure block classification after the key-parsing fix |
-| 测试 | 2744 条 / 178 文件  全绿 |
-| 工作树 | **5 个文件未提交** |
+| HEAD | 5027528 docs: record build-clues' first real measurement |
+| 测试 | 2769 条 / 179 文件  全绿 |
+| 工作树 | **4 个文件未提交** |
 
 未提交：
 - `M docs/notes/index.json`
 - `M docs/notes/ingest.md`
-- `M docs/now.md`
 - `M docs/test-baseline.json`
 - `M docs/todo.json`
 
@@ -103,7 +102,7 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 精确分析写临时 `.ts` 用 bun 跑，并让脚本自己 `Bun.write` 落盘，不要经控制台。永久性环境约束。
 - `PlayerSlot.currentScene` 只在 `join` 时设，之后从不更新——因为唯一能更新它的 `setPlayerScene`（见 todo-23）零调用方。这是 `scene_restricted` 可见性档位「三个独立的坑」之一（另两个坑：比的是活动玩家场景不是消息所属场景；
 - `ws-handler.ts:63-70 broadcastToSession` 不按玩家过滤——线索私密（discoverer_only）在**存储的历史**层面成立（`GET /history?pcId=` 只返回该玩家可见的消息），但 live 的 WS 广播仍然把完整 narrative 推
-- 摄取管线 `build-scenes.ts:99 clues: []`——摄取出来的每个场景一条线索都不产，实跑产物显示 24 场景的线索总数为 0。结局条件编译（属于另一轮「B」的范围）依赖场景能带线索，这条不修，那条无从谈起。
+- 摄取管线 `build-scenes.ts:99 clues: []`——摄取出来的每个场景一条线索都不产，实跑产物显示 24 场景的线索总数为 0。结局条件编译（属于另一轮「B」的范围）依赖场景能带线索，这条不修，那条无从谈起。  【进展，2026-09-02，未完全解决，不标 done】新增 `
 - 意图误判率约 20%（30 回合 6 次判错），两次模拟都没能定性根因——第二次模拟换了输入分布，判错次数从 6 次变成 0 次，但当时不能证明问题不存在。**根因已定位并修复（修A，2026-08-29）**：analysis/sim/2026-08-28-barn-a-acceptance.md
 - 「经历模组: 0」这条统计是否仍然存在——未验证。`career.ts:265` 的相关逻辑挂在从不实例化的 `CareerStore` 类里（见 todo-02/todo-05），实际在用的是 `CareerFileStore`，需要先确认「经历模组」这个统计口径在 `CareerFileStor
 - 开发A实测发现：`END_NARRATIONS`（barn-of-premier.ts）requiredScenes 引用的场景 id 是 ASCII（如 "maintenance_room"），而 GameSession 加载模组时经 bridgeBarnOfPremierClues() 只桥接了
@@ -116,14 +115,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 5027528 docs: record build-clues' first real measurement
+- d15e558 feat: build clues from classified entries (todo-28)
+- a965497 feat: rule out server-side caching in the classify-key probe
+- beb812b docs: sync ingest.md's status table with current numbers
+- 02c62a0 docs: close out todo-51 and log the third parsing-tolerance bug
 - 8208fc4 docs: remeasure block classification after the key-parsing fix
 - 8b480bb fix: extract classify keys from anywhere, not just string ends
 - 38fb219 feat: probe whether the classify-key parsing bug reproduces
-- b134d80 docs: refresh notes/now/handoff after phase-5 id inheritance
-- afe7d30 feat: let the ingest pipeline inherit baseline ids by name
-- 156a0db docs: update todo-19 with the current premiers_barn special-case count
-- 78e12ff docs: log the engine's unrecognized-narrative-word pattern
-- 723dd0d docs: refresh handoff.md and now.md after this round
 
 ## 找东西
 
