@@ -13,7 +13,7 @@
       "id": "engine",
       "name": "运行引擎 / 主循环",
       "file": "docs/notes/engine.md",
-      "count": 28
+      "count": 29
     },
     {
       "id": "ingest",
@@ -336,6 +336,17 @@
       "line": 836,
       "lines": 36,
       "summary": "[\"clue_bedroom_old_doc\"]`），但这份声明只被剧本杀路径"
+    },
+    {
+      "id": "engine-29",
+      "title": "引擎教了玩家一个自己不认识的词——这是第二次（2026-09-02）",
+      "date": "2026-09-02",
+      "status": "warn",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 872,
+      "lines": 45,
+      "summary": "两个真实案例，同一个形状："
     },
     {
       "id": "ingest-01",
