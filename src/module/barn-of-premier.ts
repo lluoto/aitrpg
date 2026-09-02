@@ -1307,6 +1307,7 @@ export const END_NARRATIONS: EndNarration[] = [
       requiredClues: ["clue_bedroom_old_doc", "clue_final_brain_jars"],
       requiredScenes: ["maintenance_room"],
     },
+    sourceRef: "section_01:15-18; section_12:12-18,61-71; section_13:11-17",
     lines: [
       "真相已经明了——而且是一整条骗局链，一环套着一环。",
       "米—戈骗了艾德里安：它说唯一能救下妻女的办法，就是把她们的大脑做成缸中脑；还要他去找「合适的身体」，好把大脑重新装回去。而那些从受害者身上取出的大脑，其实是它索要的酬劳。艾德里安直到瘫痪在病床上，都没有意识到自己不过是被利用的工具。",
@@ -1387,6 +1388,7 @@ export const END_NARRATIONS: EndNarration[] = [
       requiredScenes: ["maintenance_room"],
       excludeClues: ["clue_bedroom_old_doc"],
     },
+    sourceRef: "section_11:14-18; section_12:19-21,39-57",
     lines: [
       "两个培养缸静静地漂浮在维修间里——一大一小，是艾米丽和爱莉。",
       "床头柜里那份老旧的文件仍然是一团谜。上面写满了某种听不懂的音译，需要精通母语的人才能读懂它到底记着什么。你们知道自己看到了什么，却说不出这一切究竟是怎么发生的。",
