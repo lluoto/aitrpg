@@ -103,6 +103,7 @@ async function main() {
 
   interface RoundResult {
     round: number;
+    reply: string;
     replyLen: number;
     parseable: boolean;
     totalKeys: number;
@@ -135,7 +136,7 @@ async function main() {
         if (sampleExtraKeys.length < 3) sampleExtraKeys.push(k.slice(0, 80));
       } else unrecognized++;
     }
-    rounds.push({ round: i, replyLen: reply.length, parseable, totalKeys: entries.length, clean, extraContent, unrecognized, sampleExtraKeys });
+    rounds.push({ round: i, reply, replyLen: reply.length, parseable, totalKeys: entries.length, clean, extraContent, unrecognized, sampleExtraKeys });
     out.push(`| ${i} | ${reply.length} | ${parseable ? "是" : "否"} | ${entries.length} | ${clean} | ${extraContent} | ${unrecognized} |`);
     console.log(`[轮次 ${i}/${N}] 回复${reply.length}字 键${entries.length}个 clean=${clean} extra=${extraContent} unrecognized=${unrecognized}`);
   }
@@ -183,8 +184,66 @@ async function main() {
     }
   }
 
+  // ── 排除服务端缓存（修 todo-51 任务①b） ──
+  //
+  // handoff.md:59 记录过同一 provider 即使 temperature=0 也会有波动——
+  // 而上面 N 轮跑出来的是逐字节完全相同的回复，这本身就反常到需要单独
+  // 排除一种可能：服务端按"提示词字面完全相同"做了缓存，命中缓存时
+  // 回复必然逐字节相同，但那证明的是"缓存生效"，不是"这个 prompt 下
+  // 模型真的确定性"——如果是这样，N=8 应该按 N=1 重述结论（8 次里有
+  // 7 次根本没有真的问过模型）。
+  //
+  // 做法：跑两轮对照，各自与轮次 1 的回复做逐字节比较。
+  //   A. 同一份 prompt 多加一个无意义的尾随空格（内容不变，字面变了）——
+  //      如果服务端按提示词字面缓存，这一轮必然不命中缓存，回复应该
+  //      变化（除非模型对这个 prompt 真的高度确定性，那也会变但概率低）。
+  //   B. 同一份 prompt，temperature 从 0.1 换成 0.9——温度本身就该增大
+  //      随机性，如果这一轮回复仍然逐字节相同，那是更强的"这个 prompt
+  //      下模型确定性很高"的证据，而不是缓存能解释的（缓存键通常不含
+  //      温度参数之外的采样细节，但温度本身若真的生效，理论上应该扰动
+  //      结果——两种解释在这里是可以分开验的）。
+  if (rounds.length > 0) {
+    out.push("");
+    out.push("## 排除服务端缓存的对照实验");
+    out.push("");
+    const r1 = rounds[0]!;
+
+    let replyA = "";
+    let errA = "";
+    try {
+      replyA = await client.chat([{ role: "user", content: prompt + " " }], { temperature: 0.1 });
+    } catch (e) {
+      errA = e instanceof Error ? e.message : String(e);
+    }
+    const sameAsR1_A = replyA === r1.reply;
+    out.push(`**对照 A（prompt 多一个尾随空格，temperature 不变 0.1）**：${errA ? `调用异常: ${errA}` : `回复长度 ${replyA.length}（轮次1是 ${r1.replyLen}），与轮次1${sameAsR1_A ? "**逐字节相同**" : "**不同**"}`}`);
+
+    let replyB = "";
+    let errB = "";
+    try {
+      replyB = await client.chat([{ role: "user", content: prompt }], { temperature: 0.9 });
+    } catch (e) {
+      errB = e instanceof Error ? e.message : String(e);
+    }
+    const sameAsR1_B = replyB === r1.reply;
+    out.push(`**对照 B（prompt 不变，temperature 换成 0.9）**：${errB ? `调用异常: ${errB}` : `回复长度 ${replyB.length}（轮次1是 ${r1.replyLen}），与轮次1${sameAsR1_B ? "**逐字节相同**" : "**不同**"}`}`);
+
+    out.push("");
+    if (!errA && !errB) {
+      if (!sameAsR1_A && !sameAsR1_B) {
+        out.push("**结论**：两组对照都产生了不同的回复——排除了「服务端按提示词字面缓存」这个解释（缓存命中会要求提示词字面相同，A 组字面已经不同）；温度调高后也确实变了，进一步说明轮次 1-8 的逐字节一致不是缓存假象，是这个 prompt 在 temperature=0.1 下对这个模型确实高度确定。");
+      } else if (sameAsR1_A && sameAsR1_B) {
+        out.push("**结论存疑**：两组对照回复都与轮次 1 逐字节相同，包括提示词字面已经变化的 A 组——这不能用「提示词字面缓存」解释（A 组字面不同却还命中），更像是模型对这整段素材的判断本身极其稳定，但不能完全排除有更粗粒度的缓存机制（例如按语义摘要而非字面缓存）。说不准，如实记录两种可能，不选一个更省事的结论。");
+      } else {
+        out.push(`**结论：部分证据**——对照 A ${sameAsR1_A ? "相同" : "不同"}，对照 B ${sameAsR1_B ? "相同" : "不同"}，两组给出的信号不一致，不足以下一个干脆的结论，如实记录两组各自的结果，不强行统一成一句话。`);
+      }
+    } else {
+      out.push("**对照实验未能完整跑完**（至少一组调用异常）——不下结论，如实记录上面两行的异常信息。");
+    }
+  }
+
   const path = await writeReport("probe-classify-key-format.md", out.join("\n"));
-  console.log(`完成：${rounds.length}/${N} 轮  -> ${path}`);
+  console.log(`完成：${rounds.length}/${N} 轮 + 缓存排除对照  -> ${path}`);
   process.exit(0);
 }
 
