@@ -1,6 +1,6 @@
 {
-  "tests": 2705,
-  "files": 176,
+  "tests": 2720,
+  "files": 177,
   "unwiredMethods": 86,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -569,6 +569,11 @@
       "tests": 2705,
       "files": 176,
       "when": "三档约束 阶段7：三档重新定位为「先扫现存手写数据」而非只给未来内容站岗，四个子任务各一次提交。①修 mythos-module.ts:1061 的 secrets（曾写「意识到被米-戈欺骗」，与原文 section_01:15-18「完全没有意识到」矛盾，且经核实 secrets 会原样注入 npc-agent.ts:43 的 NPC 系统提示，写反是可玩性缺陷不只是数据错误）；改为「坚信米-戈会兑现承诺救回妻女，至今没有意识到自己不过是被利用的工具」，新增 npc-secret-truth-consistency.test.ts（3条，含与 True End 互相印证的判据）。②三方审计（three-way-audit.ts）从只扫 barn-of-premier.ts 扩展到三个模组文件（新增 AUDITED_MODULE_FILES/extractBracketTermsAcrossFiles）；扩展覆盖时发现全仓 19 处用 `【${x}】` 做 UI 强调括号（技能检定/战斗播报等），教 extractBracketTerms 跳过含模板插值的方括号内容，否则全是假阳性；新增声明实体审计（auditDeclaredEntities + stripDisplayAnnotation，去掉「维修间（终局场景）」这类括号注解后核对 NPC/场景名是否在原文出现），ENTITY_FABRICATION_REGISTRY 目前为空。③module/types.ts 的 ModuleData.provenance? 字段从声明起就从未被任何代码写过/判据查过——不做全模组一次性补出处（那是阶段5/6 的范围，且会把没核对过的内容一次性盖章「已审」），只给 EndNarration 加可选 sourceRef 字段，为本轮新增/修改的两条结局（True End/near_truth）填上原文引用，未核对的三条（good/bad/normal）显式登记进 narration-provenance.ts 的 UNREVIEWED_NARRATION_REGISTRY（不是默认放行）。④语义蕴含扫描（scripts/diag/probe-semantic-contradiction.ts，告警级非门禁）：先做校准——2 个已确证阳性 + 5 个已确证阴性各跑 3 轮（ecnu-plus 即使 temperature=0 轮次间仍有波动，单轮不足以判断），总体命中率 15/21=71.4%（如实记录，未调参到 0 误报），两个已知阳性均在多数轮次（≥2/3）被正确标出，校准通过后扫描 82 条真实候选（三文件全部 NPC 的 secrets/background、5 条结局叙事、4 段遭遇战叙事、32 条线索 revelation），标出 9 条疑似矛盾，逐条人工核对源文后确认全部 9 条均为假阳性（多为模型推理与判定不一致，或忽略了创作层/措辞差异不算矛盾的规则，如把「农场」和「农庄」的措辞差异、香烟等未涉及矛盾的补充细节、或已经修复的正确文本误判——2 处核对是钱包内驾照与住宅钥匙同源出自 section_06:41-45、棺材文本指代术后遗体而非缸中脑本体两处经查均忠于原文）；候选清单产物属 analysis/（gitignored），探针脚本本身入库。typecheck 0；bun test 2683->2705（+22，174->176 文件）；preflight 12/12。"
+    },
+    {
+      "tests": 2720,
+      "files": 177,
+      "when": "真相链路 任务①②③：True End 可玩链条第4环打通并首次端到端实证。实测发现 clue_final_brain_jars 的 matchTexts 只有 [\"母女的缸中脑\", \"打开光源观察房间\"]，但引擎自己的叙事（True End 第3行、near_truth 第1行、ENCOUNTER_NARRATIONS 三处）反复用「培养缸」「一大一小」称呼这两个缸中脑，玩家读完这些文本用引擎自己教的词反而被 deny，只有照念内部展示名「缸中脑」才行——与 2c38d2c 的「维修室」问题同构。①在 game-session.ts 新增 BARN_CLUE_MATCH_ALIASES（培养缸/玻璃缸/一大一小/营养液→clue_final_brain_jars），追加进 bridgeBarnOfPremierClues 的 matchTexts 组装；核实「营养液」属同类问题一并收录，未收「设备」「容器」等过泛词避免误伤其它场景；确认不影响 clue_final_coffin 的既有歧义回问。②在 game-session-run-harness.test.ts 新增全程只用 session.act() 自然语句（不含 markDiscovered/内部 clue id）的完整 True End 回放：卧室拿 diary→读 old_doc→前往维修间→查看培养缸→离开确认→True End；穷举种子 1..500 找到 seed=187 让三处技能检定都在第一次输入即成功，逐步核对 revelation 原文而非读内部状态。③新增 src/investigation/narrative-vocabulary-registry.ts（「叙事用词→线索/场景id」显式登记表，KNOWN_UNREACHABLE 同构模式，含能力边界声明：只护登记过的词不做散文分词）+ src/__tests__/narrative-vocabulary-registry.test.ts（对每条跑 decideClueMatch/resolveSceneTarget 断言命中，场景类额外断言 via===\"alias\" 排除侥幸 bigram 命中），覆盖培养缸/玻璃缸/一大一小/营养液→brain_jars 与维修室→维修间（2c38d2c 回归保护）。三次变异检验：撤掉①的别名表，②③各自精确变红（③的4条 clue 断言与 1 条 via 断言）；单独撤掉 2c38d2c 的维修室别名，③的场景断言从 via=alias 变成 via=bigram 精确捕捉（若不加 via 断言会被侥幸的弱匹配掩盖，已验证补上前的假绿）。回归确认：三方审计/实体审计/64态穷举/near_truth端到端/Good End 的 old_doc 排除均随全量 bun test 一并通过。typecheck 0；bun test 2705->2720（+15，176->177 文件）；preflight 12/12。"
     }
   ]
 }
