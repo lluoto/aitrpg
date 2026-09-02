@@ -513,6 +513,15 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
       description: "调查员找到事件真相，报警解救受害者，获小镇感谢与委托金。",
       conditionText: "调查员发现了下水道缸中脑与事件真相，报警解救受害者。下水道的秘密永久埋藏。",
     },
+    // 开发·摄取管线校准 阶段3：与 END_NARRATIONS（barn-of-premier.ts）新增
+    // 的 near_truth 条目配套——id 集合必须与判定端一致，见
+    // module-endings-consistency.test.ts。
+    {
+      id: "near_truth",
+      name: "Near-Truth End",
+      description: "调查员到达终局场景，见到了缸中脑，却没能读懂日记里的老旧文件，不知道自己目睹的是什么。",
+      conditionText: "调查员到过维修间并发现缸中脑，但未能解读老旧文件揭示的真相。",
+    },
   ],
   rewards: [
     {

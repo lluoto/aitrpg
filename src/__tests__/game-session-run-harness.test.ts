@@ -161,11 +161,16 @@ describe("③ 脱离结局：显式离开→确认→结局，脚本能走到 Tr
     expect(r1.threw).toBe(false);
     expect(r1.steps[1].scene).toBe("维修间");
 
-    // 直接标记发现两条 True End 所需线索（跨模块耦合不属于本装置要驱动的
+    // 直接标记发现 True End 所需线索（跨模块耦合不属于本装置要驱动的
     // 内容——脚本驱动的是 act()，不是内部数据结构；这里与
-    // scene-id-bridge.test.ts 用同一种手法构造前置状态）。
+    // scene-id-bridge.test.ts 用同一种手法构造前置状态）。开发·摄取管线
+    // 校准 阶段3：True End 条件从 [diary, old_doc] 改成
+    // [old_doc, final_brain_jars]；diary 仍然标记只是为了状态真实
+    // （阶段1 的前置门保证 old_doc 不可能脱离 diary 被发现），不是求值
+    // 条件本身需要它。
     session.investigation.markDiscovered("clue_bedroom_diary", "p1");
     session.investigation.markDiscovered("clue_bedroom_old_doc", "p1");
+    session.investigation.markDiscovered("clue_final_brain_jars", "p1");
 
     const departScript: GameSessionScriptStep[] = [
       { input: "我们决定离开这里，结束这次调查" },
@@ -177,6 +182,38 @@ describe("③ 脱离结局：显式离开→确认→结局，脚本能走到 Tr
 
     const trueEndNarration = END_NARRATIONS.find((e) => e.id === "true")!;
     expect(r2.steps[1].narrative).toBe(trueEndNarration.lines.join("\n"));
+  });
+
+  // 开发·摄取管线校准 阶段3：near_truth 是本轮新增的结局，此前从未被
+  // 任何测试通过 act() 路径验证过——与上面 True End 用同一种手法
+  // （markDiscovered 构造前置状态 + act() 走 leave 流程触发判定），唯一
+  // 差异是不标记 clue_bedroom_old_doc，验证"到过终局见到缸中脑但没读懂
+  // 老文件"这条路径真的落到 near_truth，不是掉进 Normal End 或误判成
+  // True End。
+  it("到过维修间、发现缸中脑但未读懂老文件，显式离开并确认，得到 Near-Truth End", async () => {
+    const session = makeSession("departure-near-truth-end");
+    const script: GameSessionScriptStep[] = [
+      LOAD_MODULE,
+      { input: "前往维修间" },
+    ];
+    const r1 = await runGameSessionScript(session, script, OPTS);
+    expect(r1.threw).toBe(false);
+    expect(r1.steps[1].scene).toBe("维修间");
+
+    // 只标记 final_brain_jars，不标记 old_doc——见到了缸中脑，但没读懂
+    // 老文件里记的联络术真相。
+    session.investigation.markDiscovered("clue_final_brain_jars", "p1");
+
+    const departScript: GameSessionScriptStep[] = [
+      { input: "我们决定离开这里，结束这次调查" },
+      { input: "确定" },
+    ];
+    const r2 = await runGameSessionScript(session, departScript, OPTS);
+    expect(r2.threw).toBe(false);
+    expect(r2.steps[1].dead).toBe(true);
+
+    const nearTruthNarration = END_NARRATIONS.find((e) => e.id === "near_truth")!;
+    expect(r2.steps[1].narrative).toBe(nearTruthNarration.lines.join("\n"));
   });
 });
 

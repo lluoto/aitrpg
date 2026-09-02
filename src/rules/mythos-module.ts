@@ -1003,7 +1003,13 @@ export const PREMIERS_BARN_MODULE: MythosModule = {
     { scene: "premiers_barn", clueType: "barn_hideout", description: "7名被囚者（5人生存），谷仓下暗藏下水道入口", sanCost: "1/1d6" },
     { scene: "premiers_barn", clueType: "victim_log", description: "艾德里安记录：10名受害者，3人死亡" },
     { scene: "premiers_sewer", clueType: "mi_go_lair", description: "米-戈神殿，脑罐，非人类脚印", sanCost: "1/1d8" },
-    { scene: "premiers_sewer", clueType: "truth_revealed", description: "艾米丽的脑罐揭示真相：被米-戈欺骗", sanCost: "1d2/1d6" },
+    // 开发·摄取管线校准 阶段3：这条原来写的是"艾米丽的脑罐揭示真相：
+    // 被米-戈欺骗"——两处都不对。被米-戈直接欺骗的是艾德里安，不是
+    // 艾米丽（她是被艾德里安瞒着的那一个）；脑罐本身也不会"揭示"任何
+    // 事——艾米丽自己都不知道自己是缸中脑，见 three-way-audit.ts 的
+    // 语义矛盾记录。改成如实描述这个物件与它带出的处境，不再让它替
+    // 剧情"说话"。
+    { scene: "premiers_sewer", clueType: "truth_revealed", description: "艾米丽的脑罐：她的意识仍然清醒，却完全不知道自己早已只剩一颗漂浮在营养液里的大脑——这场骗局的源头是米-戈骗了艾德里安，而艾德里安又瞒着她", sanCost: "1d2/1d6" },
   ],
   hooks: [
     { type: "on_enter_scene", condition: "tricam_house", narration: "小女孩在篮球场拍球，屋内是焦虑的母亲。", effect: "获得线索" },

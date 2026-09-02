@@ -117,22 +117,35 @@ describe("方括号术语审计：原文查无此词的集合与 FABRICATION_REG
     expect(new Set(notFound)).toEqual(new Set(FABRICATION_REGISTRY.map((e) => e.term)));
   });
 
-  it.skipIf(!corpus.ok)("初始清单确实包含题面给出的 3 条已确证臆造", () => {
+  // 开发·摄取管线校准 阶段3：初始清单原来有 4 条已确证臆造，True End 与
+  // ENCOUNTER_NARRATIONS 里的臆造台词已按原文改写，方括号连同臆造内容
+  // 一起从数据里删掉了——名单因此清空。这条测例从"确认清单包含 3 条"
+  // 改成"确认清单确实是空的、且不是因为判据坏了"：先证明现在真的一处
+  // 无据的方括号术语都不剩（notFound 为空），名单也确实清空且不多不少
+  // （上面的主判据已经在验证这个精确相等关系，这里只是从"清单该有什么"
+  // 的角度再钉一遍，防止未来有人往空名单里加一条却忘了这本该是无据的）。
+  it.skipIf(!corpus.ok)("清单已按阶段3的修正清空——不是没查，是真的不再有无据的方括号术语", () => {
     if (!corpus.ok) return;
-    const registryTerms = new Set(FABRICATION_REGISTRY.map((e) => e.term));
-    expect(registryTerms.has("共鸣特质")).toBe(true);
-    expect(registryTerms.has("谢谢你们……")).toBe(true);
-    expect(registryTerms.has("照顾好爱莉……")).toBe(true);
+    expect(FABRICATION_REGISTRY).toEqual([]);
+    const notFound = terms.filter((t) => !termAppearsInCorpus(t, corpus.text));
+    expect(notFound).toEqual([]);
   });
 
-  it.skipIf(!corpus.ok)("**对照**：能在原文查到的术语不在名单里——写法差异不该被当成臆造", () => {
+  it.skipIf(!corpus.ok)("**对照**：能在原文查到的术语依旧不在名单里——写法差异不该被当成臆造", () => {
     if (!corpus.ok) return;
     const registryTerms = new Set(FABRICATION_REGISTRY.map((e) => e.term));
-    for (const attested of ["救出", "伎俩", "米戈联络术"]) {
+    for (const attested of ["救出", "伎俩"]) {
       expect(terms.includes(attested)).toBe(true); // 前提：这个术语确实在数据里
       expect(termAppearsInCorpus(attested, corpus.text)).toBe(true);
       expect(registryTerms.has(attested)).toBe(false);
     }
+    // "米戈联络术"曾经是这份对照组的第三个成员——它此前只在被删掉的那句
+    // True End 文案里带过方括号，其余出现（展示名/revelation）用的是
+    // 圆括号或直角引号，本来就不会被 extractBracketTerms() 当成方括号
+    // 术语。删掉那句臆造台词之后，它从"能查到但不该登记"变成了"压根
+    // 不再被抽取到"——两种都不该出现在名单里，但理由不同，钉在这里
+    // 别让人以为是判据漏查了它。
+    expect(terms.includes("米戈联络术")).toBe(false);
   });
 
   if (!corpus.ok) {
