@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-02 05:38  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-02 06:47  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：0cdbdc1 docs: log the narrative-norm analysis policy as todo-46  ·  **测试**：2705 条 / 176 文件，全绿（基线 2705，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：498dbc4 test: add a registry judge for narrative-vocabulary drift  ·  **测试**：2720 条 / 177 文件，全绿（基线 2720，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -199,6 +199,10 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- 498dbc4 test: add a registry judge for narrative-vocabulary drift
+- d141dd2 test: add a pure natural-language True End replay
+- 7d9e6f1 fix: teach clue_final_brain_jars the names the engine itself uses
+- dd04683 docs: backfill notes/todo for phases 1-7's ingest calibration
 - 0cdbdc1 docs: log the narrative-norm analysis policy as todo-46
 - bfc8dbd docs: refresh handoff.md and now.md after this round
 - 6ad200f feat: add a calibrated semantic-contradiction probe
@@ -207,10 +211,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - 34dbcad fix: correct Adrian's secret to match his actual ignorance
 - fa1fd85 docs: refresh now.md after this round
 - 966f9e0 test: rebase the 32-state ending oracle to 64 states
-- a0fd9f9 fix: rewrite True End around the source's triple deception
-- 911f57d docs: refresh handoff.md and now.md after this round
-- 2cb0f9a fix: reconnect the ingest pipeline's broken e2e path
-- 8aec58f feat: add a three-way audit for the ingest calibration report
 
 ## 代码地图
 

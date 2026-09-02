@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-02 05:39
+> 生成于 2026-09-02 06:46
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,18 +13,9 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 0cdbdc1 docs: log the narrative-norm analysis policy as todo-46 |
-| 测试 | 2705 条 / 176 文件  全绿 |
-| 工作树 | **7 个文件未提交** |
-
-未提交：
-- `M docs/handoff.md`
-- `M docs/notes/engine.md`
-- `M docs/notes/index.json`
-- `M docs/notes/ingest.md`
-- `M docs/now.md`
-- `M docs/todo.json`
-- `M scripts/now.ts`
+| HEAD | 498dbc4 test: add a registry judge for narrative-vocabulary drift |
+| 测试 | 2720 条 / 177 文件  全绿 |
+| 工作树 | 干净 |
 
 ## 开工前
 
@@ -109,14 +100,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 498dbc4 test: add a registry judge for narrative-vocabulary drift
+- d141dd2 test: add a pure natural-language True End replay
+- 7d9e6f1 fix: teach clue_final_brain_jars the names the engine itself uses
+- dd04683 docs: backfill notes/todo for phases 1-7's ingest calibration
 - 0cdbdc1 docs: log the narrative-norm analysis policy as todo-46
 - bfc8dbd docs: refresh handoff.md and now.md after this round
 - 6ad200f feat: add a calibrated semantic-contradiction probe
 - 23400a4 feat: require sourceRef for new or edited ending narration
-- 0114c6e feat: widen the entity audit past barn-of-premier.ts
-- 34dbcad fix: correct Adrian's secret to match his actual ignorance
-- fa1fd85 docs: refresh now.md after this round
-- 966f9e0 test: rebase the 32-state ending oracle to 64 states
 
 ## 找东西
 
