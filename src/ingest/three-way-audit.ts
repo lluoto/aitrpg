@@ -106,12 +106,24 @@ export function termAppearsInCorpus(term: string, corpusText: string): boolean {
  * 从源码文本里抽出所有方括号术语（去重）。只看**数据行**，跳过注释——
  * 注释是给开发者看的说明，不是玩家会读到的叙事正文，混进来会把"这里曾经
  * 有个标记常量【原文】"这种开发笔记也当成需要对原文负责的游戏文案。
+ *
+ * 阶段7 扩展到 mythos-module.ts/premiers_barn.ts 后发现的真实假阳性：
+ * 全仓普遍用 `【${x.name}】` 这种写法给 UI 消息里的动态值加强调括号
+ * （技能检定播报、战斗播报、政经引擎事件……19 处，跨十几个文件），这类
+ * 括号里装的是运行时才确定的变量，不是"某个具体术语原文里有没有"这种
+ * 可判定的静态声明——`剧本杀模组：${module.name}` 这段源码字面文本本身
+ * 永远不会逐字出现在任何原文里（模组名是运行时插进来的），拿它去查语料
+ * 库注定是假阳性，不是真的漏检。跳过含 `${` 的方括号内容——这类内容
+ * 天生不属于"能对原文负责"的范畴，与跳过注释是同一个理由的延伸。
  */
 export function extractBracketTerms(sourceText: string): string[] {
   const seen = new Set<string>();
   for (const line of sourceText.split("\n")) {
     if (line.trim().startsWith("//")) continue;
-    for (const m of line.matchAll(/【([^】]+)】/g)) seen.add(m[1]);
+    for (const m of line.matchAll(/【([^】]+)】/g)) {
+      if (m[1].includes("${")) continue;
+      seen.add(m[1]);
+    }
   }
   return [...seen];
 }
@@ -186,3 +198,102 @@ export function classifyFieldOmission(fieldPath: string): ThreeWayVerdict | null
   }
   return null;
 }
+
+// ============================================================
+// 多文件覆盖 + 声明实体审计（开发·三档约束 阶段7 任务②）
+// ============================================================
+//
+// 背景：阶段3 的方括号术语审计只扫过 barn-of-premier.ts 一个文件。这一轮
+// 漏检的语义矛盾（mythos-module.ts:1061 的 secrets 写反）恰好就在别的
+// 文件里——不是这套审计"测不出语义矛盾"这条已知能力边界的问题（它确实
+// 测不出，见文件头注释），是它连"扫没扫到"这一步都没做全：同样是它能
+// 判定的"字面存在性"这类问题，如果发生在 mythos-module.ts/
+// premiers_barn.ts 里，之前的版本根本不会去看。
+
+/**
+ * 审计覆盖的模组数据源文件——同一个模组（普瑞米尔的谷仓）的三份并行
+ * 数据实现，todo-19 统一之前各自独立维护，各自都可能出现字面臆造。
+ */
+export const AUDITED_MODULE_FILES = [
+  "src/module/barn-of-premier.ts",
+  "src/rules/mythos-module.ts",
+  "src/rules/custom-modules/premiers_barn.ts",
+] as const;
+
+export interface SourceTextRef {
+  file: string;
+  text: string;
+}
+
+/**
+ * 跨多个源文件收方括号术语，记下每个术语出现在哪些文件里（供报告定位——
+ * 判据本身只关心去重后的词集合，但排查时需要知道是哪个文件写的）。
+ */
+export function extractBracketTermsAcrossFiles(sources: SourceTextRef[]): Map<string, string[]> {
+  const map = new Map<string, Set<string>>();
+  for (const { file, text } of sources) {
+    for (const term of extractBracketTerms(text)) {
+      if (!map.has(term)) map.set(term, new Set());
+      map.get(term)!.add(file);
+    }
+  }
+  const out = new Map<string, string[]>();
+  for (const [term, files] of map) out.set(term, [...files]);
+  return out;
+}
+
+/**
+ * 去掉展示名尾部的括号注解（如"维修间（终局场景）"→"维修间"、
+ * "Mi-Go（来自尤格斯的真菌）"→"Mi-Go"）——这类注解是数据作者给自己看的
+ * 提示，原文自然不会逐字重复它，不做这层归一化会把纯粹的写法差异误判
+ * 成"原文查无此实体"，制造假阳性（阶段7 实测：不做归一化会在
+ * BARN_OF_PREMIER 里假阳性报出 5 处，逐一核对后确认全部是括号注解）。
+ *
+ * 与 game-session.ts:4069 的 stripBracketSuffix 是同一种归一化（那边给
+ * 场景 id 桥接用），各自独立成一行是因为用途不同、规则本身足够简单，
+ * 不值得为共用一行正则在审计工具与游戏引擎之间建立依赖。
+ */
+export function stripDisplayAnnotation(name: string): string {
+  return name.replace(/[（(][^）)]*[）)]$/, "");
+}
+
+export interface DeclaredEntityRef {
+  name: string;
+  kind: "npc" | "scene";
+  source: string;
+}
+
+/**
+ * 审计一批"声明实体"（NPC 名/场景名）——归一化括号注解后，检查每个名字
+ * 是否在原文语料里出现过。按 kind+归一化后的名字去重（同一个实体在多个
+ * 文件里重复声明只报一次，source 取第一次出现的那个）。
+ */
+export function auditDeclaredEntities(entities: DeclaredEntityRef[], corpusText: string): DeclaredEntityRef[] {
+  const seen = new Set<string>();
+  const notFound: DeclaredEntityRef[] = [];
+  for (const e of entities) {
+    const normalized = stripDisplayAnnotation(e.name);
+    const key = `${e.kind}:${normalized}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (!termAppearsInCorpus(normalized, corpusText)) notFound.push(e);
+  }
+  return notFound;
+}
+
+export interface EntityFabricationEntry {
+  name: string;
+  kind: "npc" | "scene";
+  location: string;
+  note: string;
+}
+
+/**
+ * 已确证"原文查无此实体"的 NPC/场景名——目前是空的。阶段7 实测跑过
+ * BARN_OF_PREMIER 的全部 npcs/scenes、PREMIERS_BARN_MODULE 的全部
+ * npcs、MODULE_PREMIERS_BARN 的全部 npcs/scenes，归一化括号注解后一个
+ * 不剩地能在原文查到。判据用法与 FABRICATION_REGISTRY 相同：查无此名
+ * 的集合必须与这份名单精确相等——空数组不是没有认真查，是真的一个
+ * 无据的人名/地名都不剩。
+ */
+export const ENTITY_FABRICATION_REGISTRY: EntityFabricationEntry[] = [];

@@ -24,8 +24,16 @@ import {
   classifyFieldOmission,
   FABRICATION_REGISTRY,
   FIELD_OMISSION_REGISTRY,
+  AUDITED_MODULE_FILES,
+  extractBracketTermsAcrossFiles,
+  stripDisplayAnnotation,
+  auditDeclaredEntities,
+  ENTITY_FABRICATION_REGISTRY,
+  type DeclaredEntityRef,
 } from "../ingest/three-way-audit";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
+import { PREMIERS_BARN_MODULE } from "../rules/mythos-module";
+import { MODULE_PREMIERS_BARN } from "../rules/custom-modules/premiers_barn";
 
 describe("normalizeForMatch：写法差异不能误判成臆造", () => {
   it("半角/全角连字符、破折号会被抹平——「米戈联络术」与「米-戈联络术」归一化后相等", () => {
@@ -59,6 +67,16 @@ describe("extractBracketTerms：只看数据行，不看注释", () => {
       '"下次会选择什么更好的【伎俩】呢..."',
       '"下次会选择什么更好的【伎俩】呢..."',
     ].join("\n");
+    expect(extractBracketTerms(src)).toEqual(["伎俩"]);
+  });
+
+  it("**错误行为红线**：跳过含 ${...} 模板插值的方括号内容——那是 UI 强调括号，不是对原文的静态声明（阶段7 扩展到 mythos-module.ts 时抓到的真实假阳性：`【剧本杀模组：${module.name}】`）", () => {
+    const src = 'lines.push(`【剧本杀模组：${module.name}】`);';
+    expect(extractBracketTerms(src)).toEqual([]);
+  });
+
+  it("回归：不含插值的方括号内容仍然正常抽取，不是把整个功能关掉了", () => {
+    const src = '"下次会选择什么更好的【伎俩】呢..."\nlines.push(`【剧本杀模组：${module.name}】`);';
     expect(extractBracketTerms(src)).toEqual(["伎俩"]);
   });
 });
@@ -150,6 +168,122 @@ describe("方括号术语审计：原文查无此词的集合与 FABRICATION_REG
 
   if (!corpus.ok) {
     console.warn(`[ingest-three-way-audit] 跳过方括号术语审计：${(corpus as { ok: false; reason: string }).reason}`);
+  }
+});
+
+describe("多文件覆盖：方括号术语审计不再只看 barn-of-premier.ts（阶段7 任务②）", () => {
+  const corpus = readOriginalCorpus();
+  const sources = AUDITED_MODULE_FILES.map((file) => ({ file, text: readFileSync(file, "utf8") }));
+  const termMap = extractBracketTermsAcrossFiles(sources);
+
+  it("**回归**：AUDITED_MODULE_FILES 确实覆盖三个文件，不是名单写了但没人读", () => {
+    expect(AUDITED_MODULE_FILES.length).toBe(3);
+    expect(AUDITED_MODULE_FILES).toContain("src/module/barn-of-premier.ts");
+    expect(AUDITED_MODULE_FILES).toContain("src/rules/mythos-module.ts");
+    expect(AUDITED_MODULE_FILES).toContain("src/rules/custom-modules/premiers_barn.ts");
+  });
+
+  it("跨文件收词会记下每个术语出现在哪些文件——同一个术语在两个文件里都出现时两个文件都在列", () => {
+    const src = [
+      { file: "a.ts", text: '"【伎俩】"' },
+      { file: "b.ts", text: '"【伎俩】"' },
+      { file: "c.ts", text: '"【共鸣特质】"' },
+    ];
+    const merged = extractBracketTermsAcrossFiles(src);
+    expect(new Set(merged.get("伎俩"))).toEqual(new Set(["a.ts", "b.ts"]));
+    expect(merged.get("共鸣特质")).toEqual(["c.ts"]);
+  });
+
+  it.skipIf(!corpus.ok)("**主判据**：三个文件里查无此词的方括号术语集合必须与 FABRICATION_REGISTRY 精确相等", () => {
+    if (!corpus.ok) return;
+    const notFound = [...termMap.keys()].filter((t) => !termAppearsInCorpus(t, corpus.text));
+    expect(new Set(notFound)).toEqual(new Set(FABRICATION_REGISTRY.map((e) => e.term)));
+  });
+
+  if (!corpus.ok) {
+    console.warn(`[ingest-three-way-audit] 跳过多文件方括号术语审计：${(corpus as { ok: false; reason: string }).reason}`);
+  }
+});
+
+describe("声明实体审计：NPC 名/场景名是否在原文里真实存在（阶段7 任务②）", () => {
+  const corpus = readOriginalCorpus();
+
+  function collectEntities(): DeclaredEntityRef[] {
+    const entities: DeclaredEntityRef[] = [];
+    for (const npc of BARN_OF_PREMIER.npcs) {
+      entities.push({ name: npc.name, kind: "npc", source: "src/module/barn-of-premier.ts" });
+    }
+    for (const scene of BARN_OF_PREMIER.scenes) {
+      entities.push({ name: scene.name, kind: "scene", source: "src/module/barn-of-premier.ts" });
+    }
+    for (const npc of PREMIERS_BARN_MODULE.npcs ?? []) {
+      entities.push({ name: npc.name, kind: "npc", source: "src/rules/mythos-module.ts" });
+    }
+    for (const name of Object.keys(PREMIERS_BARN_MODULE.sceneDescriptions ?? {})) {
+      entities.push({ name, kind: "scene", source: "src/rules/mythos-module.ts" });
+    }
+    for (const npc of MODULE_PREMIERS_BARN.npcs ?? []) {
+      entities.push({ name: npc.name, kind: "npc", source: "src/rules/custom-modules/premiers_barn.ts" });
+    }
+    for (const name of Object.keys(MODULE_PREMIERS_BARN.sceneDescriptions ?? {})) {
+      entities.push({ name, kind: "scene", source: "src/rules/custom-modules/premiers_barn.ts" });
+    }
+    return entities;
+  }
+
+  it("stripDisplayAnnotation：去掉尾部括号注解，不去掉正文里的括号", () => {
+    expect(stripDisplayAnnotation("维修间（终局场景）")).toBe("维修间");
+    expect(stripDisplayAnnotation("Mi-Go（来自尤格斯的真菌）")).toBe("Mi-Go");
+    expect(stripDisplayAnnotation("食尸鬼（可选）")).toBe("食尸鬼");
+    expect(stripDisplayAnnotation("普瑞米尔")).toBe("普瑞米尔"); // 没有括号，原样返回
+  });
+
+  it("auditDeclaredEntities：括号注解会先归一化，不会被误判成查无此名", () => {
+    const fakeCorpus = "维修间的墙壁上长满了青苔。";
+    const notFound = auditDeclaredEntities(
+      [{ name: "维修间（终局场景）", kind: "scene", source: "test" }],
+      fakeCorpus,
+    );
+    expect(notFound).toEqual([]);
+  });
+
+  it("auditDeclaredEntities：真查无此名的实体会被报出来", () => {
+    const fakeCorpus = "维修间的墙壁上长满了青苔。";
+    const notFound = auditDeclaredEntities(
+      [{ name: "凭空捏造的角色", kind: "npc", source: "test" }],
+      fakeCorpus,
+    );
+    expect(notFound).toEqual([{ name: "凭空捏造的角色", kind: "npc", source: "test" }]);
+  });
+
+  it.skipIf(!corpus.ok)("**主判据**：三个文件声明的 NPC/场景名，查无此名的集合必须与 ENTITY_FABRICATION_REGISTRY 精确相等", () => {
+    if (!corpus.ok) return;
+    const notFound = auditDeclaredEntities(collectEntities(), corpus.text);
+    const notFoundKeys = new Set(notFound.map((e) => `${e.kind}:${stripDisplayAnnotation(e.name)}`));
+    const registryKeys = new Set(ENTITY_FABRICATION_REGISTRY.map((e) => `${e.kind}:${e.name}`));
+    expect(notFoundKeys).toEqual(registryKeys);
+  });
+
+  it.skipIf(!corpus.ok)("清单确实是空的——不是没查，是三个文件里的人名地名一个不剩地能在原文查到", () => {
+    if (!corpus.ok) return;
+    expect(ENTITY_FABRICATION_REGISTRY).toEqual([]);
+    const notFound = auditDeclaredEntities(collectEntities(), corpus.text);
+    expect(notFound).toEqual([]);
+  });
+
+  it("**回归**：三个文件确实各自贡献了实体（不是收集器悄悄漏掉了某个文件）", () => {
+    const entities = collectEntities();
+    const sources = new Set(entities.map((e) => e.source));
+    expect(sources.has("src/module/barn-of-premier.ts")).toBe(true);
+    expect(sources.has("src/rules/mythos-module.ts")).toBe(true);
+    expect(sources.has("src/rules/custom-modules/premiers_barn.ts")).toBe(true);
+    // 至少要有 npc 和 scene 两种 kind，否则可能是漏收了一整类
+    expect(entities.some((e) => e.kind === "npc")).toBe(true);
+    expect(entities.some((e) => e.kind === "scene")).toBe(true);
+  });
+
+  if (!corpus.ok) {
+    console.warn(`[ingest-three-way-audit] 跳过声明实体审计：${(corpus as { ok: false; reason: string }).reason}`);
   }
 });
 
