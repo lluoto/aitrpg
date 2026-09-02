@@ -25,6 +25,7 @@ import { sourceKey } from "../../src/ingest/sectionize";
 import { prepareSections, classifyAndBuild } from "../../src/ingest/pipeline";
 import { assembleModule } from "../../src/ingest/assemble-module";
 import { diffValues, formatDiff } from "../../src/ingest/calibrate";
+import { computeIdInheritance, applySceneIdInheritance, applyItemIdInheritance } from "../../src/ingest/inherit-ids";
 import { BARN_OF_PREMIER } from "../../src/module/barn-of-premier";
 // 评分键在这里**只用来对左手边**（键名 vs 实际抽出的 sourceKey），下面那段检查是它唯一的用处。
 // 它绝不能进任何 prompt：本文件同时也是拼 prompt 的地方（classify-sections / classify-items），
@@ -139,13 +140,12 @@ const client = new RecordingClient(loadConfig());
 const {
   classifyInputs: inputs,
   kinds,
-  ids,
-  scenes,
+  scenes: rawScenes,
   sceneWarnings: warnings,
   itemInputs,
   itemKinds,
   itemIds,
-  items,
+  items: rawItems,
   provenance,
   itemWarnings,
   endings,
@@ -154,6 +154,22 @@ const {
     client.label = label;
   },
 });
+
+/**
+ * 管线继承基准 id（开发·管线继承基准 id，对应 todo-48）：把 rawScenes/
+ * rawItems 里的内部句柄（scene_NN/item_NN）按 name 换成基准的手写 id，
+ * 换完之后 `scenes`/`items` 这两个名字在本文件剩余部分指的都是"已继承
+ * 过 id"的版本——下游所有读 scenes/items 的地方（校准 diff、落盘产物、
+ * assembleModule）不需要各自记得再做一遍替换。
+ *
+ * 配不上基准 name 的，`compute*` 已经把内部 id 保留在结果里、把理由写进
+ * warnings——这里只管把 warnings 并入 report.txt，不在这一步做任何
+ * "看起来更完整"的兜底。
+ */
+const sceneIdInherit = computeIdInheritance(rawScenes, BARN_OF_PREMIER.scenes, "场景");
+const itemIdInherit = computeIdInheritance(rawItems, BARN_OF_PREMIER.items, "物品");
+const scenes = applySceneIdInheritance(rawScenes, sceneIdInherit.idMap);
+const items = applyItemIdInheritance(rawItems, sceneIdInherit.idMap, itemIdInherit.idMap);
 
 const baseItemNames = new Set(BARN_OF_PREMIER.items.map((i) => i.name));
 
@@ -330,7 +346,7 @@ await Bun.write(`${OUT}/provenance.json`, JSON.stringify(provenance, null, 2));
 // 这是摄取产物第一次变成运行时能直接吃的东西 —— 在这之前
 // scenes.json / items.json 都只是零件，runModule 吃不了。
 const assembled = assembleModule(
-  { sections, ids, kinds, scenes, items, provenance, endings },
+  { sections, kinds, scenes, items, provenance, endings },
   { id: "barn-of-premier-ingested", title: "普瑞米尔的谷仓（摄取）" },
 );
 await Bun.write(`${OUT}/module.json`, JSON.stringify(assembled.module, null, 2));
@@ -394,6 +410,9 @@ await Bun.write(
     "scene warnings:",
     ...warnings.map((w) => `  ${w}`),
     "",
+    `场景 id 继承基准：${sceneIdInherit.idMap.size}/${rawScenes.length} 继承成功，${sceneIdInherit.warnings.length} 个保留内部 id（不是错误，是如实报出的已知缺口）`,
+    ...sceneIdInherit.warnings.map((w) => `  ${w}`),
+    "",
     "── 条目与物品 ──",
     `条目 ${itemInputs.length} 送分类 / 分类返回 ${itemKinds.size}（全文共 ${itemIds.size} 个 ▶，其余不在场景块上）`,
     `条目分类分布: ${[...itemDist].map(([k, n]) => `${k} ${n}`).join(" / ") || "无"}`,
@@ -430,6 +449,9 @@ await Bun.write(
     "",
     "item warnings:",
     ...itemWarnings.map((w) => `  ${w}`),
+    "",
+    `物品 id 继承基准：${itemIdInherit.idMap.size}/${rawItems.length} 继承成功，${itemIdInherit.warnings.length} 个保留内部 id（不是错误，是如实报出的已知缺口）`,
+    ...itemIdInherit.warnings.map((w) => `  ${w}`),
     "",
     `悬空引用（item.sceneId 在生成的 scenes 里找不到）${danglingRefs.length} 个: ${danglingRefs.join("、") || "无"}`,
     `  —— 这一项没有任何 diff 能反映：refFields 把 sceneId 的差异归成 ref-mismatch，`,

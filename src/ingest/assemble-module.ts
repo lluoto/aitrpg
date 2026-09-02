@@ -16,11 +16,10 @@
 import type { Ending, ModuleData, ModuleItem, ModuleNPC, Provenance, Scene } from "../module/types";
 import type { Section } from "./sectionize";
 import type { SectionKind } from "./classify-sections";
+import { assignNpcIds } from "./ids";
 
 interface AssembleInput {
   sections: Section[];
-  /** 与 sections 平行的 id 表 */
-  ids: string[];
   kinds: Map<string, SectionKind>;
   scenes: Scene[];
   items: ModuleItem[];
@@ -44,6 +43,11 @@ export function assembleModule(input: AssembleInput, opts: AssembleOptions): Ass
   const warnings: string[] = [];
   const npcs: ModuleNPC[] = [];
 
+  // 独立编号空间——不复用 assignSceneIds 给这些块分配的 scene_NN
+  // （曾经是 bug：NPC 直接借用了它所在块的场景编号，与真正的场景 id
+  // 相撞，见 ids.ts `assignNpcIds` 的注释）。
+  const npcIds = assignNpcIds(input.sections, input.kinds);
+
   for (let i = 0; i < input.sections.length; i++) {
     const s = input.sections[i] as Section;
     if (s.title === "") continue;
@@ -53,7 +57,7 @@ export function assembleModule(input: AssembleInput, opts: AssembleOptions): Ass
     // 基准把 npc 块上的条目收作 knowledge / secrets，但原文里
     // 没有任何标记能区分这两者，所以一律进 knowledge —— 分不出来就不分。
     npcs.push({
-      id: input.ids[i] as string,
+      id: npcIds.get(s.title) as string,
       name: s.title,
       description: s.body,
       role: "",

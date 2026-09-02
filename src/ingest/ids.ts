@@ -19,6 +19,7 @@
 
 import type { Section } from "./sectionize";
 import { sourceKey } from "./sectionize";
+import type { SectionKind } from "./classify-sections";
 
 /** 两位起步，够 44 块用；超过 99 自然变三位，不截断 */
 function pad(n: number): string {
@@ -58,6 +59,38 @@ export function assignItemIds(sections: Section[]): Map<string, string> {
       n++;
       out.set(sourceKey(it.source), `item_${pad(n)}`);
     }
+  }
+  return out;
+}
+
+/**
+ * 给分类为 npc 的块单独编号——不复用 assignSceneIds 的编号空间。
+ *
+ * ⚠ 真 bug（开发·管线继承基准 id 发现）：`assemble-module.ts` 曾经给
+ * NPC 直接用 `input.ids[i]`，也就是**该块在 assignSceneIds 里分到的场景
+ * 编号**。块按 `sections` 下标统一编号（`scene_01`…`scene_NN`），场景与
+ * NPC 只是同一份编号表里被 `kinds` 筛出来的两个子集，NPC 从没有过自己的
+ * 编号——一个块被分类成 npc 时，它的"id"其实是它在全部块里的位置号，
+ * 恰好落在场景 id 的取值范围里，与真正的场景 id 相撞（同一次跑里
+ * `scene_05` 完全可能既是某个场景的 id，又是某个 NPC 的 id，取决于
+ * 各自在 `sections` 里的下标）。
+ *
+ * 修法：独立计数，只数 `kinds.get(title) === "npc"` 的块，产出
+ * `npc_01`…`npc_NN`，与 `assignItemIds` 同一种"按类别单独编号"思路——
+ * `assignItemIds` 早就不跟 `assignSceneIds` 共用编号空间，NPC 这条本该
+ * 一开始就照做，是遗漏。
+ *
+ * 返回 Map<title, id> 而不是等长数组：调用方（`assemble-module.ts`）是按
+ * `sections[i].title` 查、不是按下标查——原 bug 正是"按下标查一张为
+ * 别的用途编的号表"，返回等长数组只会让同类错误更容易被复制一遍。
+ */
+export function assignNpcIds(sections: Section[], kinds: Map<string, SectionKind>): Map<string, string> {
+  const out = new Map<string, string>();
+  let n = 0;
+  for (const s of sections) {
+    if (kinds.get(s.title) !== "npc") continue;
+    n++;
+    out.set(s.title, `npc_${pad(n)}`);
   }
   return out;
 }

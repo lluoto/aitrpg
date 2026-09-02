@@ -10,9 +10,10 @@
 // 正是本轮在收的那种「注释比代码少说一件事」。
 
 import { describe, test, expect } from "bun:test";
-import { assignSceneIds, assignItemIds } from "../ingest/ids";
+import { assignSceneIds, assignItemIds, assignNpcIds } from "../ingest/ids";
 import type { Section, SectionItem } from "../ingest/sectionize";
 import { sourceKey } from "../ingest/sectionize";
+import type { SectionKind } from "../ingest/classify-sections";
 
 const sec = (title: string): Section => ({
   title,
@@ -129,5 +130,59 @@ describe("assignItemIds", () => {
 
   test("没有条目时给空表", () => {
     expect(assignItemIds([secWith("甲", [])]).size).toBe(0);
+  });
+});
+
+describe("assignNpcIds（开发·管线继承基准 id：修复 NPC id 复用 scene_NN 编号空间的 bug）", () => {
+  const kindsOf = (pairs: [string, SectionKind][]): Map<string, SectionKind> => new Map(pairs);
+
+  test("**错误行为红线**：npc 编号与它在全部块里的位置无关——不会因为它排在第 5 块就变成 npc_05/scene_05 那种巧合", () => {
+    // 前四块随便什么类型，第五块才是 npc——如果 npc 的 id 是从块位置派生的
+    // （旧 bug 的行为），这里会得到某种带"5"的 id；assignNpcIds 应该只数
+        // npc 类的块，得到 npc_01（它是遇到的第一个 npc，不是第五个块）。
+    const sections = [sec("场景一"), sec("场景二"), sec("场景三"), sec("场景四"), sec("艾德里安")];
+    const kinds = kindsOf([
+      ["场景一", "scene"], ["场景二", "scene"], ["场景三", "scene"], ["场景四", "scene"], ["艾德里安", "npc"],
+    ]);
+    const ids = assignNpcIds(sections, kinds);
+    expect(ids.get("艾德里安")).toBe("npc_01");
+  });
+
+  test("不与 assignSceneIds 撞号：同一批块各自独立编号，npc_01 与 scene_01 可以同时存在指不同的块", () => {
+    const sections = [sec("艾德里安"), sec("特里坎家")];
+    const kinds = kindsOf([["艾德里安", "npc"], ["特里坎家", "scene"]]);
+    const sceneIds = assignSceneIds(sections); // 按全部块编号：scene_01, scene_02
+    const npcIds = assignNpcIds(sections, kinds);
+    expect(sceneIds[0]).toBe("scene_01"); // "艾德里安" 这一块在场景编号表里仍然占了一个号（assignSceneIds 不看 kind）
+    expect(npcIds.get("艾德里安")).toBe("npc_01"); // 但它的 NPC id 是独立编号，不是 scene_01
+  });
+
+  test("只数 npc 类的块，跳过其它类型", () => {
+    const sections = [sec("前言"), sec("艾德里安"), sec("特里坎家"), sec("菲碧")];
+    const kinds = kindsOf([
+      ["前言", "structure"], ["艾德里安", "npc"], ["特里坎家", "scene"], ["菲碧", "npc"],
+    ]);
+    const ids = assignNpcIds(sections, kinds);
+    expect(ids.size).toBe(2);
+    expect(ids.get("艾德里安")).toBe("npc_01");
+    expect(ids.get("菲碧")).toBe("npc_02");
+  });
+
+  test("没有任何 npc 类的块时给空表", () => {
+    const sections = [sec("特里坎家")];
+    const kinds = kindsOf([["特里坎家", "scene"]]);
+    expect(assignNpcIds(sections, kinds).size).toBe(0);
+  });
+
+  test("同一份输入两次跑出同一批 id", () => {
+    const sections = [sec("艾德里安"), sec("菲碧")];
+    const kinds = kindsOf([["艾德里安", "npc"], ["菲碧", "npc"]]);
+    expect([...assignNpcIds(sections, kinds)]).toEqual([...assignNpcIds(sections, kinds)]);
+  });
+
+  test("纯 ASCII", () => {
+    const sections = [sec("艾德里安"), sec("菲碧")];
+    const kinds = kindsOf([["艾德里安", "npc"], ["菲碧", "npc"]]);
+    for (const id of assignNpcIds(sections, kinds).values()) expect(id).toMatch(/^[a-z0-9_]+$/);
   });
 });
