@@ -111,6 +111,62 @@ describe("BARN_OF_PREMIER 线索桥接 — 技能映射", () => {
   });
 });
 
+describe("BARN_OF_PREMIER 线索桥接 — clue_final_brain_jars 的叙事用词别名（开发·真相链路 任务①）", () => {
+  const realRandom = Math.random;
+  afterEach(() => {
+    Math.random = realRandom;
+  });
+
+  it("matchTexts 应包含引擎自己叙事里用过的称呼，不只是 clue.name/findMethods 原文", async () => {
+    await session.act("加载模组 普瑞米尔的谷仓");
+    const investigation: any = (session as any).investigation;
+    const clue = investigation.clueTypes.get("clue_final_brain_jars");
+    expect(clue).toBeDefined();
+    for (const alias of ["培养缸", "玻璃缸", "一大一小", "营养液"]) {
+      expect(clue.matchTexts).toContain(alias);
+    }
+  });
+
+  it("**错误行为红线**：玩家用引擎自己教的「培养缸」/「一大一小」/「营养液」称呼，此前会被 deny，现在应能命中并成功", async () => {
+    Math.random = () => 0; // 逼检定必成功，只验证匹配本身
+    for (const sentence of [
+      "陆川走近那两个培养缸，看清里面泡着什么",
+      "陆川打量那一大一小两个玻璃缸",
+      "陆川检查那些泡着营养液的容器",
+    ]) {
+      const sess = new GameSession(`brain-jars-alias-${Math.random()}`, "cosmic-horror", {
+        apiKey: "sk-placeholder", baseUrl: "http://localhost:9999", model: "mock", maxTokens: 1024, temperature: 0.7,
+      }, undefined, "调查员");
+      await sess.act("加载模组 普瑞米尔的谷仓");
+      await sess.act("前往维修间");
+      await sess.act(sentence);
+      expect(sess.investigation.isDiscoveredBy("clue_final_brain_jars", "p1")).toBe(true);
+    }
+  });
+
+  it("回归：过泛的词（设备/容器）不被收进别名，不该匹配的场景不会被误伤", async () => {
+    await session.act("加载模组 普瑞米尔的谷仓");
+    const investigation: any = (session as any).investigation;
+    const clue = investigation.clueTypes.get("clue_final_brain_jars");
+    expect(clue.matchTexts).not.toContain("设备");
+    expect(clue.matchTexts).not.toContain("容器");
+  });
+
+  it("不误伤 clue_final_coffin 的歧义回问——两条线索都可能命中的句子仍然 ask，不会被这次改动强行导向 brain_jars", async () => {
+    Math.random = () => 0;
+    const sess = new GameSession(`coffin-ambiguity-${Math.random()}`, "cosmic-horror", {
+      apiKey: "sk-placeholder", baseUrl: "http://localhost:9999", model: "mock", maxTokens: 1024, temperature: 0.7,
+    }, undefined, "调查员");
+    await sess.act("加载模组 普瑞米尔的谷仓");
+    await sess.act("前往维修间");
+    const r = await sess.act("打开那口像冰箱一样的棺材");
+    expect(sess.investigation.isDiscoveredBy("clue_final_brain_jars", "p1")).toBe(false);
+    expect(sess.investigation.isDiscoveredBy("clue_final_coffin", "p1")).toBe(false);
+    const sysReplies = r.events.filter((e) => e.speaker === "系统").map((e) => e.content).join("\n");
+    expect(sysReplies).toContain("想找什么");
+  });
+});
+
 describe("BARN_OF_PREMIER 线索桥接 — 端到端可达性", () => {
   const realRandom = Math.random;
   afterEach(() => {
