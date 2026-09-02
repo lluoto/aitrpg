@@ -12,16 +12,21 @@ import {
   computeIdInheritance,
   applySceneIdInheritance,
   applyItemIdInheritance,
+  applyClueIdInheritance,
   type IdInheritanceEntity,
 } from "../ingest/inherit-ids";
-import type { Scene, ModuleItem, SceneConnection } from "../module/types";
+import type { Scene, ModuleItem, SceneConnection, Clue } from "../module/types";
 
-function scene(id: string, name: string, connections: SceneConnection[] = []): Scene {
-  return { id, name, description: "", clues: [], npcIds: [], connections };
+function scene(id: string, name: string, connections: SceneConnection[] = [], clues: Clue[] = []): Scene {
+  return { id, name, description: "", clues, npcIds: [], connections };
 }
 
 function item(id: string, name: string, sceneId: string): ModuleItem {
   return { id, name, sceneId, description: "", type: "key" };
+}
+
+function clue(id: string, name: string): Clue {
+  return { id, name, description: "", findMethods: [], revelation: "", unlocks: [], found: false, importance: "color" };
 }
 
 describe("computeIdInheritance：按 name 把内部 id 映射到基准 id", () => {
@@ -150,6 +155,48 @@ describe("applyItemIdInheritance：物品自身 id 用物品映射，sceneId 引
   });
 });
 
+describe("applyClueIdInheritance：线索挂在 Scene.clues[] 里，映射要多处理一层嵌套（开发·build-clues，todo-28）", () => {
+  it("**正确**：场景内每条线索各自按自己的映射改写 id，场景本身与其余字段原样保留", () => {
+    const scenes = [scene("scene_01", "维修间", [], [clue("item_01", "母女的缸中脑")])];
+    const idMap = new Map([["item_01", "clue_final_brain_jars"]]);
+    const result = applyClueIdInheritance(scenes, idMap);
+    expect(result[0]!.clues[0]!.id).toBe("clue_final_brain_jars");
+    expect(result[0]!.id).toBe("scene_01"); // 场景自己的 id 不受影响
+    expect(result[0]!.name).toBe("维修间");
+  });
+
+  it("配不上的线索原样保留内部 id，不因为映射表里没有它就报错或清空", () => {
+    const scenes = [scene("scene_01", "维修间", [], [clue("item_99", "凭空捏造的线索")])];
+    const result = applyClueIdInheritance(scenes, new Map());
+    expect(result[0]!.clues[0]!.id).toBe("item_99");
+  });
+
+  it("一个场景内多条线索，映射与不映射的混在一起各自独立处理", () => {
+    const scenes = [
+      scene("scene_01", "维修间", [], [
+        clue("item_01", "母女的缸中脑"),
+        clue("item_02", "没对上基准的线索"),
+      ]),
+    ];
+    const idMap = new Map([["item_01", "clue_final_brain_jars"]]);
+    const result = applyClueIdInheritance(scenes, idMap);
+    expect(result[0]!.clues.map((c) => c.id)).toEqual(["clue_final_brain_jars", "item_02"]);
+  });
+
+  it("没有线索的场景原样返回空数组，不报错", () => {
+    const scenes = [scene("scene_01", "空场景")];
+    const result = applyClueIdInheritance(scenes, new Map());
+    expect(result[0]!.clues).toEqual([]);
+  });
+
+  it("不改动原数组——纯函数，返回新对象", () => {
+    const scenes = [scene("scene_01", "维修间", [], [clue("item_01", "母女的缸中脑")])];
+    const idMap = new Map([["item_01", "clue_final_brain_jars"]]);
+    applyClueIdInheritance(scenes, idMap);
+    expect(scenes[0]!.clues[0]!.id).toBe("item_01"); // 原对象未被修改
+  });
+});
+
 describe("端到端：computeIdInheritance 的结果直接喂给 apply* 能正确改写一整套场景+物品", () => {
   it("场景与物品各自继承各自的基准 id，物品的 sceneId 引用也跟着场景的映射走", () => {
     const rawScenes = [scene("scene_01", "特里坎家")];
@@ -165,5 +212,28 @@ describe("端到端：computeIdInheritance 的结果直接喂给 apply* 能正�
     expect(scenes[0]!.id).toBe("tricam_house");
     expect(items[0]!.id).toBe("old_document");
     expect(items[0]!.sceneId).toBe("tricam_house"); // 引用跟着场景映射走，不是物品自己的映射
+  });
+
+  it("线索继承与场景/物品同一套流程——按名配对，配上的换基准 id，配不上的显式报 warning 不编 id（build-clues 接入 id 继承的回归）", () => {
+    const rawScenes = [scene("scene_01", "维修间", [], [
+      clue("item_01", "母女的缸中脑"),
+      clue("item_02", "凭空捏造的线索"),
+    ])];
+    const baselineScenes: IdInheritanceEntity[] = [{ id: "maintenance_room", name: "维修间" }];
+    // 基准线索挂在场景内部，拍平成 {id,name}[] 才能喂给 computeIdInheritance——
+    // 与 scripts/ingest/run.ts 实际接线的做法一致，不是测试自己另发明一套。
+    const baselineClues: IdInheritanceEntity[] = [{ id: "clue_final_brain_jars", name: "母女的缸中脑" }];
+
+    const sceneInherit = computeIdInheritance(rawScenes, baselineScenes, "场景");
+    const scenesWithSceneIds = applySceneIdInheritance(rawScenes, sceneInherit.idMap);
+
+    const rawClues = scenesWithSceneIds.flatMap((s) => s.clues.map((c) => ({ id: c.id, name: c.name })));
+    const clueInherit = computeIdInheritance(rawClues, baselineClues, "线索");
+    const finalScenes = applyClueIdInheritance(scenesWithSceneIds, clueInherit.idMap);
+
+    expect(finalScenes[0]!.id).toBe("maintenance_room");
+    expect(finalScenes[0]!.clues[0]!.id).toBe("clue_final_brain_jars"); // 配上的
+    expect(finalScenes[0]!.clues[1]!.id).toBe("item_02"); // 配不上的保留内部 id
+    expect(clueInherit.warnings.some((w) => w.includes("凭空捏造的线索"))).toBe(true);
   });
 });

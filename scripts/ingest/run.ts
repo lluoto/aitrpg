@@ -25,7 +25,7 @@ import { sourceKey } from "../../src/ingest/sectionize";
 import { prepareSections, classifyAndBuild } from "../../src/ingest/pipeline";
 import { assembleModule } from "../../src/ingest/assemble-module";
 import { diffValues, formatDiff } from "../../src/ingest/calibrate";
-import { computeIdInheritance, applySceneIdInheritance, applyItemIdInheritance } from "../../src/ingest/inherit-ids";
+import { computeIdInheritance, applySceneIdInheritance, applyItemIdInheritance, applyClueIdInheritance } from "../../src/ingest/inherit-ids";
 import { BARN_OF_PREMIER } from "../../src/module/barn-of-premier";
 // 评分键在这里**只用来对左手边**（键名 vs 实际抽出的 sourceKey），下面那段检查是它唯一的用处。
 // 它绝不能进任何 prompt：本文件同时也是拼 prompt 的地方（classify-sections / classify-items），
@@ -148,6 +148,9 @@ const {
   items: rawItems,
   provenance,
   itemWarnings,
+  clueCount,
+  clueProvenance,
+  clueWarnings,
   endings,
 } = await classifyAndBuild(sections, client, {
   onStage: (label) => {
@@ -168,8 +171,50 @@ const {
  */
 const sceneIdInherit = computeIdInheritance(rawScenes, BARN_OF_PREMIER.scenes, "场景");
 const itemIdInherit = computeIdInheritance(rawItems, BARN_OF_PREMIER.items, "物品");
-const scenes = applySceneIdInheritance(rawScenes, sceneIdInherit.idMap);
+const scenesWithSceneIds = applySceneIdInheritance(rawScenes, sceneIdInherit.idMap);
 const items = applyItemIdInheritance(rawItems, sceneIdInherit.idMap, itemIdInherit.idMap);
+
+// 线索挂在 Scene.clues[] 里，不是顶层数组——继承基准 id 要多一步：先把
+// 候选线索（此时 sceneId 已经不重要，只按线索自己的 name 配）与基准的
+// 嵌套线索表（BARN_OF_PREMIER.scenes 里各场景的 clues）都拍平成
+// {id,name}[]，再和场景/物品同一个函数配对。
+const rawClues = scenesWithSceneIds.flatMap((s) => s.clues.map((c) => ({ id: c.id, name: c.name })));
+const baselineClues = BARN_OF_PREMIER.scenes.flatMap((s) => s.clues.map((c) => ({ id: c.id, name: c.name })));
+const clueIdInherit = computeIdInheritance(rawClues, baselineClues, "线索");
+const scenes = applyClueIdInheritance(scenesWithSceneIds, clueIdInherit.idMap);
+
+// ── 线索覆盖率/精确率（拿评分键算，todo-28：build-clues 的产出第一次
+// 能被量出来） ──
+//
+// scoring-key 给的是 sourceKey → 基准对象的位置级 ground truth，比按
+// name 配对更可靠（不依赖生成的线索名恰好和基准写法一致）。一个
+// sourceKey 可能对应基准里不止一条线索（p5:L17 一条条目正文同时命中
+// 两条基准线索），"这个位置产出了线索"就该把它对应的全部基准 clue id
+// 都算覆盖到，不是只算一个——否则会把一对多的情形错记成只覆盖了一条。
+//
+// ⚠️ 评分键只在这里、分类结果已经产出之后读，不进任何 prompt——
+// 与下面条目分类那段同一条约定，ingest-scoring-key-boundary.test.ts
+// 结构性地拦着这件事。
+const scoringClueIds = new Set<string>();
+for (const entryKinds of Object.values(ENTRY_SCORING_KEY)) {
+  for (const k of entryKinds) if (k.kind === "clue") scoringClueIds.add(k.id);
+}
+const generatedClueKeys = new Set(
+  clueProvenance.map((p) => p.sourceRef).filter((s): s is string => s !== undefined),
+);
+const coveredClueIds = new Set<string>();
+for (const [key, entryKinds] of Object.entries(ENTRY_SCORING_KEY)) {
+  if (!generatedClueKeys.has(key)) continue;
+  for (const k of entryKinds) if (k.kind === "clue") coveredClueIds.add(k.id);
+}
+const clueHit = coveredClueIds.size;
+const missedClueIds = [...scoringClueIds].filter((id) => !coveredClueIds.has(id)).sort();
+// 精确率：生成的线索里，有几条的 sourceKey 在评分键里确实标记为 clue（分子用这个，
+// 不用「生成了多少条」——道理与物品精确率同一条：分子该是「真的对上基准的」。
+const cluePrecisionHits = clueProvenance.filter((p) => {
+  const entryKinds = p.sourceRef ? ENTRY_SCORING_KEY[p.sourceRef] : undefined;
+  return entryKinds?.some((k) => k.kind === "clue") ?? false;
+}).length;
 
 const baseItemNames = new Set(BARN_OF_PREMIER.items.map((i) => i.name));
 
@@ -452,6 +497,18 @@ await Bun.write(
     "",
     `物品 id 继承基准：${itemIdInherit.idMap.size}/${rawItems.length} 继承成功，${itemIdInherit.warnings.length} 个保留内部 id（不是错误，是如实报出的已知缺口）`,
     ...itemIdInherit.warnings.map((w) => `  ${w}`),
+    "",
+    "── 线索（todo-28：build-clues 第一次产出，第一版数字，不要为了好看去调 prompt）──",
+    `产出 ${clueCount} 条线索，provenance ${clueProvenance.length} 条`,
+    `基准 ${scoringClueIds.size} 条线索有评分键坐标（评分键覆盖 41 处 sourceKey，含一对多），**按评分键坐标覆盖 ${clueHit}**`,
+    `**精确率 ${cluePrecisionHits}/${clueCount}**——分子是"这条线索的 sourceKey 在评分键里确实标记为 clue"的条数`,
+    `漏掉的基准线索 ${missedClueIds.length} 个: ${missedClueIds.join("、") || "无"}`,
+    "",
+    "clue warnings:",
+    ...clueWarnings.map((w) => `  ${w}`),
+    "",
+    `线索 id 继承基准：${clueIdInherit.idMap.size}/${rawClues.length} 继承成功，${clueIdInherit.warnings.length} 个保留内部 id（不是错误，是如实报出的已知缺口）`,
+    ...clueIdInherit.warnings.map((w) => `  ${w}`),
     "",
     `悬空引用（item.sceneId 在生成的 scenes 里找不到）${danglingRefs.length} 个: ${danglingRefs.join("、") || "无"}`,
     `  —— 这一项没有任何 diff 能反映：refFields 把 sceneId 的差异归成 ref-mismatch，`,

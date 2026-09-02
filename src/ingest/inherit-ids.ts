@@ -20,9 +20,12 @@
 // （`scene_NN`/`item_NN`）就是"这一条没能继承基准 id"的可见信号，比
 // 编一个自己都不知道算不算数的新 id 更诚实。
 //
-// 只处理 scene / item 两类——clue 目前还没有独立生成（build-scenes.ts:99
-// `clues: []`，todo-28），没有 id 可继承；npc 的 id 命名空间问题是另一个
-// bug（复用了 scene_NN 编号空间），修法是给它自己的编号（见 ids.ts
+// 处理 scene / item / clue 三类。clue 曾经没有独立生成（build-scenes.ts
+// 的 `clues: []`，todo-28），`build-clues.ts` 接上之后这里跟着补上——
+// 线索的映射方式与场景/物品同构（按 name 配、配不上保留内部 id），只是
+// 它挂在 `Scene.clues[]` 里，应用映射时要多处理一层嵌套（见
+// `applyClueIdInheritance`）。npc 的 id 命名空间问题是另一个 bug
+// （复用了 scene_NN 编号空间），修法是给它自己的编号（见 ids.ts
 // `assignNpcIds`），不是靠这里的按 name 继承——npc.sceneId 目前恒为
 // ""（assemble-module.ts 的已知缺口），没有基准 NPC 数据可比对 name。
 
@@ -139,5 +142,24 @@ export function applyItemIdInheritance(
     ...it,
     id: itemIdMap.get(it.id) ?? it.id,
     sceneId: sceneIdMap.get(it.sceneId) ?? it.sceneId,
+  }));
+}
+
+/**
+ * 把线索 id 映射应用到 scenes 里嵌套的 clues 数组（开发·build-clues，
+ * 对应 todo-28）。
+ *
+ * 线索不像场景/物品那样是顶层数组——`Clue` 挂在 `Scene.clues[]` 里，
+ * 映射函数因此要多处理一层嵌套：外层改场景（原样保留其余字段），
+ * 内层改每条线索的 `id`（配不上的原样保留内部 id，同
+ * `applySceneIdInheritance`/`applyItemIdInheritance` 一个规则）。
+ *
+ * 线索没有指向别的 id 的引用字段（`unlocks` 本轮不产，是空数组），
+ * 不需要像场景的 `connections[].targetSceneId` 那样再改一层引用。
+ */
+export function applyClueIdInheritance(scenes: Scene[], clueIdMap: Map<string, string>): Scene[] {
+  return scenes.map((s) => ({
+    ...s,
+    clues: s.clues.map((c) => ({ ...c, id: clueIdMap.get(c.id) ?? c.id })),
   }));
 }

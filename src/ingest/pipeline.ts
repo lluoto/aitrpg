@@ -32,6 +32,7 @@ import { buildScenes } from "./build-scenes";
 import { inferConnections } from "./infer-connections";
 import { extractEndings } from "./extract-endings";
 import { buildItems } from "./build-items";
+import { buildClues } from "./build-clues";
 import type { Scene } from "../module/types";
 import type { Ending, ModuleItem, Provenance } from "../module/types";
 
@@ -51,18 +52,28 @@ interface IngestResult {
   kinds: Map<string, SectionKind>;
   /** 与 sections 同下标的场景 id；非 scene 块那一格不会被任何 Scene 用到 */
   ids: string[];
+  /**
+   * 已经挂好线索的最终场景表——`buildScenes` 产出时 `.clues` 是空数组
+   * （那一步"本轮只填 id/name/description"），`buildClues` 在这份编排的
+   * 末尾把线索塞回各自场景，这里交出去的是塞完之后的版本，不是半成品。
+   */
   scenes: Scene[];
   sceneWarnings: string[];
   itemInputs: ItemInput[];
   /** 追问**之前**的条目分类。留着是为了能算「修好几条 / 弄坏几条」 */
   itemKindsFirstPass: Map<string, ItemKind>;
-  /** 追问之后的条目分类，buildItems 用的是这一份 */
+  /** 追问之后的条目分类，buildItems 与 buildClues 用的都是这一份 */
   itemKinds: Map<string, ItemKind>;
-  /** 条目键 → 物品 id。是 Map 不是数组：条目的键是 pN:LN，不跟 sections 同下标 */
+  /** 条目键 → 物品/线索共用的 id 空间。是 Map 不是数组：条目的键是 pN:LN，不跟 sections 同下标 */
   itemIds: Map<string, string>;
   items: ModuleItem[];
   provenance: Provenance[];
   itemWarnings: string[];
+  /** 产出的线索总数（跨全部场景）——todo-28 之前这个数恒为 0 */
+  clueCount: number;
+  /** 线索的改写留痕，path 已 rebase 到 `scenes[id].clues[id]` */
+  clueProvenance: Provenance[];
+  clueWarnings: string[];
   /**
    * 从 structure 块里抽出来的结局。
    * 抽不到就是空数组 —— 那意味着模组跑起来不会自行结束。
@@ -146,7 +157,9 @@ export async function classifyAndBuild(
   const classifyInputs = toClassifyInputs(sections);
   const kinds = await classifySections(classifyInputs, client);
   const ids = assignSceneIds(sections);
-  const { scenes, warnings: sceneWarnings } = buildScenes(sections, kinds, ids);
+  const built = buildScenes(sections, kinds, ids);
+  let scenes = built.scenes;
+  const sceneWarnings = built.warnings;
 
   // 连接必须在 buildScenes **之后** —— 它要的是最终进了场景表的那批，
   // 不是全部块。上一轮量过：场景表里多 3 个误报块，模型就会把边分给垃圾节点，
@@ -177,6 +190,14 @@ export async function classifyAndBuild(
   const itemIds = assignItemIds(sections);
   const { items, provenance, warnings: itemWarnings } = buildItems(itemInputs, itemKinds, itemIds);
 
+  // 线索复用条目分类/追问/编号的同一份产出（itemInputs/itemKinds/itemIds）——
+  // "这一条 ▶ 是不是线索"与"是不是物品"是同一次分类回答的，不是两遍问题。
+  // 必须在 buildItems 之后没有先后依赖，只是编排上顺着同一批中间量往下写。
+  stage("建线索");
+  const { scenes: scenesWithClues, clueCount, provenance: clueProvenance, warnings: clueWarnings } =
+    buildClues(scenes, itemInputs, itemKinds, itemIds);
+  scenes = scenesWithClues;
+
   // 结局藏在 structure 块里。整批送过去、让模型自己找，而不是按标题挑 ——
   // 「结局」这个词是这份模组的写法，别的模组未必这么写标题。
   // structure 块一共就 8 个，全送也不贵。
@@ -196,6 +217,9 @@ export async function classifyAndBuild(
     itemInputs,
     itemKindsFirstPass,
     itemKinds,
+    clueCount,
+    clueProvenance,
+    clueWarnings,
     itemIds,
     items,
     provenance,
