@@ -19,7 +19,7 @@
       "id": "ingest",
       "name": "模组摄取",
       "file": "docs/notes/ingest.md",
-      "count": 47
+      "count": 49
     },
     {
       "id": "rules",
@@ -864,6 +864,28 @@
       "line": 1788,
       "lines": 41,
       "summary": "todo-28 记的缺口：`build-scenes.ts` 把 `clues: []` 硬写死，"
+    },
+    {
+      "id": "ingest-48",
+      "title": "era / 部分 meta 抽取——先划清「结构信号」与「编辑判断」的边界（2026-09-02）",
+      "date": "2026-09-02",
+      "status": "note",
+      "group": "ingest",
+      "file": "docs/notes/ingest.md",
+      "line": 1829,
+      "lines": 28,
+      "summary": "理由是\"没做，不猜\"。但这三者不是同一种难度：`era`（\"1921 年\"）、"
+    },
+    {
+      "id": "ingest-49",
+      "title": "叙事层立项——为什么\"允许编\"要单独开一条通道（todo-52，2026-09-02）",
+      "date": "2026-09-02",
+      "status": "note",
+      "group": "ingest",
+      "file": "docs/notes/ingest.md",
+      "line": 1857,
+      "lines": 45,
+      "summary": "摄取管线到 todo-28（线索）为止，产的都是\"抽取\"：原文里有什么就"
     },
     {
       "id": "rules-01",
