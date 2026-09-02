@@ -233,7 +233,7 @@
       "category": "同职责多实现",
       "severity": "info",
       "status": "open",
-      "text": "两份谷仓模组表示：`rules/custom-modules/premiers_barn.ts`（MythosModule 格式，39 hooks / 4 endings / 25 exits）vs `module/barn-of-premier.ts`（ModuleData 格式，32 clues / END_NARRATIONS）。GameSession（自由跑团）加载前者，同时又从后者桥接线索——`game-session.ts:670-675` 已在注释里承认这是只对 premiers_barn 写死的特例，不是通用机制。"
+      "text": "两份谷仓模组表示：`rules/custom-modules/premiers_barn.ts`（MythosModule 格式，39 hooks / 4 endings / 25 exits）vs `module/barn-of-premier.ts`（ModuleData 格式，32 clues / END_NARRATIONS）。GameSession（自由跑团）加载前者，同时又从后者桥接线索——原注释引用的 `game-session.ts:670-675` 已漂移（该处现在是玩家注册逻辑，与 premiers_barn 无关，本条一并订正）。更新（开发·真相链路，2026-09-02 复核）：写死的特例只增不减，实测当前 game-session.ts 里 `mod.id === \"premiers_barn\"` / `this.registeredModules.some((m) => m?.id === \"premiers_barn\")` 这类分支共 4 处（`:737`、`:1029`、`:3974`、`:4023`），另有 2 张只服务这一个模组的别名表（`:4031` 附近给场景\"维修间\"额外登记别名\"维修室\"；`:4143` 的 `BARN_CLUE_MATCH_ALIASES` 给 `clue_final_brain_jars` 等线索登记叙事别名）——todo-34 记录\"已修复\"时（2026-08-30）只有 2 处特例，前提已经漂移，不是这条问题被解决了，是同一类特例又长了几处。两套模组类型系统（ModuleData vs MythosModule）不统一，`bridgeBarnOfPremierClues()`/`barnSceneIdMap()`/两张别名表就都会停留在\"只给这一个模组开小灶\"的状态——新模组接入时不会自动获得这些能力，还是得照着 premiers_barn 的样子再写一遍全部特例。"
     },
     {
       "id": "todo-20",
