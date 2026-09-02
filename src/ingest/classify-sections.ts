@@ -85,14 +85,39 @@ ${list}
 }
 
 /**
- * 归一化模型给回来的键。
+ * 从模型给回来的键里抽出方括号包着的标题。
  *
- * prompt 里标题是写成 `【农场外围】` 展示的，模型会照抄这个格式回来。
- * 实跑时 43 个块全被这一条卡掉：解析出 0 条，看上去像模型没干活，
- * 其实它全做对了。展示格式不该变成输出格式的契约，解析这边兜住。
+ * 第一次踩这个坑（2026-08-2X 前后）：prompt 里标题写成 `【农场外围】`
+ * 展示，模型照抄格式回来，43 个块全被"只剥字符串首尾的方括号"这条
+ * 规则卡掉——解析出 0 条，看上去像模型没干活，其实它全做对了。
+ *
+ * 第二次（todo-51，`scripts/diag/probe-classify-key-format.ts` 实测
+ * 8/8 轮稳定复现，2026-09-02）：模型把方括号里的标题连同后面一段摘录
+ * 正文一起抄了回来（"【前言】本模组是在吃安眠药的情况下想到的……"），
+ * 方括号不再贴着字符串结尾，原来"只剥首尾"的规则再次卡死——43 个块
+ * 只解析出 1 条。同一句话的更宽版本：**展示格式不该变成输出格式的
+ * 契约，解析这边兜住**，这次兜的是"方括号后面还有内容"这一种。
+ *
+ * 修法：不再要求方括号贴着字符串首尾，改成从键的**任意位置**抽取全部
+ * `【...】`/`[...]`/`［...］` 片段，逐个核对是否在 `knownTitles` 里——
+ * 抽出的候选必须【唯一命中】才采纳，命中多个或零个一律返回 null，
+ * 交给调用方按"认不出的一律丢弃，不做兜底猜测"处理（下面
+ * `parseClassifyResponse` 那条规则没有变，变的只是"怎么算认出来"）。
+ * 不做模糊匹配——模糊匹配是另一类风险（猜错一个标题，那条块的分类
+ * 结果会挂到错误的标题上，比丢弃更糟）。
  */
-function normalizeKey(k: string): string {
-  return k.trim().replace(/^[【\[［]\s*/, "").replace(/\s*[】\]］]$/, "").trim();
+function extractKnownTitle(rawKey: string, knownTitles: Set<string>): string | null {
+  // 键本身（去空白后）就是已知标题——模型没有照抄方括号时的老路径，
+  // 一直存在，不能因为这次改的是"方括号里带多余内容"就把它删掉。
+  const trimmed = rawKey.trim();
+  if (knownTitles.has(trimmed)) return trimmed;
+
+  const candidates = new Set<string>();
+  for (const m of rawKey.matchAll(/[【\[［]([^】\]］]*)[】\]］]/g)) {
+    const t = m[1]!.trim();
+    if (knownTitles.has(t)) candidates.add(t);
+  }
+  return candidates.size === 1 ? ([...candidates][0] as string) : null;
 }
 
 /**
@@ -122,8 +147,8 @@ export function parseClassifyResponse(text: string, knownTitles: string[]): Map<
   if (!obj || typeof obj !== "object") return out;
   const known = new Set(knownTitles);
   for (const [rawKey, v] of Object.entries(obj as Record<string, unknown>)) {
-    const k = normalizeKey(rawKey);
-    if (!known.has(k)) continue;            // 模型编出来的标题
+    const k = extractKnownTitle(rawKey, known);
+    if (k === null) continue;               // 模型编出来的标题，或抽出的候选命中了 0/多个已知标题
     if (typeof v !== "string") continue;
     if (!VALID.includes(v)) continue;       // 类别不在枚举内
     out.set(k, v as SectionKind);

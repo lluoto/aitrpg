@@ -99,6 +99,40 @@ describe("响应解析", () => {
     expect(parseClassifyResponse('{" 农场外围 ":"scene"}', titles).get("农场外围")).toBe("scene");
   });
 
+  // 修 todo-51：`scripts/diag/probe-classify-key-format.ts` 实测 8/8 轮稳定
+  // 复现的真实键形态——模型把方括号里的标题连同后面一段摘录正文一起
+  // 抄了回来，方括号不再贴着字符串结尾。旧版 normalizeKey 只剥字符串
+  // 首尾的方括号，这种键会被整体判定成"认不出的标题"而丢弃——43 个块
+  // 实测只解析出 1 条。这条用真实探针报告里摘录的原句（截断到能放进
+  // 测试文件的长度，用词与标点未改）。
+  test("**主判据**：键带方括号 + 大段摘录正文也要认——todo-51 实测复现的真实键形态（改前红，改后绿）", () => {
+    const realShapeKey = "【农场外围】这里是非常危险的一个场景。艾德里安在这里放置了很多陷阱，如果调查员中有军人或者有服役经历的话，可以进行灵感，让这些人觉得这里很危险";
+    const m = parseClassifyResponse(`{"${realShapeKey}":"scene"}`, titles);
+    expect(m.get("农场外围")).toBe("scene");
+  });
+
+  test("同一份回复里，一部分键是干净的方括号、一部分带摘录正文——两种形态在同一次解析里都要认（探针实测的真实分布：43 键里 1 条 clean、42 条带正文）", () => {
+    const m = parseClassifyResponse(
+      '{"【附录】":"structure","【农场外围】这里是非常危险的一个场景，本模组作者最初的灵感来源":"scene"}',
+      titles,
+    );
+    expect(m.get("附录")).toBe("structure");
+    expect(m.get("农场外围")).toBe("scene");
+  });
+
+  test("**错误行为红线**：键里的方括号片段同时命中两个已知标题时丢弃，不猜是哪一个", () => {
+    // 键字面上同时包含"【农场外围】"与"【附录】"两个已知标题的方括号写法——
+    // 唯一命中要求落空，必须整条丢弃，不能凭"先出现的那个"或任何启发式去猜。
+    const ambiguousKey = "【农场外围】提到了【附录】里的内容";
+    const m = parseClassifyResponse(`{"${ambiguousKey}":"scene"}`, titles);
+    expect(m.size).toBe(0);
+  });
+
+  test("方括号片段一个已知标题都不命中时丢弃——不因为「带了方括号」就降低认定标准", () => {
+    const m = parseClassifyResponse('{"【压根不存在的标题】随便写点什么":"scene"}', titles);
+    expect(m.size).toBe(0);
+  });
+
   test("模型漏了某个块 → 该块不在结果里，不臆造", () => {
     const m = parseClassifyResponse('{"农场外围":"scene"}', titles);
     expect(m.has("附录")).toBe(false);
