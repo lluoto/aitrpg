@@ -32,12 +32,12 @@ const res = await new PDFParse({ data: buffer }).getText();
 | 字段级 diff 校准器 | `src/ingest/calibrate.ts` | **已完成**，46 测试。配对键可配（`pairBy`）、引用字段单列（`refFields` → `ref-mismatch`） |
 | 章节切分 | `src/ingest/sectionize.ts` | **已完成**，22 测试 |
 | 确定性抽取 + Provenance | `src/ingest/extract-trap.ts` | **陷阱机制已完成**，22 测试；其余字段未做 |
-| LLM 插槽 · 块分类 | `src/ingest/classify-sections.ts` | **已完成**，20 测试。实跑 **命中 20 / 误报 7 / 漏报 0**（口径：按块内容认地点） |
-| id 命名 | `src/ingest/ids.ts` | **已完成**，16 测试。`scene_NN` 按块编号、`item_NN` 按条目编号（键是 `p9:L13`） |
-| 场景骨架 | `src/ingest/build-scenes.ts` | **已完成**，14 测试。实跑 **严格 17 + 名字变体 3 = 身份覆盖 20/20，真漏报 0，真误报 7**（**与上面那行不同口径**：name 严格配。非确定性，详见下） |
+| LLM 插槽 · 块分类 | `src/ingest/classify-sections.ts` | **已完成**，20 测试。**现值（2026-09-02，修 todo-51 后重跑，`classify-sections.ts:144`）：命中 20 / 误报 3 / 漏报 0**（口径：按块内容认地点）——历史值「误报 7 → 4 → 3」见该文件源码注释，此处只跟现值，不重复整条历史 |
+| id 命名 | `src/ingest/ids.ts` | **已完成**，16 测试。`scene_NN` 按块编号、`item_NN` 按条目编号（键是 `p9:L13`）；NPC 另有 `npc_NN`（开发·管线继承基准 id，修了曾经复用 `scene_NN` 编号空间的 bug） |
+| 场景骨架 | `src/ingest/build-scenes.ts` | **已完成**，14 测试。**现值（同上次重跑）：严格 17 + 名字变体 3 = 身份覆盖 20/20，真漏报 0，真误报 3**（**与上面那行不同口径**：name 严格配，历史上两个口径的误报数曾经都是 7，这次重跑之后也一起降到了 3——巧合还是同源，`classify-sections.ts:144-150` 已经说明分不清，这里不重复下结论） |
 | LLM 回复取 JSON | `src/llm/json.ts` | **已完成**，20 测试（`ingest-llm-json.test.ts`，文件名没跟着搬）。2026-08-29 从 `src/ingest/llm-json.ts` 收敛到这里——不再是摄取专属，intent.ts / generate-llm-expanded.ts 等六处消费方共用同一份，避免各自拷贝各自漂（见该测试文件头部注释） |
-| 条目分类（`▶` 是什么） | `src/ingest/classify-items.ts` | **已完成**，21 测试。实跑 37 送分类 / **返回 37**，分布 item 15 / clue 11 / event 4 / trap 4 / connection 3（与下面 §实跑数 那张表同一次跑；先前这里写的 `item 13 / clue 12 / event 5` 是更早一轮的数，两处对不上） |
-| ModuleItem 抽取 | `src/ingest/build-items.ts` | **已完成**，22 测试。实跑 **基准 10 个物品覆盖 9**（上限 9）、生成 19 个、**精确率 9/19**、误报 9。补跨页续行（`joinPages`）之前是 9/17，那两个数**不能直接比**——见下面「分类器的逐条输出不是独立的」 |
+| 条目分类（`▶` 是什么） | `src/ingest/classify-items.ts` | **已完成**，21 测试。实跑 37 送分类 / **返回 37**，分布 item 15 / clue 11 / event 4 / trap 4 / connection 3（与下面 §实跑数 那张表同一次跑；先前这里写的 `item 13 / clue 12 / event 5` 是更早一轮的数，两处对不上）。⚠ 这是**追问之前**的第一次分类分布——修 todo-51 那次重跑量到的是追问之后的最终分布（clue 19 / item 7 / event 4 / trap 4 / connection 3，`analysis/ingest/report.txt`），两张分布表不是同一个测量点，不能拿来互相对账 |
+| ModuleItem 抽取 | `src/ingest/build-items.ts` | **已完成**，22 测试。实跑 **基准 10 个物品覆盖 9**（上限 9）、生成 19 个、**精确率 9/19**、误报 9。补跨页续行（`joinPages`）之前是 9/17，那两个数**不能直接比**——见下面「分类器的逐条输出不是独立的」。⚠ **这一行测的是 build-items.ts 单独跑、还没接条目追问时的精确率**——接进条目分族追问（`classify-followup.ts`）之后，**完整管线现值是 9/11**（`classify-sections.ts:153`、`analysis/ingest/report.txt`），9/19 不是「过时数字」，是「这一个阶段单独测的数字」，两者描述的不是同一件事，别拿其中一个去覆盖另一个 |
 
 | LLM 插槽 · 其余语义字段 | — | 未做（线索与 `findMethods`、NPC 字段、`connections`） |
 
