@@ -17,6 +17,7 @@ import type { Ending, ModuleData, ModuleItem, ModuleNPC, Provenance, Scene } fro
 import type { Section } from "./sectionize";
 import type { SectionKind } from "./classify-sections";
 import { assignNpcIds } from "./ids";
+import { extractHeaderMeta } from "./extract-header-meta";
 
 interface AssembleInput {
   sections: Section[];
@@ -76,27 +77,26 @@ export function assembleModule(input: AssembleInput, opts: AssembleOptions): Ass
     );
   }
 
+  const headerMeta = extractHeaderMeta(input.sections);
+
   const module: ModuleData = {
     id: opts.id,
     title: opts.title,
     version: opts.version ?? "0.0.0-ingest",
     ruleset: "cosmic-horror",
-    // era 与 summary 摄取都没做，不猜。
-    era: "",
+    era: headerMeta.era,
+    // summary 摄取没做，见 extract-header-meta.ts 头部注释：没有位置信号，
+    // 硬挑几句当摘要就是在编。
     summary: "",
     scenes: input.scenes,
     npcs,
-    meta: {
-      playerCount: "",
-      expectedDuration: "",
-      triggerWarnings: [],
-    },
+    meta: headerMeta.meta,
     endings: input.endings ?? [],
     items: input.items,
     provenance: input.provenance,
   };
 
-  warnings.push("era / summary / meta 未抽取，留空");
+  warnings.push(...headerMeta.warnings);
   if (module.endings.length === 0) {
     // 这条要单独说：没有结局意味着这个模组跑起来不会自己结束。
     // 它不是「少一个字段」，是少一半玩法。
