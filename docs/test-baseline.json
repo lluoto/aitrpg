@@ -1,6 +1,6 @@
 {
-  "tests": 2720,
-  "files": 177,
+  "tests": 2740,
+  "files": 178,
   "unwiredMethods": 86,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -574,6 +574,11 @@
       "tests": 2720,
       "files": 177,
       "when": "真相链路 任务①②③：True End 可玩链条第4环打通并首次端到端实证。实测发现 clue_final_brain_jars 的 matchTexts 只有 [\"母女的缸中脑\", \"打开光源观察房间\"]，但引擎自己的叙事（True End 第3行、near_truth 第1行、ENCOUNTER_NARRATIONS 三处）反复用「培养缸」「一大一小」称呼这两个缸中脑，玩家读完这些文本用引擎自己教的词反而被 deny，只有照念内部展示名「缸中脑」才行——与 2c38d2c 的「维修室」问题同构。①在 game-session.ts 新增 BARN_CLUE_MATCH_ALIASES（培养缸/玻璃缸/一大一小/营养液→clue_final_brain_jars），追加进 bridgeBarnOfPremierClues 的 matchTexts 组装；核实「营养液」属同类问题一并收录，未收「设备」「容器」等过泛词避免误伤其它场景；确认不影响 clue_final_coffin 的既有歧义回问。②在 game-session-run-harness.test.ts 新增全程只用 session.act() 自然语句（不含 markDiscovered/内部 clue id）的完整 True End 回放：卧室拿 diary→读 old_doc→前往维修间→查看培养缸→离开确认→True End；穷举种子 1..500 找到 seed=187 让三处技能检定都在第一次输入即成功，逐步核对 revelation 原文而非读内部状态。③新增 src/investigation/narrative-vocabulary-registry.ts（「叙事用词→线索/场景id」显式登记表，KNOWN_UNREACHABLE 同构模式，含能力边界声明：只护登记过的词不做散文分词）+ src/__tests__/narrative-vocabulary-registry.test.ts（对每条跑 decideClueMatch/resolveSceneTarget 断言命中，场景类额外断言 via===\"alias\" 排除侥幸 bigram 命中），覆盖培养缸/玻璃缸/一大一小/营养液→brain_jars 与维修室→维修间（2c38d2c 回归保护）。三次变异检验：撤掉①的别名表，②③各自精确变红（③的4条 clue 断言与 1 条 via 断言）；单独撤掉 2c38d2c 的维修室别名，③的场景断言从 via=alias 变成 via=bigram 精确捕捉（若不加 via 断言会被侥幸的弱匹配掩盖，已验证补上前的假绿）。回归确认：三方审计/实体审计/64态穷举/near_truth端到端/Good End 的 old_doc 排除均随全量 bun test 一并通过。typecheck 0；bun test 2705->2720（+15，176->177 文件）；preflight 12/12。"
+    },
+    {
+      "tests": 2740,
+      "files": 178,
+      "when": "阶段5「管线继承基准 id」（对应 todo-48），补记①a①b + 主体②。①a：docs/notes/engine.md 记「引擎教了玩家一个自己不认识的词」教训（维修室/维修间 2c38d2c、培养缸/缸中脑 7d9e6f1 两实例，自行核实无既有同名家族后定为「这是第二次」，不是照抄给定数字），指向 narrative-vocabulary-registry.ts 现有防线并写明其边界（只保护登记过的词）。①b：核实 game-session.ts 里 premiers_barn 硬编码特例已从 todo-34「已修复」时的 2 处涨到 4 处 id 分支（:737/:1029/:3974/:4023）+ 2 张专属别名表（:4031 维修室、:4143 BARN_CLUE_MATCH_ALIASES），订正 todo-19 里已漂移的旧行号引用，挂在 todo-19 下不新开账。②：生成侧用内部句柄（scene_NN/item_NN，ids.ts），基准用人工意译 id（adrian_bedroom），calibrate.ts 已按 [\"id\",\"name\"] 配对但生成物从未真正继承过基准 id，报告里的 id-mismatch/ref-mismatch 一直是命名体系噪音。方向（任务背景给定）：不迁移 id，让管线继承基准 id——id 是人工维护的稳定层（全仓约 681 处引用不动），内容是可重新生成的层。新增 src/ingest/inherit-ids.ts：computeIdInheritance() 按 name 配对（复用 three-way-audit.ts 的 stripDisplayAnnotation 归一化基准侧尾部括号注解），配上换基准 id，配不上显式报 warnings 并保留内部 id（不静默生成新 id，那是第四套命名体系）；applySceneIdInheritance/applyItemIdInheritance 同步改写 id 与两处引用字段（connections[].targetSceneId、item.sceneId）。顺带修真 bug：assemble-module.ts 曾给 NPC 直接用 input.ids[i]（场景编号表），与场景 id 相撞；新增 ids.ts 的 assignNpcIds()（独立 npc_NN 编号）替换掉，AssembleInput 的 ids 字段随之变为死字段一并删除。验证：真实 PDF + 真实 LLM（ecnu-plus）实跑活体管线时发现 classify-sections.ts 块分类几乎全灭（43 送分类，仅解析出 1 条）——核实非 token 截断（1024→8000 结果字节级相同），是模型 JSON 键夹带了摘录正文、normalizeKey() 只剥字符串首尾方括号剥不干净；未修（记入 todo-51，需要先测是否稳定复现），改用从这次真实回复人工抠出的 23 个真实场景名验证 id 继承本身：id-mismatch 17→0，剩 3 个未匹配经核对全部是基准本就没收的场景，非归一化不足。变异检验：让未匹配分支静默生成一个假 id，3 条测试精确变红，已还原。回归：三方审计/实体审计/叙事词登记表/64态穷举/True End 回放均随全量 bun test 一并通过。typecheck 0；bun test 2720->2740（+20，177->178 文件）；preflight 12/12。"
     }
   ]
 }

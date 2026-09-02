@@ -19,7 +19,7 @@
       "id": "ingest",
       "name": "模组摄取",
       "file": "docs/notes/ingest.md",
-      "count": 43
+      "count": 45
     },
     {
       "id": "rules",
@@ -820,6 +820,28 @@
       "line": 1647,
       "lines": 32,
       "summary": "件事写反了：`:1006` 附近的 `truth_revealed` 线索描述曾说\"艾米丽的脑罐"
+    },
+    {
+      "id": "ingest-44",
+      "title": "管线继承基准 id：把命名体系差异从内容差异里摘出来（2026-09-02）",
+      "date": "2026-09-02",
+      "status": "warn",
+      "group": "ingest",
+      "file": "docs/notes/ingest.md",
+      "line": 1679,
+      "lines": 39,
+      "summary": "从未真的拿到过基准 id——`report.txt` 报的 id-mismatch（26 处）与"
+    },
+    {
+      "id": "ingest-45",
+      "title": "块分类几乎全灭：JSON 键带正文，不是 token 截断（2026-09-02）",
+      "date": "2026-09-02",
+      "status": "warn",
+      "group": "ingest",
+      "file": "docs/notes/ingest.md",
+      "line": 1718,
+      "lines": 28,
+      "summary": "验证上一条时用真实 PDF + 真实 LLM（ecnu-plus）跑了一次活体管线：43"
     },
     {
       "id": "rules-01",

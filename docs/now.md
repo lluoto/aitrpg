@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-02 06:46
+> 生成于 2026-09-02 09:19
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,9 +13,15 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 498dbc4 test: add a registry judge for narrative-vocabulary drift |
-| 测试 | 2720 条 / 177 文件  全绿 |
-| 工作树 | 干净 |
+| HEAD | afe7d30 feat: let the ingest pipeline inherit baseline ids by name |
+| 测试 | 2740 条 / 178 文件  全绿 |
+| 工作树 | **4 个文件未提交** |
+
+未提交：
+- `M docs/notes/index.json`
+- `M docs/notes/ingest.md`
+- `M docs/test-baseline.json`
+- `M docs/todo.json`
 
 ## 开工前
 
@@ -24,7 +30,7 @@ bun scripts/preflight.ts     # 改动前后各跑一次，机器判据挡住反�
 bun scripts/now.ts           # 收工前刷新这份文件
 ```
 
-## 已定位未修（17）
+## 已定位未修（20）
 
 - ️ 「引擎别再替玩家挪窝」这一步单独做不成立（2026-08-20）
   `docs/notes/engine.md:514`
@@ -52,6 +58,8 @@ bun scripts/now.ts           # 收工前刷新这份文件
   `docs/notes/engine.md:818`
 - 两个运行时各持一半——这是第四次（2026-09-01）
   `docs/notes/engine.md:836`
+- 引擎教了玩家一个自己不认识的词——这是第二次（2026-09-02）
+  `docs/notes/engine.md:872`
 - ️ 一直在报的那个数不衡量目标：可运行性是 1/27（2026-08-20）
   `docs/notes/ingest.md:747`
 - 手抄本没有校验源就必然漂移（2026-09-02）
@@ -60,8 +68,12 @@ bun scripts/now.ts           # 收工前刷新这份文件
   `docs/notes/ingest.md:1616`
 - 改一处漏同文件另一处（2026-09-02）
   `docs/notes/ingest.md:1647`
+- 管线继承基准 id：把命名体系差异从内容差异里摘出来（2026-09-02）
+  `docs/notes/ingest.md:1679`
+- 块分类几乎全灭：JSON 键带正文，不是 token 截断（2026-09-02）
+  `docs/notes/ingest.md:1718`
 
-## 动手前先扫一眼的坑（34）
+## 动手前先扫一眼的坑（35）
 
 - 改动前后各跑一次 `bun scripts/preflight.ts`。它把反复犯的几类错做成了机器判据：切割截断语义单元、搬运残渣、循环依赖、语法错。别靠记性。
 - 同一类失误连着犯到第 3 次就停手，换一双眼睛（另一个模型 review diff）。本轮机械切割边界连错 5 次才自己发现——失效模式相同的人查不出自己的系统性错误。
@@ -97,17 +109,18 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 叙事可以否认模组事实——约束层没有一条“不得与模组事实矛盾”的域。ConstraintEngine.checkDialogue()（world-constraint.ts）签名其实接受 sceneId，但 npc-agent.ts 两处调用 checkDialogueText(response) 都
 - 全仓只有 1 个 ModuleData 模组（`barn-of-premier.ts`），而它同时是摄取管线的校准基准——拿它验证管线通用性等于自我验证，管线对「没见过的模组」表现如何完全没有独立证据。另外两个可加载模组（`ARKHAM_LIBRARY_MODULE`/`INNSMOUTH_MODU
 - 管线 id 体系未统一：摄取管线生成侧用 `scene_NN`/`item_NN`（按位置编号，`src/ingest/ids.ts`），手写基准用人工意译 id（如 `clue_bedroom_diary`、`maintenance_room`）。实测（`bun` 脚本扫 `src/`+`scri
+- 开发·管线继承基准 id 期间实跑管线（真实 PDF + 真实 LLM，ecnu-plus，2026-09-02）发现：`classify-sections.ts` 的块分类几乎完全解析失败——43 个块送分类，`parseClassifyResponse` 只解析出 1 条。核实过不是 token
 
 ## 最近提交
 
+- afe7d30 feat: let the ingest pipeline inherit baseline ids by name
+- 156a0db docs: update todo-19 with the current premiers_barn special-case count
+- 78e12ff docs: log the engine's unrecognized-narrative-word pattern
+- 723dd0d docs: refresh handoff.md and now.md after this round
 - 498dbc4 test: add a registry judge for narrative-vocabulary drift
 - d141dd2 test: add a pure natural-language True End replay
 - 7d9e6f1 fix: teach clue_final_brain_jars the names the engine itself uses
 - dd04683 docs: backfill notes/todo for phases 1-7's ingest calibration
-- 0cdbdc1 docs: log the narrative-norm analysis policy as todo-46
-- bfc8dbd docs: refresh handoff.md and now.md after this round
-- 6ad200f feat: add a calibrated semantic-contradiction probe
-- 23400a4 feat: require sourceRef for new or edited ending narration
 
 ## 找东西
 
