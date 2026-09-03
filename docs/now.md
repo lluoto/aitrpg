@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-03 11:25
+> 生成于 2026-09-03 13:14
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,13 +13,13 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 4abc825 feat: add a deterministic judge for scene-npc/clue-noun gaps |
-| 测试 | 2901 条 / 192 文件  全绿 |
+| HEAD | 0fa8346 docs: verify clue_bar_guest_identity's skill field isn't actually empty |
+| 测试 | 2913 条 / 193 文件  全绿 |
 | 工作树 | **4 个文件未提交** |
 
 未提交：
-- `M docs/notes/engine.md`
 - `M docs/notes/index.json`
+- `M docs/notes/ingest.md`
 - `M docs/test-baseline.json`
 - `M docs/todo.json`
 
@@ -75,7 +75,7 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 展示格式渗进输出契约——这是第三次（2026-09-02）
   `docs/notes/ingest.md:1746`
 
-## 动手前先扫一眼的坑（40）
+## 动手前先扫一眼的坑（41）
 
 - 改动前后各跑一次 `bun scripts/preflight.ts`。它把反复犯的几类错做成了机器判据：切割截断语义单元、搬运残渣、循环依赖、语法错。别靠记性。
 - 同一类失误连着犯到第 3 次就停手，换一双眼睛（另一个模型 review diff）。本轮机械切割边界连错 5 次才自己发现——失效模式相同的人查不出自己的系统性错误。
@@ -117,17 +117,18 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - ⚠ 复现本仓公布的摄取准确率数字，必须显式设 `INGEST_BASELINE=barn`——不设这个环境变量，`scripts/ingest/run.ts`（todo-54 起）默认走无基准模式，`report.txt` 里每一处依赖基准的小节都会显示「无基准，跳过」，块分类命中 20/误报 3/
 - 【已验证，开发·在场实体与线索路径 N7，2026-09-03】约束层拦不住「NPC 编造模组里不存在的人/物」——用真实撞坑案例实测：酒吧保镖那句「名单什么的早让老板锁进抽屉了，哪轮得到你翻。」（analysis/sim/2026-08-30-barn-natural-play.md:58）编出了
 - 【开发·在场实体与线索路径 N7 用 scene-npc-noun-registry.ts 扫出，2026-09-03】霍姆斯医院（hospital 场景）与维森酒吧/报亭是同一个形状的缺口：`clue_emily_birth` 的 description 明确要求「问起其他医护人员关于艾德里安的情
+- 【已修复，开发·把已有判据补齐到手写侧 N8，2026-09-03】新的一类失效模式：判据只覆盖了机器产出的那一侧，人手写的同类数据绕过了它。learn-gate（`src/ingest/narrative-guard.ts` 的 `evaluateObjectMentionClaims`）对摄取管
 
 ## 最近提交
 
+- 0fa8346 docs: verify clue_bar_guest_identity's skill field isn't actually empty
+- 33fa0da fix: remove all matchTexts collisions the new judge found
+- d8d9895 feat: extend learn-gate's uniqueness check to hand-written matchTexts
+- c316f23 docs: close todo-41 and log this round's findings
 - 4abc825 feat: add a deterministic judge for scene-npc/clue-noun gaps
 - 28b9805 test: pin down that the constraint layer misses invented entities
 - e42c553 test: verify both bar clues reachable via natural phrasing (todo-41)
 - 9bab15d feat: add newsstand owner NPC (same gap as todo-41)
-- 335e51e feat: add weisen_bar's front-desk NPC (todo-41)
-- be5538d docs: close out todo-24/todo-25 and refresh snapshots
-- ce6a7ac fix: delete PlayerSlot.currentScene, read the authority instead
-- 02798bf fix: filter WS action-result broadcast by connection (todo-25)
 
 ## 找东西
 

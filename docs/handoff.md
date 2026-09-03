@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-03 11:26  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-03 13:15  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：4abc825 feat: add a deterministic judge for scene-npc/clue-noun gaps  ·  **测试**：2901 条 / 192 文件，全绿（基线 2901，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：0fa8346 docs: verify clue_bar_guest_identity's skill field isn't actually empty  ·  **测试**：2913 条 / 193 文件，全绿（基线 2913，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -207,6 +207,10 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- 0fa8346 docs: verify clue_bar_guest_identity's skill field isn't actually empty
+- 33fa0da fix: remove all matchTexts collisions the new judge found
+- d8d9895 feat: extend learn-gate's uniqueness check to hand-written matchTexts
+- c316f23 docs: close todo-41 and log this round's findings
 - 4abc825 feat: add a deterministic judge for scene-npc/clue-noun gaps
 - 28b9805 test: pin down that the constraint layer misses invented entities
 - e42c553 test: verify both bar clues reachable via natural phrasing (todo-41)
@@ -215,10 +219,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - be5538d docs: close out todo-24/todo-25 and refresh snapshots
 - ce6a7ac fix: delete PlayerSlot.currentScene, read the authority instead
 - 02798bf fix: filter WS action-result broadcast by connection (todo-25)
-- bb427fa docs: log the robustness-vs-accuracy correction and refresh snapshots
-- 2b6e439 docs: separate robustness from accuracy in todo-47/todo-28
-- 13ca478 docs: surface INGEST_BASELINE as a reproducibility gotcha
-- 5d1ccb9 docs: record the no-baseline mode work as todo-54
 
 ## 代码地图
 

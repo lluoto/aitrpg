@@ -1,6 +1,6 @@
 {
-  "tests": 2901,
-  "files": 192,
+  "tests": 2913,
+  "files": 193,
   "unwiredMethods": 84,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。 86->84（开发·多人可见性 N6）：setPlayerScene 被整个删除少 1 处，getPlayersInScene 有了真调用方（player-scene-authority.test.ts）再少 1 处，两处一起解释这次的净减 2。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -619,6 +619,11 @@
       "tests": 2901,
       "files": 192,
       "when": "开发·在场实体与线索路径 N7，5个提交(A~E，任务F是本条更新)，基线2887/189推送后开工。修todo-41及同类：维森酒吧线索获取路径提到「前台」但场景只有酒吧保镖一个实体，报亭提到报亭老板但npcIds空。①A/B按事实层/叙事层分界补两个NPC：bar_receptionist(前台，知道包场情报+贵客身份，代价小费/取悦或现金+困难社交，全部照原文)、newsstand_owner(报亭老板，会提绑架犯被捕/拒绝翻旧报/愿3倍价收购，3倍是原文已有数字未另定)；顺带修bar_bouncer.knowledge与原文「保安不回答/不知道」自相矛盾处。刻意不改bar_bouncer名字对齐原文「保安」用词——收益小、代价是要动十几处硬编码「酒吧保镖」断言的测试。②C给5条线索(3酒吧+2报亭)补matchTexts，端到端测试用真实撞坑措辞（「问包场者的事」）走通两条core线索，无markDiscovered无内部id；变异检验发现拿掉NPC不会让路径变红(skill-check线索匹配只看matchTexts不看npcIds)，matchTexts才是真正的机制开关。③D用真实撞坑文本（「名单什么的早让老板锁进抽屉了」）实测约束层——拦不住，applyConstraints/checkDialogueText都放行，与todo-43已知结论一致(拦「否认已知对象」不拦「凭空发明新实体」)，新增npc-fabricated-entity-constraint-gap.test.ts(4条，含2条对照证明约束层非整体失效)把这个结论钉成判据，记todo-56。④E新增scene-npc-noun-registry.ts确定性判据：登记表只收「前台」/「报亭老板」两个已核实卡线索可达性的词，不收「保安」/「客人」(会对weisen_bar产生假阳性)；扫描发现hospital场景同形状缺口(clue_emily_birth要求问「医护人员」但npcIds空)，本轮不修记todo-57。⑤F：todo-41标done、notes/engine.md记录D的结论(约束层对NPC编造实体的实际覆盖面)、now/handoff刷新。回归：三方审计/实体审计/叙事词登记表/已确认臆造日志/64态/True End回放/WS可见性全绿。typecheck 0；bun test 2887->2901(+14，189->192文件)；preflight 12/12。"
+    },
+    {
+      "tests": 2913,
+      "files": 193,
+      "when": "开发·把已有判据补齐到手写侧 N8，3个提交(①②③，任务④并入①②的提交信息，⑤是本条更新)，基线2901/192推送后开工。修N7留下的一个覆盖不对称：learn-gate(evaluateObjectMentionClaims)条件b(加入候选池后decideClueMatch必须唯一命中目标线索)只在生成端提议新别名那一刻检查，手写进barn-of-premier.ts的matchTexts从没经过它——「前台」同时进了clue_bar_mass_booking与clue_bar_guest_identity两条线索的matchTexts，「问前台贵客的身份」落进ask而不是resolve。①把条件b核心判定抽成resolvesUniquelyTo(narrative-guard.ts)导出，evaluateObjectMentionClaims改调它而不是内联判断；新增scene-matchtext-collision.ts(findMatchTextCollisions)复用同一个函数，不分数据来源扫描全部matchTexts；测试文件在数据修复前先跑一遍记录现状(全模组7处撞车，weisen_bar 3+newsstand 4，其余18场景0命中)。②按扫描结果修全部7处(不只任务点名的3处)：weisen_bar三条线索改用各自专属词，不再收共用的「前台」(同7d9e6f1排除设备/容器的理由)；newsstand两条线索改用「买报纸/人口失踪」「老板/绑架犯」避开报纸类词互为子串；确认四个目标动作各自resolve、N7端到端回放(e42c553)回归绿且LOG_LEVEL=debug确认是kind=resolve不是巧合过关。③核实clue_bar_guest_identity的skill字段——任务给的前提(空)与当前数据不符，社交已正确映射fast_talk且有既有测试覆盖，保持现状记录理由。⑤todo-58记录+docs/notes/ingest.md写下方法论(判据挂对了条件却挂错了触发点：只在数据流入的一个入口挂钩，同一份数据结构的另一条写入路径就是盲区)+now/handoff刷新。回归：learn-gate自身20条既有测试全绿；三方审计/实体审计/叙事词登记表/已确认臆造日志/scene-npc-noun-registry/64态/True End回放/WS可见性全绿。typecheck 0；bun test 2901->2913(+12，192->193文件)；preflight 12/12。"
     }
   ]
 }

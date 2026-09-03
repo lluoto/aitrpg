@@ -19,7 +19,7 @@
       "id": "ingest",
       "name": "模组摄取",
       "file": "docs/notes/ingest.md",
-      "count": 54
+      "count": 55
     },
     {
       "id": "rules",
@@ -974,6 +974,17 @@
       "line": 2185,
       "lines": 20,
       "summary": "无基准模式落地之后复核 todo-47/todo-28，发现两条都隐含了一个错误"
+    },
+    {
+      "id": "ingest-55",
+      "title": "新的一类失效模式：判据挂对了条件，却挂错了触发点（开发·把已有判据补齐到手写侧 N8，2026-09-03）",
+      "date": "2026-09-03",
+      "status": "note",
+      "group": "ingest",
+      "file": "docs/notes/ingest.md",
+      "line": 2205,
+      "lines": 40,
+      "summary": "learn-gate（`evaluateObjectMentionClaims`）三条确定性条件里的条件 b——"
     },
     {
       "id": "rules-01",
