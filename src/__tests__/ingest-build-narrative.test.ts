@@ -47,7 +47,9 @@ const INPUT: BuildNarrativeInput = {
       id: "scene_02",
       name: "谷仓大厅",
       description: "谷仓内部。",
-      clues: [{ id: "clue_final_brain_jars", name: "母女的缸中脑", findMethods: [] }],
+      clues: [
+        { id: "clue_final_brain_jars", name: "母女的缸中脑", description: "静静地漂浮在缸中的两具躯体。", findMethods: [] },
+      ],
     },
   ],
 };
@@ -114,8 +116,8 @@ describe("第一档变异检验：新造术语必须被拦下", () => {
   });
 });
 
-describe("第二档变异检验：模拟「培养缸」bug，声明的对象称呼必须能被 decideClueMatch 命中", () => {
-  test("声明称呼「培养缸」指代 clue_final_brain_jars，但线索候选文本里没有这个词 → 整批不采纳", async () => {
+describe("第二档变异检验：模拟「培养缸」bug，从「拒绝」改为「学会」（开发·别名迁移轮 D 组）", () => {
+  test("**核心行为**：声明称呼「培养缸」指代 clue_final_brain_jars，满足三条件 → 自动接纳为别名，这段文本正常采纳", async () => {
     const reply = JSON.stringify({
       openingAtmosphere: [
         {
@@ -128,8 +130,9 @@ describe("第二档变异检验：模拟「培养缸」bug，声明的对象称�
       partySetup: null,
     });
     const r = await buildNarrative(INPUT, fake(reply), CORPUS);
-    expect(r.accepted).toBe(false);
-    expect(r.warnings.some((w) => w.includes("第二档拦下") && w.includes("培养缸"))).toBe(true);
+    expect(r.accepted).toBe(true);
+    expect(r.openingAtmosphereByScene.get("scene_02")).toBe("角落里放着一个培养缸。");
+    expect(r.learnedAliases).toEqual([{ sceneId: "scene_02", clueId: "clue_final_brain_jars", phrase: "培养缸" }]);
   });
 
   test("对照组：声明称呼直接用线索本名「母女的缸中脑」→ decideClueMatch 认得，正常通过", async () => {
@@ -149,7 +152,7 @@ describe("第二档变异检验：模拟「培养缸」bug，声明的对象称�
     expect(r.openingAtmosphereByScene.get("scene_02")).toBe("角落里放着母女的缸中脑。");
   });
 
-  test("声明指向一条不存在的线索 id（该场景没有这条线索）→ 同样不采纳", async () => {
+  test("声明指向一条不存在的线索 id（该场景没有这条线索）→ 这一段文本被拒（这里恰好是唯一内容，所以整体 accepted=false）", async () => {
     const reply = JSON.stringify({
       openingAtmosphere: [
         {
@@ -163,6 +166,27 @@ describe("第二档变异检验：模拟「培养缸」bug，声明的对象称�
     });
     const r = await buildNarrative(INPUT, fake(reply), CORPUS);
     expect(r.accepted).toBe(false);
+    expect(r.warnings.some((w) => w.includes("第二档拦下场景「特里坎家」"))).toBe(true);
+  });
+
+  test("**字段颗粒度**：一个场景的声明失败，不牵连另一个场景——那个场景照常采纳", async () => {
+    const reply = JSON.stringify({
+      openingAtmosphere: [
+        {
+          sceneId: "scene_01",
+          text: "角落里放着某样东西。",
+          objectMentions: [{ phrase: "某样东西", clueId: "clue_final_brain_jars" }], // scene_01 没有这条线索，条件 a 失败
+        },
+        { sceneId: "scene_02", text: "谷仓里静悄悄的。", objectMentions: [] },
+      ],
+      prologueLines: ["{pl1_name}收到了一封信。"],
+      partySetup: null,
+    });
+    const r = await buildNarrative(INPUT, fake(reply), CORPUS);
+    expect(r.accepted).toBe(true);
+    expect(r.openingAtmosphereByScene.has("scene_01")).toBe(false);
+    expect(r.openingAtmosphereByScene.get("scene_02")).toBe("谷仓里静悄悄的。");
+    expect(r.prologueLines).toHaveLength(1);
   });
 });
 
@@ -250,6 +274,60 @@ describe("applyNarrative —— 把创作层结果并入已装配好的模组", 
     );
     const merged = applyNarrative(baseModule, narrative);
     expect(merged).toEqual(baseModule);
+  });
+
+  test("**D 组核心**：自动接纳的线索别名写回对应线索的 matchTexts", async () => {
+    const moduleWithClue: ModuleData = {
+      ...baseModule,
+      scenes: [
+        {
+          id: "scene_02",
+          name: "谷仓大厅",
+          description: "谷仓内部。",
+          clues: [
+            {
+              id: "clue_final_brain_jars",
+              name: "母女的缸中脑",
+              description: "静静地漂浮在缸中的两具躯体。",
+              findMethods: [],
+              revelation: "",
+              unlocks: [],
+              found: false,
+              importance: "core",
+            },
+          ],
+          npcIds: [],
+          connections: [],
+        },
+      ],
+    };
+    const reply = JSON.stringify({
+      openingAtmosphere: [
+        {
+          sceneId: "scene_02",
+          text: "角落里放着一个培养缸。",
+          objectMentions: [{ phrase: "培养缸", clueId: "clue_final_brain_jars" }],
+        },
+      ],
+      prologueLines: [],
+      partySetup: null,
+    });
+    const narrative = await buildNarrative(
+      {
+        title: moduleWithClue.title,
+        era: moduleWithClue.era,
+        scenes: moduleWithClue.scenes.map((s) => ({
+          id: s.id,
+          name: s.name,
+          description: s.description,
+          clues: s.clues.map((c) => ({ id: c.id, name: c.name, description: c.description, findMethods: c.findMethods })),
+        })),
+      },
+      fake(reply),
+      CORPUS,
+    );
+    const merged = applyNarrative(moduleWithClue, narrative);
+    expect(merged.scenes[0]?.clues[0]?.matchTexts).toEqual(["培养缸"]);
   });
 
   test("不修改传入的 module（函数式风格，与 build-clues.ts 等一致）", async () => {

@@ -19,7 +19,7 @@
       "id": "ingest",
       "name": "模组摄取",
       "file": "docs/notes/ingest.md",
-      "count": 51
+      "count": 52
     },
     {
       "id": "rules",
@@ -919,6 +919,17 @@
       "line": 1967,
       "lines": 84,
       "summary": "叙事层收尾之后还剩四个没有明确答案的问题，逐条查证据、给答案——"
+    },
+    {
+      "id": "ingest-52",
+      "title": "D 组：第二档从「拒绝」改为「学会」，0/3 → 3/3（2026-09-03）",
+      "date": "2026-09-03",
+      "status": "note",
+      "group": "ingest",
+      "file": "docs/notes/ingest.md",
+      "line": 2051,
+      "lines": 75,
+      "summary": "B/C 组给别名开了数据层的落点（`Clue.matchTexts`）之后，第二档判据"
     },
     {
       "id": "rules-01",

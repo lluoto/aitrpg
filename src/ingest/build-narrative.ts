@@ -15,16 +15,29 @@
 // 情境文本，不需要引用任何内部 id，风险小得多。
 //
 // 三档约束（细节见 narrative-guard.ts 头部）本轮接两档：
-//   第一档 findFabricatedTerms —— 挡新造专名/术语
-//   第二档 findUnresolvedObjectMentions —— 挡"引擎教了玩家一个自己
-//     不认识的词"（培养缸类 bug 的机器化版本）
+//   第一档 findFabricatedTerms —— 挡新造专名/术语，批量级：命中即整批
+//     不采纳。
+//   第二档 evaluateObjectMentionClaims —— 从"拒绝"改为"学会"（开发·
+//     别名迁移轮 D 组）：满足三条确定性条件的称呼自动接纳为线索别名
+//     （写回 Clue.matchTexts），不满足的只丢掉声明所在的那一段生成
+//     文本，不牵连其它场景/字段——粒度是字段级，不再是批量级。
 //   另接 checkNarrationText（world-constraint.ts）—— 时代错置检查，
-//     与 KP 叙事同一条约束层
+//     与 KP 叙事同一条约束层，批量级：只检查挺过第二档的文本，命中
+//     即整批不采纳。
 // 第三档（语义蕴含扫描）不在这里——按 todo-52 的分工，那是开发期工具，
 // 不进管线、不当门禁。
 //
-// 任何一档不合格，整批生成结果一律不采纳，留空并报 warning——创作层
-// 的"允许编"不等于"编错了也认"。
+// ── 自动接纳的别名与 narrative-vocabulary-registry.ts 的关系（D 组
+// 任务②）：没有关系，两者管的是两份不同的数据，故意不接。
+// `narrative-vocabulary-registry.ts` 是给**手写、固定**的
+// `src/module/barn-of-premier.ts` 用的登记表——那份数据一次写下就
+// 不会自己变，登记表因此能是一张静态清单，判据对着清单里每一条断言
+// 命中。这里（`evaluateObjectMentionClaims` 学会的别名）产的是**每次
+// 摄取都不同**的 `analysis/ingest/module.json`（gitignored，不进
+// 版本库），把动态产物的每一条别名注册进一张静态表里既不可能（没有
+// 固定的"这次会产出哪些别名"），也没有必要——`findMissingCreativeSourceRef`
+// /`findRegisteredCreativeLayer`（下面）已经是这份动态产物自己的
+// "登记 + 判据"机制，起的是同一个作用，只是不共用同一张表。
 //
 // sourceRef 方案 C：本轮生成的都是纯创作（openingAtmosphere/prologue/
 // partySetup 在这个模组里逐字核对过原文没有对应内容，见 todo-52），
@@ -74,6 +87,35 @@
 // 可复现性记录）与本轮改动前的历史数字同口径——创作层无论产出还是
 // 被拒，都没有影响到抽取层的既有指标，`buildNarrative` 在校准 diff
 // **之后**才被调用这条编排顺序按预期生效。
+//
+// ── 第二版实测（2026-09-03，同一天，开发·别名迁移轮 D 组：第二档从
+// "拒绝"改成"学会"之后重新跑三轮，同样真实 PDF + 真实 LLM ecnu-plus，
+// 与第一版实测同一次会话）──
+//
+// **3/3 采纳**——第一版是 0/3。三轮里至少两轮（轮1、轮3）真的声明了
+// `objectMentions`：都是给 `barn_interior` 场景的 `item_27`（基准
+// "其他受害者的床位"）声明称呼，轮1用"门口那具睁着眼的尸体"，轮3用
+// "门口的尸体"——两次都是复述而不是线索本名，两次都满足三条确定性
+// 条件被自动接纳，实际写进了 `item_27.matchTexts`（`analysis/ingest/
+// module.json` 里可以直接看到）。轮2这次没有声明任何 `objectMentions`
+// （`classify-raw.txt` 会被下一轮跑覆盖掉，没能留住轮2的原始声明
+// 记录——如实说明这一点，不假装记得轮2到底有没有声明过、声明了什么）。
+// 三轮 `narrative warnings` 全部为空，没有任何一段生成文本被拒。
+//
+// 这不代表门禁形同虚设：0/3 → 3/3 的变化不是门禁变松了（三条确定性
+// 条件`a`/`b`/`c`一个字都没有改，改的是"不满足就拒绝整批"变成"满足
+// 就接纳、不满足才拒"），第一版的 0/3 里两次是模型编了不存在的 id
+// （条件 a 本来就该拒——那不是这次学会机制想解决的问题），只有轮3的
+// "那些被仪器罩住的人"才是真正因为"措辞对不上"被拒、而学会机制原本
+// 就是为了解决这一种；这一版轮1/轮3恰好又撞见了同一类真实情形，被
+// 正确地接纳而不是拒绝，是这条改动预期要起的作用，不是巧合地看起来
+// 更好看。样本量很小（3 轮，其中只有 2 轮真的触发了学会路径），不能
+// 当作"这条门禁在更大样本下的通过率"来引用——同 `probe-llm-intent.md`
+// 的记录惯例，结论必须带样本数，不能当常量用。
+//
+// 隔离校准在这一版重跑里同样成立：三轮的场景/物品 diff（`changed`
+// 79、`missing` 78 三轮完全一致）与改动前、以及第一版实测时的数字
+// 同口径，学会机制的引入没有影响到抽取层。
 
 import type { ModuleData, Provenance } from "../module/types";
 import type { ChatLike } from "./infer-connections";
@@ -81,8 +123,7 @@ import { extractJson } from "../llm/json";
 import { checkNarrationText } from "../world/world-constraint";
 import {
   findFabricatedTerms,
-  findUnresolvedObjectMentions,
-  clueCandidatesForScene,
+  evaluateObjectMentionClaims,
   type ObjectMentionClaim,
 } from "./narrative-guard";
 
@@ -90,7 +131,20 @@ export interface NarrativeSceneInput {
   id: string;
   name: string;
   description: string;
-  clues: { id: string; name: string; findMethods: { description: string }[]; matchTexts?: string[] }[];
+  clues: {
+    id: string;
+    name: string;
+    description: string;
+    findMethods: { description: string }[];
+    matchTexts?: string[];
+  }[];
+}
+
+/** 一条自动接纳的线索别名——写回 Clue.matchTexts 用 */
+export interface LearnedClueAlias {
+  sceneId: string;
+  clueId: string;
+  phrase: string;
 }
 
 export interface BuildNarrativeInput {
@@ -103,9 +157,11 @@ export interface BuildNarrativeResult {
   openingAtmosphereByScene: Map<string, string>;
   prologueLines: string[];
   partySetup?: { context: string[]; hooks: string[]; closing: string[] };
+  /** 第二档自动接纳的线索别名——applyNarrative 会把它们写回对应线索的 matchTexts */
+  learnedAliases: LearnedClueAlias[];
   provenance: Provenance[];
   warnings: string[];
-  /** 本轮是否真的产出了内容——全部被约束拦下/调用失败/解析失败时为 false */
+  /** 本轮是否真的产出了内容——全部被约束拦下/调用失败/解析失败/全空时为 false */
   accepted: boolean;
 }
 
@@ -138,6 +194,7 @@ export async function buildNarrative(
     openingAtmosphereByScene: new Map(),
     prologueLines: [],
     partySetup: undefined,
+    learnedAliases: [],
     provenance: [],
     warnings,
     accepted: false,
@@ -279,24 +336,42 @@ ${sceneList}
     warnings.push("未提供原文语料，第一档（禁止新造专名/术语）本轮跳过——不是通过，是没查");
   }
 
-  // ── 第二档：逐场景核对声明的对象称呼 ──
+  // ── 第二档：逐场景评估声明的对象称呼，接纳/拒绝到字段颗粒度 ──
+  //
+  // 与第一档/checkNarrationText 不同：这一档不是"整批不采纳"，是"这条
+  // 声明所在的那段生成文本不采纳，其余不受影响"——改成"学会"之后
+  // (narrative-guard.ts D 组)，一条声明失败不再代表整轮生成都不可信，
+  // 只代表这一段文本里用的这个词没能落地成一个安全的别名；继续把整批
+  // 都扔掉，会连带丢掉本来完全合格的 prologue/partySetup 与其它场景的
+  // openingAtmosphere，没有必要。
+  const survivingOpenings: { sceneId: string; text: string }[] = [];
+  const learnedAliases: LearnedClueAlias[] = [];
   for (const o of openings) {
-    if (o.claims.length === 0) continue;
     const scene = scenesById.get(o.sceneId)!;
-    const candidates = clueCandidatesForScene(scene.clues);
-    const failed = findUnresolvedObjectMentions(o.claims, candidates);
-    if (failed.length > 0) {
-      warnings.push(
-        `第二档拦下：场景「${scene.name}」的生成文本声明称呼 ${failed.map((f) => `「${f.phrase}」→${f.clueId}`).join("、")}，` +
-          `但 decideClueMatch 认不出——这正是"培养缸"类 bug 的场景，本轮整批不采纳`,
-      );
-      return empty();
+    if (o.claims.length === 0) {
+      survivingOpenings.push({ sceneId: o.sceneId, text: o.text });
+      continue;
     }
+    const evaluations = evaluateObjectMentionClaims(o.claims, scene.clues);
+    const rejected = evaluations.filter((e) => !e.accepted);
+    if (rejected.length > 0) {
+      warnings.push(
+        `第二档拦下场景「${scene.name}」的这一段生成文本（其它场景/字段不受影响）：` +
+          rejected.map((r) => `「${r.claim.phrase}」→${r.claim.clueId}：${r.reason}`).join("；"),
+      );
+      continue; // 只丢这一条，不丢整批
+    }
+    for (const e of evaluations) {
+      learnedAliases.push({ sceneId: o.sceneId, clueId: e.claim.clueId, phrase: e.claim.phrase });
+    }
+    survivingOpenings.push({ sceneId: o.sceneId, text: o.text });
   }
 
   // ── checkNarrationText（world-constraint.ts），与 KP 叙事同一条约束层 ──
+  // 只检查挺过第二档的文本——被第二档丢掉的场景文本已经不会进最终结果，
+  // 不需要再检查它有没有时代错置。
   const narrationTexts: { text: string; sceneId?: string }[] = [
-    ...openings.map((o) => ({ text: o.text, sceneId: o.sceneId })),
+    ...survivingOpenings.map((o) => ({ text: o.text, sceneId: o.sceneId })),
     ...prologueLines.map((l) => ({ text: l })),
     ...(partySetup ? [...partySetup.context, ...partySetup.hooks, ...partySetup.closing].map((l) => ({ text: l })) : []),
   ];
@@ -308,16 +383,30 @@ ${sceneList}
     }
   }
 
-  // ── 全部通过，组装结果 + provenance（scheme C：本轮全部无原文依据）──
+  if (survivingOpenings.length === 0 && prologueLines.length === 0 && !partySetup) {
+    warnings.push("生成内容全部为空或被第二档拒绝，本轮不采纳");
+    return empty();
+  }
+
+  // ── 组装结果 + provenance（scheme C：本轮全部无原文依据）──
   const provenance: Provenance[] = [];
   const openingAtmosphereByScene = new Map<string, string>();
-  for (const o of openings) {
+  for (const o of survivingOpenings) {
     openingAtmosphereByScene.set(o.sceneId, o.text);
     provenance.push({
       path: `scenes[${o.sceneId}].openingAtmosphere`,
       source: "",
       result: o.text,
       reason: CREATIVE_LAYER_MARKER,
+      by: "llm",
+    });
+  }
+  for (const a of learnedAliases) {
+    provenance.push({
+      path: `scenes[${a.sceneId}].clues[${a.clueId}].matchTexts`,
+      source: "",
+      result: a.phrase,
+      reason: `自动接纳的线索别名——生成 scenes[${a.sceneId}].openingAtmosphere 时声明的称呼，满足三条确定性条件（见 narrative-guard.ts）`,
       by: "llm",
     });
   }
@@ -340,7 +429,7 @@ ${sceneList}
     });
   }
 
-  return { openingAtmosphereByScene, prologueLines, partySetup, provenance, warnings, accepted: true };
+  return { openingAtmosphereByScene, prologueLines, partySetup, learnedAliases, provenance, warnings, accepted: true };
 }
 
 /**
@@ -351,9 +440,18 @@ export function findMissingCreativeSourceRef(provenance: Provenance[]): string[]
   return provenance.filter((p) => !p.sourceRef || p.sourceRef.trim() === "").map((p) => p.path);
 }
 
-/** 显式承认"这条是创作层、没有出处"的集合——判据要求与上面那个集合精确相等 */
+/**
+ * 显式承认"这条是创作层、没有出处"的集合——判据要求与上面那个集合精确
+ * 相等。判据是 `by === "llm"`，不逐字比对 reason 字符串：本文件里
+ * `by:"llm"` 的 provenance 只有两种来源——纯创作文本（reason 固定是
+ * `CREATIVE_LAYER_MARKER`）与自动接纳的线索别名（reason 是逐条不同的
+ * 解释文字，因为要指出是哪段生成文本触发的）——但两者共同的、真正
+ * 该被判据认定的性质是"这是生成产出，不是抽取产出"，`by` 字段本身
+ * 就精确表达了这一点，逐字比对 reason 反而会因为别名的 reason 各不
+ * 相同而漏判。
+ */
 export function findRegisteredCreativeLayer(provenance: Provenance[]): string[] {
-  return provenance.filter((p) => p.by === "llm" && p.reason === CREATIVE_LAYER_MARKER).map((p) => p.path);
+  return provenance.filter((p) => p.by === "llm").map((p) => p.path);
 }
 
 /**
@@ -374,9 +472,28 @@ export function findRegisteredCreativeLayer(provenance: Provenance[]): string[] 
 export function applyNarrative(module: ModuleData, narrative: BuildNarrativeResult): ModuleData {
   if (!narrative.accepted) return module;
 
+  // 场景 id → 线索 id → 本轮新学会的别名，写回对应线索的 matchTexts。
+  const aliasesBySceneAndClue = new Map<string, Map<string, string[]>>();
+  for (const a of narrative.learnedAliases) {
+    if (!aliasesBySceneAndClue.has(a.sceneId)) aliasesBySceneAndClue.set(a.sceneId, new Map());
+    const byClue = aliasesBySceneAndClue.get(a.sceneId)!;
+    if (!byClue.has(a.clueId)) byClue.set(a.clueId, []);
+    byClue.get(a.clueId)!.push(a.phrase);
+  }
+
   const scenes = module.scenes.map((s) => {
     const opening = narrative.openingAtmosphereByScene.get(s.id);
-    return opening ? { ...s, openingAtmosphere: opening } : s;
+    const newAliasesByClue = aliasesBySceneAndClue.get(s.id);
+    const clues = newAliasesByClue
+      ? s.clues.map((c) => {
+          const newAliases = newAliasesByClue.get(c.id);
+          if (!newAliases || newAliases.length === 0) return c;
+          const existing = c.matchTexts ?? [];
+          const merged = [...existing, ...newAliases.filter((p) => !existing.includes(p))];
+          return { ...c, matchTexts: merged };
+        })
+      : s.clues;
+    return opening ? { ...s, openingAtmosphere: opening, clues } : { ...s, clues };
   });
 
   return {

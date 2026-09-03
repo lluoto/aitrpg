@@ -418,7 +418,7 @@ const narrative = await buildNarrative(
       id: s.id,
       name: s.name,
       description: s.description,
-      clues: s.clues.map((c) => ({ id: c.id, name: c.name, findMethods: c.findMethods, matchTexts: c.matchTexts })),
+      clues: s.clues.map((c) => ({ id: c.id, name: c.name, description: c.description, findMethods: c.findMethods, matchTexts: c.matchTexts })),
     })),
   },
   client,

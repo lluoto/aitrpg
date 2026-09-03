@@ -1,14 +1,20 @@
-// 摄取管线 · 创作层约束接线（todo-52 任务②a②b）
+// 摄取管线 · 创作层约束接线（todo-52 任务②a②b + 开发·别名迁移轮 D 组）
 //
 // 只测两档确定性判据本身（不依赖真实 LLM）：
 //   第一档 findFabricatedTerms —— 复用 three-way-audit 的能力
-//   第二档 findUnresolvedObjectMentions —— 复用 decideClueMatch
+//   第二档 evaluateObjectMentionClaims —— 从"拒绝"改为"学会"，三条
+//     确定性条件（a 线索存在 / b 加入后唯一命中 / c 不与同场景其它
+//     线索文本冲突）各自要有能红能绿的变异检验
 // 变异检验见对应 describe 块，要求判据能真的分辨对错两种情形
 // （docs/todo.json rule-03：判据没验过就不算数）。
 
 import { describe, test, expect } from "bun:test";
-import { findFabricatedTerms, findUnresolvedObjectMentions, clueCandidatesForScene } from "../ingest/narrative-guard";
-import type { ClueMatchCandidate } from "../investigation/clue-match";
+import {
+  findFabricatedTerms,
+  evaluateObjectMentionClaims,
+  clueCandidatesForScene,
+  type SceneClueContext,
+} from "../ingest/narrative-guard";
 
 const CORPUS = "在1921年某日，你们来到了普瑞米尔小镇，看见谷仓与农场。米-戈联络术记载在老旧文件里。";
 
@@ -39,43 +45,105 @@ describe("第一档 findFabricatedTerms —— 禁止新造实体/专名", () =>
   });
 });
 
-describe("第二档 findUnresolvedObjectMentions —— 可交互对象称呼必须能被 decideClueMatch 命中", () => {
-  const candidates: ClueMatchCandidate[] = clueCandidatesForScene([
-    { id: "clue_final_brain_jars", name: "母女的缸中脑", findMethods: [] },
-    { id: "clue_bedroom_gun", name: "枪械柜", findMethods: [] },
-  ]);
+describe("第二档 evaluateObjectMentionClaims —— 从「拒绝」改为「学会」，三条确定性条件", () => {
+  const scene: SceneClueContext[] = [
+    {
+      id: "clue_final_brain_jars",
+      name: "母女的缸中脑",
+      description: "那婴儿与那位女性正是一大一小两个缸中脑，正静静地漂浮在缸中。",
+      findMethods: [{ description: "打开光源观察房间" }],
+    },
+    {
+      id: "clue_final_workbench",
+      name: "手工桌",
+      description: "上面放着一些制作缸中脑设备的材料，看起来是某种精密仪器设备。",
+      findMethods: [{ description: "观察房间内" }],
+    },
+    { id: "clue_bedroom_gun", name: "枪械柜", description: "三只手枪整齐摆放。", findMethods: [] },
+  ];
 
-  test("变异检验：模拟「培养缸」bug——用一个匹配器不认识的称呼指代线索，必须红", () => {
-    const failed = findUnresolvedObjectMentions(
-      [{ phrase: "培养缸", clueId: "clue_final_brain_jars" }],
-      candidates,
-    );
-    expect(failed).toEqual([{ phrase: "培养缸", clueId: "clue_final_brain_jars" }]);
+  test("正例：称呼直接用线索本名，三条件全过，自动接纳", () => {
+    const [r] = evaluateObjectMentionClaims([{ phrase: "母女的缸中脑", clueId: "clue_final_brain_jars" }], scene);
+    expect(r?.accepted).toBe(true);
   });
 
-  test("正例：称呼直接用线索本名，decideClueMatch 认得，必须绿", () => {
-    const failed = findUnresolvedObjectMentions(
-      [{ phrase: "母女的缸中脑", clueId: "clue_final_brain_jars" }],
-      candidates,
-    );
-    expect(failed).toEqual([]);
+  test("**核心行为**：模拟「培养缸」bug 原本会被拒的称呼，改成「学会」后应被自动接纳为别名", () => {
+    // 与旧版 findUnresolvedObjectMentions 的行为对照：那个函数会把这条判定为失败，
+    // 新函数应该把它判定为接纳——这正是本轮"从拒绝改为学会"的核心行为变化。
+    const [r] = evaluateObjectMentionClaims([{ phrase: "培养缸", clueId: "clue_final_brain_jars" }], scene);
+    expect(r?.accepted).toBe(true);
+    expect(r?.reason).toContain("满足三条确定性条件");
   });
 
-  test("称呼命中了，但命中的是别的线索——声明与实际所指对不上，同样要拦", () => {
-    const failed = findUnresolvedObjectMentions(
-      [{ phrase: "枪械柜", clueId: "clue_final_brain_jars" }],
-      candidates,
-    );
-    expect(failed).toEqual([{ phrase: "枪械柜", clueId: "clue_final_brain_jars" }]);
+  describe("条件 a：声明指代的线索必须真实存在", () => {
+    test("变异检验：声明一个不存在的线索 id，必须红——第一版实测两次真实撞见的失败模式", () => {
+      const [r] = evaluateObjectMentionClaims([{ phrase: "培养缸", clueId: "clue_nonexistent" }], scene);
+      expect(r?.accepted).toBe(false);
+      expect(r?.reason).toContain("不在本场景线索列表里");
+    });
+
+    test("对照组：线索 id 真实存在时，这一条件不拦（其余条件仍会各自判断）", () => {
+      const [r] = evaluateObjectMentionClaims([{ phrase: "母女的缸中脑", clueId: "clue_final_brain_jars" }], scene);
+      expect(r?.reason).not.toContain("不在本场景线索列表里");
+    });
+  });
+
+  describe("条件 c：称呼不能出现在同场景其它线索自己的文本里（过泛代理）", () => {
+    test("变异检验：用 7d9e6f1 明确排除过的「设备」类过泛词，必须红——它出现在 clue_final_workbench 自己的描述里", () => {
+      const [r] = evaluateObjectMentionClaims([{ phrase: "设备", clueId: "clue_final_brain_jars" }], scene);
+      expect(r?.accepted).toBe(false);
+      expect(r?.reason).toContain("太泛");
+    });
+
+    test("对照组：称呼只出现在目标线索自己身上，不在别的线索文本里，这一条件不拦", () => {
+      const [r] = evaluateObjectMentionClaims([{ phrase: "培养缸", clueId: "clue_final_brain_jars" }], scene);
+      expect(r?.reason).not.toContain("太泛");
+    });
+  });
+
+  describe("条件 b：加入候选池后必须唯一命中声明的那条线索", () => {
+    // 与条件 c 区分：c 只查 name/description/findMethods，b 的候选池还
+    // 包含 matchTexts（已学会的别名）——用一个只存在于别的线索
+    // matchTexts 里的词，才能让 b 单独失败而不被 c 提前拦下（c 查不到
+    // matchTexts，所以不会在这条用例上先动手）。
+    const sceneWithLearnedAlias: SceneClueContext[] = [
+      ...scene,
+    ];
+    sceneWithLearnedAlias[2] = { ...scene[2]!, matchTexts: ["武器架"] };
+
+    test("变异检验：称呼命中的是别的线索的已学别名（声明与实际所指对不上），必须红", () => {
+      const [r] = evaluateObjectMentionClaims(
+        [{ phrase: "武器架", clueId: "clue_final_brain_jars" }],
+        sceneWithLearnedAlias,
+      );
+      expect(r?.accepted).toBe(false);
+      expect(r?.reason).toContain("未能唯一命中");
+    });
+
+    test("对照组：称呼命中回声明的那条线索本身，这一条件不拦", () => {
+      const [r] = evaluateObjectMentionClaims([{ phrase: "母女的缸中脑", clueId: "clue_final_brain_jars" }], scene);
+      expect(r?.reason).not.toContain("未能唯一命中");
+    });
+  });
+
+  test("场景没有线索时，任何声明都必然命中条件 a 失败——不能凭空声明一条线索", () => {
+    const [r] = evaluateObjectMentionClaims([{ phrase: "母女的缸中脑", clueId: "clue_final_brain_jars" }], []);
+    expect(r?.accepted).toBe(false);
   });
 
   test("没有声明任何对象称呼时，返回空数组——没有可查的东西不是过关，是没有断言", () => {
-    expect(findUnresolvedObjectMentions([], candidates)).toEqual([]);
+    expect(evaluateObjectMentionClaims([], scene)).toEqual([]);
   });
 
-  test("场景没有线索（candidates 为空）时，任何声明都必然命中失败——不能凭空声明一条线索", () => {
-    const failed = findUnresolvedObjectMentions([{ phrase: "母女的缸中脑", clueId: "clue_final_brain_jars" }], []);
-    expect(failed).toHaveLength(1);
+  test("同一批次内，后面的声明能看到前面刚学会的别名（条件 b 用的候选池会累加）", () => {
+    const results = evaluateObjectMentionClaims(
+      [
+        { phrase: "培养缸", clueId: "clue_final_brain_jars" },
+        { phrase: "玻璃缸", clueId: "clue_final_brain_jars" },
+      ],
+      scene,
+    );
+    expect(results.every((r) => r.accepted)).toBe(true);
   });
 });
 
