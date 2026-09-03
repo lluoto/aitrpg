@@ -205,6 +205,20 @@ export async function buildNarrative(
     return empty();
   }
 
+  // 开发·无基准模式 任务⑤：无语料时 fail-closed——拒绝生成，不是
+  // "跳过第一档但照样生成"。第一档（禁止新造实体/专名）依赖语料才能
+  // 判断一个词是不是原文没有的臆造，没有语料就没有任何东西能挡住臆造
+  // 术语；此前的行为是跳过这一档、放行其余检查继续生成，等于给创作层
+  // 开了一个"没人守着的门禁"，生成出来的内容从未真正被任何判据看过。
+  // 与 `readOriginalCorpus()` 本身"任一切片缺失则整体不可用"
+  // （宁可不读，也不用一份不完整的语料悄悄凑合）同一个立场：宁可不
+  // 产出，不要产出一份没被任何判据看过的内容。检查放在调用 LLM 之前，
+  // 不浪费一次注定要被扔掉的调用。
+  if (corpusText === undefined) {
+    warnings.push("原文语料不可用，创作层 fail-closed：拒绝生成，不是跳过第一档后继续生成——没有语料就没有任何东西能验证「有没有新造术语」");
+    return empty();
+  }
+
   const scenesById = new Map(input.scenes.map((s) => [s.id, s]));
   // 线索 id 是内部句柄（item_03 这类），LLM 不给出实际列表就无从知道
   // 该场景有哪些线索、各自的 id 是什么——不给这份列表，objectMentions
@@ -324,16 +338,14 @@ ${sceneList}
     ...(partySetup ? [...partySetup.context, ...partySetup.hooks, ...partySetup.closing] : []),
   ].join("\n");
 
-  if (corpusText !== undefined) {
-    const fabricated = findFabricatedTerms(allText, corpusText);
-    if (fabricated.length > 0) {
-      warnings.push(
-        `第一档拦下：生成文本里出现原文查无出处的术语 ${fabricated.map((t) => `【${t}】`).join("、")}，本轮整批不采纳`,
-      );
-      return empty();
-    }
-  } else {
-    warnings.push("未提供原文语料，第一档（禁止新造专名/术语）本轮跳过——不是通过，是没查");
+  // corpusText 此时必然已定义——未定义的情形在函数最前面就已经
+  // fail-closed 返回了（开发·无基准模式 任务⑤），不会走到这里。
+  const fabricated = findFabricatedTerms(allText, corpusText);
+  if (fabricated.length > 0) {
+    warnings.push(
+      `第一档拦下：生成文本里出现原文查无出处的术语 ${fabricated.map((t) => `【${t}】`).join("、")}，本轮整批不采纳`,
+    );
+    return empty();
   }
 
   // ── 第二档：逐场景评估声明的对象称呼，接纳/拒绝到字段颗粒度 ──

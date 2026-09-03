@@ -109,10 +109,15 @@ describe("第一档变异检验：新造术语必须被拦下", () => {
     expect(r.accepted).toBe(true);
   });
 
-  test("未提供原文语料时第一档跳过，不是通过——warnings 里说清楚区别", async () => {
-    const r = await buildNarrative(INPUT, fake(HAPPY_REPLY), undefined);
-    expect(r.accepted).toBe(true);
-    expect(r.warnings.some((w) => w.includes("第一档") && w.includes("跳过"))).toBe(true);
+  test("**开发·无基准模式 任务⑤**：未提供原文语料时 fail-closed——拒绝生成，不是跳过第一档后继续生成", async () => {
+    const client = fake(HAPPY_REPLY);
+    const r = await buildNarrative(INPUT, client, undefined);
+    expect(r.accepted).toBe(false);
+    expect(r.openingAtmosphereByScene.size).toBe(0);
+    expect(r.provenance).toEqual([]);
+    expect(r.warnings.some((w) => w.includes("语料不可用") && w.includes("fail-closed"))).toBe(true);
+    // 检查放在调用 LLM 之前——注定要被拒绝的这次不该浪费一次真实调用。
+    expect(client.calls).toBe(0);
   });
 });
 
