@@ -71,10 +71,16 @@ export function findUnresolvedObjectMentions(
 /**
  * 把场景的线索列表转成 `decideClueMatch` 要的候选形状——与
  * `game-session.ts` 组装 `matchTexts` 时用的字段一致（`clue.name` +
- * `findMethods[].description`），只是摄取管线产的线索目前
- * `findMethods` 恒为空数组（`build-clues.ts` 的范围决策），所以候选
- * 文本这里通常只有线索名一项。
+ * `findMethods[].description` + `matchTexts`），只是摄取管线产的线索
+ * 目前 `findMethods` 恒为空数组（`build-clues.ts` 的范围决策），
+ * `matchTexts` 同样恒为空（同一份决策，见该文件头部）——候选文本这里
+ * 通常只有线索名一项，除非上一轮已经学会过别名（开发·别名迁移轮 D 组：
+ * 自动接纳的称呼写回 `Clue.matchTexts`，这里读到的是"目前为止已经
+ * 学会的全部称呼"，不是本次生成新声明的那些——本次新声明能不能通过
+ * 走的是 `findUnresolvedObjectMentions` 单独那条判断）。
  */
-export function clueCandidatesForScene(clues: { id: string; name: string; findMethods: { description: string }[] }[]): ClueMatchCandidate[] {
-  return clues.map((c) => ({ id: c.id, texts: [c.name, ...c.findMethods.map((f) => f.description)] }));
+export function clueCandidatesForScene(
+  clues: { id: string; name: string; findMethods: { description: string }[]; matchTexts?: string[] }[],
+): ClueMatchCandidate[] {
+  return clues.map((c) => ({ id: c.id, texts: [c.name, ...c.findMethods.map((f) => f.description), ...(c.matchTexts ?? [])] }));
 }

@@ -99,6 +99,18 @@ describe("字段口径——只产 name/description/revelation", () => {
     expect(clue?.unlocks).toEqual([]);
   });
 
+  test("matchTexts 不产——留 undefined，不是空数组也不是猜一个别名（开发·别名迁移轮 C 组）", () => {
+    const r = buildClues(
+      [scene("scene_01")],
+      [input("p1:L1", "床头柜", "x")],
+      kinds([["p1:L1", "clue"]]),
+      ids([["p1:L1", "item_01"]]),
+    );
+    const clue = r.scenes[0]?.clues[0];
+    expect(clue?.matchTexts).toBeUndefined();
+    expect(r.warnings.some((w) => w.includes("matchTexts"))).toBe(true);
+  });
+
   test("found 恒为 false——这是运行时状态字段，不是生成字段", () => {
     const r = buildClues(
       [scene("scene_01")],

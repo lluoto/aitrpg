@@ -10,11 +10,16 @@
 //
 // 【范围已定，不扩】只产三个字段：`name` / `description` / `revelation`。
 // 【不产】`findMethods` / `unlocks` / `importance` / `hint` / `failback` /
-// `setStateVar`——这些字段描述的是"怎么找到""找到之后解锁什么""对玩法
-// 有多重要"，原文是散文，没有任何结构标记能确定性抽出这些判断，抽出来
-// 就是猜。`unlocks` 尤其不要碰：它正是卧室线索那个 bug 的根源（2c38d2c，
-// `clue_bedroom_diary.unlocks` 曾经被曲解成"自动连锁发现"，酿成过一次
-// 真实的可玩性问题）——手都不伸过去，比伸过去猜错再修安全。
+// `setStateVar` / `matchTexts`——这些字段描述的是"怎么找到""找到之后
+// 解锁什么""对玩法有多重要""还能怎么称呼"，原文是散文，没有任何结构
+// 标记能确定性抽出这些判断，抽出来就是猜。`unlocks` 尤其不要碰：它正是
+// 卧室线索那个 bug 的根源（2c38d2c，`clue_bedroom_diary.unlocks` 曾经
+// 被曲解成"自动连锁发现"，酿成过一次真实的可玩性问题）——手都不伸
+// 过去，比伸过去猜错再修安全。`matchTexts`（开发·别名迁移轮新增字段）
+// 同理不猜：抽取管线自己编一个匹配器认识、但玩家从没在任何文本里读过
+// 的别名，不会有任何真实作用；这个字段只由创作层的门禁化通道写入
+// （`build-narrative.ts` 的第二档：生成端显式声明称呼→线索的映射，
+// 判据验证 `decideClueMatch` 真的认得那个称呼），不是这一步的范围。
 //
 // 与 `assemble-module.ts:12`「这一步一个字都不编」同一个纪律：抽不到的
 // 字段留空/给最保守的占位值，报进 warnings，不编一个"看起来像模有样"
@@ -129,6 +134,15 @@ export function buildClues(
       // 必填字段，没有"未知"选项——给最保守的默认值（不主动提示、
       // 不影响流程），并在 warnings 里说清楚这不是真实评估。
       importance: "color",
+      // matchTexts 不产（留 undefined，与 findMethods/unlocks 同一条
+      // 纪律）：别名是"这条线索还能怎么称呼"，原文里没有任何结构标记
+      // 能确定性判断"某个词也能指代这条线索"——抽了就是猜，猜错的
+      // 后果正是"培养缸"那类真实事故的根源（引擎自己教了玩家一个
+      // 匹配器不认识的词，反过来也一样：抽取管线自己编一个匹配器
+      // 认识但玩家从没读过的词，同样没有意义）。别名只能由创作层的
+      // 门禁化通道写入（build-narrative.ts 的第二档：生成端显式声明
+      // 称呼→线索的映射，判据验证 decideClueMatch 真的认得），
+      // 不是这一步的范围。
     };
 
     if (!cluesBySceneId.has(input.sceneId)) cluesBySceneId.set(input.sceneId, []);
@@ -142,8 +156,8 @@ export function buildClues(
       path: `scenes[${input.sceneId}].clues[${id}]`,
       source: input.text,
       sourceRef: input.key,
-      result: "产出 name/description/revelation；findMethods/unlocks 留空，importance 占位为 color",
-      reason: "摄取管线只抽可判定字段——findMethods/unlocks/importance/hint/failback/setStateVar 原文是散文，没有结构标记可供确定性抽取，抽了就是猜",
+      result: "产出 name/description/revelation；findMethods/unlocks/matchTexts 留空，importance 占位为 color",
+      reason: "摄取管线只抽可判定字段——findMethods/unlocks/matchTexts/importance/hint/failback/setStateVar 原文是散文，没有结构标记可供确定性抽取，抽了就是猜",
       by: "rule",
     });
   }
@@ -168,7 +182,7 @@ export function buildClues(
   const clueCount = [...cluesBySceneId.values()].reduce((a, c) => a + c.length, 0);
   if (clueCount > 0) {
     warnings.push(
-      `产出的 ${clueCount} 条线索均未生成 findMethods/unlocks/hint/failback/setStateVar（原文无结构标记，管线不猜）；` +
+      `产出的 ${clueCount} 条线索均未生成 findMethods/unlocks/matchTexts/hint/failback/setStateVar（原文无结构标记，管线不猜）；` +
         `importance 字段类型要求非空，暂填 "color" 占位，不代表真实评估过的重要度——下一轮要用这批线索前，这几个字段都需要人工补全`,
     );
   }

@@ -91,4 +91,16 @@ describe("clueCandidatesForScene —— 候选文本组装与 game-session.ts �
     const cands = clueCandidatesForScene([{ id: "c1", name: "床头柜", findMethods: [] }]);
     expect(cands).toEqual([{ id: "c1", texts: ["床头柜"] }]);
   });
+
+  test("texts = [name, ...findMethods 描述, ...matchTexts]——已经学会的别名（开发·别名迁移轮 C 组）也进候选池", () => {
+    const cands = clueCandidatesForScene([
+      { id: "c1", name: "母女的缸中脑", findMethods: [], matchTexts: ["培养缸", "玻璃缸"] },
+    ]);
+    expect(cands).toEqual([{ id: "c1", texts: ["母女的缸中脑", "培养缸", "玻璃缸"] }]);
+  });
+
+  test("没有 matchTexts 时（字段缺省）不报错，不产生 undefined 混进 texts 数组", () => {
+    const cands = clueCandidatesForScene([{ id: "c1", name: "床头柜", findMethods: [] }]);
+    expect(cands[0]?.texts.every((t) => typeof t === "string")).toBe(true);
+  });
 });

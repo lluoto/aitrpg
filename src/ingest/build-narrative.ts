@@ -90,7 +90,7 @@ export interface NarrativeSceneInput {
   id: string;
   name: string;
   description: string;
-  clues: { id: string; name: string; findMethods: { description: string }[] }[];
+  clues: { id: string; name: string; findMethods: { description: string }[]; matchTexts?: string[] }[];
 }
 
 export interface BuildNarrativeInput {
