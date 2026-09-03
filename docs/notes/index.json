@@ -13,7 +13,7 @@
       "id": "engine",
       "name": "运行引擎 / 主循环",
       "file": "docs/notes/engine.md",
-      "count": 31
+      "count": 32
     },
     {
       "id": "ingest",
@@ -369,6 +369,17 @@
       "line": 958,
       "lines": 56,
       "summary": "两处都直接打在\"多人拼团\"这个目标上，todo-25/todo-24。"
+    },
+    {
+      "id": "engine-32",
+      "title": "在场实体与线索路径：约束层对\"NPC 编造不存在的人/物\"的实际覆盖面（开发·在场实体与线索路径 N7，2026-09-03）",
+      "date": "2026-09-03",
+      "status": "note",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 1014,
+      "lines": 61,
+      "summary": "todo-41 的真实撞坑（analysis/sim/2026-08-30-barn-natural-play.md:58,86）："
     },
     {
       "id": "ingest-01",

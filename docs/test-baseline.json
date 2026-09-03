@@ -1,6 +1,6 @@
 {
-  "tests": 2887,
-  "files": 189,
+  "tests": 2901,
+  "files": 192,
   "unwiredMethods": 84,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。 86->84（开发·多人可见性 N6）：setPlayerScene 被整个删除少 1 处，getPlayersInScene 有了真调用方（player-scene-authority.test.ts）再少 1 处，两处一起解释这次的净减 2。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -614,6 +614,11 @@
       "tests": 2887,
       "files": 189,
       "when": "开发·多人可见性 N6，两个提交(todo-24/todo-25)，基线2879/187推送后开工。①WS live广播不按玩家过滤（信息泄漏）：存储层PlayerSession.push()早就按可见性过滤（含discoverer_only），GET /history?pcId=只返回该玩家可见的消息，但ws-handler.ts的broadcastToSession对同一session全部连接发同一份msg，server.ts用它推action-result（含完整narrative）——两条路口径不一致。修法边界：不把可见性元数据发给客户端让前端过滤，服务端按连接决定发什么，复用既有可见性判定不另写一套。ws-handler.ts新增broadcastPerConnection(通用按连接分发)+listSessionPlayerIds；server.ts新增broadcastActionResult：KP/observer连接收完整结果，player连接只发session.getPlayerHistory(pcId)这一回合新增的部分(直接复用GET /history已验证的存储层过滤路径)，playerId未知/缺失fail-closed不发。新增ws-broadcast-per-player-visibility.test.ts(4条)，变异检验(强制所有连接收完整结果)2条精确变红。②PlayerSlot.currentScene永不更新：唯一能更新它的setPlayerScene全仓零调用方。两种修法(a)接入移动路径同步(b)删字段改读权威来源，选(b)——本仓同一事实存两份后一份停止跟随已出现5次(世界状态/结局/failback阶梯/unlocks/别名表)，且确认两个构造方(GameSession/index.ts)创建PlayerSession时都已有WorldStateManager可注入sceneOf(characterId)解析闭包，前提成立才选(b)。PlayerSession构造函数新增必填sceneOf解析器，join()删除startingScene参数(唯一用途是喂给已删的字段)，setPlayerScene整个删除，加getPlayerScene(name)读侧方法。新增player-scene-authority.test.ts(4条)，变异检验(getPlayersInScene恒返回空数组)3条精确变红。scene_restricted另两个坑(比的是活动玩家场景不是消息所属场景；两个join点给了不同的startingScene)不在本轮范围，todo.json未标done；如实记录index.ts自己的CLI移动路径不持续保活world实体position是既有缺口不是本轮引入的退化。typecheck 0；bun test 2879->2887(+8，187->189文件)；preflight 12/12(断线86->84)。"
+    },
+    {
+      "tests": 2901,
+      "files": 192,
+      "when": "开发·在场实体与线索路径 N7，5个提交(A~E，任务F是本条更新)，基线2887/189推送后开工。修todo-41及同类：维森酒吧线索获取路径提到「前台」但场景只有酒吧保镖一个实体，报亭提到报亭老板但npcIds空。①A/B按事实层/叙事层分界补两个NPC：bar_receptionist(前台，知道包场情报+贵客身份，代价小费/取悦或现金+困难社交，全部照原文)、newsstand_owner(报亭老板，会提绑架犯被捕/拒绝翻旧报/愿3倍价收购，3倍是原文已有数字未另定)；顺带修bar_bouncer.knowledge与原文「保安不回答/不知道」自相矛盾处。刻意不改bar_bouncer名字对齐原文「保安」用词——收益小、代价是要动十几处硬编码「酒吧保镖」断言的测试。②C给5条线索(3酒吧+2报亭)补matchTexts，端到端测试用真实撞坑措辞（「问包场者的事」）走通两条core线索，无markDiscovered无内部id；变异检验发现拿掉NPC不会让路径变红(skill-check线索匹配只看matchTexts不看npcIds)，matchTexts才是真正的机制开关。③D用真实撞坑文本（「名单什么的早让老板锁进抽屉了」）实测约束层——拦不住，applyConstraints/checkDialogueText都放行，与todo-43已知结论一致(拦「否认已知对象」不拦「凭空发明新实体」)，新增npc-fabricated-entity-constraint-gap.test.ts(4条，含2条对照证明约束层非整体失效)把这个结论钉成判据，记todo-56。④E新增scene-npc-noun-registry.ts确定性判据：登记表只收「前台」/「报亭老板」两个已核实卡线索可达性的词，不收「保安」/「客人」(会对weisen_bar产生假阳性)；扫描发现hospital场景同形状缺口(clue_emily_birth要求问「医护人员」但npcIds空)，本轮不修记todo-57。⑤F：todo-41标done、notes/engine.md记录D的结论(约束层对NPC编造实体的实际覆盖面)、now/handoff刷新。回归：三方审计/实体审计/叙事词登记表/已确认臆造日志/64态/True End回放/WS可见性全绿。typecheck 0；bun test 2887->2901(+14，189->192文件)；preflight 12/12。"
     }
   ]
 }
