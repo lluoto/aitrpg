@@ -954,3 +954,59 @@ if 分支都删掉，`bridgeBarnOfPremierClues()` 现在直接读
 分支 + 2 张别名表）降到 4 处，仍然 open——`mod.id === "premiers_barn"`
 那 4 条分支本身是加载流程耦合，不是别名/称呼类数据，不属于本轮迁移
 范围。
+
+### ✅ 多人可见性两处缺陷：存储层过滤、推送层不过滤；场景数据存两份且一份从不更新（开发·多人可见性 N6，2026-09-03）
+
+两处都直接打在"多人拼团"这个目标上，todo-25/todo-24。
+
+**todo-25（WS 广播泄漏）**：`PlayerSession.push()` 早就按可见性
+（五档，含 `discoverer_only`）过滤消息，`GET /history?pcId=` 只返回
+该玩家可见的那份——但 `ws-handler.ts` 的 `broadcastToSession` 对同一
+session 的全部连接发同一份 msg，`server.ts` 用它推 `action-result`
+时把完整 narrative（含线索揭示正文）广播给所有连接，包括没有发现
+这条线索的另一个玩家。同一份内容，存储层过滤、推送层不过滤，两条
+路口径不一致——这正是"信息泄漏只在'回看历史'这个维度成立，不是
+'实时全程保密'"的字面意思。
+
+修法边界（任务给定，照做）：不把可见性元数据发给客户端让前端过滤——
+数据一旦到了客户端就不叫私密了；必须服务端按连接决定发什么，且要
+复用既有的可见性判定，不能另写一套（本仓已经因"两个运行时各持
+一半"吃过五次亏，见下一条 todo-24 的教训是同一个模式的另一个实例）。
+落地方式：`ws-handler.ts` 加 `broadcastPerConnection`（通用的按连接
+分发机制，`resolve` 只拿到"这个连接是谁"，不碰任何游戏状态，不重新
+判定可见性）；`server.ts` 的 `broadcastActionResult` 对 player 连接
+只发 `session.getPlayerHistory(pcId)` 这一回合新增的部分——直接读
+GET /history 早就在用、且被 `clue-visibility-and-per-player-history
+.test.ts` 验证过的同一条存储层过滤路径，广播层没有独立的可见性
+逻辑，只是"按连接分别去问存储层"。
+
+**todo-24（场景数据存两份，一份从不更新）**：`PlayerSlot.currentScene`
+只在 `join()` 时设一次，唯一能更新它的 `setPlayerScene` 全仓零调用方，
+玩家实际移动后这份拷贝再也不会跟着变。真正会随移动更新的场景数据
+本来就存在——`WorldEntity.position`，`GameSession.movePlayerToScene()`
+等每次玩家移动都会 `world.upsertEntity` 写回。两种修法：(a) 把
+`setPlayerScene`接进移动路径去同步那份拷贝，(b) 直接删掉拷贝，读取点
+改问权威来源。选了 (b)：本仓"同一事实存两份，其中一份不知不觉停止
+跟随"这个模式已经出现过五次（世界状态、结局、failback 阶梯、
+`unlocks`、别名表——上面那条 D 组记录就是"别名表"那一次），(a) 只是
+把 setPlayerScene 接上，代价是从此多一处要记得同步的地方，下一次
+新增移动路径（比如战斗撤退、剧情强制传送）忘了调用它，`currentScene`
+又会重新漂移；(b) 消灭的是"存在漂移可能性"这件事本身，而不是把
+今天已知的同步点补齐。前提是两个读取点都真的能拿到权威来源——
+确认过：`PlayerSession` 的两个构造方（`GameSession`/`index.ts`）在
+创建它时都已经有自己的 `WorldStateManager`，可以把一个
+`sceneOf(characterId)` 解析闭包传进去，不需要额外的依赖注入设施。
+
+**scene_restricted 仍然不完全可靠**：任务明确只要求修 todo-24 这一个
+坑，另外两个（比的是活动玩家场景不是消息所属场景；两个 join 点给
+了不同的 startingScene）本轮不碰，todo.json 里也没有标它们 done——
+`scene_restricted` 这一档可见性规则整体上还不能信，别看到 todo-24
+标 done 就以为这一档没问题了。
+
+**如实记录一个不在本轮范围内的既有缺口**：`index.ts`（CLI/剧本杀
+运行时）自己的移动处理不会在模组加载后持续调用 `world.upsertEntity`
+保活"player"实体的 position（只有 `module-loader.ts` 的初始建号写
+过一次）——这不是本轮改动引入的退化，删字段之前那份拷贝在这条路径
+上同样是错的（冻结在一个从写死模组算出来、与玩家实际加载的模组
+无关的初始值上），只是换了一种错法。这与本文件多次记录的"两个运行
+时各持一半"是同一个模式的又一实例，但本轮不修，如实记着。

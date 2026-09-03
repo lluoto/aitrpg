@@ -504,7 +504,7 @@
             ],
             [
               "src/api/game-session.ts",
-              "自由跑团单局总装配（3729 行，2026-08-29 复核，仍在涨——见 docs/todo.json todo-27）：串起 LLM、律书、CoC 引擎、Agent、世界状态、战斗/调查/法术/经济。多 PC 支持：`PartyMember`/`createPartyMember`（单一入口，同时诞生 SAN 引擎/世界实体/会话槽位/职业履历「八件事」）、`addPartyMember`（web 端点与「创建队友」文本命令共用）、`act(input, pcId?)` 按 pcId 路由行动而非活动玩家显示名。线索揭示走 `discoverer_only` 可见性（只进发现者的 `PlayerSession` 历史，live 的 WS 广播尚未按玩家过滤，见 docs/todo.json todo-25）",
+              "自由跑团单局总装配（3729 行，2026-08-29 复核，仍在涨——见 docs/todo.json todo-27）：串起 LLM、律书、CoC 引擎、Agent、世界状态、战斗/调查/法术/经济。多 PC 支持：`PartyMember`/`createPartyMember`（单一入口，同时诞生 SAN 引擎/世界实体/会话槽位/职业履历「八件事」）、`addPartyMember`（web 端点与「创建队友」文本命令共用）、`act(input, pcId?)` 按 pcId 路由行动而非活动玩家显示名。线索揭示走 `discoverer_only` 可见性（只进发现者的 `PlayerSession` 历史，live 的 WS 广播已按玩家过滤，见 server.ts 的 `broadcastActionResult`/docs/todo.json todo-25）",
               "GameSession, ActionResponse, PartyMember"
             ],
             [

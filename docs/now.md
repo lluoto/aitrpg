@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-03 08:02
+> 生成于 2026-09-03 08:50
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,13 +13,15 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 2b6e439 docs: separate robustness from accuracy in todo-47/todo-28 |
-| 测试 | 2879 条 / 187 文件  全绿 |
-| 工作树 | **2 个文件未提交** |
+| HEAD | ce6a7ac fix: delete PlayerSlot.currentScene, read the authority instead |
+| 测试 | 2887 条 / 189 文件  全绿 |
+| 工作树 | **4 个文件未提交** |
 
 未提交：
+- `M docs/notes/engine.md`
 - `M docs/notes/index.json`
-- `M docs/notes/ingest.md`
+- `M docs/test-baseline.json`
+- `M docs/todo.json`
 
 ## 开工前
 
@@ -98,8 +100,8 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 本仓源文件**不能过 PowerShell 写**（`Set-Content` 会把中文 mojibake）。读也一样，用 Read 工具。证据来源：2026-08-07 UTF-8 损坏事故，见 docs/incident-2026-08-07-utf8-corruption.md（已闭合，全仓 
 - `bash` 工具的 `workdir` 参数会卡死，用 `cd C:\aitrpg\poc; ...`。永久性环境约束。
 - 精确分析写临时 `.ts` 用 bun 跑，并让脚本自己 `Bun.write` 落盘，不要经控制台。永久性环境约束。
-- `PlayerSlot.currentScene` 只在 `join` 时设，之后从不更新——因为唯一能更新它的 `setPlayerScene`（见 todo-23）零调用方。这是 `scene_restricted` 可见性档位「三个独立的坑」之一（另两个坑：比的是活动玩家场景不是消息所属场景；
-- `ws-handler.ts:63-70 broadcastToSession` 不按玩家过滤——线索私密（discoverer_only）在**存储的历史**层面成立（`GET /history?pcId=` 只返回该玩家可见的消息），但 live 的 WS 广播仍然把完整 narrative 推
+- 【已修复，开发·多人可见性 N6，2026-09-03】`PlayerSlot.currentScene` 只在 `join` 时设，之后从不更新——因为唯一能更新它的 `setPlayerScene`（见 todo-23）零调用方。这是 `scene_restricted` 可见性档位「三个独立的
+- 【已修复，开发·多人可见性 N6，2026-09-03】`ws-handler.ts:63-70 broadcastToSession` 不按玩家过滤——线索私密（discoverer_only）在**存储的历史**层面成立（`GET /history?pcId=` 只返回该玩家可见的消息），但 l
 - 摄取管线 `build-scenes.ts:99 clues: []`——摄取出来的每个场景一条线索都不产，实跑产物显示 24 场景的线索总数为 0。结局条件编译（属于另一轮「B」的范围）依赖场景能带线索，这条不修，那条无从谈起。  【进展，2026-09-02，未完全解决，不标 done】新增 `
 - 意图误判率约 20%（30 回合 6 次判错），两次模拟都没能定性根因——第二次模拟换了输入分布，判错次数从 6 次变成 0 次，但当时不能证明问题不存在。**根因已定位并修复（修A，2026-08-29）**：analysis/sim/2026-08-28-barn-a-acceptance.md
 - 「经历模组: 0」这条统计是否仍然存在——未验证。`career.ts:265` 的相关逻辑挂在从不实例化的 `CareerStore` 类里（见 todo-02/todo-05），实际在用的是 `CareerFileStore`，需要先确认「经历模组」这个统计口径在 `CareerFileStor
@@ -116,14 +118,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- ce6a7ac fix: delete PlayerSlot.currentScene, read the authority instead
+- 02798bf fix: filter WS action-result broadcast by connection (todo-25)
+- bb427fa docs: log the robustness-vs-accuracy correction and refresh snapshots
 - 2b6e439 docs: separate robustness from accuracy in todo-47/todo-28
 - 13ca478 docs: surface INGEST_BASELINE as a reproducibility gotcha
 - 5d1ccb9 docs: record the no-baseline mode work as todo-54
 - 6881148 fix: make the narrative layer fail closed without a corpus
 - bc379fb test: pin down no-baseline id retention explicitly
-- 9f0b3f8 refactor: make AUDITED_MODULE_FILES a default, not a hardcode
-- e6bc789 feat: source three-way-audit corpus from the current PDF, not slices
-- c32c900 feat: run the ingest pipeline without a baseline module
 
 ## 找东西
 

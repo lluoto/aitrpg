@@ -261,21 +261,21 @@
       "category": "废弃/无引用",
       "severity": "cleanup",
       "status": "open",
-      "text": "`player-session.ts` 三个零调用方：`:183 pushPerPlayer`、`:237 setPlayerScene`、`:243 getPlayersInScene`。与 todo-21（`visible_to`/`pushPerPlayer` 是同一套预留但未使用的机制）及 todo-24（`setPlayerScene` 没人调是 `currentScene` 从不更新的直接原因）相关，三条一起看才是完整画像。"
+      "text": "`player-session.ts` 三个零调用方：`:183 pushPerPlayer`、`:237 setPlayerScene`、`:243 getPlayersInScene`。与 todo-21（`visible_to`/`pushPerPlayer` 是同一套预留但未使用的机制）及 todo-24（`setPlayerScene` 没人调是 `currentScene` 从不更新的直接原因）相关，三条一起看才是完整画像。\n\n【部分修复，开发·多人可见性 N6，2026-09-03，todo-24】三个之中的两个不再是「零调用方」的问题——`setPlayerScene` 已被整个删除（它唯一的用途是更新 `currentScene`，那个字段也删了，没有东西留给它更新）；`getPlayersInScene` 现在有真实调用方（`player-scene-authority.test.ts`，且机制本身在 GameSession 场景查询路径上可用）。仍然零调用方、仍然未消费的只剩 `pushPerPlayer`——与 todo-21 是同一套预留机制，本条不动它，留给下一次决定「是否启用 `visible_to`/`pushPerPlayer` 这第二套分发机制」的人。"
     },
     {
       "id": "todo-24",
       "category": "接了一半",
       "severity": "warn",
-      "status": "open",
-      "text": "`PlayerSlot.currentScene` 只在 `join` 时设，之后从不更新——因为唯一能更新它的 `setPlayerScene`（见 todo-23）零调用方。这是 `scene_restricted` 可见性档位「三个独立的坑」之一（另两个坑：比的是活动玩家场景不是消息所属场景；两个 join 点给了不同的 startingScene），此前已在提交历史里判定过不在那几轮的范围内，本条把它正式记进 todo，避免下一个人以为「有 currentScene 字段」就意味着「它是准的」。"
+      "status": "done",
+      "text": "【已修复，开发·多人可见性 N6，2026-09-03】`PlayerSlot.currentScene` 只在 `join` 时设，之后从不更新——因为唯一能更新它的 `setPlayerScene`（见 todo-23）零调用方。这是 `scene_restricted` 可见性档位「三个独立的坑」之一（另两个坑本条不修：比的是活动玩家场景不是消息所属场景；两个 join 点给了不同的 startingScene——这两个仍然是已知缺口，不要以为 todo-24 标 done 就等于 `scene_restricted` 整体可靠了）。\n\n修法：删掉 `PlayerSlot.currentScene` 这份必然漂移的拷贝，两个读取点（`push()` 的 `scene_restricted` 分支、`getPlayersInScene()`）改成按 `characterId` 问权威来源——`WorldEntity.position`，`GameSession.movePlayerToScene()` 等每次玩家移动都会 `world.upsertEntity` 写回那里，本来就存在且本来就会跟着更新，没必要在 `PlayerSession` 里再存一份。`PlayerSession` 构造函数新增必填的 `sceneOf(characterId)` 解析器，两个构造方（`GameSession`/`index.ts`）在创建 `PlayerSession` 时都已经有自己的 `WorldStateManager`，直接把查询闭包过去；`join()` 的 `startingScene` 参数一并删除（唯一用途就是喂给已经不存在的字段），四处调用点同步改。加 `getPlayerScene(name)` 作为读侧对应方法，`index.ts` 的 `/players` 展示原先直接读 `p.currentScene`，改成调它。\n\n⚠ 如实记录一个不属于本条范围的既有缺口：`index.ts` 自己的 CLI 移动路径不会在模组加载后持续调用 `world.upsertEntity` 保活「player」实体的 position（只有 `module-loader.ts` 的初始建号会写一次）——这不是本次改动引入的退化，删字段之前那份拷贝在这条路径上同样是错的（冻结在一个从写死模组算出来、与玩家实际加载的模组无关的初始值上），只是换了一种错法，不是本条修复范围。\n\n新增 `player-scene-authority.test.ts`（4 条），走 GameSession 端到端：p1 移动后 `getPlayersInScene` 反映新场景且不含未移动的 p2；p2 也移动到同一场景后两人都在；p1 再移动一次后旧场景不再包含它（不是钉死在第一次移动的位置）；`getPlayerScene(name)` 直接查询同样反映最新值。变异检验：临时让 `getPlayersInScene` 恒返回空数组（模拟「读一个从不更新的字段」的实际效果），4 条里 3 条精确变红，Copy-Item 还原后回归 4/4。typecheck 0；bun test 2883->2887（+4，188->189 文件）；preflight 12/12（断线 86->84：`setPlayerScene` 删除少 1 处，`getPlayersInScene` 有了真调用方再少 1 处）。"
     },
     {
       "id": "todo-25",
       "category": "已知缺口",
       "severity": "warn",
-      "status": "open",
-      "text": "`ws-handler.ts:63-70 broadcastToSession` 不按玩家过滤——线索私密（discoverer_only）在**存储的历史**层面成立（`GET /history?pcId=` 只返回该玩家可见的消息），但 live 的 WS 广播仍然把完整 narrative 推给该 session 的全部连接，等于该结论在实时通道上不成立。已在 `game-session.ts` 的 `resolveSceneClue` 方法 docstring 里写明这个已知缺口，本条是把它同步进 todo.json，不只靠源码注释记着。"
+      "status": "done",
+      "text": "【已修复，开发·多人可见性 N6，2026-09-03】`ws-handler.ts:63-70 broadcastToSession` 不按玩家过滤——线索私密（discoverer_only）在**存储的历史**层面成立（`GET /history?pcId=` 只返回该玩家可见的消息），但 live 的 WS 广播仍然把完整 narrative 推给该 session 的全部连接，等于该结论在实时通道上不成立。已在 `game-session.ts` 的 `resolveSceneClue` 方法 docstring 里写明这个已知缺口，本条是把它同步进 todo.json，不只靠源码注释记着。\n\n修法：不把可见性元数据发给客户端让前端过滤（数据一旦到了客户端就不叫私密了），改成服务端按连接决定发什么。`ws-handler.ts` 新增 `broadcastPerConnection(sessionId, event, resolve)`——通用的按连接分发机制，`resolve` 只拿到「这个连接是谁」（角色 + playerId），不碰任何游戏状态，返回 `undefined` 时这个连接本轮完全不发；另加 `listSessionPlayerIds(sessionId)` 供广播前拍快照。`server.ts` 新增 `broadcastActionResult`：KP/observer 连接照旧收完整结果（KP 本来就该知道一切）；player 连接只发 `session.getPlayerHistory(pcId)` 这一回合新增的部分——直接复用 `GET /history?pcId=` 已经在用、且被 `clue-visibility-and-per-player-history.test.ts` 验证过的同一条存储层过滤路径，不重新判定一次可见性；`priorCounts`（调用方在 `act()` 之前拍的历史长度快照）用来切出「这一回合新增了什么」；playerId 未知或缺失的连接 fail-closed，不发。\n\n新增 `ws-broadcast-per-player-visibility.test.ts`（4 条）：discoverer_only 线索只广播给发现者的 WS 连接、不广播给同 session 另一个玩家的连接（用只有 `send()` 的假 socket 捕获实际发出的消息，不起真实端口）；对照组——普通 public 行动仍广播给所有玩家连接；KP 连接仍能看到全部（含线索揭示）；未知/缺失 playerId 的 player 连接 fail-closed 收不到任何内容。变异检验：临时让 `broadcastActionResult` 对所有连接都发完整未过滤结果，4 条里 2 条（线索泄漏那条 + fail-closed 那条）精确变红，Copy-Item 还原后回归 4/4。typecheck 0；bun test 2879->2883（+4，187->188 文件）；preflight 12/12。"
     },
     {
       "id": "todo-26",

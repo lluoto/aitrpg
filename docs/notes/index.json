@@ -13,7 +13,7 @@
       "id": "engine",
       "name": "运行引擎 / 主循环",
       "file": "docs/notes/engine.md",
-      "count": 30
+      "count": 31
     },
     {
       "id": "ingest",
@@ -358,6 +358,17 @@
       "line": 917,
       "lines": 41,
       "summary": "上面两条实例（维修室/维修间、培养缸/缸中脑）修复时都是就地打补丁："
+    },
+    {
+      "id": "engine-31",
+      "title": "多人可见性两处缺陷：存储层过滤、推送层不过滤；场景数据存两份且一份从不更新（开发·多人可见性 N6，2026-09-03）",
+      "date": "2026-09-03",
+      "status": "fixed",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 958,
+      "lines": 56,
+      "summary": "两处都直接打在\"多人拼团\"这个目标上，todo-25/todo-24。"
     },
     {
       "id": "ingest-01",
