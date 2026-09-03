@@ -260,9 +260,16 @@ function buildScenes(): Scene[] {
       // 的实体、这条线索也没有 matchTexts 而全部落空，最后编出「老板
       // 锁进抽屉」这类模组里不存在的东西。这里补的词只取原文/revelation
       // 里出现过的、玩家实测真的会用来指代这件事的说法——"包场"/"登记"
-      // 是原文动作本身，"前台"是要问的对象，"免费饮品"是玩家实跑第一
-      // 句真实用过的措辞。
-      matchTexts: ["前台", "包场", "登记", "免费饮品"],
+      // 是原文动作本身，"免费饮品"是玩家实跑第一句真实用过的措辞，
+      // "小费"对应原文给出的具体代价。
+      //
+      // 开发·把已有判据补齐到手写侧 N8：不收"前台"——它是两条线索共同
+      // 要问的对象，不是任何一条专属的称呼，同一份克制见 7d9e6f1 排除
+      // "设备"/"容器"的理由（learn-gate 条件 c 的同一条道理，这里手写
+      // 也要守）。scene-matchtext-collision.ts 的判据核实过：现在
+      // "前台" 完全不出现在本场景任何线索的 matchTexts 里，靠场景内
+      // 唯一命中的具体词（包场/登记/免费饮品/小费）区分。
+      matchTexts: ["包场", "登记", "免费饮品", "小费"],
     },
     {
       id: "clue_bar_guest_identity",
@@ -276,11 +283,14 @@ function buildScenes(): Scene[] {
       found: false,
       importance: "core",
       // 与上一条同一批补充：unlocks 保证这条只在 clue_bar_mass_booking
-      // 已发现后才成为候选，"前台"在两条线索的 matchTexts 里同时出现
-      // 不会产生歧义（不会同时都是未发现状态）。不收"艾德里安"——那是
-      // revelation 才会揭示的名字，发现前玩家不会知道要问这个词，收进
-      // matchTexts 没有意义，还会在真实对话里提前泄露。
-      matchTexts: ["前台", "贵客", "身份", "套话"],
+      // 已发现后才成为候选。不收"艾德里安"——那是 revelation 才会揭示
+      // 的名字，发现前玩家不会知道要问这个词，收进 matchTexts 没有
+      // 意义，还会在真实对话里提前泄露。
+      //
+      // 开发·把已有判据补齐到手写侧 N8：不收"前台"，理由同上一条——
+      // 两条线索共同要问的对象，不是任何一条专属的称呼，登记表是
+      // "贵客"/"身份"/"套话"/"现金"这类只属于套身份这件事本身的词。
+      matchTexts: ["贵客", "身份", "套话", "现金"],
     },
     {
       id: "clue_bar_ask_around",
@@ -293,7 +303,12 @@ function buildScenes(): Scene[] {
       unlocks: [],
       found: false,
       importance: "bonus",
-      matchTexts: ["其他人", "打听", "八卦", "客人"],
+      // "打听"单独一个词太短，玩家真说"打听"两个字时（没有别的内容）
+      // decideClueMatch 本身就会判成没有信号（fallback），不算这条
+      // 别名"命中别的线索"，但一样过不了 learn-gate 条件 b（不是
+      // resolve），登记它没有意义，删掉；"向其他人打听艾德里安"这类
+      // 真实语句本来就靠"其他人"命中，不依赖"打听"这个词单独出场。
+      matchTexts: ["其他人", "八卦", "客人"],
     },
   ];
   scenes.push({
@@ -325,7 +340,13 @@ function buildScenes(): Scene[] {
       unlocks: ["clue_newspaper_kidnapper"],
       found: false,
       importance: "core",
-      matchTexts: ["报纸", "人口失踪", "报道"],
+      // 开发·把已有判据补齐到手写侧 N8："报纸""报道"会撞上
+      // clue_newspaper_kidnapper 自己的名字（"绑架犯的报道"）与
+      // findMethods 描述（"…找到关于艾德里安的报道"）、以及它的
+      // matchTexts 里的"旧报纸"/"废报纸"（都以"报纸"为子串）——
+      // scene-matchtext-collision.ts 的判据能确定性抓出这两个词，改用
+      // 只属于这条线索自己的说法："买报纸"/"人口失踪"两个词场景内唯一。
+      matchTexts: ["买报纸", "人口失踪"],
     },
     {
       id: "clue_newspaper_kidnapper",
@@ -340,9 +361,13 @@ function buildScenes(): Scene[] {
       importance: "core",
       // 原文（模组 PDF 报亭一节）：问老板要旧报纸，老板嫌翻找麻烦拒绝，
       // 但提出购买的话会以市场价 3 倍出售——这条交易规则已经写在下面
-      // atmosphere 里，这里的 matchTexts 只是让"问老板要旧报纸"/"买
-      // 废报纸"这类自然说法能路由到这条线索。
-      matchTexts: ["旧报纸", "废报纸", "老板", "绑架犯"],
+      // atmosphere 里。
+      //
+      // 开发·把已有判据补齐到手写侧 N8："旧报纸"/"废报纸"都以"报纸"为
+      // 子串，会撞上 clue_newspaper_missing 的"买报纸"——改成"老板"/
+      // "绑架犯"两个词，都只在这条线索里出现，场景内唯一；"问老板要
+      // 旧报纸"这类自然说法本来就含"老板"，不依赖"旧报纸"这个词本身。
+      matchTexts: ["老板", "绑架犯"],
     },
   ];
   scenes.push({

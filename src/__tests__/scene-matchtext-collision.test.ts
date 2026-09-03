@@ -8,16 +8,17 @@
 // 「前台」同时进了 clue_bar_mass_booking 与 clue_bar_guest_identity
 // 两条线索的 matchTexts，「问前台贵客的身份」落进 ask 而不是 resolve。
 //
-// 本文件写下时，barn-of-premier.ts 的数据【还没修】——这是任务④要求
-// 的"先查清楚全模组有多少处命中"那一步，如实记录发现时刻的真实状态；
-// 下一个提交（N8②）才修数据，并把下面"真实数据"那组测试的期望值从
-// 这份已知清单改成空数组。
+// 上一个提交（N8①）在数据修复前先跑了这份判据，如实记录发现时刻的
+// 真实状态：全模组 7 处撞车，全部集中在 weisen_bar（3）与
+// newsstand（4）。本提交（N8②）修完这五组别名后，回归确认为 0——
+// 历史记录见该提交信息，这里的断言只保留"现在应该是什么样"。
 //
 // bun test src/__tests__/scene-matchtext-collision.test.ts
 
 import { describe, it, expect } from "bun:test";
 import { findMatchTextCollisions } from "../investigation/scene-matchtext-collision";
 import { resolvesUniquelyTo, evaluateObjectMentionClaims } from "../ingest/narrative-guard";
+import { decideClueMatch } from "../investigation/clue-match";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
 import type { Scene } from "../module/types";
 
@@ -108,14 +109,32 @@ describe("resolvesUniquelyTo 只有一处实现——evaluateObjectMentionClaims
 });
 
 describe("对 BARN_OF_PREMIER 实跑：全模组扫描结果如实记录（任务④）", () => {
-  it("**已知现状（本次提交前）**：全模组 20 个场景里，撞车全部集中在 weisen_bar（3 条）与 newsstand（4 条），其它场景 0 命中——数字可用 findMatchTextCollisions(BARN_OF_PREMIER.scenes) 直接复算", () => {
+  it("**正确**：修完五组别名后，全模组 20 个场景扫描结果为 0 冲突——数字可用 findMatchTextCollisions(BARN_OF_PREMIER.scenes) 直接复算", () => {
     const collisions = findMatchTextCollisions(BARN_OF_PREMIER.scenes);
-    const bySceneCount = new Map<string, number>();
-    for (const c of collisions) bySceneCount.set(c.sceneId, (bySceneCount.get(c.sceneId) ?? 0) + 1);
+    expect(collisions).toEqual([]);
+  });
+});
 
-    expect(collisions.length).toBe(7);
-    expect(bySceneCount.get("weisen_bar")).toBe(3);
-    expect(bySceneCount.get("newsstand")).toBe(4);
-    expect([...bySceneCount.keys()].sort()).toEqual(["newsstand", "weisen_bar"]);
+describe("原文指定的三个动作各自唯一命中它对应的线索（任务②）", () => {
+  const scene = BARN_OF_PREMIER.scenes.find((s) => s.id === "weisen_bar")!;
+  const candidates = scene.clues.map((c) => ({
+    id: c.id,
+    texts: [c.name, ...c.findMethods.map((f) => f.description), ...(c.matchTexts ?? [])],
+  }));
+
+  it.each([
+    ["给前台小费", "clue_bar_mass_booking"],
+    ["取悦前台", "clue_bar_mass_booking"],
+    ["付钱套话问贵客身份", "clue_bar_guest_identity"],
+    ["向其他人打听艾德里安", "clue_bar_ask_around"],
+  ])("%s → resolve 到 %s（不是 ask）", (said, expectedClueId) => {
+    expect(decideClueMatch(said, candidates)).toEqual({ kind: "resolve", clueId: expectedClueId });
+  });
+
+  it("**不再收「前台」这个词本身当别名**——它是两条线索共同要问的对象，不是任何一条专属的称呼（同一份克制见 7d9e6f1 排除「设备」/「容器」）", () => {
+    const massBooking = scene.clues.find((c) => c.id === "clue_bar_mass_booking")!;
+    const guestIdentity = scene.clues.find((c) => c.id === "clue_bar_guest_identity")!;
+    expect(massBooking.matchTexts).not.toContain("前台");
+    expect(guestIdentity.matchTexts).not.toContain("前台");
   });
 });
