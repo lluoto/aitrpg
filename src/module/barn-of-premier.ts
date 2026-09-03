@@ -327,7 +327,7 @@ function buildScenes(): Scene[] {
     name: "报亭",
     description: "调查员可以通过报亭购买报纸获取信息。",
     clues: newsstandClues,
-    npcIds: [],
+    npcIds: ["newsstand_owner"],
     connections: [
       { targetSceneId: "town_premier", condition: "返回镇上" },
       { targetSceneId: "hospital", condition: "根据报道前往霍姆斯医院" },
@@ -1088,6 +1088,28 @@ function buildNpcs(): ModuleNPC[] {
         "一位贵客包下了酒吧办狂欢派对，来的人都要登记",
         "包场的贵客是艾德里安·埃斯特鲁姆",
       ],
+    },
+    {
+      id: "newsstand_owner",
+      name: "报亭老板",
+      role: "报亭老板",
+      sceneId: "newsstand",
+      // 事实层（原文有，模组 PDF 报亭一节）：老板会主动提起最近抓了个
+      // 绑架犯（问起人口失踪报道时）；旧报纸嫌麻烦拒绝翻找，但调查员
+      // 提出购买的话会以市场价 3 倍价格出售——这条交易规则同时也写在
+      // newsstand 场景的 atmosphere 字段里，两处数字要保持一致，不要
+      // 各写一份。外貌/性格是叙事层，原文没写。
+      description: "报亭老板，守着一堆报纸和旧报纸过日子。",
+      personality: {
+        traits: ["精明", "怕麻烦"],
+        speech: "说话带着生意人的算计，懒得费事的地方绝不多花力气。",
+        attitude: "闲聊报道→（问起旧报纸）嫌麻烦拒绝翻找→（提出购买）以市场价 3 倍出售",
+      },
+      knowledge: [
+        "最近镇上又抓了个绑架犯，报纸上登过，具体细节没细看",
+        "旧报纸都堆着等废纸场来收，谁要翻旧报道嫌麻烦，不如买去自己找",
+      ],
+      secrets: [],
     },
 
     // ========== 神话生物（原始模块提供完整数据） ==========
