@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-03 07:58
+> 生成于 2026-09-03 08:02
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,13 +13,13 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 5d1ccb9 docs: record the no-baseline mode work as todo-54 |
+| HEAD | 2b6e439 docs: separate robustness from accuracy in todo-47/todo-28 |
 | 测试 | 2879 条 / 187 文件  全绿 |
 | 工作树 | **2 个文件未提交** |
 
 未提交：
-- `M docs/now.md`
-- `M docs/todo.json`
+- `M docs/notes/index.json`
+- `M docs/notes/ingest.md`
 
 ## 开工前
 
@@ -116,14 +116,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 2b6e439 docs: separate robustness from accuracy in todo-47/todo-28
+- 13ca478 docs: surface INGEST_BASELINE as a reproducibility gotcha
 - 5d1ccb9 docs: record the no-baseline mode work as todo-54
 - 6881148 fix: make the narrative layer fail closed without a corpus
 - bc379fb test: pin down no-baseline id retention explicitly
 - 9f0b3f8 refactor: make AUDITED_MODULE_FILES a default, not a hardcode
 - e6bc789 feat: source three-way-audit corpus from the current PDF, not slices
 - c32c900 feat: run the ingest pipeline without a baseline module
-- fd2660c docs: log todo-53 and refresh now/handoff for this round
-- e72fd6b docs: note that 3/3 acceptance doesn't yet show the gate has bite
 
 ## 找东西
 

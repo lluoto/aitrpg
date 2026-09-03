@@ -19,7 +19,7 @@
       "id": "ingest",
       "name": "模组摄取",
       "file": "docs/notes/ingest.md",
-      "count": 53
+      "count": 54
     },
     {
       "id": "rules",
@@ -941,6 +941,17 @@
       "line": 2142,
       "lines": 43,
       "summary": "管线原来假设 `BARN_OF_PREMIER` 永远存在——覆盖率/精确率/评分键/id"
+    },
+    {
+      "id": "ingest-54",
+      "title": "收尾纠正：鲁棒性验证与准确性验证不是一回事（2026-09-03）",
+      "date": "2026-09-03",
+      "status": "note",
+      "group": "ingest",
+      "file": "docs/notes/ingest.md",
+      "line": 2185,
+      "lines": 20,
+      "summary": "无基准模式落地之后复核 todo-47/todo-28，发现两条都隐含了一个错误"
     },
     {
       "id": "rules-01",

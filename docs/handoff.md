@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-03 07:30  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-03 08:03  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：6881148 fix: make the narrative layer fail closed without a corpus  ·  **测试**：2879 条 / 187 文件，全绿（基线 2879，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：2b6e439 docs: separate robustness from accuracy in todo-47/todo-28  ·  **测试**：2879 条 / 187 文件，全绿（基线 2879，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -207,6 +207,9 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- 2b6e439 docs: separate robustness from accuracy in todo-47/todo-28
+- 13ca478 docs: surface INGEST_BASELINE as a reproducibility gotcha
+- 5d1ccb9 docs: record the no-baseline mode work as todo-54
 - 6881148 fix: make the narrative layer fail closed without a corpus
 - bc379fb test: pin down no-baseline id retention explicitly
 - 9f0b3f8 refactor: make AUDITED_MODULE_FILES a default, not a hardcode
@@ -216,9 +219,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - e72fd6b docs: note that 3/3 acceptance doesn't yet show the gate has bite
 - f5c7b3a docs: give the fabrication-registry's zero a real meaning
 - 80abf68 fix: restore photo_farm's actual investigation beat from source
-- cd028c9 docs: refresh now/handoff and log the alias-migration round baseline
-- 16591b9 feat: teach the matcher instead of rejecting unrecognized aliases
-- 45f604f feat: give matchTexts a landing spot instead of nowhere
 
 ## 代码地图
 
