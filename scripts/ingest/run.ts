@@ -24,6 +24,8 @@ import { extractPages } from "../../src/ingest/pdf-source";
 import { sourceKey } from "../../src/ingest/sectionize";
 import { prepareSections, classifyAndBuild } from "../../src/ingest/pipeline";
 import { assembleModule } from "../../src/ingest/assemble-module";
+import { buildNarrative, applyNarrative, findMissingCreativeSourceRef, findRegisteredCreativeLayer } from "../../src/ingest/build-narrative";
+import { readOriginalCorpus } from "../../src/ingest/three-way-audit";
 import { diffValues, formatDiff } from "../../src/ingest/calibrate";
 import { computeIdInheritance, applySceneIdInheritance, applyItemIdInheritance, applyClueIdInheritance } from "../../src/ingest/inherit-ids";
 import { BARN_OF_PREMIER } from "../../src/module/barn-of-premier";
@@ -394,7 +396,36 @@ const assembled = assembleModule(
   { sections, kinds, scenes, items, provenance, endings },
   { id: "barn-of-premier-ingested", title: "普瑞米尔的谷仓（摄取）" },
 );
-await Bun.write(`${OUT}/module.json`, JSON.stringify(assembled.module, null, 2));
+
+// ── 创作层（todo-52，第一版：openingAtmosphere/prologue/partySetup）──
+//
+// 必须在 assembleModule() **之后**、在算完场景 diff（上面 `diffs`）
+// **之后**调用——顺序不是随便选的：diff 用的 `scenes` 变量在这之前
+// 就已经定型，从头到尾没见过 openingAtmosphere 这个字段，创作层的内容
+// 因此天然不会漏进 diff 里，不需要事后再从 diff 结果里摘掉。
+// 调换顺序（先接创作层再算 diff）会让这份隔离变成"记得手动摘"，
+// 那正是 todo-52 决策④要求避免的。
+//
+// 原文语料读取失败（tools/ 不进版本库，本地/CI 可能没有）时传 undefined，
+// `buildNarrative` 会跳过第一档并在 warnings 里说明"没查"而不是"通过"。
+client.label = "创作层";
+const corpus = readOriginalCorpus();
+const narrative = await buildNarrative(
+  {
+    title: assembled.module.title,
+    era: assembled.module.era,
+    scenes: assembled.module.scenes.map((s) => ({
+      id: s.id,
+      name: s.name,
+      description: s.description,
+      clues: s.clues.map((c) => ({ id: c.id, name: c.name, findMethods: c.findMethods })),
+    })),
+  },
+  client,
+  corpus.ok ? corpus.text : undefined,
+);
+const finalModule = applyNarrative(assembled.module, narrative);
+await Bun.write(`${OUT}/module.json`, JSON.stringify(finalModule, null, 2));
 await Bun.write(
   `${OUT}/module-gaps.txt`,
   [
@@ -513,6 +544,29 @@ await Bun.write(
     `悬空引用（item.sceneId 在生成的 scenes 里找不到）${danglingRefs.length} 个: ${danglingRefs.join("、") || "无"}`,
     `  —— 这一项没有任何 diff 能反映：refFields 把 sceneId 的差异归成 ref-mismatch，`,
     `     而那被当成预期噪音，挂错场景与挂对场景的输出长得一样。所以单独查。`,
+    "",
+    "── 创作层（todo-52：第一版，只产 openingAtmosphere/prologue/partySetup）──",
+    `原文语料: ${corpus.ok ? "已读取，第一档（禁止新造专名/术语）正常生效" : `**读取失败**（${corpus.ok ? "" : corpus.reason}），第一档本轮跳过`}`,
+    `本轮生成: ${narrative.accepted ? "**通过全部约束，已采纳**" : "**未采纳**（约束不过 / 调用失败 / 解析失败，详见下方 warnings）"}`,
+    ...(narrative.accepted
+      ? [
+          `openingAtmosphere ${narrative.openingAtmosphereByScene.size} 个场景`,
+          `prologue.lines ${narrative.prologueLines.length} 行`,
+          `partySetup: ${narrative.partySetup ? "已生成" : "未生成"}`,
+          `provenance ${narrative.provenance.length} 条，全部 by:"llm"（本模组逐字核对过原文没有对应内容，纯创作）`,
+          `创作层登记表判据: 缺 sourceRef 的集合与显式登记的集合${
+            new Set(findMissingCreativeSourceRef(narrative.provenance)).size ===
+              new Set(findRegisteredCreativeLayer(narrative.provenance)).size &&
+            findMissingCreativeSourceRef(narrative.provenance).every((p) => findRegisteredCreativeLayer(narrative.provenance).includes(p))
+              ? "精确相等，对上了"
+              : "**对不上**"
+          }`,
+          "**不产** epilogues / narrative.entities（原因见 build-narrative.ts 文件头：两者都要求引用具体的线索/场景 id，本轮 LLM 拿不到这些 id，硬编风险太高，留给下一轮）",
+        ]
+      : []),
+    "",
+    "narrative warnings:",
+    ...narrative.warnings.map((w) => `  ${w}`),
     "",
     formatDiff(diffs),
   ].join("\n"),

@@ -11,11 +11,13 @@
 import { describe, test, expect } from "bun:test";
 import {
   buildNarrative,
+  applyNarrative,
   findMissingCreativeSourceRef,
   findRegisteredCreativeLayer,
   type BuildNarrativeInput,
 } from "../ingest/build-narrative";
 import type { ChatLike } from "../ingest/infer-connections";
+import type { ModuleData } from "../module/types";
 
 function fake(reply: string): ChatLike & { calls: number; lastPrompt: string } {
   const f = {
@@ -207,5 +209,57 @@ describe("失败语义：出错就当没做，不半采纳", () => {
     const r = await buildNarrative({ title: "x", era: "1921", scenes: [] }, client, CORPUS);
     expect(r.accepted).toBe(false);
     expect(client.calls).toBe(0);
+  });
+});
+
+describe("applyNarrative —— 把创作层结果并入已装配好的模组", () => {
+  const baseModule: ModuleData = {
+    id: "m",
+    title: "普瑞米尔的谷仓",
+    version: "0.0.0",
+    ruleset: "cosmic-horror",
+    era: "1921",
+    summary: "",
+    scenes: [
+      { id: "scene_01", name: "特里坎家", description: "一栋美式小别墅。", clues: [], npcIds: [], connections: [] },
+    ],
+    npcs: [],
+    meta: { playerCount: "", expectedDuration: "", triggerWarnings: [] },
+    endings: [],
+    items: [],
+  };
+
+  test("accepted=true 时，openingAtmosphere/prologue/partySetup 都并入", async () => {
+    const narrative = await buildNarrative(
+      { title: baseModule.title, era: baseModule.era, scenes: baseModule.scenes.map((s) => ({ id: s.id, name: s.name, description: s.description, clues: [] })) },
+      fake(HAPPY_REPLY),
+      CORPUS,
+    );
+    const merged = applyNarrative(baseModule, narrative);
+    expect(merged.scenes[0]?.openingAtmosphere).toBe("院子里有个小女孩正在拍球。");
+    expect(merged.prologue?.lines).toHaveLength(2);
+    expect(merged.partySetup?.context).toEqual(["1921年，普瑞米尔镇。"]);
+    expect(merged.provenance).toHaveLength(3);
+  });
+
+  test("accepted=false 时原样返回 module，不是「部分产出」", async () => {
+    const narrative = await buildNarrative(
+      { title: baseModule.title, era: baseModule.era, scenes: baseModule.scenes.map((s) => ({ id: s.id, name: s.name, description: s.description, clues: [] })) },
+      throwingClient(),
+      CORPUS,
+    );
+    const merged = applyNarrative(baseModule, narrative);
+    expect(merged).toEqual(baseModule);
+  });
+
+  test("不修改传入的 module（函数式风格，与 build-clues.ts 等一致）", async () => {
+    const narrative = await buildNarrative(
+      { title: baseModule.title, era: baseModule.era, scenes: baseModule.scenes.map((s) => ({ id: s.id, name: s.name, description: s.description, clues: [] })) },
+      fake(HAPPY_REPLY),
+      CORPUS,
+    );
+    const before = JSON.stringify(baseModule);
+    applyNarrative(baseModule, narrative);
+    expect(JSON.stringify(baseModule)).toBe(before);
   });
 });
