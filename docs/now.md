@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-03 02:27
+> 生成于 2026-09-03 04:16
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,17 +13,12 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 349c14f feat: isolate creative-layer output from the calibration diff |
-| 测试 | 2816 条 / 183 文件  全绿 |
-| 工作树 | **6 个文件未提交** |
+| HEAD | 16591b9 feat: teach the matcher instead of rejecting unrecognized aliases |
+| 测试 | 2827 条 / 183 文件  全绿 |
+| 工作树 | **1 个文件未提交** |
 
 未提交：
-- `M docs/handoff.md`
-- `M docs/notes/index.json`
-- `M docs/notes/ingest.md`
-- `M docs/now.md`
 - `M docs/test-baseline.json`
-- `M docs/todo.json`
 
 ## 开工前
 
@@ -117,14 +112,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 16591b9 feat: teach the matcher instead of rejecting unrecognized aliases
+- 45f604f feat: give matchTexts a landing spot instead of nowhere
+- d859149 refactor: migrate hardcoded clue/scene aliases into module data
+- f8516bb docs: resolve four leftover narrative-round questions (A1-A4)
+- c506a2c docs: record the three real gate rejections and update todo-52
 - 349c14f feat: isolate creative-layer output from the calibration diff
 - a2482e0 feat: generate the pipeline's first creative-layer content (todo-52)
 - e2c7a42 docs: charter the narrative-generation round (todo-52)
-- 4cf5afe feat: extract era and part of meta from the header block
-- 0fd56fe docs: record build-clues' scope decision and leave todo-28 open
-- 5027528 docs: record build-clues' first real measurement
-- d15e558 feat: build clues from classified entries (todo-28)
-- a965497 feat: rule out server-side caching in the classify-key probe
 
 ## 找东西
 
