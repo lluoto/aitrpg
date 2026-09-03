@@ -1113,7 +1113,19 @@ function buildItems(): ModuleItem[] {
       sceneId: "police_evidence_room",
       description: "可以对照着在小镇周围找到艾德里安的农场位置。",
       type: "document",
-      revelation: "照片背面写着农场的地址坐标。",
+      // 开发·三方审计补语义 任务①：原文（section_06.txt:2-9）写的是一段
+      // 调查活动——"可以对照着在小镇周围找到一致的农场……本地调查员也
+      // 可以通过灵感知道小镇附近有类似的建筑。而后通过一个成功的导航
+      // 找到农场。导航失败的情况，调查员可以寻求本地 NPC 的帮助"，没有
+      // 任何地方写"照片背面"或"坐标"——旧版 revelation 不只是措辞
+      // 对不上，是把"拿着照片比对、本地人灵感识别/外地人导航检定失败
+      // 可求助 NPC"这一整条调查活动压缩成一句"直接给坐标"，删掉了原文
+      // 明确写出的检定环节。安全性核对过：photo_farm 是 ModuleItem，不
+      // 解锁任何 clue（ModuleItem 类型本身没有 unlocks 字段），农场位置
+      // 另有 clue_adrian_psychoanalysis → clue_adrian_farm_location 这条
+      // 路径可达，改这里不影响任何结局可达性——原文本来就写了两条通往
+      // 农场的路，这里只是把被压掉的那条按原文恢复回来。
+      revelation: "细看照片背景，能与小镇周围的地貌比对——本地调查员或许凭灵感就认出了相似地点，其他人需要通过一次成功的导航才能找到农场；导航失败时可以寻求本地 NPC 的帮助。",
     },
     {
       id: "wallet_adrian",
