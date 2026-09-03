@@ -168,7 +168,10 @@ const {
  * 无基准：不猜、不硬套——`scenes`/`items` 就是内部句柄的原样版本
  * （scene_NN/item_NN），一个 id 都不改写。这正是开发·无基准模式 任务④
  * 要求的行为：不得静默生成看起来像意译的 id，那等于凭空造第四套命名
- * 体系（现有三套见 todo-19/34）。
+ * 体系（现有三套见 todo-19/34）。回归判据见
+ * `ingest-no-baseline-ids.test.ts`——就算场景名字听起来很像基准会用的
+ * 手写意译（"艾德里安的卧室"），无基准时产出的 id 也必须严格是
+ * `scene_NN`/`item_NN` 形状，不能被巧合地"猜"成 `adrian_bedroom` 这类。
  */
 const comparison = baselineData
   ? computeBaselineComparison(baselineData, {
