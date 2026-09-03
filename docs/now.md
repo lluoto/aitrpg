@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-03 04:16
+> 生成于 2026-09-03 05:13
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,12 +13,13 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 16591b9 feat: teach the matcher instead of rejecting unrecognized aliases |
-| 测试 | 2827 条 / 183 文件  全绿 |
-| 工作树 | **1 个文件未提交** |
+| HEAD | e72fd6b docs: note that 3/3 acceptance doesn't yet show the gate has bite |
+| 测试 | 2838 条 / 184 文件  全绿 |
+| 工作树 | **2 个文件未提交** |
 
 未提交：
 - `M docs/test-baseline.json`
+- `M docs/todo.json`
 
 ## 开工前
 
@@ -72,7 +73,7 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 展示格式渗进输出契约——这是第三次（2026-09-02）
   `docs/notes/ingest.md:1746`
 
-## 动手前先扫一眼的坑（35）
+## 动手前先扫一眼的坑（36）
 
 - 改动前后各跑一次 `bun scripts/preflight.ts`。它把反复犯的几类错做成了机器判据：切割截断语义单元、搬运残渣、循环依赖、语法错。别靠记性。
 - 同一类失误连着犯到第 3 次就停手，换一双眼睛（另一个模型 review diff）。本轮机械切割边界连错 5 次才自己发现——失效模式相同的人查不出自己的系统性错误。
@@ -109,17 +110,18 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 全仓只有 1 个 ModuleData 模组（`barn-of-premier.ts`），而它同时是摄取管线的校准基准——拿它验证管线通用性等于自我验证，管线对「没见过的模组」表现如何完全没有独立证据。另外两个可加载模组（`ARKHAM_LIBRARY_MODULE`/`INNSMOUTH_MODU
 - 管线 id 体系未统一：摄取管线生成侧用 `scene_NN`/`item_NN`（按位置编号，`src/ingest/ids.ts`），手写基准用人工意译 id（如 `clue_bedroom_diary`、`maintenance_room`）。实测（`bun` 脚本扫 `src/`+`scri
 - 开发·管线继承基准 id 期间实跑管线（真实 PDF + 真实 LLM，ecnu-plus，2026-09-02）发现：`classify-sections.ts` 的块分类几乎完全解析失败——43 个块送分类，`parseClassifyResponse` 只解析出 1 条。核实过不是 token
+- 【已修复，2026-09-03】两件事：①按原文修正 `photo_farm.revelation`——原值「照片背面写着农场的地址坐标。」在 18 个原文切片里「照片背面」「地址坐标」「坐标」全部 0 命中，不只是措辞差异：原文（section_06.txt:2-9）写的是一段真实调查活动（拿照片
 
 ## 最近提交
 
+- e72fd6b docs: note that 3/3 acceptance doesn't yet show the gate has bite
+- f5c7b3a docs: give the fabrication-registry's zero a real meaning
+- 80abf68 fix: restore photo_farm's actual investigation beat from source
+- cd028c9 docs: refresh now/handoff and log the alias-migration round baseline
 - 16591b9 feat: teach the matcher instead of rejecting unrecognized aliases
 - 45f604f feat: give matchTexts a landing spot instead of nowhere
 - d859149 refactor: migrate hardcoded clue/scene aliases into module data
 - f8516bb docs: resolve four leftover narrative-round questions (A1-A4)
-- c506a2c docs: record the three real gate rejections and update todo-52
-- 349c14f feat: isolate creative-layer output from the calibration diff
-- a2482e0 feat: generate the pipeline's first creative-layer content (todo-52)
-- e2c7a42 docs: charter the narrative-generation round (todo-52)
 
 ## 找东西
 

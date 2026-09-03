@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-03 04:16  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-03 05:14  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：16591b9 feat: teach the matcher instead of rejecting unrecognized aliases  ·  **测试**：2827 条 / 183 文件，全绿（基线 2827，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：e72fd6b docs: note that 3/3 acceptance doesn't yet show the gate has bite  ·  **测试**：2838 条 / 184 文件，全绿（基线 2838，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -207,6 +207,10 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- e72fd6b docs: note that 3/3 acceptance doesn't yet show the gate has bite
+- f5c7b3a docs: give the fabrication-registry's zero a real meaning
+- 80abf68 fix: restore photo_farm's actual investigation beat from source
+- cd028c9 docs: refresh now/handoff and log the alias-migration round baseline
 - 16591b9 feat: teach the matcher instead of rejecting unrecognized aliases
 - 45f604f feat: give matchTexts a landing spot instead of nowhere
 - d859149 refactor: migrate hardcoded clue/scene aliases into module data
@@ -215,10 +219,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - 349c14f feat: isolate creative-layer output from the calibration diff
 - a2482e0 feat: generate the pipeline's first creative-layer content (todo-52)
 - e2c7a42 docs: charter the narrative-generation round (todo-52)
-- 4cf5afe feat: extract era and part of meta from the header block
-- 0fd56fe docs: record build-clues' scope decision and leave todo-28 open
-- 5027528 docs: record build-clues' first real measurement
-- d15e558 feat: build clues from classified entries (todo-28)
 
 ## 代码地图
 

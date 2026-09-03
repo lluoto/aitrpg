@@ -1,6 +1,6 @@
 {
-  "tests": 2827,
-  "files": 183,
+  "tests": 2838,
+  "files": 184,
   "unwiredMethods": 86,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -599,6 +599,11 @@
       "tests": 2827,
       "files": 183,
       "when": "开发·别名迁移轮，A/B/C/D四组，5个提交，基线2816/183推送origin后开工。A组(诊断,无新测试)：①Scene.atmosphere能否确定性切分——不能，查了weisen_bar/hospital/adrian_bedroom三个场景符合「引号框字=description,引号外段落=atmosphere」的假设，但tricam_house(两段引号外文字只有一段成了atmosphere)/newsstand(全文无引号)/police_station(有大段引号外文字但baseline没给atmosphere)三个反例排除任何机械规则,结论是编辑判断不是结构识别。②ModuleItem.revelation——确认未产且不该产,基准10个物品仅2个带此字段,old_document部分有据(原文尾段)但photo_farm的revelation在全部原文0命中是基准作者自己编的。③线索只挂7/23场景——逐条核对真实管线一次运行的item-kinds.txt与最终scenes[].clues[]，所有带名字的clue条目100%落进正确场景零丢失零错配,7/23是原文分布(多数场景无clue型条目或线索挂NPC知识里)+已有的nameless-skip政策共同解释,不是归属bug。④修narration-provenance.ts/module/types.ts/narration-provenance.test.ts共5处指向「阶段5/6」的死引用(那是另一份规划自己的阶段号,todo-28/48/51/52四轮都不叫这个名字,查过后确认从写下那天起就是死链)。B组(重构,行为不变)：Clue加matchTexts?(types.ts)/MythosModule加sceneAliases?(mythos-module.ts,照抄sceneBgm范式)；clue_final_brain_jars四个别名(培养缸/玻璃缸/一大一小/营养液)迁入barn-of-premier.ts自己的matchTexts,维修室迁入premiers_barn.ts的sceneAliases[维修间]；game-session.ts删除BARN_CLUE_MATCH_ALIASES静态表+if(r.id是维修间)分支,bridgeBarnOfPremierClues改读clue.matchTexts,场景别名合并改读mod.sceneAliases(追加不覆盖)；变异检验:清空两处迁移后数据(不改引擎代码)，barn-of-premier-clue-bridge/narrative-vocabulary-registry/game-session-run-harness/scene-resolve四文件9条测试精确变红,证明判据测的是数据不是已删的静态表；todo-19特例计数6->4(两张别名表消失,4条mod.id分支不变仍open)。C组：build-clues.ts明确不产matchTexts(同findMethods/unlocks纪律,报warning不静默)；clueCandidatesForScene/NarrativeSceneInput/scripts/ingest/run.ts穿线matchTexts到候选池读侧,5个新测试。D组(核心)：narrative-guard.ts的findUnresolvedObjectMentions换成evaluateObjectMentionClaims,第二档从「拒绝」改「学会」——三条确定性条件(a线索真实存在/b加入候选池后decideClueMatch唯一命中/c不出现在同场景其它线索name+description+findMethods文本里,是「过泛」的可检测代理,订正了立项时想错的「跨场景污染」说法)全过就自动接纳别名写回Clue.matchTexts,不过只丢该条声明所在的那一段生成文本(字段级粒度,不再牵连整批,第一档/checkNarrationText仍是整批级)；能力边界如实写进注释(无法验证称呼是否真的在描述该线索,代价是轻度玩法错误不是伪造事实)；与narrative-vocabulary-registry.ts明确无关系(那张表管手写固定数据,这里管每次都不同的动态摄取产物)；三条件各自的红绿变异检验齐全。真实管线重跑三轮(真实PDF+真实LLM ecnu-plus,同一天)：3/3采纳(第一版实测0/3)，至少两轮真触发学会路径(item_27被声明「门口那具睁着眼的尸体」/「门口的尸体」两次复述性称呼,均被接纳写入matchTexts)，如实记录样本量小(3轮2轮触发)不当通过率引用,隔离校准依旧成立(三轮changed 79/missing 78不变)。全仓确认无BARN_CLUE_MATCH_ALIASES/if(r.id是维修间)残留(仅注释提及历史)。回归：三方审计/实体审计/叙事词登记表/32态退役/True End scene-id-bridge全绿(162测试单独重跑确认)。typecheck 0；bun test 2816->2827（+11，183文件不变）；preflight 12/12。"
+    },
+    {
+      "tests": 2838,
+      "files": 184,
+      "when": "开发·三方审计补语义，4个提交(todo-53)，基线2827/183推送后开工。①修photo_farm.revelation：原「照片背面写着农场的地址坐标」在18个原文切片0命中，原文(section_06.txt:2-9)写的是拿照片对照小镇周围地貌+灵感/导航检定+失败可求助本地NPC的调查活动，旧版删掉了整条活动直接给编造坐标；安全性核对(ModuleItem无unlocks字段，农场位置另有独立路径可达)后按原文改写，验证旧词0命中/新词全部命中。②新增src/ingest/confirmed-fabrication-log.ts机器可读存档，记录FABRICATION_REGISTRY长期读0期间实际漏过的三条真实臆造(True End「但她知道，米-戈欺骗了他们所有人」语义矛盾a0fd9f9已修/mythos-module.ts艾德里安secrets「意识到被米-戈欺骗」方向写反34dbcad已修/photo_farm编造机制本轮①已修)，每条记臆造原文+位置+发现方式+工具盲点原因+修复commit；判据对每条断言不再逐字出现在挂靠模组数据里，三条各自单独变异检验(不只验一条)，另有负面确认测例证明能力边界真实存在(同义改写换措辞不会被抓到)；three-way-audit.ts能力边界注释同步扩写指向这份存档。③notes记一句：上一轮3/3拒绝证明门禁会咬，这一轮3/3采纳证明learn机制按设计工作，但两个极端都不提供判别信息，后续实跑要留意narrative warnings是否曾经非空，长期0拒绝需要主动构造已知失败声明验证判据没有形同虚设。④todo-53记录+now/handoff/test-baseline刷新。回归：三方审计/实体审计/叙事词登记表/32态退役/True End scene-id-bridge/npc-secret-truth-consistency全绿。typecheck 0；bun test 2827->2838（+11，183->184文件）；preflight 12/12。"
     }
   ]
 }
