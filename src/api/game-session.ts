@@ -3094,10 +3094,15 @@ export class GameSession {
    * 是同一个引用（见该字段的说明），直接调用（测试里那样，不经过 act()）时
    * this._turnMessages 为 null，补丁自然跳过，不影响任何既有测试。
    *
-   * ⚠ 已知缺口：这只对**存储的历史**（GET /history）生效。live 的 WS 广播
-   * （ws-handler.ts 的 broadcastToSession）不按玩家过滤，server.ts 把完整
-   * narrative 广播给该 session 全部连接——线索私密目前只在"回看历史"这个
-   * 维度成立，不是"实时全程保密"。这是 L6/L7b 的正题，本轮不碰。
+   * 【已修复，开发·多人可见性 N6，todo-25】此前这里只对**存储的历史**
+   * （GET /history）生效——live 的 WS 广播（ws-handler.ts 的
+   * broadcastToSession）不按玩家过滤，server.ts 把完整 narrative 广播给
+   * 该 session 全部连接，线索私密只在"回看历史"这个维度成立，不是
+   * "实时全程保密"。现在 server.ts 的 `broadcastActionResult` 按连接
+   * 分别算该发什么，player 连接只发 `getPlayerHistory(pcId)` 这一回合
+   * 新增的部分——复用这里同一份可见性判定（存储层过滤的结果），WS 这
+   * 条路口径与 GET /history 一致了。见
+   * ws-broadcast-per-player-visibility.test.ts。
    *
    * 检定失败时补一条骰子播报（🎲 …d100=…→失败），格式与通用检定路
    * （handleSkillCheck 的裸检定分支）一致——此前线索路 resolve/fallback/

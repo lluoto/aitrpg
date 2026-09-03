@@ -8,7 +8,7 @@ import { loadConfig } from "../config";
 import { saveSessionMeta, deleteSessionFile, listStoredSessions } from "./session-store";
 import { saveCharacter, listCharacters, type StoredCharacter } from "./character-store";
 import type { MessageType } from "../agent/types";
-import { createWsClient, removeWsClient, broadcastToSession, wsStats, isWsRole, type WsRole, type WsConnectionData } from "./ws-handler";
+import { createWsClient, removeWsClient, broadcastToSession, broadcastPerConnection, listSessionPlayerIds, wsStats, isWsRole, type WsRole, type WsConnectionData } from "./ws-handler";
 import { listSavedModules, loadModuleFile, saveModuleFile, deleteModuleFile, parseMythosModule } from "./module-editor";
 import { CharacterFactory } from "../character/character-factory";
 import { createScriptedSession, getScriptedSession } from "./scripted-session";
@@ -462,6 +462,14 @@ async function handleRequest(req: Request): Promise<Response> {
     // POST /api/sessions/:id/action — 核心：玩家输入
     if (method === "POST" && segments[3] === "action") {
       const body = await readJsonBody(req);
+      // 广播前先拍一次"现在连着的每个玩家历史有多长"——act() 会把这
+      // 回合的消息按可见性 push 进各自的 messageHistory，之后用这份
+      // 快照切出"这一回合新增了什么"（见 broadcastActionResult）。
+      // 必须在 runAction 之前拍，等它跑完历史已经变长，就切不出新增段了。
+      const priorCounts = new Map<string, number>();
+      for (const pid of listSessionPlayerIds(sessionId)) {
+        if (session.session.get(pid)) priorCounts.set(pid, session.getPlayerHistory(pid).total);
+      }
       const result = await runAction(session, body);
       if (result.status !== 200) return respondJson(result.body, result.status);
       const ar = result.body as unknown as ActionResponse;
@@ -470,14 +478,7 @@ async function handleRequest(req: Request): Promise<Response> {
         round: ar.state?.round,
         scene: ar.state?.scene,
       });
-      broadcastToSession(sessionId, "action-result", {
-        narrative: ar.narrative,
-        events: ar.events,
-        state: ar.state,
-        dead: ar.dead,
-        sanity: ar.sanity,
-        dice: ar.dice,
-      });
+      broadcastActionResult(sessionId, session, priorCounts, ar);
       return respondJson({
         ...ar,
         summary: session.getSummary(),
@@ -828,6 +829,55 @@ export async function runAction(
     return { status: 404, body: { code: result.error.code, targetId: result.error.targetId } };
   }
   return { status: 200, body: { ...result, summary: session.getSummary() } };
+}
+
+/**
+ * 广播一次 action 的结果——按连接分别算该发什么，不是发一份 msg 给
+ * session 里所有连接（那正是 todo-25 的漏洞：存储层按玩家过滤，
+ * 推送层原先不过滤）。
+ *
+ * KP/observer 连接：与改动前行为一致，收完整的 ar（KP 本来就该知道
+ * 一切，`PlayerSession.push` 的注释里写的是同一条纪律——KP 记录全局
+ * 日志）。
+ *
+ * player 连接：只发"这一回合里，这个 pcId 的 messageHistory 新增了
+ * 什么"——直接读 `session.getPlayerHistory(pcId)`，这正是 GET
+ * /history?pcId= 已经在用、且被 clue-visibility-and-per-player-history
+ * .test.ts 验证过的同一条存储层过滤路径，不重新判定一次可见性。
+ * `priorCounts` 是调用方在 `session.act()` 之前拍的快照（此后这个
+ * pcId 的历史只会变长，slice 那一段就是这一回合新增的）；没有新增
+ * 内容（比如这回合的可见结果只发给了另一个 pcId）时返回 undefined，
+ * 这个连接本轮完全不收到东西，不是收一个空 narrative。
+ *
+ * playerId 未知/连接没声明 playerId：fail-closed，不发——不能因为
+ * "不知道该给他看哪部分"就干脆给他看全部。
+ */
+export function broadcastActionResult(
+  sessionId: string,
+  session: GameSession,
+  priorCounts: Map<string, number>,
+  ar: ActionResponse,
+): void {
+  broadcastPerConnection(sessionId, "action-result", (client) => {
+    if (client.role === "kp" || client.role === "observer") {
+      return { narrative: ar.narrative, events: ar.events, state: ar.state, dead: ar.dead, sanity: ar.sanity, dice: ar.dice };
+    }
+    // role === "player"
+    if (!client.playerId || !session.session.get(client.playerId)) return undefined;
+    const before = priorCounts.get(client.playerId) ?? 0;
+    const fresh = session.getPlayerHistory(client.playerId).messages.slice(before);
+    if (fresh.length === 0) return undefined;
+    return {
+      narrative: fresh.map((m: any) => m.content as string).join("\n"),
+      events: fresh.map((m: any) => ({
+        speaker: m.speaker as string,
+        content: m.content as string,
+        type: m.type as MessageType,
+        ...(m.verbatim ? { verbatim: true as const } : {}),
+      })),
+      state: ar.state, dead: ar.dead, sanity: ar.sanity, dice: ar.dice,
+    };
+  });
 }
 
 /**
