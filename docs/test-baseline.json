@@ -1,6 +1,6 @@
 {
-  "tests": 2838,
-  "files": 184,
+  "tests": 2879,
+  "files": 187,
   "unwiredMethods": 86,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -604,6 +604,11 @@
       "tests": 2838,
       "files": 184,
       "when": "开发·三方审计补语义，4个提交(todo-53)，基线2827/183推送后开工。①修photo_farm.revelation：原「照片背面写着农场的地址坐标」在18个原文切片0命中，原文(section_06.txt:2-9)写的是拿照片对照小镇周围地貌+灵感/导航检定+失败可求助本地NPC的调查活动，旧版删掉了整条活动直接给编造坐标；安全性核对(ModuleItem无unlocks字段，农场位置另有独立路径可达)后按原文改写，验证旧词0命中/新词全部命中。②新增src/ingest/confirmed-fabrication-log.ts机器可读存档，记录FABRICATION_REGISTRY长期读0期间实际漏过的三条真实臆造(True End「但她知道，米-戈欺骗了他们所有人」语义矛盾a0fd9f9已修/mythos-module.ts艾德里安secrets「意识到被米-戈欺骗」方向写反34dbcad已修/photo_farm编造机制本轮①已修)，每条记臆造原文+位置+发现方式+工具盲点原因+修复commit；判据对每条断言不再逐字出现在挂靠模组数据里，三条各自单独变异检验(不只验一条)，另有负面确认测例证明能力边界真实存在(同义改写换措辞不会被抓到)；three-way-audit.ts能力边界注释同步扩写指向这份存档。③notes记一句：上一轮3/3拒绝证明门禁会咬，这一轮3/3采纳证明learn机制按设计工作，但两个极端都不提供判别信息，后续实跑要留意narrative warnings是否曾经非空，长期0拒绝需要主动构造已知失败声明验证判据没有形同虚设。④todo-53记录+now/handoff/test-baseline刷新。回归：三方审计/实体审计/叙事词登记表/32态退役/True End scene-id-bridge/npc-secret-truth-consistency全绿。typecheck 0；bun test 2827->2838（+11，183->184文件）；preflight 12/12。"
+    },
+    {
+      "tests": 2879,
+      "files": 187,
+      "when": "开发·N4 prompt：无基准模式，5个提交(todo-54)，基线2838/184推送后开工。摄取管线原假设BARN_OF_PREMIER永远存在，拆掉这条硬编码为将来接入第二本模组做准备。①覆盖率/精确率/评分键/id继承/calibrate diff 抽到 src/ingest/baseline-comparison.ts（computeBaselineComparison，只认BaselineData形状）+ src/ingest/ingest-report.ts（buildIngestReport，依赖基准的小节要么给真实数字要么给「无基准，跳过」），run.ts 新增 INGEST_BASELINE 环境变量显式选择是否对照谷仓基准；变异检验：临时删掉某处 if(ctx.comparison) 直接访问字段，判据从绿变红，已还原。②三方审计语料从硬编码谷仓切片改为本次摄取自己解出的PDF页文本（buildCorpusFromPages），切片语料仍读出来做一次真实比较（compareCorpusSources，不假设一定等价），实跑确认归一化后逐字一致。③AUDITED_MODULE_FILES 从写死常量降级为默认参数（readAuditedModuleSources），可传别的文件列表审计别的模组。④无基准时id继承整段跳过（scenes/items直接用内部句柄scene_NN/item_NN），新增回归测试防止巧合生成意译风格id。⑤创作层无语料时从「跳过第一档但照样生成」改为fail-closed（accepted:false），检查放在调用LLM之前不浪费一次注定被拒绝的调用，与readOriginalCorpus()「任一切片缺失则整体不可用」同一立场。真实回归（真实PDF + INGEST_BASELINE=barn）：changed 79/missing 78/extra 29~30、块分类 structure 6/scene 23/npc 4/item 3/rule 7 逐位不变，本轮加的是新路径没改旧路径。"
     }
   ]
 }

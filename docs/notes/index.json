@@ -19,7 +19,7 @@
       "id": "ingest",
       "name": "模组摄取",
       "file": "docs/notes/ingest.md",
-      "count": 52
+      "count": 53
     },
     {
       "id": "rules",
@@ -930,6 +930,17 @@
       "line": 2051,
       "lines": 91,
       "summary": "B/C 组给别名开了数据层的落点（`Clue.matchTexts`）之后，第二档判据"
+    },
+    {
+      "id": "ingest-53",
+      "title": "无基准模式（开发·N4，2026-09-03，todo-54）",
+      "date": "2026-09-03",
+      "status": "note",
+      "group": "ingest",
+      "file": "docs/notes/ingest.md",
+      "line": 2142,
+      "lines": 43,
+      "summary": "管线原来假设 `BARN_OF_PREMIER` 永远存在——覆盖率/精确率/评分键/id"
     },
     {
       "id": "rules-01",
