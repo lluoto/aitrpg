@@ -58,7 +58,9 @@ const ruleEngine = new RuleEngine(); // D&D 保留兼容
 const rules = new RulesEngine();      // 统一路由
 const world = new WorldStateManager();
 const npcCombat = new NPCCombatEngine();
-const session = new PlayerSession();
+// 权威场景来源闭包过 world——PlayerSession 自己不再存一份会漂移的
+// 场景拷贝（开发·多人可见性 N6，todo-24），见该类构造函数注释。
+const session = new PlayerSession((characterId) => world.getCurrentState().entities[characterId]?.position);
 // 挂 world：线索发现落真相源，不是引擎自己的进程内 Map——
 // 见 InvestigationEngine 构造函数与 markDiscovered 的注释。
 const investigation = new InvestigationEngine("./src/rules/investigation.yaml", world);
@@ -134,9 +136,9 @@ let activeRuleset = "dnd5e";
 // 当前激活的小说上下文（用于世界模型路由）
 let activeNovel = "";
 
-// 默认玩家（使用模组第一个场景）
-const firstSceneId = BARN_OF_PREMIER.scenes[0]?.id ?? "unknown";
-session.join("p1", "调查员", "player", firstSceneId);
+// 默认玩家——初始场景不再由这里指定：场景是权威来源（world 里的实体
+// position）说了算，见 PlayerSession 构造函数的 sceneOf 注释。
+session.join("p1", "调查员", "player");
 
 // NPC 持久化数据库
 const npcStore = new NPCStore();
@@ -1293,14 +1295,14 @@ async function main() {
       console.log(`\n  👥 玩家列表 (${session.count}):`);
       for (const p of session.getAll()) {
         const marker = p.name === session.getActive()?.name ? " ◀ 当前" : "";
-        console.log(`    ${p.name} → ${p.characterName} [场景: ${p.currentScene}]${marker}`);
+        console.log(`    ${p.name} → ${p.characterName} [场景: ${session.getPlayerScene(p.name) ?? "未知"}]${marker}`);
       }
       rl.prompt(); continue;
     }
     if (input.startsWith("/join ")) {
       const name = input.slice(6).trim();
       try {
-        session.join(name, name, `player_${name}`, INITIAL_SCENE);
+        session.join(name, name, `player_${name}`);
         // 在世界状态中注册新玩家实体
         world.upsertEntity({
           id: `player_${name}`, name, type: "pc", hp: 12, maxHp: 12, ac: 12, status: [],

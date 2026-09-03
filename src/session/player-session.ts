@@ -25,8 +25,6 @@ interface PlayerSlot {
   messageHistory: AgentMessage[];
   /** 此玩家当前已知的线索/秘密 */
   knownSecrets: Set<string>;
-  /** 此玩家当前所在场景 */
-  currentScene: string;
 }
 
 // ============================================================
@@ -39,12 +37,28 @@ export class PlayerSession {
   /** 全局消息日志（所有消息，未过滤） */
   private globalMessages: AgentMessage[] = [];
 
+  /**
+   * 权威场景来源——按 `characterId`（对应 WorldStateManager 的 entity id）
+   * 查"这个人现在在哪"。
+   *
+   * 开发·多人可见性 N6，todo-24：此前这里自己存一份 `PlayerSlot.currentScene`，
+   * 只在 `join()` 时写一次，之后唯一能更新它的 `setPlayerScene` 全仓零调用方——
+   * 玩家实际移动后这份拷贝再也不会跟着变，`scene_restricted` 可见性判定与
+   * `getPlayersInScene()` 因此永远读到入场时的旧场景。真正权威、且真的会
+   * 随移动更新的场景数据本来就存在（`WorldEntity.position`，GameSession.
+   * movePlayerToScene() 等每次玩家移动都会 `world.upsertEntity` 写回这里），
+   * 与其在 PlayerSession 里再存一份必然漂移的拷贝，不如直接问权威来源——
+   * 两个构造方（GameSession/index.ts）在创建 PlayerSession 时都已经有自己
+   * 的 WorldStateManager，能把查询闭包过来。
+   */
+  constructor(private readonly sceneOf: (characterId: string) => string | undefined) {}
+
   // ==========================================================
   // 玩家管理
   // ==========================================================
 
   /** 加入游戏 */
-  join(name: string, characterName: string, characterId: string, startingScene: string): PlayerSlot {
+  join(name: string, characterName: string, characterId: string): PlayerSlot {
     if (this.players.has(name)) {
       throw new Error(`玩家 "${name}" 已存在`);
     }
@@ -55,7 +69,6 @@ export class PlayerSession {
       joinedAt: Date.now(),
       messageHistory: [],
       knownSecrets: new Set(),
-      currentScene: startingScene,
     };
     this.players.set(name, slot);
     if (!this.activePlayerName) this.activePlayerName = name;
@@ -136,10 +149,12 @@ export class PlayerSession {
         break;
 
       case "scene_restricted": {
-        // 简化：所有同场景的玩家可见
-        const activeScene = this.getActive()?.currentScene ?? "";
+        // 简化：所有同场景的玩家可见——场景本身按 characterId 问权威来源
+        // （this.sceneOf），不再读一份自己存的、不会跟着移动更新的拷贝。
+        const active = this.getActive();
+        const activeScene = (active && this.sceneOf(active.characterId)) ?? "";
         for (const player of this.players.values()) {
-          if (player.currentScene === activeScene) {
+          if (this.sceneOf(player.characterId) === activeScene) {
             player.messageHistory.push(stamped);
           }
         }
@@ -233,14 +248,14 @@ export class PlayerSession {
   // 场景同步
   // ==========================================================
 
-  /** 玩家切换场景 */
-  setPlayerScene(playerName: string, sceneId: string) {
+  /** 玩家当前所在场景——问权威来源（this.sceneOf），不存自己的拷贝。 */
+  getPlayerScene(playerName: string): string | undefined {
     const player = this.players.get(playerName);
-    if (player) player.currentScene = sceneId;
+    return player ? this.sceneOf(player.characterId) : undefined;
   }
 
   /** 获取同场景的其他玩家 */
   getPlayersInScene(sceneId: string): PlayerSlot[] {
-    return this.getAll().filter((p) => p.currentScene === sceneId);
+    return this.getAll().filter((p) => this.sceneOf(p.characterId) === sceneId);
   }
 }

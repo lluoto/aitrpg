@@ -438,8 +438,10 @@ export class GameSession {
 
     this.ruleEngine = new RuleEngine();
     this.rules = new RulesEngine();
-    this.session = new PlayerSession();
     this.world = new WorldStateManager(`:memory:`);
+    // 权威场景来源闭包过 this.world——PlayerSession 自己不再存一份会
+    // 漂移的场景拷贝（开发·多人可见性 N6，todo-24），见该类构造函数注释。
+    this.session = new PlayerSession((characterId) => this.world.getCurrentState().entities[characterId]?.position);
     this.npcCombat = new NPCCombatEngine();
     this.companionManager = new CompanionManager();
     this.politicoEconomy = new PoliticoEconomyEngine();
@@ -508,7 +510,7 @@ export class GameSession {
       this.persistSanity("p1");
       if (!this.session.getActive()) {
         try {
-          this.session.join("p1", characterName ?? "调查员", "p1", "");
+          this.session.join("p1", characterName ?? "调查员", "p1");
         } catch { /* 已存在则忽略 */ }
       } else {
         this.session.switchActive("p1");
@@ -674,7 +676,7 @@ export class GameSession {
     // 保证唯一/或走"重建同一个 pcId"的路径，所以这里的 has 检查已经够）。
     if (!this.session.get(pcId)) {
       try {
-        this.session.join(pcId, sheet?.name ?? "调查员", pcId, this.world.getCurrentState().scene ?? "unknown");
+        this.session.join(pcId, sheet?.name ?? "调查员", pcId);
       } catch { /* 理论上不会发生：上面刚判过不存在 */ }
     } else {
       this.session.switchActive(pcId);
