@@ -470,8 +470,8 @@ export interface EndNarration {
    * 可选字段，不强制要求全部条目都填：本阶段只对"新增/修改的叙事文本"
    * 生效（写判据用 src/ingest/narration-provenance.ts 的显式登记名单，
    * 名单外缺失才算数），不是把 module/types.ts:44 那个从未真正启用过的
-   * ModuleData.provenance? 顺手全量补齐——那是阶段5/6 的范围，也不该
-   * 用"反正字段是可选的所以不填也行"当借口不了了之。
+   * ModuleData.provenance? 顺手全量补齐——全模组出处补全至今没有专门
+   * 一轮做，也不该用"反正字段是可选的所以不填也行"当借口不了了之。
    */
   sourceRef?: string;
 }

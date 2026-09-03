@@ -19,7 +19,7 @@
       "id": "ingest",
       "name": "模组摄取",
       "file": "docs/notes/ingest.md",
-      "count": 50
+      "count": 51
     },
     {
       "id": "rules",
@@ -897,6 +897,17 @@
       "line": 1902,
       "lines": 65,
       "summary": "todo-52 立项之后的实现轮：新增 `src/ingest/build-narrative.ts` +"
+    },
+    {
+      "id": "ingest-51",
+      "title": "A 组：四项遗留问题逐条查清，不留\"待定\"（2026-09-03）",
+      "date": "2026-09-03",
+      "status": "note",
+      "group": "ingest",
+      "file": "docs/notes/ingest.md",
+      "line": 1967,
+      "lines": 84,
+      "summary": "叙事层收尾之后还剩四个没有明确答案的问题，逐条查证据、给答案——"
     },
     {
       "id": "rules-01",

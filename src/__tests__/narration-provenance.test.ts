@@ -2,7 +2,7 @@
 //
 // module/types.ts:44 的 ModuleData.provenance? 从未真正启用过——保护
 // 写在类型里，没有任何数据填过、没有任何判据查过。本文件不追溯全模组
-// （那是阶段5/6 的范围），只钉住这一件事：本轮新增/修改的两条结局
+// （全模组出处补全至今没有专门一轮做），只钉住这一件事：本轮新增/修改的两条结局
 // 文案（True End、near_truth）必须带 sourceRef；没核对过的旧条目显式
 // 登记在 UNREVIEWED_NARRATION_REGISTRY 里，不是悄悄放行。
 //
