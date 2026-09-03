@@ -479,6 +479,13 @@
       "severity": "warn",
       "status": "done",
       "text": "【已修复，2026-09-03】`scripts/ingest/run.ts` 原来假设 `BARN_OF_PREMIER` 永远存在——覆盖率/精确率/评分键/id 继承/calibrate diff 全部直接读这一个模块级常量，跑一本没有基准的新 PDF 时要么硬套一个不相干的基准（诊断信息全是噪音），要么直接崩。5 个提交（①~⑤）：①覆盖率等计算抽到 `src/ingest/baseline-comparison.ts`（纯函数 `computeBaselineComparison`，只认 `BaselineData` 这个形状，不认任何具体模组常量），报告组装抽到 `src/ingest/ingest-report.ts`（`buildIngestReport`，每个依赖基准的小节要么给真实数字，要么给明确的「无基准，跳过」，不是静默不打印那一节）；`run.ts` 现在要显式设 `INGEST_BASELINE=barn` 才对照 `BARN_OF_PREMIER`，不设就走无基准路径。变异检验：把某一节的 `if (ctx.comparison)` 判断临时删掉、直接访问字段，判据立刻从绿变红（`TypeError: Cannot destructure property 'keyLhs' from null or undefined value`），验证完已改回来。②三方审计的语料从硬编码的谷仓专属切片（`tools/modules/raw/`）改成这次摄取自己解码出的 PDF 页文本（`buildCorpusFromPages`），对任意 PDF 都能用；切片语料仍然读出来做一次真实比较（`compareCorpusSources`，不假设一定等价），真实管线实跑确认「与仓库切片语料归一化后逐字一致」。③`AUDITED_MODULE_FILES`（三方审计覆盖的文件名单）从写死的常量降级成默认参数（`readAuditedModuleSources(files = AUDITED_MODULE_FILES)`），传别的文件列表就能审计别的模组。④无基准时 id 继承的行为——`scenes`/`items` 直接用管线产出的内部句柄（`scene_NN`/`item_NN`），不做任何继承尝试，专门测过场景名字听起来很像基准会用的手写意译（如「艾德里安的卧室」）时也不会被巧合地猜成 `adrian_bedroom` 这类形状。⑤创作层无语料时 fail-closed——从「跳过第一档但照样生成」改成「直接拒绝生成」，检查放在调用 LLM 之前，不浪费一次注定要被拒绝的调用，与 `readOriginalCorpus()` 本身「任一切片缺失则整体不可用」同一个立场。真实回归（真实 PDF + `INGEST_BASELINE=barn`）：`changed 79 / missing 78 / extra 29~30`、块分类 `structure 6 / scene 23 / npc 4 / item 3 / rule 7` 与本轮改动前逐位不变——本轮加的是一条新路径，没有改旧路径。无基准模式真实跑通：产出 `module.json` + 结构性统计（场景/物品/线索/NPC 计数）+ 悬空引用检查，`report.txt` 里每一处依赖基准的小节都能读到「无基准，跳过」。**无基准模式不能给出任何准确率/覆盖率/精确率数字**——这不是 bug，是没有 ground truth 时唯一诚实的状态，下一个人看到新模组的报告里这些数字缺失时不该当成摄取管线出错了。详见 `docs/notes/ingest.md`「无基准模式（开发·N4，2026-09-03，todo-54）」条目。"
+    },
+    {
+      "id": "todo-55",
+      "category": "摄取管线缺陷",
+      "severity": "warn",
+      "status": "by-design",
+      "text": "⚠ 复现本仓公布的摄取准确率数字，必须显式设 `INGEST_BASELINE=barn`——不设这个环境变量，`scripts/ingest/run.ts`（todo-54 起）默认走无基准模式，`report.txt` 里每一处依赖基准的小节都会显示「无基准，跳过」，块分类命中 20/误报 3/漏报 0、线索覆盖 12/21 精确率 11/15、`changed 79/missing 78/extra 30` 这些数字全部不会出现，光看这份报告会误以为管线坏了或者退化了——它没有，只是没设那一个环境变量而已，这是设计使然（todo-54 的 fail-closed 立场：宁可明说「无基准，跳过」，不猜一个不相干的基准去凑数字）。见 `scripts/ingest/run.ts:18/30`（`INGEST_BASELINE` 的定义与读取点）、`docs/notes/ingest.md`「无基准模式（开发·N4，2026-09-03，todo-54）」条目「回归红线」一段。"
     }
   ]
 }

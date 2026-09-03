@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-03 07:29
+> 生成于 2026-09-03 07:58
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,15 +13,12 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 6881148 fix: make the narrative layer fail closed without a corpus |
+| HEAD | 5d1ccb9 docs: record the no-baseline mode work as todo-54 |
 | 测试 | 2879 条 / 187 文件  全绿 |
-| 工作树 | **5 个文件未提交** |
+| 工作树 | **2 个文件未提交** |
 
 未提交：
-- `M docs/handoff.md`
-- `M docs/notes/ingest.md`
 - `M docs/now.md`
-- `M docs/test-baseline.json`
 - `M docs/todo.json`
 
 ## 开工前
@@ -76,7 +73,7 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 展示格式渗进输出契约——这是第三次（2026-09-02）
   `docs/notes/ingest.md:1746`
 
-## 动手前先扫一眼的坑（37）
+## 动手前先扫一眼的坑（38）
 
 - 改动前后各跑一次 `bun scripts/preflight.ts`。它把反复犯的几类错做成了机器判据：切割截断语义单元、搬运残渣、循环依赖、语法错。别靠记性。
 - 同一类失误连着犯到第 3 次就停手，换一双眼睛（另一个模型 review diff）。本轮机械切割边界连错 5 次才自己发现——失效模式相同的人查不出自己的系统性错误。
@@ -115,9 +112,11 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 开发·管线继承基准 id 期间实跑管线（真实 PDF + 真实 LLM，ecnu-plus，2026-09-02）发现：`classify-sections.ts` 的块分类几乎完全解析失败——43 个块送分类，`parseClassifyResponse` 只解析出 1 条。核实过不是 token
 - 【已修复，2026-09-03】两件事：①按原文修正 `photo_farm.revelation`——原值「照片背面写着农场的地址坐标。」在 18 个原文切片里「照片背面」「地址坐标」「坐标」全部 0 命中，不只是措辞差异：原文（section_06.txt:2-9）写的是一段真实调查活动（拿照片
 - 【已修复，2026-09-03】`scripts/ingest/run.ts` 原来假设 `BARN_OF_PREMIER` 永远存在——覆盖率/精确率/评分键/id 继承/calibrate diff 全部直接读这一个模块级常量，跑一本没有基准的新 PDF 时要么硬套一个不相干的基准（诊断信息全是
+- ⚠ 复现本仓公布的摄取准确率数字，必须显式设 `INGEST_BASELINE=barn`——不设这个环境变量，`scripts/ingest/run.ts`（todo-54 起）默认走无基准模式，`report.txt` 里每一处依赖基准的小节都会显示「无基准，跳过」，块分类命中 20/误报 3/
 
 ## 最近提交
 
+- 5d1ccb9 docs: record the no-baseline mode work as todo-54
 - 6881148 fix: make the narrative layer fail closed without a corpus
 - bc379fb test: pin down no-baseline id retention explicitly
 - 9f0b3f8 refactor: make AUDITED_MODULE_FILES a default, not a hardcode
@@ -125,7 +124,6 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - c32c900 feat: run the ingest pipeline without a baseline module
 - fd2660c docs: log todo-53 and refresh now/handoff for this round
 - e72fd6b docs: note that 3/3 acceptance doesn't yet show the gate has bite
-- f5c7b3a docs: give the fabrication-registry's zero a real meaning
 
 ## 找东西
 
