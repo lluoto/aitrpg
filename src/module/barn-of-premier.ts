@@ -802,6 +802,17 @@ function buildScenes(): Scene[] {
       unlocks: [],
       found: false,
       importance: "core",
+      // 开发·真相链路 任务①（迁移自 game-session.ts 曾经的
+      // BARN_CLUE_MATCH_ALIASES，本轮改为数据层，不再是引擎侧的硬编码
+      // 特例表）：True End 第3行、near_truth 第1行、ENCOUNTER_NARRATIONS
+      // 三处反复用「培养缸」/「一大一小」称呼这两个缸中脑，「营养液」在
+      // True End/这条线索自己的 description/mythos-module.ts 艾米丽
+      // secrets 里都用来描述生存介质。只登记这几个已核实在叙事里真的
+      // 出现过的词，不做成通用机制批量扩别名——同一份克制。「设备」/
+      // 「容器」这类过泛的词不收：它们不是这两个缸中脑专属的称呼，收进来
+      // 会在场景内其它线索（clue_final_workbench/pipe/coffin）身上制造
+      // 新的歧义，不是修复。
+      matchTexts: ["培养缸", "玻璃缸", "一大一小", "营养液"],
     },
     {
       id: "clue_final_pipe",

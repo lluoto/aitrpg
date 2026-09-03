@@ -303,6 +303,25 @@ export interface Clue {
    * 引擎在 discoverClue 时写入，LLM 旁白随后可读取该事实。
    */
   setStateVar?: { key: string; value: boolean | string };
+  /**
+   * 额外的可命中称呼——运行时 `decideClueMatch`/`matchTexts` 用的候选
+   * 文本默认是 `[name, ...findMethods[].description]`（见
+   * `game-session.ts` 的 `bridgeBarnOfPremierClues`），但叙事文本
+   * 有时会用另一个词称呼同一条线索（"培养缸"称呼"母女的缸中脑"），
+   * 玩家读完叙事会用叙事教的那个词，不是线索的正式展示名——这是
+   * "引擎教了玩家一个自己不认识的词"这个模式（`docs/notes/engine.md`）
+   * 在线索匹配这一侧的入口，与 `MythosModule.sceneAliases` 是同一件
+   * 事在两种载体（线索/场景）上的对应字段。
+   *
+   * ⚠ 不要塞进 `findMethods[].description`——那个字段说的是"怎么找到
+   * 它"（给玩家的检定提示），不是"它叫什么"，语义不同且已经有别的
+   * 消费方在读它当提示文案，混进别称会污染那份提示。
+   *
+   * `build-clues.ts` 不产这个字段——原文没有结构标记能确定性判断"这个
+   * 词也能指代这条线索"，抽了就是猜；只由约束②b 通过的生成内容写入
+   * （见 `build-narrative.ts`），或者像 `barn-of-premier.ts` 这样手写。
+   */
+  matchTexts?: string[];
 }
 
 /** 寻找线索的方法 */

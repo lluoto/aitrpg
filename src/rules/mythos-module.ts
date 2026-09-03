@@ -192,6 +192,20 @@ export interface MythosModule {
    * 缺省或找不到对应音频时前端静默不放，不影响任何叙事流程。
    */
   sceneBgm?: Record<string, string>;
+  /**
+   * 场景别名映射（场景 id → 玩家可能用来指代它的别的说法）。
+   *
+   * 背景：`registerScene(sid, sid, ...)` 只登记场景自己的展示名一个
+   * 别名（见 game-session.ts `sceneAliases[r.id] = [r.name]`），但模组
+   * 自己的叙事文本有时会用另一个词称呼同一个场景（比如"下水道维修室"
+   * 与场景正式名"维修间"），玩家读完叙事之后自然会用叙事教的那个词，
+   * 而不是场景表里的正式名——这是"引擎教了玩家一个自己不认识的词"
+   * 这个模式（`docs/notes/engine.md`）在场景解析这一侧的入口。
+   *
+   * 与 `sceneBgm` 同一种形状（场景 id 为键），加载时按同一种方式合并
+   * 进运行时状态（`Object.assign`），不新造一套接线方式。
+   */
+  sceneAliases?: Record<string, string[]>;
   /** 模组激活时的KP旁白 */
   introNarration?: string;
   /** 注册到 mythosSpells 的法术 */

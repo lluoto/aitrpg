@@ -13,7 +13,7 @@
       "id": "engine",
       "name": "运行引擎 / 主循环",
       "file": "docs/notes/engine.md",
-      "count": 29
+      "count": 30
     },
     {
       "id": "ingest",
@@ -347,6 +347,17 @@
       "line": 872,
       "lines": 45,
       "summary": "两个真实案例，同一个形状："
+    },
+    {
+      "id": "engine-30",
+      "title": "别名从引擎侧硬编码迁移到数据层（开发·别名迁移轮 B 组，2026-09-03）",
+      "date": "2026-09-03",
+      "status": "note",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 917,
+      "lines": 41,
+      "summary": "上面两条实例（维修室/维修间、培养缸/缸中脑）修复时都是就地打补丁："
     },
     {
       "id": "ingest-01",

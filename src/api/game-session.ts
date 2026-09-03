@@ -4028,16 +4028,18 @@ export class GameSession {
           if (!r.name || r.name === "unknown") continue;
           this.sceneDisplayNames[r.id] = r.name;
           if (r.description.length > 0) this.sceneAliases[r.id] = [r.name];
-          // 开发·卧室线索修复 任务②a："维修间"额外登记别名"维修室"——
-          // clue_bedroom_diary 的揭示文本教玩家"打开下水道维修室门"，
-          // 玩家自然会用这个词，但场景表里的正式名字是"维修间"，两个字
-          // 长度相同、真实场景"下水道"又恰好也是句子的一部分，此前会被
-          // "下水道"抢先命中（见 resolveSceneTarget 新增的 alias-contains
-          // 分支，和 tryResolveModuleScene 的自匹配保护）。只加这一条，
-          // 不给别的场景批量加别名——这是本轮明确要修的这一个词，不是
-          // 顺手扩展别名机制的使用面。
-          if (r.id === "维修间" && !this.sceneAliases[r.id]!.includes("维修室")) {
-            this.sceneAliases[r.id]!.push("维修室");
+        }
+        // 模组自带的额外场景别名（MythosModule.sceneAliases，开发·别名
+        // 迁移轮从原来 game-session.ts 里"维修间"那一条硬编码特例改成
+        // 数据层字段）——追加而不是覆盖，上面那一步已经把场景自己的
+        // 展示名放进去了，这里合并进去的是模组自己想额外登记的说法。
+        const extraAliases = mod.sceneAliases as Record<string, string[]> | undefined;
+        if (extraAliases) {
+          for (const [sceneId, aliases] of Object.entries(extraAliases)) {
+            if (!this.sceneAliases[sceneId]) this.sceneAliases[sceneId] = [];
+            for (const alias of aliases) {
+              if (!this.sceneAliases[sceneId]!.includes(alias)) this.sceneAliases[sceneId]!.push(alias);
+            }
           }
         }
       } catch { /* 忽略 DB 错误 */ }
@@ -4115,36 +4117,6 @@ export class GameSession {
   };
 
   /**
-   * 线索 id → 额外 matchTexts 别名（开发·真相链路 任务①）。
-   *
-   * 背景与"维修间"额外登记别名"维修室"（:4031 附近）同构：clue_id
-   * 的 matchTexts 默认只有 `[clue.name, ...findMethods[].description]`
-   * ——对 clue_final_brain_jars 就是 ["母女的缸中脑", "打开光源观察房间"]，
-   * 但引擎自己写的叙事（True End 第3行、near_truth 第1行、
-   * ENCOUNTER_NARRATIONS 三处）反复用"培养缸"/"一大一小"称呼这两个缸中
-   * 脑，玩家读完这些文本后自然会用引擎自己教的词，却因为这些词不在
-   * matchTexts 里而被 deny——同一种"引擎自己的叙事教了玩家一个匹配键
-   * 不认识的词"的问题，只是这次载体是线索而不是场景。
-   *
-   * 只登记 clue_final_brain_jars 这一条、这几个具体的词，不做成通用
-   * 机制批量扩别名——同一份克制在"维修室"那条也写过：这是本轮明确要
-   * 修的这几个词，不是顺手扩大别名系统的使用面。"营养液"一并核实收录：
-   * True End/`clue_final_brain_jars.description`/mythos-module.ts 的
-   * 艾米丽 secrets 都用它描述这两具缸中脑的生存介质，玩家用它来指代
-   * 这个物件同样合理。不收"设备"/"容器"这类过泛的词——它们不是这两个
-   * 缸中脑专属的称呼，收进来会在别的场景制造新的歧义，不是修复。
-   *
-   * "一大一小"单独作为别名是安全的：全仓搜索确认它只在这两处叙事
-   * （True End 第3行、near_truth 第1行）出现，不与场景内其它线索
-   * （clue_final_workbench/clue_final_pipe/clue_final_coffin）的
-   * matchTexts 冲突——不会误伤 clue_final_coffin 的"打开那口像冰箱
-   * 一样的棺材"歧义回问（该句不含这里任何一个别名词）。
-   */
-  private static readonly BARN_CLUE_MATCH_ALIASES: Record<string, string[]> = {
-    clue_final_brain_jars: ["培养缸", "玻璃缸", "一大一小", "营养液"],
-  };
-
-  /**
    * 把 BARN_OF_PREMIER（32 条完整线索，带 findMethods/revelation/importance）
    * 桥接进 InvestigationEngine，只在加载"普瑞米尔的谷仓"时调用一次。
    *
@@ -4192,10 +4164,14 @@ export class GameSession {
         this.investigation.addClueType(clue.id, {
           description: clue.description,
           scene: sceneName,
+          // 开发·别名迁移轮：clue.matchTexts 是数据层字段（module/types.ts），
+          // 曾经的 BARN_CLUE_MATCH_ALIASES 静态表已并入 barn-of-premier.ts
+          // 里 clue_final_brain_jars 自己的 matchTexts，这里不再维护一份
+          // 引擎侧的按 id 查表。
           matchTexts: [
             clue.name,
             ...clue.findMethods.map((f) => f.description),
-            ...(GameSession.BARN_CLUE_MATCH_ALIASES[clue.id] ?? []),
+            ...(clue.matchTexts ?? []),
           ],
           displayName: clue.name,
           importance: clue.importance,

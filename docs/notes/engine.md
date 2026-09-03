@@ -913,3 +913,44 @@ Good End / True End 的分界线，自动连锁会让摸到日记的人顺带读
 `narrative-vocabulary-registry.ts` 补一条登记。这件事目前没有任何
 自动化手段能替代"写完新叙事，自己拿它读一遍、挑几个新出现的名词
 试着当玩家输入打一遍"这个人工步骤。
+
+### 别名从引擎侧硬编码迁移到数据层（开发·别名迁移轮 B 组，2026-09-03）
+
+上面两条实例（维修室/维修间、培养缸/缸中脑）修复时都是就地打补丁：
+在 `game-session.ts` 里加一个 `if (r.id === "维修间")` 分支、加一张按
+线索 id 查的静态表 `BARN_CLUE_MATCH_ALIASES`——修复本身是对的（判据
+证明过），但落点选错了：别名是**模组数据的一部分**（"这个场景/线索
+还能怎么称呼"），却被写进了**引擎代码**里，而且是按具体 id 一条条列
+——`todo-19` 早就在追踪"premiers_barn 硬编码特例只增不减"，这两张表
+正是新增的两处。
+
+本轮把它们迁移回数据层：`module/types.ts` 的 `Clue` 加
+`matchTexts?: string[]`，`mythos-module.ts` 的 `MythosModule` 加
+`sceneAliases?: Record<string, string[]>`（照抄 `sceneBgm` 的既有
+范式——同样是"模组数据带一份场景 id 为键的映射，加载时合并进运行时
+状态"这个形状，不新发明一套接线方式）。四个词（培养缸/玻璃缸/一大
+一小/营养液）迁进 `barn-of-premier.ts` 的 `clue_final_brain_jars.
+matchTexts`，"维修室"迁进 `premiers_barn.ts` 的
+`sceneAliases["维修间"]`。`game-session.ts` 里原来的静态表与
+if 分支都删掉，`bridgeBarnOfPremierClues()` 现在直接读
+`clue.matchTexts`，场景别名合并逻辑直接读 `mod.sceneAliases`。
+
+**变异检验钉住了"判据测的是数据不是代码"这件事**：临时把这两处
+迁移后的数据清空（不改一行引擎代码），`barn-of-premier-clue-bridge`/
+`narrative-vocabulary-registry`/`game-session-run-harness`/
+`scene-resolve` 四个文件里 9 条测试精确变红——如果这些测试测的其实
+是"引擎代码里那张表还在不在"，清空数据不会让它们变红，变红说明
+它们真的在验证运行时最终看到的别名内容，不管这些内容来自代码常量
+还是模组数据。
+
+**可推广的判断**：修一个"引擎教了玩家一个自己不认识的词"类 bug 时，
+判据在哪测和数据落在哪层是两件独立的事——判据可以先对，数据落点
+可以后改，但落点选错了不会立刻报错（测试全绿），只会让下一次遇到
+同一类问题的人本能地跟着抄一遍"在引擎里加一个 if 分支"，因为仓库里
+已经有两个先例长这样。三档约束（todo-52）第二档设计时反过来吸取了
+这个教训——生成的别名（`ObjectMentionClaim`）从一开始就是准备写进
+`Clue.matchTexts` 的（本轮 C 组任务），不会重新制造第三张引擎侧静态
+表。`todo-19` 记录的 premiers_barn 特例计数从 6 处（4 条 `mod.id`
+分支 + 2 张别名表）降到 4 处，仍然 open——`mod.id === "premiers_barn"`
+那 4 条分支本身是加载流程耦合，不是别名/称呼类数据，不属于本轮迁移
+范围。
