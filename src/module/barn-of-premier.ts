@@ -275,6 +275,16 @@ function buildScenes(): Scene[] {
       id: "clue_bar_guest_identity",
       name: "贵客身份",
       description: "进一步的套话很难办到。如果想要询问这位贵客的身份，不仅需要付出大量的现金，还要通过一个至少困难成功的社交类技能。如果成功从前台嘴中套出话，前台会告诉是艾德里安·埃斯特鲁姆先生。本地调查员可以通过一个成功的灵感得知艾德里安似乎是一个星期前被逮捕的绑架犯，似乎在报纸上看过这么一条信息，但是具体的倒是记不清了。",
+      // 开发·把已有判据补齐到手写侧 N8 任务③核实：`skillName` 不是空的——
+      // 原文写的是「社交类技能」这个族（说服/话术/魅惑/恐吓等 CoC 技能
+      // 都能算），这里落地成具体的「社交」一项，经 `SKILL_NAME_MAP`
+      // （`character/coc-character.ts:63`）译成 CoC 键 `fast_talk`，
+      // `fast_talk` 在 `GameSession.INVESTIGATIVE_SKILLS` 名单里，检定
+      // 路径正常触发——`barn-of-premier-clue-bridge.test.ts:76-77` 已经
+      // 测过这条映射，实跑核对过 `investigation.clueTypes.get(
+      // "clue_bar_guest_identity").coc_primary.skill === "fast_talk"`。
+      // 选"社交"而不是族里其它成员是既有决定，不是本轮改的；保留现状，
+      // 不强行把"族"拆成更精确的单项——那样反而是编造原文没给的细节。
       findMethods: [
         { type: "skill", skillName: "社交", difficulty: "hard", description: "付出大量现金+至少困难成功的社交类技能" },
       ],
