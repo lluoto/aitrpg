@@ -94,6 +94,30 @@ export interface ClaimEvaluation {
 }
 
 /**
+ * 条件 b 的核心判定，从 `evaluateObjectMentionClaims` 抽出来单独导出——
+ * 开发·把已有判据补齐到手写侧 N8：这条件原本只在"生成端提议一条新
+ * 别名"这个场景里跑，`barn-of-premier.ts` 里手写的 matchTexts（如
+ * weisen_bar 三条线索）从来没有经过它，于是出现了机器别名被挡、人写
+ * 别名不被挡的覆盖不对称——「前台」同时进了两条线索的 matchTexts，
+ * 没有任何判据发现过。
+ *
+ * 抽出来是为了让"检查一条别名是否加入候选池后仍能唯一命中目标线索"
+ * 这件事只有一处实现——`evaluateObjectMentionClaims`（生成时的
+ * 单条候选门禁）与 `findMatchTextCollisions`（scene-matchtext-
+ * collision.ts，扫全部已提交数据）都调用这同一个函数，不是两边各自
+ * 写一份 decideClueMatch 判断，那两套判定迟早会漂——这正是这次要修的
+ * 病，不能在修的过程中又添一次同类风险。
+ */
+export function resolvesUniquelyTo(
+  phrase: string,
+  targetClueId: string,
+  candidates: ClueMatchCandidate[],
+): boolean {
+  const decision = decideClueMatch(phrase, candidates);
+  return decision.kind === "resolve" && decision.clueId === targetClueId;
+}
+
+/**
  * 第二档主判据：对声明的每一条对象称呼跑三条确定性条件（a/b/c，见
  * 文件头），返回逐条的接纳/拒绝结果——不是简单的布尔，因为拒绝理由
  * 要进 warnings，接纳理由要进 provenance，两边都得留痕。
@@ -149,8 +173,8 @@ export function evaluateObjectMentionClaims(
     const candidates = buildCandidates().map((c) =>
       c.id === claim.clueId ? { ...c, texts: [...c.texts, claim.phrase] } : c,
     );
-    const decision = decideClueMatch(claim.phrase, candidates);
-    if (decision.kind !== "resolve" || decision.clueId !== claim.clueId) {
+    if (!resolvesUniquelyTo(claim.phrase, claim.clueId, candidates)) {
+      const decision = decideClueMatch(claim.phrase, candidates);
       results.push({
         claim,
         accepted: false,
