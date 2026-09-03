@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-02 11:44  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-03 02:27  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：5027528 docs: record build-clues' first real measurement  ·  **测试**：2769 条 / 179 文件，全绿（基线 2769，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：349c14f feat: isolate creative-layer output from the calibration diff  ·  **测试**：2816 条 / 183 文件，全绿（基线 2816，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -207,6 +207,11 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- 349c14f feat: isolate creative-layer output from the calibration diff
+- a2482e0 feat: generate the pipeline's first creative-layer content (todo-52)
+- e2c7a42 docs: charter the narrative-generation round (todo-52)
+- 4cf5afe feat: extract era and part of meta from the header block
+- 0fd56fe docs: record build-clues' scope decision and leave todo-28 open
 - 5027528 docs: record build-clues' first real measurement
 - d15e558 feat: build clues from classified entries (todo-28)
 - a965497 feat: rule out server-side caching in the classify-key probe
@@ -214,11 +219,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - 02c62a0 docs: close out todo-51 and log the third parsing-tolerance bug
 - 8208fc4 docs: remeasure block classification after the key-parsing fix
 - 8b480bb fix: extract classify keys from anywhere, not just string ends
-- 38fb219 feat: probe whether the classify-key parsing bug reproduces
-- b134d80 docs: refresh notes/now/handoff after phase-5 id inheritance
-- afe7d30 feat: let the ingest pipeline inherit baseline ids by name
-- 156a0db docs: update todo-19 with the current premiers_barn special-case count
-- 78e12ff docs: log the engine's unrecognized-narrative-word pattern
 
 ## 代码地图
 

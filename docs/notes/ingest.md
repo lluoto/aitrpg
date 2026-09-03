@@ -1898,3 +1898,68 @@ openingAtmosphere`、`prologue.lines`、`partySetup`、`epilogues`、
 是因为每次想放宽它，都先问"有没有能守住底线的机器判据"，不是
 先问"要不要放宽"。这条 todo 记的就是这次问出来的答案，实现时
 直接照做，不必重新论证。
+
+### 叙事层第一版——0/3 采纳，三档约束真的拦下了三种不同的真实错误（2026-09-03）
+
+todo-52 立项之后的实现轮：新增 `src/ingest/build-narrative.ts` +
+`src/ingest/narrative-guard.ts`。**范围比立项时又收窄了一次**——只产
+`Scene.openingAtmosphere`/`prologue.lines`/`partySetup` 三样，`epilogues`
+与 `narrative.entities` 本轮没做，理由与 `build-clues.ts` 当初不产
+`unlocks` 同一种判断：这两个字段都要求生成端引用具体的线索/场景 id，
+而这些 id（`item_03` 这类内部句柄）只有在同一次摄取跑完之后才存在，
+写 prompt 那一刻 LLM 根本不知道它们长什么样——硬让它编，编出来的 id
+要么压根不存在（死数据），要么"看起来对但没人验证过"，比留空更危险。
+
+**三档约束的分工**（立项时定的，实现时没有改）：第一档
+（`findFabricatedTerms`，复用 `three-way-audit.ts` 的
+`extractBracketTerms`/`termAppearsInCorpus`）与第二档
+（`findUnresolvedObjectMentions`，复用 `decideClueMatch`）接进管线当
+门禁；`checkNarrationText`（`world-constraint.ts`）另接一层，与 KP
+叙事共用；第三档（语义蕴含扫描）按立项决策不进管线。任何一档不过，
+整批生成结果一律不采纳——不是"部分产出、能用的先用上"。
+
+**真实管线跑了三轮（真实 PDF + 真实 LLM ecnu-plus），三轮都被拦下，
+且是三种不同的真实失败**（不是构造出来验证判据的用例，是生成时自己
+撞出来的）：
+1. 第一档拦下：`partySetup.context` 里写了"艾德里安……正在进行某种
+   危险的【生化仪式】"——原文 0 命中。同一次回复里还有一条
+   `objectMentions` 声明指代线索 id `gabi_pistol`，这个 id 当次摄取
+   根本不存在——说明当时 prompt 没把真实线索列表喂给模型，它只能编。
+2. 改进前的最后一轮：第二档拦下，同样是编 id（`grill_residue`，
+   同样不存在）。
+3. 把每个场景真实的"线索 id→名字"列表喂给模型之后：第二档仍然拦下，
+   但换了一种更细的失败模式——这次 id 是真的（`item_28`，对应基准
+   线索"其他受害者的床位"），但生成文本用"那些被仪器罩住的人"这句
+   复述指代它，`decideClueMatch` 认不出这句话对应 `item_28`（线索的
+   `matchTexts` 目前只有名字本身）。**这正是"培养缸"事故**（`docs/notes/engine.md`「⚠ 引擎教了玩家一个自己不认识的词——这是第二次（2026-09-02）」，commit 7d9e6f1）**的原始形状**——不是编个不存在的东西，
+   是用一个新措辞称呼一个真实存在的对象，而匹配器认不出来。三档约束
+   设计时设想的正是这类问题，真实撞见比构造用例更有说服力。
+
+**第一版实测 0/3 采纳，如实记录，没有为了让这个数字好看去放宽门禁
+或调整 prompt 到"更容易过"**——与 `build-clues.ts`"数字难看是预期
+内的"是同一条纪律。三轮之后把线索列表喂给了模型（见实测②③的对比），
+这是唯一做的一处 prompt 调整，理由是"没有列表，第二档的声明只能是
+瞎猜"，不是"为了让判据更容易过"——调整前后判据本身一个字都没有动。
+
+**隔离校准验证**：三轮实跑的场景/物品 diff（`changed` 79、`missing`
+78 三轮完全一致，`extra` 在 29~30 之间浮动）与本轮改动前的历史数字
+同口径——创作层无论产出还是被拒，都没有影响到抽取层的既有指标。
+机制不是"算完 diff 之后把创作层字段摘掉"，是编排顺序本身：
+`scripts/ingest/run.ts` 里 `buildNarrative()` 排在 `diffValues()`
+**之后**调用，喂给 diff 的那份 `scenes` 从头到尾没见过
+`openingAtmosphere` 这个字段，没有"漏摘"的可能。
+
+**可复现性——生成层的不确定性与抽取层的不确定性不是同一件事**：
+抽取层的不确定性（`classify-sections.ts`/`classify-items.ts` 跨轮
+分类结果小幅波动）已经在本文档别处记录过，是"同一个问题该有的答案
+每次可能因为模型答题的边界情况判得不一样而略微不同"；创作层的
+不确定性是另一类——**同一份 PDF 每次生成的叙事文本内容本身就不同**
+（措辞、要不要给某个场景写 openingAtmosphere、要不要声明
+objectMentions 全部随机），门禁能不能通过也因此每次不同——三轮里
+两次栽在"编不存在的 id"，一次栽在"真实 id 但措辞对不上"，这三种
+结果都可能在下一轮重跑时换成别的失败模式，或者侥幸全部通过。
+**下一个人看到"这轮又没通过"不该以为管线坏了**——先看 warnings 里
+是哪一档拦的、原始回复长什么样（`analysis/ingest/classify-raw.txt`
+的"创作层"段），再判断是否需要继续调整 prompt。样本：3 轮，
+model：ecnu-plus，日期：2026-09-03（同 `probe-llm-intent.md` 的
+记录惯例：结论必须带模型名/日期/样本数，不能当常量用）。

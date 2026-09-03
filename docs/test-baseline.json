@@ -1,6 +1,6 @@
 {
-  "tests": 2769,
-  "files": 179,
+  "tests": 2816,
+  "files": 183,
   "unwiredMethods": 86,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -589,6 +589,11 @@
       "tests": 2769,
       "files": 179,
       "when": "阶段6：写build-clues.ts解决线索产出恒为0的问题(todo-28)，5个提交(①a①b②③④)。①a核实ingest.md汇总表陈旧数字(误报7→3同步classify-sections.ts:144)，顺带核查发现classify-items.ts行(:39)是追问前分布、build-items.ts行(:40)的9/19是followup接入前的单独测量，两处都补充说明区分测量点而非互相覆盖。①b给probe-classify-key-format.md新增缓存排除对照实验(prompt加尾随空格+temperature换0.9各跑一轮对比轮次1)，结果两组信号不一致(A组仍逐字节相同、B组不同)，如实报「部分证据不下结论」。②新增src/ingest/build-clues.ts，范围明确收窄只产name/description/revelation三字段，findMethods/unlocks/importance/hint/failback/setStateVar一律不产(unlocks关联2c38d2c卧室线索bug根源，尤其不碰)，importance因类型不允许留空占位为color并在warnings声明非真实评估；场景归属复用toItemInputs既有的scene块过滤+防御性核对，找不到场景就跳过报warning不猜；每条线索产Provenance记录sourceRef可追溯到原始▶条目。接入pipeline.ts的classifyAndBuild(复用itemInputs/itemKinds/itemIds不新开分类)与scripts/ingest/run.ts；扩展inherit-ids.ts新增applyClueIdInheritance处理Scene.clues[]嵌套结构；变异检验：build-clues.ts的clue过滤条件改成discard-everything(镜像build-items.ts:82的丢弃形状)，19条测试里14条精确变红。③真实管线端到端首次跑通并落盘：产出15条线索，基准32条线索中仅21条在评分口径表(p{page}:L{line}→clue id)有坐标(另11条原文无对应▶条目，方法论上够不到，不算漏)，按坐标覆盖12/21，精确率11/15，线索id按name继承基准的仅1/15(生成线索名是▶条目简短标签、基准线索名是描述性短语，写法差异导致name匹配失败在预期内)；数字记入build-clues.ts文件头注释，未为让数字好看调prompt，评分口径边界判据(ingest-scoring-key-boundary.test.ts)全程绿。④docs/notes/ingest.md记录范围决策与第一版实测；todo-28标记「进展，未完全解决，仍open」，如实写清仍缺六个字段(含玩法关键的findMethods/unlocks)。typecheck 0；bun test 2744->2769（+25，178->179文件）；preflight 12/12。"
+    },
+    {
+      "tests": 2816,
+      "files": 183,
+      "when": "开发·三档约束(todo-52)前置轮+实现轮，5个提交。前置轮(2个)：①era/summary/meta抽取——新增src/ingest/extract-header-meta.ts，用label+value结构信号确定性抽era(1921)/meta.playerCount(2~3)/meta.expectedDuration(中短)，summary/triggerWarnings留空(需要编辑取舍，没有位置信号，做了就是编)，真实管线验证与基准逐字一致；开发中一次真实过拟合教训：duration正则最初抓长度后任意几个字，被无关句子里的常见词长度本身命中，收窄成封闭时长词表修复。②todo-52立项：把叙事层这一轮的范围和已定决策(sourceRef方案C/三档约束不对称分工/隔离校准/可复现性记录)写成todo条目+docs/notes/ingest.md记录，不写代码，供实现轮直接照做不必重新论证。实现轮(3个)：③新增src/ingest/build-narrative.ts+src/ingest/narrative-guard.ts，摄取管线第一次生成内容而不是抽取内容。范围收窄到只产openingAtmosphere/prologue/partySetup三样，epilogues/narrative.entities本轮不做(两者都要求引用内部线索/场景id，LLM写prompt时不知道这些id长什么样，硬编风险比留空更大，与build-clues.ts当初不产unlocks同一种判断)。第一档findFabricatedTerms复用three-way-audit.ts的extractBracketTerms/termAppearsInCorpus(反例基准共鸣特质)；第二档findUnresolvedObjectMentions复用decideClueMatch，是培养缸bug(7d9e6f1)的机器化版本(生成时显式声明称呼对应哪条线索，判据验证decideClueMatch真的认得)；另接checkNarrationText(与KP叙事同一约束层)；任一档不过整批不采纳(fail closed)。④calibrate隔离：buildNarrative在scripts/ingest/run.ts里排在diffValues()之后调用，喂给diff的scenes从头到尾没见过openingAtmosphere，隔离靠编排顺序不是事后过滤。真实管线跑了3轮(真实PDF+真实LLM ecnu-plus)，3轮全部被拦下且是三种不同真实失败(非构造用例)：编造【生化仪式】术语+编造不存在线索id；改进prompt前再次编造不存在id；喂了真实线索id列表后用对了id(item_28)但措辞是复述而非线索本名，被第二档拦下——这正是培养缸事故的原始形状。如实记录0/3采纳率，没有为了数字好看放松门禁。⑤docs/notes/ingest.md记录完整实现过程与三次真实失败案例、可复现性(model/日期/样本数)；todo-52保持open(仍缺epilogues/narrative.entities，且现有三字段实测0/3采纳)。回归：三方审计/实体审计/叙事词登记表/32态退役/True End全绿。typecheck 0；bun test 2769->2816（+47，179->183文件）；preflight 12/12。"
     }
   ]
 }

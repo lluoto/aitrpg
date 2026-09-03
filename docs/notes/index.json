@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-02",
+  "generated": "2026-09-03",
   "note": "问题记录索引。按 file+line 取正文，不必整份读。正文只追加，改动请重跑 bun scripts/docs-index.ts",
   "statusLegend": {
     "fixed": "已修，有实测数",
@@ -19,7 +19,7 @@
       "id": "ingest",
       "name": "模组摄取",
       "file": "docs/notes/ingest.md",
-      "count": 49
+      "count": 50
     },
     {
       "id": "rules",
@@ -886,6 +886,17 @@
       "line": 1857,
       "lines": 45,
       "summary": "摄取管线到 todo-28（线索）为止，产的都是\"抽取\"：原文里有什么就"
+    },
+    {
+      "id": "ingest-50",
+      "title": "叙事层第一版——0/3 采纳，三档约束真的拦下了三种不同的真实错误（2026-09-03）",
+      "date": "2026-09-03",
+      "status": "note",
+      "group": "ingest",
+      "file": "docs/notes/ingest.md",
+      "line": 1902,
+      "lines": 65,
+      "summary": "todo-52 立项之后的实现轮：新增 `src/ingest/build-narrative.ts` +"
     },
     {
       "id": "rules-01",

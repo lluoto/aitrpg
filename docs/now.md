@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-02 11:43
+> 生成于 2026-09-03 02:27
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,13 +13,15 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 5027528 docs: record build-clues' first real measurement |
-| 测试 | 2769 条 / 179 文件  全绿 |
-| 工作树 | **4 个文件未提交** |
+| HEAD | 349c14f feat: isolate creative-layer output from the calibration diff |
+| 测试 | 2816 条 / 183 文件  全绿 |
+| 工作树 | **6 个文件未提交** |
 
 未提交：
+- `M docs/handoff.md`
 - `M docs/notes/index.json`
 - `M docs/notes/ingest.md`
+- `M docs/now.md`
 - `M docs/test-baseline.json`
 - `M docs/todo.json`
 
@@ -115,14 +117,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 349c14f feat: isolate creative-layer output from the calibration diff
+- a2482e0 feat: generate the pipeline's first creative-layer content (todo-52)
+- e2c7a42 docs: charter the narrative-generation round (todo-52)
+- 4cf5afe feat: extract era and part of meta from the header block
+- 0fd56fe docs: record build-clues' scope decision and leave todo-28 open
 - 5027528 docs: record build-clues' first real measurement
 - d15e558 feat: build clues from classified entries (todo-28)
 - a965497 feat: rule out server-side caching in the classify-key probe
-- beb812b docs: sync ingest.md's status table with current numbers
-- 02c62a0 docs: close out todo-51 and log the third parsing-tolerance bug
-- 8208fc4 docs: remeasure block classification after the key-parsing fix
-- 8b480bb fix: extract classify keys from anywhere, not just string ends
-- 38fb219 feat: probe whether the classify-key parsing bug reproduces
 
 ## 找东西
 
