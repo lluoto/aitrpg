@@ -493,6 +493,13 @@
       "severity": "warn",
       "status": "open",
       "text": "【已验证，开发·在场实体与线索路径 N7，2026-09-03】约束层拦不住「NPC 编造模组里不存在的人/物」——用真实撞坑案例实测：酒吧保镖那句「名单什么的早让老板锁进抽屉了，哪轮得到你翻。」（analysis/sim/2026-08-30-barn-natural-play.md:58）编出了「老板」「抽屉」「名单」三样模组数据里完全不存在的东西，`applyConstraints`（`src/agent/constraints.ts`）与 `checkDialogueText`（`src/world/world-constraint.ts`，传不传 sceneId 结果一样）都不拦，`passed:true`、原样通过。这不是新发现——todo-43 已经说过「凭空发明的名词」这一半没做，todo-43 修的只是「否认已知对象」那一半（`narrative_denies_undiscovered_clue`，scope 限 narration，专门认「同一句话里否认措辞+一个已知未发现线索的名字」这种形状），跟本案例「无中生有一个线索之外的新实体」是不同的形状，todo-43 的域接不住。本条只是把这个结论从「如实记录」升级成「有一条测例把现状钉住」：`src/__tests__/npc-fabricated-entity-constraint-gap.test.ts`（4 条）——两条钉住「当前不拦」（`applyConstraints`/`checkDialogueText` 对这句真实编造内容都返回未拦截），两条对照证明约束层本身没有整体失效（时代错置词确实被拦、npc 自己 secrets 里的内容泄露确实被 `checkSecretLeak` 拦）。要修这个缺口需要新增一个「场景已知实体清单」域（能读到当前场景真实注册了哪些 NPC/物件，比对 NPC 输出里提到的专名是否在这份清单里），todo-43 已经列过要做什么（npc-agent.ts 传 sceneId + ConstraintContext 补场景事实域），本条不重复列，只把「拦不拦得住」从推测变成了有判据背书的事实，且如实指出：与 todo-33 记录的『DEFAULT_CONSTRAINTS 只有两个域（时代错置+对话meta）』是同一份缺口清单里的两条不同记录——todo-33 关心的是缺哪些域（身体状态/行动力/物理后果等，范围更广），本条关心的是这一个具体案例（实体存在性）现在真的会被漏过，两条一起看才是完整画像，不是彼此重复。本轮不顺手扩约束层（那是独立的一轮），如实记录 + 钉判据到此为止。"
+    },
+    {
+      "id": "todo-57",
+      "category": "摄取管线缺陷",
+      "severity": "warn",
+      "status": "open",
+      "text": "【开发·在场实体与线索路径 N7 用 scene-npc-noun-registry.ts 扫出，2026-09-03】霍姆斯医院（hospital 场景）与维森酒吧/报亭是同一个形状的缺口：`clue_emily_birth` 的 description 明确要求「问起其他医护人员关于艾德里安的情况」（判幸运找到愿意开口的医护人员，成功的信誉或社交技能能让对方说出真相），但 `hospital` 场景的 `npcIds` 是空数组——一个 NPC 都没有，「医护人员」这个角色不存在。用扩展过登记词的 `findModuleCharacterNounGaps(BARN_OF_PREMIER, [...CHARACTER_NOUN_REGISTRY, 「医护人员」])` 能确定性复现（`scene-npc-noun-registry.test.ts` 里已经拿这条当能力边界的负面确认用例）。本轮不修：todo-41 的验收范围明确是维森酒吧与报亭这两处，如实记录里指定不硬吞出这一处；开工前的探索还量出场景 atmosphere/描述里另外提到「分诊员」「两名警员」两个角色名词，同样没有对应 NPC，但没有任何线索的 findMethods 依赖它们（不构成不可达，只是叙事上「有名无实」，暂不登记进 CHARACTER_NOUN_REGISTRY，避免制造假阳性——参照 weisen_bar 的「保安」/「客人」同一个判断：只登记真的卡线索可达性的词）。`医护人员`/`护士` 暂时也不放进正式登记表（那样会让判据在这个已知缺口上恒报警，等真的动手修医院时再登记，登记的同时顺带把这条 todo 标 done——参照 todo-41 本身的收尾方式）。"
     }
   ]
 }
