@@ -253,6 +253,16 @@ function buildScenes(): Scene[] {
       unlocks: ["clue_bar_guest_identity"],
       found: false,
       importance: "core",
+      // 开发·在场实体与线索路径 N7（todo-41）：这条线索的唯一获取路径
+      // 是"前台"，原文写的是「询问前台则需要给予足够的小费/成功的取悦
+      // 才可以得知」——玩家实跑试过「用卡片」「问名单」「问包场者」
+      // 「问马克/旧仓库」四种自然问法，全部因为场景里没有一个叫"前台"
+      // 的实体、这条线索也没有 matchTexts 而全部落空，最后编出「老板
+      // 锁进抽屉」这类模组里不存在的东西。这里补的词只取原文/revelation
+      // 里出现过的、玩家实测真的会用来指代这件事的说法——"包场"/"登记"
+      // 是原文动作本身，"前台"是要问的对象，"免费饮品"是玩家实跑第一
+      // 句真实用过的措辞。
+      matchTexts: ["前台", "包场", "登记", "免费饮品"],
     },
     {
       id: "clue_bar_guest_identity",
@@ -265,6 +275,12 @@ function buildScenes(): Scene[] {
       unlocks: [],
       found: false,
       importance: "core",
+      // 与上一条同一批补充：unlocks 保证这条只在 clue_bar_mass_booking
+      // 已发现后才成为候选，"前台"在两条线索的 matchTexts 里同时出现
+      // 不会产生歧义（不会同时都是未发现状态）。不收"艾德里安"——那是
+      // revelation 才会揭示的名字，发现前玩家不会知道要问这个词，收进
+      // matchTexts 没有意义，还会在真实对话里提前泄露。
+      matchTexts: ["前台", "贵客", "身份", "套话"],
     },
     {
       id: "clue_bar_ask_around",
@@ -277,6 +293,7 @@ function buildScenes(): Scene[] {
       unlocks: [],
       found: false,
       importance: "bonus",
+      matchTexts: ["其他人", "打听", "八卦", "客人"],
     },
   ];
   scenes.push({
@@ -308,6 +325,7 @@ function buildScenes(): Scene[] {
       unlocks: ["clue_newspaper_kidnapper"],
       found: false,
       importance: "core",
+      matchTexts: ["报纸", "人口失踪", "报道"],
     },
     {
       id: "clue_newspaper_kidnapper",
@@ -320,6 +338,11 @@ function buildScenes(): Scene[] {
       unlocks: [],
       found: false,
       importance: "core",
+      // 原文（模组 PDF 报亭一节）：问老板要旧报纸，老板嫌翻找麻烦拒绝，
+      // 但提出购买的话会以市场价 3 倍出售——这条交易规则已经写在下面
+      // atmosphere 里，这里的 matchTexts 只是让"问老板要旧报纸"/"买
+      // 废报纸"这类自然说法能路由到这条线索。
+      matchTexts: ["旧报纸", "废报纸", "老板", "绑架犯"],
     },
   ];
   scenes.push({
