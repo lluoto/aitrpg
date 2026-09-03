@@ -276,8 +276,11 @@ export function classifyFieldOmission(fieldPath: string): ThreeWayVerdict | null
 // premiers_barn.ts 里，之前的版本根本不会去看。
 
 /**
- * 审计覆盖的模组数据源文件——同一个模组（普瑞米尔的谷仓）的三份并行
- * 数据实现，todo-19 统一之前各自独立维护，各自都可能出现字面臆造。
+ * 审计覆盖的模组数据源文件——**谷仓这一个模组的默认值**，不是"审计能
+ * 覆盖的文件就只有这三个"。同一个模组（普瑞米尔的谷仓）历史上有三份
+ * 并行的数据实现，todo-19 统一之前各自独立维护，各自都可能出现字面
+ * 臆造，这份名单因此列了三个——换一本模组，这份名单就该是那本模组
+ * 自己的数据源文件，不是硬凑这三个路径。
  */
 export const AUDITED_MODULE_FILES = [
   "src/module/barn-of-premier.ts",
@@ -288,6 +291,17 @@ export const AUDITED_MODULE_FILES = [
 export interface SourceTextRef {
   file: string;
   text: string;
+}
+
+/**
+ * 读取一批模组数据源文件的内容，配上路径——开发·无基准模式 任务③：
+ * 不传参数时默认审计 `AUDITED_MODULE_FILES`（谷仓），传别的路径列表
+ * 就审计别的模组，常量因此从"审计范围写死在这里"降级成"没指定时用
+ * 这个默认值"。IO 集中在这一个函数里，`extractBracketTermsAcrossFiles`
+ * 本身不碰文件系统，保持纯函数、可单测。
+ */
+export function readAuditedModuleSources(files: readonly string[] = AUDITED_MODULE_FILES): SourceTextRef[] {
+  return files.map((file) => ({ file, text: readFileSync(file, "utf8") }));
 }
 
 /**

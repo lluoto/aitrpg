@@ -31,6 +31,7 @@ import {
   ENTITY_FABRICATION_REGISTRY,
   buildCorpusFromPages,
   compareCorpusSources,
+  readAuditedModuleSources,
   type DeclaredEntityRef,
 } from "../ingest/three-way-audit";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
@@ -175,7 +176,7 @@ describe("方括号术语审计：原文查无此词的集合与 FABRICATION_REG
 
 describe("多文件覆盖：方括号术语审计不再只看 barn-of-premier.ts（阶段7 任务②）", () => {
   const corpus = readOriginalCorpus();
-  const sources = AUDITED_MODULE_FILES.map((file) => ({ file, text: readFileSync(file, "utf8") }));
+  const sources = readAuditedModuleSources();
   const termMap = extractBracketTermsAcrossFiles(sources);
 
   it("**回归**：AUDITED_MODULE_FILES 确实覆盖三个文件，不是名单写了但没人读", () => {
@@ -205,6 +206,27 @@ describe("多文件覆盖：方括号术语审计不再只看 barn-of-premier.ts
   if (!corpus.ok) {
     console.warn(`[ingest-three-way-audit] 跳过多文件方括号术语审计：${(corpus as { ok: false; reason: string }).reason}`);
   }
+});
+
+describe("readAuditedModuleSources 参数化——开发·无基准模式 任务③：常量只是谷仓的默认值", () => {
+  it("不传参数时默认读 AUDITED_MODULE_FILES（谷仓），行为与改动前一致", () => {
+    const sources = readAuditedModuleSources();
+    expect(sources.map((s) => s.file)).toEqual([...AUDITED_MODULE_FILES]);
+    expect(sources.every((s) => s.text.length > 0)).toBe(true);
+  });
+
+  it("传自定义文件列表时读那些文件，不是硬编码的谷仓三个文件——换一本模组直接可用", () => {
+    const sources = readAuditedModuleSources(["src/ingest/three-way-audit.ts"]);
+    expect(sources).toHaveLength(1);
+    expect(sources[0]?.file).toBe("src/ingest/three-way-audit.ts");
+    expect(sources[0]?.text).toContain("readAuditedModuleSources");
+  });
+
+  it("extractBracketTermsAcrossFiles 本身早就是通用的（收 sources 参数）——这条只是回归确认，不是本轮改的", () => {
+    const sources = readAuditedModuleSources(["src/ingest/three-way-audit.ts"]);
+    const map = extractBracketTermsAcrossFiles(sources);
+    expect(map instanceof Map).toBe(true);
+  });
 });
 
 describe("声明实体审计：NPC 名/场景名是否在原文里真实存在（阶段7 任务②）", () => {
