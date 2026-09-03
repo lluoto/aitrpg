@@ -29,9 +29,18 @@ export interface NarrativeReportInfo {
   warnings: string[];
 }
 
+export interface CorpusSourceComparisonInfo {
+  available: boolean;
+  identical?: boolean;
+  pageCorpusLength?: number;
+  sliceCorpusLength?: number;
+}
+
 export interface CorpusReportInfo {
   ok: boolean;
   reason?: string;
+  /** 与仓库里预先切好的切片语料的比较结果（开发·无基准模式 任务②）——只有谷仓有切片可比，其它模组这里恒为 available:false */
+  sourceComparison?: CorpusSourceComparisonInfo;
 }
 
 export interface IngestReportContext {
@@ -233,7 +242,17 @@ export function buildIngestReport(ctx: IngestReportContext): string {
   // ── 创作层 ──
   lines.push(
     "── 创作层（todo-52：第一版，只产 openingAtmosphere/prologue/partySetup）──",
-    `原文语料: ${ctx.corpus.ok ? "已读取，第一档（禁止新造专名/术语）正常生效" : `**读取失败**（${ctx.corpus.reason ?? ""}），第一档本轮跳过`}`,
+    `原文语料: ${ctx.corpus.ok ? "已从本次摄取的 PDF 页文本读取，第一档（禁止新造专名/术语）正常生效" : `**不可用**（${ctx.corpus.reason ?? ""}），创作层拒绝生成`}`,
+  );
+  if (ctx.corpus.sourceComparison) {
+    const cmp = ctx.corpus.sourceComparison;
+    lines.push(
+      cmp.available
+        ? `  语料来源比较: 与仓库切片语料${cmp.identical ? "归一化后逐字一致" : `**不一致**（页语料 ${cmp.pageCorpusLength} 字 / 切片语料 ${cmp.sliceCorpusLength} 字，如实记录，未强行判定为一致）`}`
+        : "  语料来源比较: 无切片语料可比（tools/ 不进版本库，或本模组本来就没有切片）——跳过，不影响主流程",
+    );
+  }
+  lines.push(
     `本轮生成: ${ctx.narrative.accepted ? "**通过全部约束，已采纳**" : "**未采纳**（约束不过 / 调用失败 / 解析失败 / 无语料拒绝生成，详见下方 warnings）"}`,
   );
   if (ctx.narrative.accepted) {

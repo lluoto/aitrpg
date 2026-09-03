@@ -39,7 +39,7 @@ import { sourceKey } from "../../src/ingest/sectionize";
 import { prepareSections, classifyAndBuild } from "../../src/ingest/pipeline";
 import { assembleModule } from "../../src/ingest/assemble-module";
 import { buildNarrative, applyNarrative, findMissingCreativeSourceRef, findRegisteredCreativeLayer } from "../../src/ingest/build-narrative";
-import { readOriginalCorpus } from "../../src/ingest/three-way-audit";
+import { readOriginalCorpus, buildCorpusFromPages, compareCorpusSources } from "../../src/ingest/three-way-audit";
 import { computeBaselineComparison, type BaselineData } from "../../src/ingest/baseline-comparison";
 import { buildIngestReport, type IngestReportContext } from "../../src/ingest/ingest-report";
 import { BARN_OF_PREMIER } from "../../src/module/barn-of-premier";
@@ -218,7 +218,17 @@ const assembled = assembleModule(
 // 就已经定型，从头到尾没见过 openingAtmosphere 这个字段，创作层的内容
 // 因此天然不会漏进 diff 里，不需要事后再从 diff 结果里摘掉。
 client.label = "创作层";
-const corpus = readOriginalCorpus();
+// 开发·无基准模式 任务②：语料现在来自这次摄取自己解码出的逐页原文
+// （`raw`，`extractPages` 的产物），不是仓库里预先切好的谷仓专属切片
+// ——对任意 PDF 都能用，不只是这一本模组。`pdf-source.ts` 的内容保真
+// 已经实跑验证过（与切片逐字一致 17/17），这里仍然把切片语料也读出来
+// 做一次真实比较（`compareCorpusSources`），而不是假设两条路一定等价
+// 就跳过验证——切片语料读不到（`tools/` 不进版本库）时优雅跳过这一步，
+// 不影响主流程使用页语料。
+const pdfCorpusText = buildCorpusFromPages(raw);
+const pdfCorpusOk = pdfCorpusText.trim().length > 0;
+const sliceCorpus = readOriginalCorpus();
+const corpusComparison = sliceCorpus.ok ? compareCorpusSources(pdfCorpusText, sliceCorpus.text) : null;
 const narrative = await buildNarrative(
   {
     title: assembled.module.title,
@@ -231,7 +241,7 @@ const narrative = await buildNarrative(
     })),
   },
   client,
-  corpus.ok ? corpus.text : undefined,
+  pdfCorpusOk ? pdfCorpusText : undefined,
 );
 const finalModule = applyNarrative(assembled.module, narrative);
 await Bun.write(`${OUT}/module.json`, JSON.stringify(finalModule, null, 2));
@@ -308,7 +318,18 @@ const reportCtx: IngestReportContext = {
       findMissingCreativeSourceRef(narrative.provenance).every((p) => findRegisteredCreativeLayer(narrative.provenance).includes(p)),
     warnings: narrative.warnings,
   },
-  corpus: { ok: corpus.ok, reason: corpus.ok ? undefined : corpus.reason },
+  corpus: {
+    ok: pdfCorpusOk,
+    reason: pdfCorpusOk ? undefined : "本次摄取解出的页文本为空",
+    sourceComparison: corpusComparison
+      ? {
+          available: true,
+          identical: corpusComparison.identical,
+          pageCorpusLength: corpusComparison.pageCorpusLength,
+          sliceCorpusLength: corpusComparison.sliceCorpusLength,
+        }
+      : { available: false },
+  },
   comparison,
 };
 

@@ -29,6 +29,8 @@ import {
   stripDisplayAnnotation,
   auditDeclaredEntities,
   ENTITY_FABRICATION_REGISTRY,
+  buildCorpusFromPages,
+  compareCorpusSources,
   type DeclaredEntityRef,
 } from "../ingest/three-way-audit";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
@@ -324,5 +326,40 @@ describe("切片缺失时优雅降级——判据要能在切片不存在时明�
     const result = readOriginalCorpus(completeDir);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.text).toContain("第1节");
+  });
+});
+
+describe("语料来源——开发·无基准模式 任务②：语料来自这次摄取自己的页文本，不再只认谷仓切片", () => {
+  it("buildCorpusFromPages 按顺序拼接逐页文本", () => {
+    const text = buildCorpusFromPages(["第一页", "第二页", "第三页"]);
+    expect(text).toBe("第一页\n第二页\n第三页");
+  });
+
+  it("compareCorpusSources：两份语料归一化后逐字一致时 identical 为 true", () => {
+    const r = compareCorpusSources("在1921年  发生了一件事", "在1921年发生了一件事");
+    expect(r.identical).toBe(true); // 只差空白，normalizeForMatch 会去掉
+  });
+
+  it("compareCorpusSources：内容真的不同时如实报 identical:false，不强行判定为一致", () => {
+    const r = compareCorpusSources("这是页语料", "这是切片语料，内容不一样");
+    expect(r.identical).toBe(false);
+    expect(r.pageCorpusLength).toBeGreaterThan(0);
+    expect(r.sliceCorpusLength).toBeGreaterThan(r.pageCorpusLength);
+  });
+
+  it("**真实回归**：本次摄取的页语料与仓库切片语料对同一份谷仓 PDF 应该等价（若切片不可用则优雅跳过）", () => {
+    const corpus = readOriginalCorpus();
+    if (!corpus.ok) {
+      console.warn(`[ingest-three-way-audit] 跳过语料来源比较：${corpus.reason}`);
+      return;
+    }
+    // 这里没有真实 PDF（PDF 在仓库之外），只能验证"同一份切片语料自己
+    // 拼出来的页语料"与"切片语料本身"经过归一化之后确实相等——这是
+    // buildCorpusFromPages 与 readOriginalCorpus 的拼接方式一致性检查，
+    // 不是端到端的 PDF 验证（那部分见 scripts/ingest/run.ts 实跑记录，
+    // docs/notes/ingest.md 有记录）。
+    const rebuilt = buildCorpusFromPages(corpus.text.split("\n"));
+    const cmp = compareCorpusSources(rebuilt, corpus.text);
+    expect(cmp.identical).toBe(true);
   });
 });

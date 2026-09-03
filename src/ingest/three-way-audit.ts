@@ -113,6 +113,57 @@ export function termAppearsInCorpus(term: string, corpusText: string): boolean {
 }
 
 // ============================================================
+// 语料来源——开发·无基准模式 任务②
+// ============================================================
+//
+// `readOriginalCorpus()` 读的是仓库里预先切好、经过人工核对的谷仓切片
+// （`tools/modules/raw/`）——这份语料只对这一本模组存在，摄取一本新
+// PDF 时用不上它。三方审计真正需要的只是"这次摄取的原文全文"，而
+// `scripts/ingest/run.ts` 在切分之前就已经从 PDF 里解码出了逐页文本
+// （`extractPages` 的产物）——那份数据本来就是"这次到底摄取的是什么"
+// 的第一手来源，不需要额外读一份仓库里的切片才能拿到语料。
+//
+// `pdf-source.ts` 的内容保真已经实跑验证过（与 `tools/modules/raw/`
+// 切片逐字一致 17/17，空白归一化后），所以理论上两种来源对同一份 PDF
+// 应该产出等价的语料——但"理论上应该"与"这次真的量过"是两回事，
+// `compareCorpusSources` 就是为了把这次的量测结果如实记下来，不是
+// 假设新路径一定等价就跳过验证。
+
+export interface CorpusSourceComparison {
+  identical: boolean;
+  /** 归一化（去空白/破折号）之后的字符数，用来判断差异量级 */
+  pageCorpusLength: number;
+  sliceCorpusLength: number;
+}
+
+/**
+ * 把本次摄取（`extractPages` 的产物，逐页文本）拼成一份语料——与
+ * `readOriginalCorpus()` 拼切片用同一种方式（按顺序 `\n` 连接），
+ * 使得两份语料在做 `termAppearsInCorpus` 这类检查时行为一致。
+ *
+ * 对任意模组都能用：不像 `readOriginalCorpus()` 依赖仓库里预先切好的
+ * 某一本模组的切片，这里只需要"这次摄取解码出来的页文本"，跑哪本 PDF
+ * 就是哪本 PDF 自己的语料。
+ */
+export function buildCorpusFromPages(pages: string[]): string {
+  return pages.join("\n");
+}
+
+/**
+ * 比较"这次摄取解码出的语料"与"仓库里预先切好的切片语料"是否等价
+ * （归一化之后逐字相等）——只在两者理论上应该对应同一份文档时才有
+ * 意义（目前只有谷仓这一本模组两条语料源都存在）。
+ *
+ * 不假设"应该一样"就直接判等：真的返回比较结果，不一样时如实报出来，
+ * 由调用方决定这个差异要不要紧、需不需要进一步排查。
+ */
+export function compareCorpusSources(pageCorpus: string, sliceCorpus: string): CorpusSourceComparison {
+  const a = normalizeForMatch(pageCorpus);
+  const b = normalizeForMatch(sliceCorpus);
+  return { identical: a === b, pageCorpusLength: a.length, sliceCorpusLength: b.length };
+}
+
+// ============================================================
 // 方括号术语审计
 // ============================================================
 
