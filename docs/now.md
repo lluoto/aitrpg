@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-03 13:14
+> 生成于 2026-09-04 03:27
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,13 +13,11 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 0fa8346 docs: verify clue_bar_guest_identity's skill field isn't actually empty |
-| 测试 | 2913 条 / 193 文件  全绿 |
-| 工作树 | **4 个文件未提交** |
+| HEAD | e696e7b docs: clarify that adding NPCs never fixed clue reachability |
+| 测试 | 2921 条 / 196 文件  全绿 |
+| 工作树 | **2 个文件未提交** |
 
 未提交：
-- `M docs/notes/index.json`
-- `M docs/notes/ingest.md`
 - `M docs/test-baseline.json`
 - `M docs/todo.json`
 
@@ -116,19 +114,19 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 【已修复，2026-09-03】`scripts/ingest/run.ts` 原来假设 `BARN_OF_PREMIER` 永远存在——覆盖率/精确率/评分键/id 继承/calibrate diff 全部直接读这一个模块级常量，跑一本没有基准的新 PDF 时要么硬套一个不相干的基准（诊断信息全是
 - ⚠ 复现本仓公布的摄取准确率数字，必须显式设 `INGEST_BASELINE=barn`——不设这个环境变量，`scripts/ingest/run.ts`（todo-54 起）默认走无基准模式，`report.txt` 里每一处依赖基准的小节都会显示「无基准，跳过」，块分类命中 20/误报 3/
 - 【已验证，开发·在场实体与线索路径 N7，2026-09-03】约束层拦不住「NPC 编造模组里不存在的人/物」——用真实撞坑案例实测：酒吧保镖那句「名单什么的早让老板锁进抽屉了，哪轮得到你翻。」（analysis/sim/2026-08-30-barn-natural-play.md:58）编出了
-- 【开发·在场实体与线索路径 N7 用 scene-npc-noun-registry.ts 扫出，2026-09-03】霍姆斯医院（hospital 场景）与维森酒吧/报亭是同一个形状的缺口：`clue_emily_birth` 的 description 明确要求「问起其他医护人员关于艾德里安的情
+- 【已修复，开发·约束层补角色实体域 N9 任务 D，2026-09-03】【开发·在场实体与线索路径 N7 用 scene-npc-noun-registry.ts 扫出，2026-09-03】霍姆斯医院（hospital 场景）与维森酒吧/报亭是同一个形状的缺口：`clue_emily_birth
 - 【已修复，开发·把已有判据补齐到手写侧 N8，2026-09-03】新的一类失效模式：判据只覆盖了机器产出的那一侧，人手写的同类数据绕过了它。learn-gate（`src/ingest/narrative-guard.ts` 的 `evaluateObjectMentionClaims`）对摄取管
 
 ## 最近提交
 
+- e696e7b docs: clarify that adding NPCs never fixed clue reachability
+- 538cc42 feat: add hospital's missing medical-staff NPC (todo-57)
+- f8b2cf2 docs: record item-domain feasibility findings, no implementation
+- 7c76082 feat: add a constraint domain against fabricated NPC characters
+- cccedbc fix: wire sceneId into NPC dialogue constraint checks
+- 48471e1 docs: log the coverage-asymmetry failure mode and refresh snapshots
 - 0fa8346 docs: verify clue_bar_guest_identity's skill field isn't actually empty
 - 33fa0da fix: remove all matchTexts collisions the new judge found
-- d8d9895 feat: extend learn-gate's uniqueness check to hand-written matchTexts
-- c316f23 docs: close todo-41 and log this round's findings
-- 4abc825 feat: add a deterministic judge for scene-npc/clue-noun gaps
-- 28b9805 test: pin down that the constraint layer misses invented entities
-- e42c553 test: verify both bar clues reachable via natural phrasing (todo-41)
-- 9bab15d feat: add newsstand owner NPC (same gap as todo-41)
 
 ## 找东西
 
