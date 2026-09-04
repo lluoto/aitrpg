@@ -1,21 +1,18 @@
 // 场景 id 桥接 —— 让 True End 不再永远不可达（todo-34）。
 //
-// 【开发·场景 id 收敛 N11，2026-09-04，随 (g) 步骤 1.1 更新历史背景】
-// 原背景：运行时（premiers_barn.ts 经 MythosModuleLoader）注册 26 个场景，
-// id 是中文展示名；BARN_OF_PREMIER.scenes（barn-of-premier.ts）20 个，
-// id 是 ASCII，name 是中文展示名。实测：0 个 id 直接对上，17 个靠展示名
-// 对上，3 个完全对不上——全是带括号后缀的（farm_periphery/农场外围（陷阱
-// 区）、barn_interior/建筑内（谷仓大厅）、maintenance_room/维修间（终局
-// 场景）），去掉尾部「（…）」即可对齐。修法是 bridgeBarnOfPremierClues
-// 里用过一次的 GameSession.stripBracketSuffix + barnSceneIdMap()。
+// 【开发·场景 id 收敛 N11，2026-09-04，随 (g) 步骤 1.2 改写】
+// 历史背景：运行时（premiers_barn.ts 经 MythosModuleLoader）注册 26 个
+// 场景，id 是中文展示名；BARN_OF_PREMIER.scenes（barn-of-premier.ts）
+// 20 个，曾经 id 是 ASCII、name 是中文展示名，两套 id 空间要靠
+// GameSession.barnSceneIdMap() 翻译才能对上（实测：0 个 id 直接对上，
+// 17 个靠展示名对上，3 个要去掉括号后缀才对上）。
 //
-// (g) 步骤 1.1 之后：`BARN_OF_PREMIER.scenes[].id` 已经改成去括号的中文
-// 展示名本身（不再是 ASCII），`barnSceneIdMap()` 因此退化成恒等映射
-// （`scene.id -> scene.id`）——下面这批用例原本验证的"翻译能不能把两套
-// id 拉到一起"，现在验证的是"两套 id 本来就是同一套，桥接函数处理这种
-// 平凡情形不会出错"，行为预期不变（`isSceneVisited(scene.id)` 依然
-// 应该为 true），断言本身不需要改，只更新了这段背景描述。新增一条显式
-// 判据钉住"恒等映射"这件事本身，不靠读上面这段文字肉眼确认。
+// (g) 步骤 1.1 把 `BARN_OF_PREMIER.scenes[].id` 改成了去括号的中文
+// 展示名本身，两套 id 从此是同一套；步骤 1.2 顺势删除了
+// `barnSceneIdMap()`/`GameSession.stripBracketSuffix` 这层不再需要的
+// 翻译代码——`isSceneVisited()` 现在直接查，不再有 premiers_barn 特例
+// 分支。这份测试文件因此不再验证"翻译层工作正常"，改为验证"场景 id
+// 不需要翻译就能直接互通"，行为预期不变（原来能查到的现在还是能查到）。
 //
 // bun test src/__tests__/scene-id-bridge.test.ts
 
@@ -38,33 +35,22 @@ beforeEach(async () => {
   await session.act("加载模组 普瑞米尔的谷仓");
 });
 
-describe("(g) 步骤 1.1 验收：barnSceneIdMap() 现在确实是恒等映射（穷举 20 个，不靠肉眼）", () => {
-  it("barnSceneIdMap() 里每一条 key 都等于自己的 value", () => {
-    const map: Map<string, string> = (session as any).barnSceneIdMap();
-    expect(map.size).toBe(20); // 判据本身要测在真实数据量上，不是空跑
-    for (const [key, value] of map) {
-      expect(value).toBe(key);
-    }
-  });
-
-  it("**变异检验**：手工构造一份非恒等映射，判据必须能分辨（证明上面那条真的在比较，不是摆设）", () => {
-    const notIdentity = new Map([["维修间", "maintenance_room"]]);
-    let allEqual = true;
-    for (const [key, value] of notIdentity) if (value !== key) allEqual = false;
-    expect(allEqual).toBe(false);
+describe("(g) 步骤 1.2 验收：全仓再无 barnSceneIdMap() / GameSession.stripBracketSuffix 的翻译调用", () => {
+  it("GameSession 实例上不再存在 barnSceneIdMap 这个方法——不是留着没人调，是真的删掉了", () => {
+    expect(typeof (session as any).barnSceneIdMap).toBe("undefined");
   });
 });
 
-describe("20 个场景 id 全部能映射到运行时 id（穷举，不是抽查）", () => {
+describe("20 个场景 id 全部能直接互通，不需要翻译（穷举，不是抽查）", () => {
   it("BARN_OF_PREMIER.scenes 里每一个 id，走到对应场景后 isSceneVisited(id) 都为 true", () => {
     expect(BARN_OF_PREMIER.scenes.length).toBe(20); // 判据本身要测在真实数据量上，不是空跑
 
     for (const scene of BARN_OF_PREMIER.scenes) {
-      const runtimeName = scene.name.replace(/（[^）]*）$/, "");
-      // 运行时场景确实存在（否则下面的移动会静默失败，断言会落空）。
-      expect(session.world.getScene(runtimeName)).not.toBeNull();
+      // 运行时场景确实存在（否则下面的移动会静默失败，断言会落空）——
+      // scene.id 现在直接就是运行时场景名，不需要再另外去括号。
+      expect(session.world.getScene(scene.id)).not.toBeNull();
 
-      (session as any).movePlayerToScene(runtimeName);
+      (session as any).movePlayerToScene(scene.id);
       expect(session.isSceneVisited(scene.id)).toBe(true);
     }
   });

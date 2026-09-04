@@ -45,8 +45,16 @@ export interface RepresentationInconsistency {
   detail: string;
 }
 
-/** 与 `GameSession.stripBracketSuffix`（game-session.ts:4099）同一个正则——那处是 private，
- *  这里按 `scene-id-bridge.test.ts:38` 已经确认过的先例内联同一份归一化，不新发明一套。 */
+/**
+ * 开发·场景 id 收敛 N11（(g) 步骤 1.2）之前，这个正则曾与
+ * `GameSession.stripBracketSuffix`（一个 private 方法）同一份——那处
+ * 现在已经随 `barnSceneIdMap()` 一起删除（`BARN_OF_PREMIER.scenes[].id`
+ * 从 (g) 步骤 1.1 起本来就是去括号短名，不再需要运行时再转一次）。
+ * 这里仍然要保留自己这份：`Scene.name` 字段本身依然带括号后缀（如
+ * "维修间（终局场景）"），本模块比较的是 `MythosModule` 一侧的场景/NPC
+ * 名字，那些名字不带括号，两边比较前仍需对 ModuleData 这一侧的
+ * `.name` 做归一化——只是不再有第二处地方用同一个正则，不算"重复"了。
+ */
 function stripBracketSuffix(name: string): string {
   return name.replace(/（[^）]*）$/, "");
 }
