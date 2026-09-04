@@ -34,7 +34,20 @@
 |---|---|---|---|
 | 原著世界内容库 | `poc/src/rules/mythos-expansion.ts` | 神话生物、典籍、法术等跨模组内容 | 仅 prompt 层引用，未接入剧本引擎 |
 | 摄取中间表示 | `poc/src/module/types.ts` 的 `ModuleData` | PDF 读取模块应产出的权威结构 | 已接入 |
-| 运行时导入容器 | `poc/src/rules/mythos-module.ts` 的 `MythosModule` | activation、loader、hooks、initialEffects | 已接入；应由 ModuleData 投影生成 |
+| 运行时导入容器 | `poc/src/rules/mythos-module.ts` 的 `MythosModule` | activation、loader、hooks、initialEffects | 已接入；**不是**由 ModuleData 投影生成（订正见下） |
+
+> 【订正，开发·场景 id 收敛 N11，2026-09-04】上表"应由 ModuleData 投影
+> 生成"这句不成立——`docs/notes/engine.md` 的
+> 「谷仓模组两份表示收敛方案（开发·陈旧记录纠正+收敛前置 N10 任务②B3，2026-09-04）」一节
+> 的 (a) 逐字段核对过两侧类型定义，两个方向都有对方补不出来的
+> 结构：`MythosModule` 缺 `findMethods`/`unlocks`/`TrapMechanics`/
+> 结构化 `EndNarration.condition`；`ModuleData` 同样缺
+> `activation`/`spells`/`tomes`/`rewards`/`initialEffects` 这类运行时
+> 钩子，且两侧 `ModuleNPC` 是完全不同目的的建模（`MythosModule` 战斗
+> 属性导向，`ModuleData` 叙事导向）——不是一份能把另一份投影出来。
+> 准确说法：**ModuleData 是叙事/线索结构的权威源，MythosModule 是
+> 引擎可加载运行时的权威源，收敛需要合并两者，不是让一方降级为另一方
+> 的投影**。详细论证、字段级证据与合并方案见上述小节。
 
 当前《普瑞米尔的谷仓》仍存在三份表述：
 
