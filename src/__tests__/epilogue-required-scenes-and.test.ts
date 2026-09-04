@@ -62,7 +62,7 @@ describe("现有后日谈数据在新语义（AND）下的匹配结果——跑�
     const result = evaluateEpilogues(
       BARN_OF_PREMIER.epilogues!,
       noClues,
-      visitedSet(["hospital", "adrian_hospital_meeting"]),
+      visitedSet(["霍姆斯医院", "与艾德里安的会面"]),
     );
     expect(result.map((e) => e.id)).toContain("adrian_fate");
   });
@@ -71,7 +71,7 @@ describe("现有后日谈数据在新语义（AND）下的匹配结果——跑�
     const result = evaluateEpilogues(
       BARN_OF_PREMIER.epilogues!,
       noClues,
-      visitedSet(["hospital"]),
+      visitedSet(["霍姆斯医院"]),
     );
     expect(result.map((e) => e.id)).not.toContain("adrian_fate");
   });
@@ -80,7 +80,7 @@ describe("现有后日谈数据在新语义（AND）下的匹配结果——跑�
     const result = evaluateEpilogues(
       BARN_OF_PREMIER.epilogues!,
       (id) => id !== "clue_migo_defeated",
-      visitedSet(["maintenance_room"]),
+      visitedSet(["维修间"]),
     );
     expect(result.map((e) => e.id)).toContain("migo_escaped");
   });

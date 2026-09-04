@@ -21,7 +21,7 @@ function toCandidate(clue: { id: string; name: string; findMethods: { descriptio
   return { id: clue.id, texts: [clue.name, ...clue.findMethods.map((f) => f.description)] };
 }
 
-const trailer = BARN_OF_PREMIER.scenes.find((s) => s.id === "gabi_trailer")!;
+const trailer = BARN_OF_PREMIER.scenes.find((s) => s.id === "加比的拖车房")!;
 const group = trailer.clues.map(toCandidate);
 
 describe("stripLocationFillers：指代词本身不携带信号", () => {

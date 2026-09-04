@@ -265,7 +265,7 @@ export const KNOWN_INCONSISTENCIES: KnownInconsistency[] = [
     reason:
       "B2 裁决：不算错，是场景颗粒度差异。原文 section_12.txt:1-38「维修间：」这一节本身把「▶比较大的" +
       "奇怪管道」「▶艾米丽与爱莉的棺材」写成同一场景块内的 ▶ 子小节——ModuleData 把它们并成一个场景" +
-      "（maintenance_room）与 MythosModule 拆成独立场景节点，两者都对得上原文结构，只是颗粒度不同。",
+      "（维修间）与 MythosModule 拆成独立场景节点，两者都对得上原文结构，只是颗粒度不同。",
   },
   {
     category: "npc_scene",
@@ -286,7 +286,7 @@ export const KNOWN_INCONSISTENCIES: KnownInconsistency[] = [
     reason:
       "B2 裁决：MythosModule 错（sceneId=下水道）。原文 section_12.txt:25-38 写明米戈出现的地点是" +
       "「维修间」场景内部的「▶比较大的奇怪管道」子小节，下水道只是去维修间必经的更早一跳路径，不是米戈" +
-      "现身的地方。ModuleData（maintenance_room）对。核对不出出处，本轮只裁决不改数据。",
+      "现身的地方。ModuleData（维修间）对。核对不出出处，本轮只裁决不改数据。",
   },
   {
     category: "numeric_fact",
@@ -298,8 +298,8 @@ export const KNOWN_INCONSISTENCIES: KnownInconsistency[] = [
   },
   { category: "scene_set", key: "奇怪的卡片", reason: "ModuleData 侧是 clue_card（线索不是场景），MythosModule 把线索建成了伪场景节点" },
   { category: "scene_set", key: "旅店", reason: "ModuleData 侧有孤儿常量 S.HOTEL（barn-of-premier.ts）但从未接进 buildScenes()，是真地点但漏建" },
-  { category: "scene_set", key: "比较大的奇怪管道", reason: "ModuleData 侧并进了 maintenance_room 场景内的 clue_final_pipe，不是独立场景" },
-  { category: "scene_set", key: "艾米丽与爱莉的棺材", reason: "ModuleData 侧并进了 maintenance_room 场景内的 clue_final_coffin，不是独立场景——也是上面 3 条 npc_scene 里 Emily/Ailey 站位矛盾的根源" },
-  { category: "scene_set", key: "菲碧_特里坎", reason: "MythosModule 把 NPC 建成了可导航的伪场景节点，ModuleData 侧只用 Scene.npcIds 挂在 tricam_house 下" },
+  { category: "scene_set", key: "比较大的奇怪管道", reason: "ModuleData 侧并进了 维修间 场景内的 clue_final_pipe，不是独立场景" },
+  { category: "scene_set", key: "艾米丽与爱莉的棺材", reason: "ModuleData 侧并进了 维修间 场景内的 clue_final_coffin，不是独立场景——也是上面 3 条 npc_scene 里 Emily/Ailey 站位矛盾的根源" },
+  { category: "scene_set", key: "菲碧_特里坎", reason: "MythosModule 把 NPC 建成了可导航的伪场景节点，ModuleData 侧只用 Scene.npcIds 挂在 特里坎家 下" },
   { category: "scene_set", key: "米尔_特里坎", reason: "同上，MythosModule 把 NPC 建成了伪场景节点" },
 ];

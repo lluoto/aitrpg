@@ -18,8 +18,8 @@ import { noticesEntity } from "../play-module";
 import { getCoCArchetypes } from "../character/coc-character";
 
 const TRAILER = "ent_gabi_trailer";
-const HOUSE = "tricam_house";
-const TRAILER_SCENE = "gabi_trailer";
+const HOUSE = "特里坎家";
+const TRAILER_SCENE = "加比的拖车房";
 
 describe("模组数据：叙事实体声明", () => {
   it("模组声明了拖车房实体，且指向真实存在的场景", () => {
@@ -195,7 +195,7 @@ describe("读取路径：module-loader 写入的实体信息必须读得回来",
 
   it("没有声明视线的出口不带 sighted，不给消费方假数据", () => {
     const house = world.getScene(HOUSE)!;
-    const townExit = house.exits.find((e) => e.target === "town_premier");
+    const townExit = house.exits.find((e) => e.target === "普瑞米尔");
     expect(townExit).toBeDefined();
     expect(townExit!.sighted).toBeUndefined();
   });

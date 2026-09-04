@@ -86,14 +86,14 @@ describe("对 BARN_OF_PREMIER 实跑：weisen_bar/newsstand 当前 0 缺口", ()
 
   it("**变异检验**：把「前台」从 weisen_bar.npcIds 里拿掉，判据必须精确报出这个缺口", () => {
     const mutated = BARN_OF_PREMIER.scenes.map((s) =>
-      s.id === "weisen_bar" ? { ...s, npcIds: s.npcIds.filter((id) => id !== "bar_receptionist") } : s,
+      s.id === "维森酒吧" ? { ...s, npcIds: s.npcIds.filter((id) => id !== "bar_receptionist") } : s,
     );
     const gaps = findSceneCharacterNounGaps(mutated, BARN_OF_PREMIER.npcs);
-    const bar = gaps.filter((g) => g.sceneId === "weisen_bar");
+    const bar = gaps.filter((g) => g.sceneId === "维森酒吧");
     expect(bar.length).toBeGreaterThan(0);
     expect(bar.every((g) => g.noun === "前台")).toBe(true);
     // 变异不影响 newsstand——两个场景的修复彼此独立，不该互相牵连。
-    expect(gaps.some((g) => g.sceneId === "newsstand")).toBe(false);
+    expect(gaps.some((g) => g.sceneId === "报亭")).toBe(false);
   });
 
   it("**能力边界（合成数据负面确认）**：一个真实存在于线索文本、但没登记进表的角色名词不会被抓到——直到手动把它加进登记表才现形，证明这份判据不是「扫描全模组自动找齐所有缺口」，只认登记过的词", () => {

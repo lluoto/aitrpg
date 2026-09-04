@@ -1,0 +1,43 @@
+refactor: converge BARN_OF_PREMIER scene ids to Chinese names (g.1.1)
+
+Executes convergence-plan step 1.1 (docs/notes/engine.md, "谷仓模组
+两份表示收敛方案" section (g)): changed all 20
+BARN_OF_PREMIER.scenes[].id values from ASCII (tricam_house,
+maintenance_room, ...) to their bracket-stripped Chinese display
+name (特里坎家, 维修间, ...) -- the id the runtime has been treating
+as canonical all along via GameSession.barnSceneIdMap()/
+stripBracketSuffix. Updated every targetSceneId/sceneId/
+requiredScenes/hubSceneId/finaleSceneId/earlyGameEndSceneId
+reference inside barn-of-premier.ts to match, plus every consumer
+file that hardcoded one of the old ids (verified by scoping to files
+that import from module/barn-of-premier, to avoid touching the
+unrelated third representation in rules/mythos-module.ts, which
+happens to reuse some of the same ASCII slugs independently).
+
+Fixed two consumers the mechanical replace couldn't reach because
+they read the old id via unquoted property access rather than a
+string literal: scene-resolve.test.ts built an aliases map keyed by
+the (now-Chinese) scene id and then indexed it with the old
+identifier name in two places.
+
+Updated ending-namespace-truth-source.test.ts's second test, which
+existed specifically to prove a translation layer bridges mismatched
+ASCII/Chinese ids -- that mismatch is exactly what this step
+removes, so the test now asserts direct equality instead.
+
+Added an explicit assertion in scene-id-bridge.test.ts that
+barnSceneIdMap() is now an identity mapping (every key equals its
+value across all 20 scenes), with a mutation-style control proving
+the comparison isn't vacuous, instead of leaving that to be inferred
+from other tests passing.
+
+Confirmed before committing: rules/mythos-module.ts's separate
+PREMIERS_BARN_MODULE (the dead third representation) still uses its
+own ASCII ids untouched; representation-consistency.ts's judge
+compares scenes by name, not id, so the known-inconsistency count
+stayed at exactly 12; and ids.ts's assignSceneIds/inherit-ids.ts's
+computeIdInheritance (verified in the prior commit) both handle this
+without any code change, since neither hardcodes an id format.
+
+typecheck 0; bun test 2938->2940 (+2, barnSceneIdMap identity check);
+preflight 12/12.

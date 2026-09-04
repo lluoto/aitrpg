@@ -46,7 +46,7 @@ function toCandidate(clue: { id: string; name: string; findMethods: { descriptio
   return { id: clue.id, texts: [clue.name, ...clue.findMethods.map((f) => f.description)] };
 }
 
-const bedroom = BARN_OF_PREMIER.scenes.find((s) => s.id === "adrian_bedroom")!;
+const bedroom = BARN_OF_PREMIER.scenes.find((s) => s.id === "艾德里安的卧室")!;
 const diaryClue = bedroom.clues.find((c) => c.id === "clue_bedroom_diary")!;
 const oldDocClue = bedroom.clues.find((c) => c.id === "clue_bedroom_old_doc")!;
 

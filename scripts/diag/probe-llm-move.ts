@@ -26,7 +26,7 @@ import type { SceneConnection } from "../../src/module/types";
 
 const MAX_CALLS = Number(process.argv[2] ?? 12);
 
-const town = BARN_OF_PREMIER.scenes.find((s) => s.id === "town_premier")!;
+const town = BARN_OF_PREMIER.scenes.find((s) => s.id === "普瑞米尔")!;
 const exits = (town.connections as SceneConnection[]).map((c) => ({
   id: c.targetSceneId,
   name: BARN_OF_PREMIER.scenes.find((s) => s.id === c.targetSceneId)?.name ?? c.targetSceneId,
@@ -41,9 +41,9 @@ interface Case {
 
 const CASES: Case[] = [
   // 有唯一解 —— 子串匹配已经能对，这里量的是「LLM 会不会反而搞砸」
-  { said: "我们去医院看看", want: "hospital", why: "后缀别名" },
-  { said: "别去警察局，去维森酒吧", want: "weisen_bar", why: "否定" },
-  { said: "警察局那边已经去过了，现在去报亭", want: "newsstand", why: "已完成" },
+  { said: "我们去医院看看", want: "霍姆斯医院", why: "后缀别名" },
+  { said: "别去警察局，去维森酒吧", want: "维森酒吧", why: "否定" },
+  { said: "警察局那边已经去过了，现在去报亭", want: "报亭", why: "已完成" },
   // 本就没有唯一解 —— 期望 unknown。硬挑一个就是把替选伪装成理解
   { said: "换个地方看看", want: null, why: "同义改写，没指定目标" },
   { said: "去那边", want: null, why: "代词，没指定目标" },

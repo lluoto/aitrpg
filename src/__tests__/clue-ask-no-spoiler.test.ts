@@ -24,7 +24,7 @@ function makeSession(id: string): GameSession & Record<string, any> {
   return new GameSession(id, "cosmic-horror", CFG, "investigator", "甲") as any;
 }
 
-const controlRoom = BARN_OF_PREMIER.scenes.find((s) => s.id === "control_room")!;
+const controlRoom = BARN_OF_PREMIER.scenes.find((s) => s.id === "中控室")!;
 
 describe("歧义回问不含任何未发现线索的名字", () => {
   it("端到端：真实的中控室歧义（陆川去翻中控室的储物柜）触发回问，回问文本不含任何候选的 id/展示名", async () => {

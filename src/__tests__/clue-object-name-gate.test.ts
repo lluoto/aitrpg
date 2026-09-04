@@ -35,9 +35,9 @@ function toCandidate(clue: { id: string; name: string; findMethods: { descriptio
   return { id: clue.id, texts: [clue.name, ...clue.findMethods.map((f) => f.description)] };
 }
 
-const controlRoom = BARN_OF_PREMIER.scenes.find((s) => s.id === "control_room")!;
+const controlRoom = BARN_OF_PREMIER.scenes.find((s) => s.id === "中控室")!;
 const controlGroup = controlRoom.clues.map(toCandidate);
-const trailer = BARN_OF_PREMIER.scenes.find((s) => s.id === "gabi_trailer")!;
+const trailer = BARN_OF_PREMIER.scenes.find((s) => s.id === "加比的拖车房")!;
 const trailerGroup = trailer.clues.map(toCandidate);
 
 describe("真实输入：动词不在任何一份表里，照样走到线索解析", () => {

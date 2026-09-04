@@ -47,18 +47,17 @@ describe("命名空间一致性：END_NARRATIONS 引用的每个 clue id，真�
   });
 
   /**
-   * requiredScenes 引用的场景 id（目前只有 True End 一条，
-   * "maintenance_room"）与 GameSession 实际注册的场景 id **原始数据上
-   * 确实不是同一套**（一套 ASCII、一套中文展示名）——这一半仍然真实，
-   * 两套模组类型（ModuleData vs MythosModule，todo-19）没统一之前不会变。
-   * **但这不再是"缺口"**：isSceneVisited() 现在会先经 barnSceneIdMap()
-   * 把 ASCII id 翻译成运行时 id 再查（todo-34 已修，见
-   * scene-id-bridge.test.ts 的完整验收），原始数据层面的差异被这层翻译
-   * 盖住了，True End 因此变得可达。这条测试改成同时钉住两件事：原始
-   * 数据确实不同（翻译存在的理由），但经 isSceneVisited() 查询后能查到
-   * （翻译真的在起作用）。
+   * 【开发·场景 id 收敛 N11，2026-09-04，随 (g) 步骤 1.1 更新】原来这条
+   * 测试钉的是"requiredScenes 引用的 ASCII id 与运行时中文场景 id 不同，
+   * 但经 barnSceneIdMap() 翻译后可查"——(g) 步骤 1.1 把
+   * `BARN_OF_PREMIER.scenes[].id` 从 ASCII 改成了去括号的中文展示名
+   * （运行时早就在用的那套），两套 id 现在是**同一个值**，不再需要翻译
+   * 就能直接查到。这不是这条测试失败了要去将就，是场景 id 收敛这件事
+   * 本身要它变成这样——`session.world.listScenes()` 现在应该能直接
+   * 找到 requiredScenes 里的每一个 id，不用先经过 movePlayerToScene
+   * 兜一圈再查 isSceneVisited。
    */
-  it("requiredScenes 的 ASCII id 与运行时原始场景 id 不同，但经 isSceneVisited() 桥接后可查（todo-34 已修）", () => {
+  it("requiredScenes 引用的场景 id 现在与运行时注册的场景 id 直接相等（(g) 步骤 1.1 收敛后）", () => {
     const allRequiredSceneIds = new Set<string>();
     for (const en of END_NARRATIONS) {
       for (const id of en.condition.requiredScenes ?? []) allRequiredSceneIds.add(id);
@@ -66,15 +65,11 @@ describe("命名空间一致性：END_NARRATIONS 引用的每个 clue id，真�
     expect(allRequiredSceneIds.size).toBeGreaterThan(0);
 
     const registeredIds = new Set(session.world.listScenes().map((s) => s.id));
-    // 目前 END_NARRATIONS 里 requiredScenes 只有这一条（"maintenance_room"→
-    // "维修间"），这里直接写死对应的运行时场景名；scene-id-bridge.test.ts
-    // 覆盖了全部 20 个场景的映射，不依赖这条测试是否穷举。
     for (const sceneId of allRequiredSceneIds) {
-      // 原始数据确实不同——翻译存在的理由，不是这条判据的错。
-      expect(registeredIds.has(sceneId)).toBe(false);
-      // 但走到对应的运行时场景后，isSceneVisited(ASCII id) 必须能查到——
-      // 翻译层真的在起作用，不是摆设。
-      (session as any).movePlayerToScene("维修间");
+      // id 收敛后直接相等——不再需要 barnSceneIdMap() 翻译。
+      expect(registeredIds.has(sceneId)).toBe(true);
+      // 走到对应场景后 isSceneVisited(sceneId) 依然能查到，行为不变。
+      (session as any).movePlayerToScene(sceneId);
       expect(session.isSceneVisited(sceneId)).toBe(true);
     }
   });

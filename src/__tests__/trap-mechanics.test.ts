@@ -115,7 +115,7 @@ describe("模组数据 — 普瑞米尔的谷仓的陷阱", () => {
 
   test("farm_periphery 一个场景挂着不止一个会结算的陷阱", () => {
     // 改造前这里只有捕兽夹是活的，霰弹枪与音响是死数据
-    expect(trapsInScene(BARN_OF_PREMIER.items, "farm_periphery").length).toBeGreaterThan(1);
+    expect(trapsInScene(BARN_OF_PREMIER.items, "农场外围").length).toBeGreaterThan(1);
   });
 
   test("每个陷阱的骰子表达式都解析得动", () => {

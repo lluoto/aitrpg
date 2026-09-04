@@ -98,7 +98,7 @@ function evaluatorsFor(s: ReturnType<typeof stateFromMask>) {
   if (s.supplies) cluesFound.add("clue_control_supplies");
   if (s.leverPulled) cluesFound.add("bad_lever_pulled");
   const scenesVisited = new Set<string>();
-  if (s.maintVisited) scenesVisited.add("maintenance_room");
+  if (s.maintVisited) scenesVisited.add("维修间");
   return {
     isClueFound: (id: string) => cluesFound.has(id),
     isSceneVisited: (id: string) => scenesVisited.has(id),
@@ -176,7 +176,7 @@ function evaluatorsFor6(s: ReturnType<typeof stateFromMask6>) {
   if (s.leverPulled) cluesFound.add("bad_lever_pulled");
   if (s.finalBrainJars) cluesFound.add("clue_final_brain_jars");
   const scenesVisited = new Set<string>();
-  if (s.maintVisited) scenesVisited.add("maintenance_room");
+  if (s.maintVisited) scenesVisited.add("维修间");
   return {
     isClueFound: (id: string) => cluesFound.has(id),
     isSceneVisited: (id: string) => scenesVisited.has(id),

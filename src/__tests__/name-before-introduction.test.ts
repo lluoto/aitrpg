@@ -112,7 +112,7 @@ describe("开场氛围不得提前点名", () => {
   test("被替换掉的那句仍然把孩子写清楚了 —— 不是删掉了事", () => {
     // 修法不能是「把这句删了」。玩家得知道院里有个孩子、她跑回屋里了，
     // 否则后面 NPC 出场就成了凭空冒出来。
-    const scene = BARN_OF_PREMIER.scenes.find((s) => s.id === "tricam_house")!;
+    const scene = BARN_OF_PREMIER.scenes.find((s) => s.id === "特里坎家")!;
     expect(scene.openingAtmosphere).toContain("小女孩");
     expect(scene.openingAtmosphere).toContain("篮球");
     expect(scene.openingAtmosphere).toContain("跑回屋");

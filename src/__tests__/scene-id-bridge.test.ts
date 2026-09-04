@@ -1,13 +1,21 @@
 // 场景 id 桥接 —— 让 True End 不再永远不可达（todo-34）。
 //
-// 背景：运行时（premiers_barn.ts 经 MythosModuleLoader）注册 26 个场景，
+// 【开发·场景 id 收敛 N11，2026-09-04，随 (g) 步骤 1.1 更新历史背景】
+// 原背景：运行时（premiers_barn.ts 经 MythosModuleLoader）注册 26 个场景，
 // id 是中文展示名；BARN_OF_PREMIER.scenes（barn-of-premier.ts）20 个，
 // id 是 ASCII，name 是中文展示名。实测：0 个 id 直接对上，17 个靠展示名
 // 对上，3 个完全对不上——全是带括号后缀的（farm_periphery/农场外围（陷阱
 // 区）、barn_interior/建筑内（谷仓大厅）、maintenance_room/维修间（终局
-// 场景）），去掉尾部「（…）」即可对齐。修法已经在 bridgeBarnOfPremierClues
-// 里用过一次（线索桥接），本轮只是把同一个函数用到场景 id 上
-// （GameSession.stripBracketSuffix + barnSceneIdMap()），不是新发明。
+// 场景）），去掉尾部「（…）」即可对齐。修法是 bridgeBarnOfPremierClues
+// 里用过一次的 GameSession.stripBracketSuffix + barnSceneIdMap()。
+//
+// (g) 步骤 1.1 之后：`BARN_OF_PREMIER.scenes[].id` 已经改成去括号的中文
+// 展示名本身（不再是 ASCII），`barnSceneIdMap()` 因此退化成恒等映射
+// （`scene.id -> scene.id`）——下面这批用例原本验证的"翻译能不能把两套
+// id 拉到一起"，现在验证的是"两套 id 本来就是同一套，桥接函数处理这种
+// 平凡情形不会出错"，行为预期不变（`isSceneVisited(scene.id)` 依然
+// 应该为 true），断言本身不需要改，只更新了这段背景描述。新增一条显式
+// 判据钉住"恒等映射"这件事本身，不靠读上面这段文字肉眼确认。
 //
 // bun test src/__tests__/scene-id-bridge.test.ts
 
@@ -30,8 +38,25 @@ beforeEach(async () => {
   await session.act("加载模组 普瑞米尔的谷仓");
 });
 
-describe("20 个 ASCII 场景 id 全部能映射到运行时 id（穷举，不是抽查）", () => {
-  it("BARN_OF_PREMIER.scenes 里每一个 id，走到对应场景后 isSceneVisited(ASCII id) 都为 true", () => {
+describe("(g) 步骤 1.1 验收：barnSceneIdMap() 现在确实是恒等映射（穷举 20 个，不靠肉眼）", () => {
+  it("barnSceneIdMap() 里每一条 key 都等于自己的 value", () => {
+    const map: Map<string, string> = (session as any).barnSceneIdMap();
+    expect(map.size).toBe(20); // 判据本身要测在真实数据量上，不是空跑
+    for (const [key, value] of map) {
+      expect(value).toBe(key);
+    }
+  });
+
+  it("**变异检验**：手工构造一份非恒等映射，判据必须能分辨（证明上面那条真的在比较，不是摆设）", () => {
+    const notIdentity = new Map([["维修间", "maintenance_room"]]);
+    let allEqual = true;
+    for (const [key, value] of notIdentity) if (value !== key) allEqual = false;
+    expect(allEqual).toBe(false);
+  });
+});
+
+describe("20 个场景 id 全部能映射到运行时 id（穷举，不是抽查）", () => {
+  it("BARN_OF_PREMIER.scenes 里每一个 id，走到对应场景后 isSceneVisited(id) 都为 true", () => {
     expect(BARN_OF_PREMIER.scenes.length).toBe(20); // 判据本身要测在真实数据量上，不是空跑
 
     for (const scene of BARN_OF_PREMIER.scenes) {
@@ -44,14 +69,14 @@ describe("20 个 ASCII 场景 id 全部能映射到运行时 id（穷举，不�
     }
   });
 
-  it("走到「维修间」后，isSceneVisited(\"maintenance_room\") 为 true（验收原文的具体例子）", () => {
+  it("走到「维修间」后，isSceneVisited(\"维修间\") 为 true（验收原文的具体例子）", () => {
     (session as any).movePlayerToScene("维修间");
-    expect(session.isSceneVisited("maintenance_room")).toBe(true);
+    expect(session.isSceneVisited("维修间")).toBe(true);
   });
 
   it("没去过的场景仍然是 false——桥接不是让一切都变成 true", () => {
-    expect(session.isSceneVisited("maintenance_room")).toBe(false);
-    expect(session.isSceneVisited("control_room")).toBe(false);
+    expect(session.isSceneVisited("维修间")).toBe(false);
+    expect(session.isSceneVisited("中控室")).toBe(false);
   });
 });
 
@@ -77,7 +102,7 @@ describe("True End 可达（构造真实状态：读懂日记老文件 + 见到�
     session.investigation.markDiscovered("clue_bedroom_diary", "p1");
     session.investigation.markDiscovered("clue_bedroom_old_doc", "p1");
     session.investigation.markDiscovered("clue_final_brain_jars", "p1");
-    // 不移动——requiredScenes: ["maintenance_room"] 不满足。
+    // 不移动——requiredScenes: ["维修间"] 不满足。
 
     const ending = BARN_SUPPORT.evaluateEnding(
       (id) => session.isClueFound(id),

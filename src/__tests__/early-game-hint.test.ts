@@ -42,7 +42,7 @@ describe("extractLocationHint：从 findMethods 描述抽干净的位置名词",
 
 describe("谷仓：earlyGameEndSceneId=adrian_farm，到农场之前算前期", () => {
   it("BARN_SUPPORT 声明了这个字段", () => {
-    expect(BARN_SUPPORT.earlyGameEndSceneId).toBe("adrian_farm");
+    expect(BARN_SUPPORT.earlyGameEndSceneId).toBe("艾德里安的农场");
   });
 
   it("开局在特里坎家：isEarlyGame() 为 true", async () => {

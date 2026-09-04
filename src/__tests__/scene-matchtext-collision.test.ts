@@ -116,7 +116,7 @@ describe("对 BARN_OF_PREMIER 实跑：全模组扫描结果如实记录（任�
 });
 
 describe("原文指定的三个动作各自唯一命中它对应的线索（任务②）", () => {
-  const scene = BARN_OF_PREMIER.scenes.find((s) => s.id === "weisen_bar")!;
+  const scene = BARN_OF_PREMIER.scenes.find((s) => s.id === "维森酒吧")!;
   const candidates = scene.clues.map((c) => ({
     id: c.id,
     texts: [c.name, ...c.findMethods.map((f) => f.description), ...(c.matchTexts ?? [])],

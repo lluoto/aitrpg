@@ -121,7 +121,7 @@ const moduleData: ModuleData = {
         // 菲碧的 knowledge 原文是"加比比较叛逆，喜欢出去玩，十五岁就搬到外面拖车住了"，
         // LLM 复述时用词会变，所以按词根匹配而不是整句。
         mentionKeywords: ["拖车"],
-        sceneId: "gabi_trailer",
+        sceneId: "加比的拖车房",
         // 会下意识把话里的东西和眼前景物对上的职业。留空则人人都会注意到，
         // 那样这段就不再是"某个人的习惯"，而是引擎在提示玩家。
         noticedBy: ["侦探", "警", "探员", "记者", "猎人", "摄影"],
@@ -149,7 +149,7 @@ function buildScenes(): Scene[] {
 
   // 0. 特里坎家 (Tricam House)
   scenes.push({
-    id: "tricam_house",
+    id: "特里坎家",
     name: "特里坎家",
     description: S.TRICAM_HOUSE,
     clues: [],
@@ -163,8 +163,8 @@ function buildScenes(): Scene[] {
     openingAtmosphere: `还没走到门口，你们便听见院里传来一下一下拍打皮球的声音，节奏很慢，像是有人在随意消磨时间。循声望去，一个小女孩正抱着篮球站在院里，一下一下地拍着。她察觉到你们走近，抬起头怯生生地望了一眼，随即丢下球，转身跑回屋内，门在身后轻轻带上。院落重新安静下来，只有风吹过太阳伞的轻响——接下来，该由你们叩响那扇门了。`,
     isHome: true,
     connections: [
-      { targetSceneId: "gabi_trailer", condition: "前往加比的拖车房" },
-      { targetSceneId: "town_premier", condition: "返回镇上" },
+      { targetSceneId: "加比的拖车房", condition: "前往加比的拖车房" },
+      { targetSceneId: "普瑞米尔", condition: "返回镇上" },
     ],
     atmosphere: "因为考虑到终局的那一幕，这里可以稍微多的展示一下米尔对菲碧的依赖与菲碧对于孩子失踪的不安、焦虑。这些信息在终局会对调查员留下非常巨大的落差。",
   });
@@ -210,33 +210,33 @@ function buildScenes(): Scene[] {
   ];
 
   scenes.push({
-    id: "gabi_trailer",
+    id: "加比的拖车房",
     name: "加比的拖车房",
     description: S.GABI_TRAILER,
     clues: gabiClues,
     npcIds: [],
     connections: [
-      { targetSceneId: "tricam_house", condition: "返回特里坎家" },
+      { targetSceneId: "特里坎家", condition: "返回特里坎家" },
     ],
     atmosphere: "这里有加比生活过的痕迹，细细搜查应该能找到什么。",
   });
 
   // 2. 普瑞米尔 — 枢纽（包含镇内所有子场景）
   scenes.push({
-    id: "town_premier",
+    id: "普瑞米尔",
     name: "普瑞米尔",
     description: S.TOWN,
     clues: [],
     npcIds: [],
     connections: [
-      { targetSceneId: "tricam_house", condition: "前往特里坎家" },
-      { targetSceneId: "weisen_bar", condition: "前往维森酒吧" },
-      { targetSceneId: "police_station", condition: "前往警察局" },
-      { targetSceneId: "hospital", condition: "前往霍姆斯医院" },
-      { targetSceneId: "newsstand", condition: "前往报亭" },
-      { targetSceneId: "shootout_scene", condition: "前往城外交火现场" },
-      { targetSceneId: "adrian_town_house", condition: "前往艾德里安在镇子内的住宅" },
-      { targetSceneId: "adrian_farm", condition: "前往郊外的艾德里安农场" },
+      { targetSceneId: "特里坎家", condition: "前往特里坎家" },
+      { targetSceneId: "维森酒吧", condition: "前往维森酒吧" },
+      { targetSceneId: "警察局", condition: "前往警察局" },
+      { targetSceneId: "霍姆斯医院", condition: "前往霍姆斯医院" },
+      { targetSceneId: "报亭", condition: "前往报亭" },
+      { targetSceneId: "交火现场", condition: "前往城外交火现场" },
+      { targetSceneId: "艾德里安在镇子内的住宅", condition: "前往艾德里安在镇子内的住宅" },
+      { targetSceneId: "艾德里安的农场", condition: "前往郊外的艾德里安农场" },
     ],
   });
 
@@ -322,7 +322,7 @@ function buildScenes(): Scene[] {
     },
   ];
   scenes.push({
-    id: "weisen_bar",
+    id: "维森酒吧",
     name: "维森酒吧",
     description: S.WEISEN_BAR,
     clues: barClues,
@@ -334,7 +334,7 @@ function buildScenes(): Scene[] {
     // 不硬造。
     npcIds: ["bar_bouncer", "bar_receptionist"],
     connections: [
-      { targetSceneId: "town_premier", condition: "返回镇上" },
+      { targetSceneId: "普瑞米尔", condition: "返回镇上" },
     ],
     atmosphere: "维森酒吧鱼龙混杂，小费文化在这里尤其盛行。",
   });
@@ -381,14 +381,14 @@ function buildScenes(): Scene[] {
     },
   ];
   scenes.push({
-    id: "newsstand",
+    id: "报亭",
     name: "报亭",
     description: "调查员可以通过报亭购买报纸获取信息。",
     clues: newsstandClues,
     npcIds: ["newsstand_owner"],
     connections: [
-      { targetSceneId: "town_premier", condition: "返回镇上" },
-      { targetSceneId: "hospital", condition: "根据报道前往霍姆斯医院" },
+      { targetSceneId: "普瑞米尔", condition: "返回镇上" },
+      { targetSceneId: "霍姆斯医院", condition: "根据报道前往霍姆斯医院" },
     ],
     atmosphere: "报亭老板认为翻找旧报纸太麻烦，不如直接交给废纸场处理。如果调查员提出购买这批废报纸，老板会以市场价3倍的价格出售。",
   });
@@ -419,14 +419,14 @@ function buildScenes(): Scene[] {
     },
   ];
   scenes.push({
-    id: "hospital",
+    id: "霍姆斯医院",
     name: "霍姆斯医院",
     description: S.HOSPITAL,
     clues: hospitalClues,
     npcIds: ["hospital_staff"],
     connections: [
-      { targetSceneId: "town_premier", condition: "返回镇上" },
-      { targetSceneId: "adrian_hospital_meeting", condition: "前往艾德里安的病房（需通过门口警员的检查）" },
+      { targetSceneId: "普瑞米尔", condition: "返回镇上" },
+      { targetSceneId: "与艾德里安的会面", condition: "前往艾德里安的病房（需通过门口警员的检查）" },
     ],
     atmosphere: "艾德里安现在处于被严格监控的状态，病房门口有两名警员值守，没有合适的身份与理由无法进入。",
   });
@@ -480,14 +480,14 @@ function buildScenes(): Scene[] {
     },
   ];
   scenes.push({
-    id: "adrian_hospital_meeting",
+    id: "与艾德里安的会面",
     name: "与艾德里安的会面",
     description: "艾德里安现在的随身物品已经都被收走，身上只有一套病号服，可以看到病房的窗子都被临时加固了铁栏杆。他半躺在床上，完全没有任何意识。",
     clues: adrianMeetingClues,
     npcIds: ["adrian_estrum"],
     connections: [
-      { targetSceneId: "hospital", condition: "返回医院大厅" },
-      { targetSceneId: "adrian_farm", condition: "前往艾德里安的农场" },
+      { targetSceneId: "霍姆斯医院", condition: "返回医院大厅" },
+      { targetSceneId: "艾德里安的农场", condition: "前往艾德里安的农场" },
     ],
     atmosphere: "警员会限制与艾德里安的接触时间，一旦注意到异常会强行将调查员赶出。",
   });
@@ -518,27 +518,27 @@ function buildScenes(): Scene[] {
     },
   ];
   scenes.push({
-    id: "police_station",
+    id: "警察局",
     name: "警察局",
     description: S.POLICE_STATION,
     clues: policeClues,
     npcIds: ["police"],
     connections: [
-      { targetSceneId: "town_premier", condition: "返回镇上" },
-      { targetSceneId: "police_evidence_room", condition: "尝试进入证物室" },
-      { targetSceneId: "adrian_town_house", condition: "前往镇内住宅" },
+      { targetSceneId: "普瑞米尔", condition: "返回镇上" },
+      { targetSceneId: "证物室", condition: "尝试进入证物室" },
+      { targetSceneId: "艾德里安在镇子内的住宅", condition: "前往镇内住宅" },
     ],
   });
 
   // 6b. 证物室
   scenes.push({
-    id: "police_evidence_room",
+    id: "证物室",
     name: "证物室",
     description: S.EVIDENCE_ROOM,
     clues: [],
     npcIds: [],
     connections: [
-      { targetSceneId: "police_station", condition: "返回警察局" },
+      { targetSceneId: "警察局", condition: "返回警察局" },
     ],
   });
 
@@ -559,14 +559,14 @@ function buildScenes(): Scene[] {
     },
   ];
   scenes.push({
-    id: "shootout_scene",
+    id: "交火现场",
     name: "交火现场",
     description: S.SHOOTOUT + "\n\n这里的取证工作似乎已经完成，路边堆着一些遗弃的杂物。",
     clues: shootoutClues,
     npcIds: [],
     connections: [
-      { targetSceneId: "town_premier", condition: "返回镇上" },
-      { targetSceneId: "adrian_town_house", condition: "前往镇内住宅" },
+      { targetSceneId: "普瑞米尔", condition: "返回镇上" },
+      { targetSceneId: "艾德里安在镇子内的住宅", condition: "前往镇内住宅" },
     ],
   });
 
@@ -610,36 +610,36 @@ function buildScenes(): Scene[] {
     },
   ];
   scenes.push({
-    id: "adrian_town_house",
+    id: "艾德里安在镇子内的住宅",
     name: "艾德里安在镇子内的住宅",
     // "至少3名（保证数量大于调查员）"是布场指示，不是玩家进门看得见的东西 —— 挪进 atmosphere
     description: S.ADRIAN_TOWN_HOUSE + "\n\n房子里本来的物品已经被流浪汉糟蹋了。",
     clues: townHouseClues,
     npcIds: ["tramp"],
     connections: [
-      { targetSceneId: "shootout_scene", condition: "前往交火现场" },
-      { targetSceneId: "town_premier", condition: "返回镇上" },
-      { targetSceneId: "adrian_farm", condition: "前往艾德里安的农场" },
+      { targetSceneId: "交火现场", condition: "前往交火现场" },
+      { targetSceneId: "普瑞米尔", condition: "返回镇上" },
+      { targetSceneId: "艾德里安的农场", condition: "前往艾德里安的农场" },
     ],
     atmosphere: "进入时会被至少3名流浪汉发现（保证数量大于调查员）。流浪汉会驱赶调查员，只认钱不接受除恐吓外的社交技能。击晕/击杀一名后其余会一哄而散。使用枪械击杀流浪汉会被警察责问。",
   });
 
   // 10. 艾德里安的农场（入口）
   scenes.push({
-    id: "adrian_farm",
+    id: "艾德里安的农场",
     name: "艾德里安的农场",
     description: S.FARM,
     clues: [],
     npcIds: [],
     connections: [
-      { targetSceneId: "farm_periphery", condition: "进入农场外围（陷阱区）" },
+      { targetSceneId: "农场外围", condition: "进入农场外围（陷阱区）" },
     ],
     atmosphere: "这栋别墅似乎已经很久没人打理了。",
   });
 
   // 11. 农场外围（陷阱区）
   scenes.push({
-    id: "farm_periphery",
+    id: "农场外围",
     name: "农场外围（陷阱区）",
     description: `农场外围布满了各种陷阱，艾德里安显然不想让任何人轻易靠近。夜色中更是不易分辨脚下。这片区域需要多加小心才能安全通过。`,
     // 陷阱没有独立的线索 ID，但引擎需要检测陷阱区域是否已被"处理"
@@ -647,16 +647,16 @@ function buildScenes(): Scene[] {
     clues: [{ id: "clue_trap_detected", name: "陷阱区已通过", description: "调查员通过了农场外围的陷阱区。", findMethods: [{ type: "observation", description: "小心前进并成功避开陷阱" }], revelation: "成功通过陷阱区。", unlocks: [], found: false, importance: "core" }],
     npcIds: [],
     connections: [
-      { targetSceneId: "adrian_farm", condition: "返回农场入口" },
-      { targetSceneId: "farm_villa", condition: "前往农场主别墅" },
-      { targetSceneId: "barn_building", condition: "前往谷仓形建筑" },
+      { targetSceneId: "艾德里安的农场", condition: "返回农场入口" },
+      { targetSceneId: "农场主别墅", condition: "前往农场主别墅" },
+      { targetSceneId: "谷仓形建筑", condition: "前往谷仓形建筑" },
     ],
     atmosphere: "夜晚则为惩罚骰。如果调查员中有军人或者有服役经历，可以进行灵感让他们觉得这里很危险。",
   });
 
   // 12. 农场主别墅
   scenes.push({
-    id: "farm_villa",
+    id: "农场主别墅",
     name: "农场主别墅",
     // description 是念给玩家听的，atmosphere 才是给 KP 的。
     // 这里原先把"他在门口放置了一个致命的硫酸陷阱"拼进了 description，
@@ -666,22 +666,22 @@ function buildScenes(): Scene[] {
     clues: [],
     npcIds: [],
     connections: [
-      { targetSceneId: "farm_periphery", condition: "返回农场外围" },
+      { targetSceneId: "农场外围", condition: "返回农场外围" },
     ],
     atmosphere: "门是锁着的。暴力踢门会触发硫酸陷阱（从门上倒下一瓶硫酸，1D4+1初始伤害，未摆脱则1D3/回合持续）。使用锁匠慢慢推门则硫酸瓶只会掉在地上。可用清水急救。",
   });
 
   // 13. 谷仓形建筑
   scenes.push({
-    id: "barn_building",
+    id: "谷仓形建筑",
     name: "谷仓形建筑",
     // 玩家看得见的是门和杂物堆本身；开锁难度、门的耐久属于 KP 侧，挪进 atmosphere。
     description: S.BARN + "\n\n侧面有一扇防盗门，锁着。门旁堆着一摞杂物，顺着大概能够到屋顶，顶上有扇玻璃窗。",
     clues: [],
     npcIds: [],
     connections: [
-      { targetSceneId: "farm_periphery", condition: "返回农场外围" },
-      { targetSceneId: "barn_interior", condition: "进入谷仓内部" },
+      { targetSceneId: "农场外围", condition: "返回农场外围" },
+      { targetSceneId: "建筑内", condition: "进入谷仓内部" },
     ],
     atmosphere: "侧面防盗门：用找到的钥匙打开，或困难成功锁匠／极难成功力量／对门造成25点伤害。一旁的杂物堆：通过成功攀爬或协力举高可上屋顶，从顶部玻璃窗进入。",
   });
@@ -717,15 +717,15 @@ function buildScenes(): Scene[] {
     },
   ];
   scenes.push({
-    id: "barn_interior",
+    id: "建筑内",
     name: "建筑内（谷仓大厅）",
     description: S.BARN_INTERIOR + "\n\n前往通道可以看到通向两个房间，其中一间的门打开着有一些亮光照出来。左侧关着门的为艾德里安的卧室，右侧有亮光的为中控室。",
     clues: interiorClues,
     npcIds: ["gabi_tricam"],
     connections: [
-      { targetSceneId: "barn_building", condition: "返回谷仓入口" },
-      { targetSceneId: "control_room", condition: "前往中控室（右侧有亮光）" },
-      { targetSceneId: "adrian_bedroom", condition: "前往艾德里安的卧室（左侧关着门）" },
+      { targetSceneId: "谷仓形建筑", condition: "返回谷仓入口" },
+      { targetSceneId: "中控室", condition: "前往中控室（右侧有亮光）" },
+      { targetSceneId: "艾德里安的卧室", condition: "前往艾德里安的卧室（左侧关着门）" },
     ],
   });
 
@@ -753,13 +753,13 @@ function buildScenes(): Scene[] {
     },
   ];
   scenes.push({
-    id: "control_room",
+    id: "中控室",
     name: "中控室",
     description: S.CONTROL_ROOM,
     clues: controlClues,
     npcIds: [],
     connections: [
-      { targetSceneId: "barn_interior", condition: "返回谷仓大厅" },
+      { targetSceneId: "建筑内", condition: "返回谷仓大厅" },
     ],
     atmosphere: "这里都是艾米丽作为电子学教授所创新的设备，主要功能为检测受害者状态、定时分配氧气与流食、检查受害者身体素质。调查员不可能会使用这种电子设备。",
     // 剧情状态变量（DESIGN-LOG §2 示范）：中控台拉杆处于 ON —— 受害者靠生命维持系统存活。
@@ -816,15 +816,15 @@ function buildScenes(): Scene[] {
     },
   ];
   scenes.push({
-    id: "adrian_bedroom",
+    id: "艾德里安的卧室",
     name: "艾德里安的卧室",
     // "通往下一个场景"是写给 KP 的话，"场景"这个词玩家不该听见
     description: S.ADRIAN_BEDROOM + "\n\n床头柜压着一扇拉门，挪开后拉开它，下面是一道向下的绳梯。",
     clues: bedroomClues,
     npcIds: [],
     connections: [
-      { targetSceneId: "barn_interior", condition: "返回谷仓大厅" },
-      { targetSceneId: "sewer", condition: "前往下水道" },
+      { targetSceneId: "建筑内", condition: "返回谷仓大厅" },
+      { targetSceneId: "下水道", condition: "前往下水道" },
     ],
   });
 
@@ -842,14 +842,14 @@ function buildScenes(): Scene[] {
     },
   ];
   scenes.push({
-    id: "sewer",
+    id: "下水道",
     name: "下水道",
     description: S.SEWER + "\n\n在转过拐角约5-6分钟后，可以隐约听到婴儿的啼哭声和一个甜美的哄婴儿声音。",
     clues: sewerClues,
     npcIds: ["ghoul"],
     connections: [
-      { targetSceneId: "adrian_bedroom", condition: "从绳梯向上返回卧室" },
-      { targetSceneId: "maintenance_room", condition: "使用生锈钥匙打开下水道深处的维修间门" },
+      { targetSceneId: "艾德里安的卧室", condition: "从绳梯向上返回卧室" },
+      { targetSceneId: "维修间", condition: "使用生锈钥匙打开下水道深处的维修间门" },
     ],
     atmosphere: "下水道中弥漫着腐烂与死亡的气息。",
   });
@@ -909,7 +909,7 @@ function buildScenes(): Scene[] {
     },
   ];
   scenes.push({
-    id: "maintenance_room",
+    id: "维修间",
     name: "维修间（终局场景）",
     // 原先混进了两样玩家不该听到的东西："这里是一处比较大的场景"（"场景"是游戏术语），
     // 以及"艾米丽会以为艾德里安回来了"——那是她的心理活动，要由她开口时自己泄露。
@@ -917,8 +917,8 @@ function buildScenes(): Scene[] {
     clues: maintenanceClues,
     npcIds: ["emily_estrum", "ailey_estrum", "mi_go"],
     connections: [
-      { targetSceneId: "sewer", condition: "返回下水道" },
-      { targetSceneId: "sewer", condition: "通过奇怪管道（下水道深处）" },
+      { targetSceneId: "下水道", condition: "返回下水道" },
+      { targetSceneId: "下水道", condition: "通过奇怪管道（下水道深处）" },
     ],
     atmosphere: `艾米丽的缸中脑就安置在这里。她的意识仍然清醒，只是身体早已不在了。`,
   });
@@ -935,7 +935,7 @@ function buildNpcs(): ModuleNPC[] {
       name: "艾德里安·埃斯特鲁姆",
       role: "生物学教授",
       age: 34,
-      sceneId: "adrian_hospital_meeting",
+      sceneId: "与艾德里安的会面",
       description: `34岁。生物学教授，曾经参过军，拥有一定的军事素养并且在生物学学术圈颇有威名。
 在一战时的古老遗迹中发现了疯子笔记中记载的Mi-Go联络术。在妻子难产濒死的打击下病急乱投医，持枪将妻女从医院抢出带到农场，召唤了Mi-Go。
 被Mi-Go欺骗将妻女变成缸中脑，并开始绑架他人为Mi-Go提供大脑。已绑架/诱拐10名受害人，在第11次行动时被警方发现交火，弹片击中头部瘫痪。
@@ -960,7 +960,7 @@ function buildNpcs(): ModuleNPC[] {
       name: "艾米丽·埃斯特鲁姆",
       role: "电子学教授/缸中脑",
       age: 32,
-      sceneId: "maintenance_room",
+      sceneId: "维修间",
       description: `32岁。有着优异的电子学造诣。在一年前生育时因实习护士的疏忽导致推床失控、流产大出血，面临生命危险。
 被丈夫用Mi-Go联络术变成了缸中脑，存放在下水道维修处的营养缸中。被艾德里安欺骗，以为自己仅仅是失去了视觉与触觉，通过流食活着的状态。
 心地善良且聪慧，接受了自己的命运，毕竟至少还能听到孩子的声音。`,
@@ -984,7 +984,7 @@ function buildNpcs(): ModuleNPC[] {
       name: "爱莉·埃斯特鲁姆",
       role: "婴儿/缸中脑",
       age: 1,
-      sceneId: "maintenance_room",
+      sceneId: "维修间",
       description: `1岁。艾德里安与艾米丽的女儿。因难产濒死后被父亲用Mi-Go联络术变成了缸中脑，
 与母亲一起存放在下水道维修处的营养缸中。时常发出婴儿的啼哭声。`,
       personality: {
@@ -1000,7 +1000,7 @@ function buildNpcs(): ModuleNPC[] {
       name: "菲碧·特里坎",
       role: "银行职员",
       age: 42,
-      sceneId: "tricam_house",
+      sceneId: "特里坎家",
       description: `开门的是一位四十岁上下的女性，穿着得体的职业套装，头发一丝不苟地拢在脑后。她的眼眶微红，指间夹着一支燃到一半的香烟——显然已经焦虑了很长时间。`,
       personality: {
         traits: ["事业型", "母亲", "焦虑"],
@@ -1022,7 +1022,7 @@ function buildNpcs(): ModuleNPC[] {
       name: "加比·特里坎",
       role: "无业游民",
       age: 17,
-      sceneId: "barn_interior",
+      sceneId: "建筑内",
       description: `17岁。典型的放肆子弟，父亲留下大量遗产让他成为了一名挥霍无度且没有智慧的人。
 被艾德里安钓走并绑架，成为受害者之一，在谷仓的受害者中。`,
       personality: {
@@ -1038,7 +1038,7 @@ function buildNpcs(): ModuleNPC[] {
       name: "米尔·特里坎",
       role: "儿童（5岁）",
       age: 5,
-      sceneId: "tricam_house",
+      sceneId: "特里坎家",
       description: `5岁。特里坎家的小女儿。在调查员来的时候会在房屋外的篮球场玩球，
 看到调查员时会跑回屋内寻找母亲。`,
       entrance: `米尔·特里坎从屋里探出半个身子，睁大眼睛怯生生地望着你们。`,
@@ -1059,7 +1059,7 @@ function buildNpcs(): ModuleNPC[] {
       id: "tramp",
       name: "流浪汉",
       role: "流浪汉",
-      sceneId: "adrian_town_house",
+      sceneId: "艾德里安在镇子内的住宅",
       description: `HP12 Dex50 斗殴45 闪避55 武器：小型棍棒 1d6+DB
 在艾德里安镇子内的住宅中占据，至少有3名（数量大于调查员）。
 如果调查员进入会被流浪汉发现，会尝试赶走调查员。只认得钱，不接受除恐吓外的社交技能。
@@ -1080,7 +1080,7 @@ function buildNpcs(): ModuleNPC[] {
       id: "police",
       name: "警员",
       role: "警员",
-      sceneId: "police_station",
+      sceneId: "警察局",
       description: `HP12 Dex60 斗殴40 手枪55 闪避50
 武器：.38左轮手枪1d10/警棍1d6+DB
 小镇警局的普通警员。参与了艾德里安的交火事件。
@@ -1103,7 +1103,7 @@ function buildNpcs(): ModuleNPC[] {
       id: "bar_bouncer",
       name: "酒吧保镖",
       role: "酒吧保镖",
-      sceneId: "weisen_bar",
+      sceneId: "维森酒吧",
       description: `HP14 Dex55 DB+1d4 斗殴65 霰弹40 闪避50
 武器：指虎1d4+db / 12号霰弹枪4d6/1d6
 维森酒吧的保安。`,
@@ -1128,7 +1128,7 @@ function buildNpcs(): ModuleNPC[] {
       id: "bar_receptionist",
       name: "前台",
       role: "前台",
-      sceneId: "weisen_bar",
+      sceneId: "维森酒吧",
       // 事实层（原文有）：前台是真正的情报源；知道①一位贵客包场办
       // 狂欢派对、来的人都要登记，②包场的贵客是艾德里安·埃斯特鲁姆；
       // 两条各自的代价是小费10$以上/成功的取悦，以及大量现金+至少
@@ -1160,7 +1160,7 @@ function buildNpcs(): ModuleNPC[] {
       id: "newsstand_owner",
       name: "报亭老板",
       role: "报亭老板",
-      sceneId: "newsstand",
+      sceneId: "报亭",
       // 事实层（原文有，模组 PDF 报亭一节）：老板会主动提起最近抓了个
       // 绑架犯（问起人口失踪报道时）；旧报纸嫌麻烦拒绝翻找，但调查员
       // 提出购买的话会以市场价 3 倍价格出售——这条交易规则同时也写在
@@ -1182,7 +1182,7 @@ function buildNpcs(): ModuleNPC[] {
       id: "hospital_staff",
       name: "医护人员",
       role: "医护人员",
-      sceneId: "hospital",
+      sceneId: "霍姆斯医院",
       // 事实层（原文有，模组 PDF 医院一节）：多数医护人员会回避这个
       // 话题（原文"这件事对于医院来说属于污名，不会愿意轻易透露"）；
       // 真正知情的那位需要先幸运判定才能遇到，再用信誉或社交检定让
@@ -1212,7 +1212,7 @@ function buildNpcs(): ModuleNPC[] {
       id: "ghoul",
       name: "食尸鬼（可选）",
       role: "食尸鬼",
-      sceneId: "sewer",
+      sceneId: "下水道",
       description: `HP13 MP13 DB+1d4 体格+1
 Str60 Con65 Siz65 Dex90 Int55 Pow65
 每回合攻击3次。格斗40%（1d6+1d4，命中判幸运，失败破伤风）咬住40%（1d4，需力量挣脱）
@@ -1231,7 +1231,7 @@ Str60 Con65 Siz65 Dex90 Int55 Pow65
       id: "mi_go",
       name: "Mi-Go（来自尤格斯的真菌）",
       role: "Mi-Go",
-      sceneId: "maintenance_room",
+      sceneId: "维修间",
       description: `HP11 MP15 DB无 体格0
 Str40 Con40 Siz70 Dex90 Int65 Pow85
 每回合攻击2次。格斗45%（1d6伤害）闪避35%
@@ -1265,14 +1265,14 @@ function buildItems(): ModuleItem[] {
     {
       id: "key_anti_theft",
       name: "防盗门的钥匙",
-      sceneId: "police_evidence_room",
+      sceneId: "证物室",
       description: "用来打开艾德里安农场谷仓的门。在这个小镇里，这种先进防盗门可不多见。",
       type: "key",
     },
     {
       id: "photo_farm",
       name: "农场的照片",
-      sceneId: "police_evidence_room",
+      sceneId: "证物室",
       description: "可以对照着在小镇周围找到艾德里安的农场位置。",
       type: "document",
       // 开发·三方审计补语义 任务①：原文（section_06.txt:2-9）写的是一段
@@ -1292,28 +1292,28 @@ function buildItems(): ModuleItem[] {
     {
       id: "wallet_adrian",
       name: "黑色钱包",
-      sceneId: "police_evidence_room",
+      sceneId: "证物室",
       description: "艾德里安的钱包，证物室物品。",
       type: "loot",
     },
     {
       id: "drivers_license",
       name: "驾驶证",
-      sceneId: "police_evidence_room",
+      sceneId: "证物室",
       description: "可以知道艾德里安在小镇内的住宅地址。",
       type: "document",
     },
     {
       id: "key_house",
       name: "住宅钥匙",
-      sceneId: "shootout_scene",
+      sceneId: "交火现场",
       description: "在交火现场附近的垃圾堆发现的钥匙，可打开艾德里安在镇子内的住宅门。",
       type: "key",
     },
     {
       id: "old_document",
       name: "老旧文件",
-      sceneId: "adrian_bedroom",
+      sceneId: "艾德里安的卧室",
       description: "这份文件是艾德里安偶然在一战遗迹中发现的前线疯子的笔记，上面记载着这些疯子所认为的米戈联络术。这些疯子相信米戈能帮助他们脱离肉体的桎梏，不再接受任何肉体的磨难。",
       type: "document",
       revelation: "通篇为法语所写。阅读导致 sc1/1d3+1，研究2周可学会「米-戈联络术」且 CM+3。",
@@ -1321,7 +1321,7 @@ function buildItems(): ModuleItem[] {
     {
       id: "trap_bear",
       name: "捕兽夹",
-      sceneId: "farm_periphery",
+      sceneId: "农场外围",
       description: "体形小于35的角色会免疫。踩中时造成1D4+1伤害，挣脱需困难成功力量。大失败或乱动造成额外1d3伤害。伤害大于耐久半值有截肢风险。",
       type: "trap",
       trap: {
@@ -1347,7 +1347,7 @@ function buildItems(): ModuleItem[] {
     {
       id: "trap_shotgun",
       name: "锯短霰弹枪拌锁陷阱",
-      sceneId: "farm_periphery",
+      sceneId: "农场外围",
       description: "踩到的调查员有困难敏捷机会躲避，造成1d6伤害。无备弹且枪管被锯断，无法作为调查员武器再利用。",
       type: "trap",
       trap: {
@@ -1366,7 +1366,7 @@ function buildItems(): ModuleItem[] {
     {
       id: "trap_sound",
       name: "音响陷阱",
-      sceneId: "farm_periphery",
+      sceneId: "农场外围",
       description: "一个音响陷阱，原本为警报用途，现因无人维护已经失效。",
       type: "trap",
       // 无 trap 字段是刻意的，不是漏填：模组写明它已经失效。
@@ -1375,7 +1375,7 @@ function buildItems(): ModuleItem[] {
     {
       id: "trap_sulfuric_acid",
       name: "硫酸陷阱",
-      sceneId: "farm_villa",
+      sceneId: "农场主别墅",
       description: "从门上倒下一瓶硫酸，1D4+1初始伤害，未摆脱则1D3/回合持续。使用清水可急救。",
       type: "trap",
       trap: {
@@ -1490,7 +1490,7 @@ export const END_NARRATIONS: EndNarration[] = [
     priority: 1,
     condition: {
       requiredClues: ["clue_bedroom_old_doc", "clue_final_brain_jars"],
-      requiredScenes: ["maintenance_room"],
+      requiredScenes: ["维修间"],
     },
     sourceRef: "section_01:15-18; section_12:12-18,61-71; section_13:11-17",
     lines: [
@@ -1570,7 +1570,7 @@ export const END_NARRATIONS: EndNarration[] = [
     priority: 4,
     condition: {
       requiredClues: ["clue_final_brain_jars"],
-      requiredScenes: ["maintenance_room"],
+      requiredScenes: ["维修间"],
       excludeClues: ["clue_bedroom_old_doc"],
     },
     sourceRef: "section_11:14-18; section_12:19-21,39-57",
@@ -1690,7 +1690,7 @@ export const NPC_STATS: Record<string, Record<string, number | string>> = {
 // play-module.ts 读取此数据进行数据驱动战斗描述
 const ENCOUNTER_NARRATIONS: EncounterNarration[] = [
   {
-    sceneId: "maintenance_room",
+    sceneId: "维修间",
     requiredClue: "clue_bedroom_diary",
     excludedClue: "clue_migo_defeated",
     enemyName: "米-戈",
@@ -1746,7 +1746,7 @@ function buildEpilogues(): EpilogueEntry[] {
       id: "migo_escaped",
       title: "米戈的下场",
       condition: {
-        requiredScenes: ["maintenance_room"],
+        requiredScenes: ["维修间"],
         excludeClues: ["clue_migo_defeated"],
       },
       lines: [
@@ -1757,7 +1757,7 @@ function buildEpilogues(): EpilogueEntry[] {
       id: "adrian_fate",
       title: "艾德里安的结局",
       condition: {
-        requiredScenes: ["hospital", "adrian_hospital_meeting"],
+        requiredScenes: ["霍姆斯医院", "与艾德里安的会面"],
       },
       lines: [
         "而艾德里安——这个被自己的爱和绝望毁灭的男人——仍在医院的病床上。等待他的将是法庭，以及他自己的疑问：他到底做对了什么，又做错了什么？",
@@ -1819,11 +1819,11 @@ export function renderPrologue(
  *
  * 复查过现有数据在这次改动前后的匹配结果：全仓只有 3 处 requiredScenes
  * 给了非空数组，其中两处只有 1 个场景（AND/OR 对单元素数组无区别）；
- * 唯一的 2 元素数组是 adrian_fate 这条（["hospital",
- * "adrian_hospital_meeting"]）——但 adrian_hospital_meeting 在场景图里
- * 只有一条连接指向它，且来源就是 hospital（:356 "前往艾德里安的病房"），
+ * 唯一的 2 元素数组是 adrian_fate 这条（["霍姆斯医院",
+ * "与艾德里安的会面"]）——但"与艾德里安的会面"在场景图里
+ * 只有一条连接指向它，且来源就是"霍姆斯医院"（:356 "前往艾德里安的病房"），
  * isSceneVisited() 查的是从不清空的累计历史（WorldState.sceneHistory），
- * 所以能到达 adrian_hospital_meeting 就必然已经访问过 hospital——AND 与
+ * 所以能到达"与艾德里安的会面"就必然已经访问过"霍姆斯医院"——AND 与
  * OR 在这条数据上给出完全相同的结果，跑前跑后无变化。
  */
 export function evaluateEpilogues(
@@ -1868,13 +1868,14 @@ export const BARN_SUPPORT: ModuleSupport = {
   evaluateEnding: evaluateEndNarration,
   endLabels: END_LABELS,
   encounters: ENCOUNTER_NARRATIONS,
-  hubSceneId: "town_premier",
-  finaleSceneId: "maintenance_room",
+  hubSceneId: "普瑞米尔",
+  finaleSceneId: "维修间",
   finaleClueId: "clue_bedroom_diary",
   bossNpcIdPattern: /mi[_-]?go/i,
-  // 到农场（adrian_farm）之前算"前期"——模组正文写着到农场入口就能看见
-  // 那栋刷红漆的谷仓建筑（S.FARM 描述："再稍微往里有两个比较显眼的建筑。
-  // 一间刷着红油漆的类似谷仓的建筑……"），这是叙事上"主线目标现出真身"
-  // 的分界点；barn_building（谷仓本体）已经在终盘范围内，不能拿它当分界。
-  earlyGameEndSceneId: "adrian_farm",
+  // 到农场（艾德里安的农场）之前算"前期"——模组正文写着到农场入口就能
+  // 看见那栋刷红漆的谷仓建筑（S.FARM 描述："再稍微往里有两个比较显眼的
+  // 建筑。一间刷着红油漆的类似谷仓的建筑……"），这是叙事上"主线目标
+  // 现出真身"的分界点；谷仓形建筑（谷仓本体）已经在终盘范围内，不能
+  // 拿它当分界。
+  earlyGameEndSceneId: "艾德里安的农场",
 };

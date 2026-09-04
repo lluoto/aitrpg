@@ -109,7 +109,7 @@ describe("字段级「漏抽 vs 臆造」分类（FIELD_OMISSION_REGISTRY）", (
 describe("Scene.atmosphere 漏抽的具体证据——对照真实生成物快照，缺失时跳过+告警", () => {
   const scenesJsonPath = "tools/ingest-out/scenes.json";
   const hasSnapshot = existsSync(scenesJsonPath);
-  const tricamHouse = BARN_OF_PREMIER.scenes.find((s) => s.id === "tricam_house");
+  const tricamHouse = BARN_OF_PREMIER.scenes.find((s) => s.id === "特里坎家");
 
   it.skipIf(!hasSnapshot)(
     "基准 atmosphere 全文（barn-of-premier.ts:169）是生成物 description 的子串——管线抽到了内容，只是塞进了错的字段",
