@@ -15,20 +15,25 @@ import {
 } from "./npc-reaction";
 import { NPCStore } from "../db/index";
 import { applyConstraints } from "./constraints";
-import { checkDialogueText } from "../world/world-constraint";
+import { checkDialogueText, DIALOGUE_FABRICATED_CHARACTER_BLOCK_MESSAGE } from "../world/world-constraint";
 import type { RulesetId } from "../rules/rules-engine";
 import { log } from "../log";
 
 /**
  * `respond()`/`speakUp()` 的可选约束上下文——开发·约束层补角色实体域
- * N9 任务 A。不传时（既有调用点，本轮之外的路径）`checkDialogueText`
- * 拿不到 sceneId，场景限定的约束（目前还没有任何一条用到它，todo-43
- * 记的正是这个缺口）天然不命中，行为与改动前一致——与
- * `NarrateConstraintOpts`（kp-agent.ts）同一个设计，先接线、不改判定。
+ * N9 任务 A/B。不传时（既有调用点，本轮之外的路径）`checkDialogueText`
+ * 拿不到 sceneId/场景数据，场景限定的约束天然不命中，行为与改动前
+ * 一致——与 `NarrateConstraintOpts`（kp-agent.ts）同一个设计。
  */
 export interface NPCDialogueConstraintOpts {
   sceneId?: string;
   ruleset?: RulesetId;
+  /**
+   * 登记表（`CHARACTER_NOUN_REGISTRY`）里当前场景没有对应 NPC 的角色
+   * 名词——见 `world-constraint.ts` 的 `ConstraintContext
+   * .sceneFabricableCharacterNouns` 注释。缺省不传，该约束不生效。
+   */
+  sceneFabricableCharacterNouns?: string[];
 }
 
 const MAX_RECENT_MEMORIES = 20;
@@ -258,12 +263,16 @@ export class NPCAgent {
       content: `${moodLine}\n\n现在的情况: ${context}\n\n请以 ${this.name} 的身份回应。`,
     });
 
-    try {
-      const raw = await this.llm.chat(messages, {
+    const callOnce = async (extra?: LLMMessage): Promise<string> => {
+      const raw = await this.llm.chat(extra ? [...messages, extra] : messages, {
         temperature: 0.8,
         maxTokens: 300,
       });
-      let response = raw.trim();
+      return raw.trim();
+    };
+
+    try {
+      let response = await callOnce();
 
       // 输出约束层 — 检查并改写
       const constraintResult = applyConstraints(response, this.personality, this.mood, this.relationship);
@@ -272,11 +281,7 @@ export class NPCAgent {
         response = constraintResult.sanitized;
       }
 
-      // 时代约束层 — 1920s 世界模型：LLM 输出含跨时代科技词 → 拦截并替换为安全话术
-      if (checkDialogueText(response, constraintOpts?.sceneId, constraintOpts?.ruleset)) {
-        log.warn("npc", `NPC ${this.name} 时代约束拦截（输出含现代科技词）`);
-        response = this.anachronismSafeReply();
-      }
+      response = await this.applyDialogueSafetyConstraints(response, constraintOpts, callOnce, "对话");
 
       this.rememberDialogue(this.name, response);
       return response;
@@ -285,6 +290,52 @@ export class NPCAgent {
       // LLM 不可用时，用角色性格生成模板回应
       return this.templateReply(context);
     }
+  }
+
+  /**
+   * 时代/角色实体两道世界观约束的共用检查+处置——respond()/speakUp()
+   * 各自构造 `callOnce` 闭包传进来，这里只管"检查、要不要重生成、
+   * 重生成后还不干净就退回安全兜底"这一段逻辑，不重复写两份。
+   *
+   * 两类命中处置方式不同（都是 block，但不是同一回事）：
+   *   - `dialogue_fabricated_character`（todo-56，N9 任务 B）：值得给
+   *     LLM 一次纠正机会——带上具体的纠正指示重新生成一次，仍不干净
+   *     才退回兜底文案。与 kp-agent.ts 的 narrateOutcome 同一处置
+   *     （block + 重生成 + 兜底），保持两条"叙事类"约束路径口径一致。
+   *   - 其它 scope=dialogue 约束（时代错置/meta 词汇）：维持这两条
+   *     约束原有的行为——直接换安全话术，不重生成（这两类命中通常是
+   *     整句话都跑题了，重生成不一定能对症，且这是已有行为，本轮任务
+   *     A 明确"只接线不改判定"，不在这里扩大改动范围）。
+   */
+  private async applyDialogueSafetyConstraints(
+    response: string,
+    constraintOpts: NPCDialogueConstraintOpts | undefined,
+    callOnce: (extra?: LLMMessage) => Promise<string>,
+    logLabel: string,
+  ): Promise<string> {
+    let hit = checkDialogueText(
+      response, constraintOpts?.sceneId, constraintOpts?.ruleset, constraintOpts?.sceneFabricableCharacterNouns,
+    );
+    if (hit?.type === "block" && hit.blockMessage === DIALOGUE_FABRICATED_CHARACTER_BLOCK_MESSAGE) {
+      log.warn("npc", `NPC ${this.name} ${logLabel}角色实体约束拦截，重生成一次（提到了场景里不存在的角色）`);
+      response = await callOnce({
+        role: "system",
+        content: "上一句回答提到了一个这个场景实际不存在的角色（比如「老板」「前台」这类称呼），这与场景事实矛盾——不要提及任何具体的人名/身份称呼，除非你确定这个人真的在场，把这部分内容换成不点名任何人的说法。",
+      });
+      hit = checkDialogueText(
+        response, constraintOpts?.sceneId, constraintOpts?.ruleset, constraintOpts?.sceneFabricableCharacterNouns,
+      );
+      if (hit?.type === "block" && hit.blockMessage === DIALOGUE_FABRICATED_CHARACTER_BLOCK_MESSAGE) {
+        log.warn("npc", `NPC ${this.name} ${logLabel}重生成后仍命中角色实体约束，退回安全兜底文案`);
+        return this.fabricatedCharacterSafeReply();
+      }
+      return response;
+    }
+    if (hit) {
+      log.warn("npc", `NPC ${this.name} ${logLabel}时代约束拦截（含现代科技词）`);
+      return this.anachronismSafeReply();
+    }
+    return response;
   }
 
   /**
@@ -317,12 +368,16 @@ export class NPCAgent {
       });
     }
 
-    try {
-      const raw = await this.llm.chat(messages, {
+    const callOnce = async (extra?: LLMMessage): Promise<string> => {
+      const raw = await this.llm.chat(extra ? [...messages, extra] : messages, {
         temperature: 0.9,
         maxTokens: 200,
       });
-      let response = raw.trim();
+      return raw.trim();
+    };
+
+    try {
+      let response = await callOnce();
 
       // 输出约束层
       const constraintResult = applyConstraints(response, this.personality, this.mood, this.relationship);
@@ -331,11 +386,7 @@ export class NPCAgent {
         response = constraintResult.sanitized;
       }
 
-      // 时代约束层 — 1920s 世界模型：主动发言含跨时代科技词 → 替换为安全话术
-      if (checkDialogueText(response, constraintOpts?.sceneId, constraintOpts?.ruleset)) {
-        log.warn("npc", `NPC ${this.name} 主动发言时代约束拦截（含现代科技词）`);
-        response = this.anachronismSafeReply();
-      }
+      response = await this.applyDialogueSafetyConstraints(response, constraintOpts, callOnce, "主动发言");
 
       this.rememberDialogue(this.name, response, 6);
       return response;
@@ -375,6 +426,25 @@ export class NPCAgent {
       `（${this.name}沉默了片刻）"有些事，我还理不清头绪。"`,
       `"唉……说来话长，改天再细说吧。"`,
       `${tagPhrase ? `"我${tagPhrase}一时也想不明白。"` : `"我也说不清楚。"`}`,
+    ];
+    return replies[Math.floor(Math.random() * replies.length)];
+  }
+
+  /**
+   * 角色实体约束拦截、重生成仍不干净时的安全话术——开发·约束层补角色
+   * 实体域 N9（todo-56）。不点名任何具体的人，避免重蹈"编出一个不存在
+   * 的角色"的覆辙；与 `anachronismSafeReply()` 分开一份而不是共用，
+   * 是因为那份话术的措辞是"这事我说不清"，读起来像在回避一个**话题**，
+   * 这里要回避的是"点名一个人"，措辞更贴近"我不方便说是谁"。
+   */
+  private fabricatedCharacterSafeReply(): string {
+    const tag = this.roleTag();
+    const tagPhrase = tag ? `我这个${tag}` : "我";
+    const replies = [
+      `"这个啊……不方便说是谁经手的。"`,
+      `（${this.name}含糊地摆了摆手）"反正有人管这事，你别多问是谁了。"`,
+      `"具体是哪位，${tagPhrase}也不好替人家说。"`,
+      `（${this.name}顿了顿）"这事儿……说来话长，反正不归我管。"`,
     ];
     return replies[Math.floor(Math.random() * replies.length)];
   }

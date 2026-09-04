@@ -24,6 +24,14 @@ import type { ModuleData, ModuleNPC, Scene } from "../module/types";
 export const CHARACTER_NOUN_REGISTRY: string[] = [
   "前台", // weisen_bar：clue_bar_mass_booking / clue_bar_guest_identity 的唯一获取路径
   "报亭老板", // newsstand：clue_newspaper_kidnapper 的交易对象（原文"询问报亭老板…""老板会咂咂嘴…"）
+  // 开发·约束层补角色实体域 N9（todo-56）：单独收"老板"这个短称呼——
+  // 真实撞坑案例（analysis/sim/2026-08-30-barn-natural-play.md:58）里
+  // 酒吧保镖说的是「老板锁进抽屉了」，不是"报亭老板"这个完整复合词，
+  // 按子串匹配抓不住。收成独立一条不会在 newsstand 产生新缺口——
+  // newsstand_owner 的 name 是"报亭老板"，本身就包含"老板"两个字，
+  // `representsCharacterNoun` 依旧判定它代表这个词；`findModuleChara
+  // cterNounGaps` 实测过加了这条之后全模组仍是 0 命中。
+  "老板",
 ];
 
 /** 场景内确属跨场景引用、不需要本场景补 NPC 的豁免登记。 */
@@ -42,9 +50,32 @@ export interface SceneNounGap {
   clueId: string;
 }
 
-/** 一个 NPC 是否"代表"这个角色名词——按 role/name 是否包含该词判断。 */
-function npcRepresents(npc: ModuleNPC, noun: string): boolean {
-  return npc.role.includes(noun) || npc.name.includes(noun);
+/**
+ * 一个实体是否"代表"这个角色名词——按 role/name 是否包含该词判断。
+ *
+ * 参数放宽成 `{ name; role? }` 而不是锁死 `ModuleNPC`——开发·约束层
+ * 补角色实体域 N9：运行时能拿到的是 `WorldEntity`（只有 `name`，没有
+ * `role`），静态扫描（`findSceneCharacterNounGaps`）拿到的是
+ * `ModuleNPC`（两者都有）。两处判定"这个实体算不算数"的标准必须是
+ * 同一份，不能运行时判定悄悄比静态扫描宽松或严格——所以这里放宽类型
+ * 而不是另外单独给运行时写一份判定。
+ */
+export function representsCharacterNoun(entity: { name: string; role?: string }, noun: string): boolean {
+  return (entity.role ?? "").includes(noun) || entity.name.includes(noun);
+}
+
+/**
+ * 给定「实际在场的实体」列表，登记表里哪些角色名词【没有】被代表——
+ * 供运行时约束层用（NPC 说话提到这些词就是在编造场景里不存在的角色）。
+ * 与 `findSceneCharacterNounGaps` 反过来看同一份事实：那边问"线索要求
+ * 的角色，场景是否真的有"（离线扫描模组数据）；这里问"登记表里的角色，
+ * 这个场景实际有哪些、没有哪些"（供运行时按在场实体名单实时算）。
+ */
+export function unrepresentedCharacterNouns(
+  presentEntities: { name: string; role?: string }[],
+  registry: string[] = CHARACTER_NOUN_REGISTRY,
+): string[] {
+  return registry.filter((noun) => !presentEntities.some((e) => representsCharacterNoun(e, noun)));
 }
 
 function clueTexts(clue: Scene["clues"][number]): string[] {
@@ -78,7 +109,7 @@ export function findSceneCharacterNounGaps(
       for (const noun of registry) {
         if (!texts.some((t) => t.includes(noun))) continue;
         if (exemptions.some((e) => e.sceneId === scene.id && e.noun === noun)) continue;
-        if (sceneNpcs.some((n) => npcRepresents(n, noun))) continue;
+        if (sceneNpcs.some((n) => representsCharacterNoun(n, noun))) continue;
         gaps.push({ sceneId: scene.id, sceneName: scene.name, noun, clueId: clue.id });
       }
     }

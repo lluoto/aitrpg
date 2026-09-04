@@ -146,6 +146,21 @@ interface ConstraintContext {
    * 与匹配器判定"这是场景里的一个对象"用的同一套认定，不另起一套。
    */
   undiscoveredClueKeys?: string[];
+  /**
+   * 开发·约束层补角色实体域 N9（todo-56）：登记表
+   * （`scene-npc-noun-registry.ts` 的 `CHARACTER_NOUN_REGISTRY`）里
+   * 「这个场景没有对应 NPC」的那些角色名词——`dialogue_fabricated_
+   * character` 靠它判断 NPC 说话有没有把这类不存在的角色当成场景
+   * 成分说出来（真实案例：酒吧保镖说"老板锁进抽屉了"，weisen_bar 没有
+   * "老板"这个角色）。缺省 `[]`，调用方没算这份数据时这条约束天然不
+   * 命中，与 `undiscoveredClueKeys` 同一个"不传就不生效"的兼容策略。
+   *
+   * 计算方式见 `unrepresentedCharacterNouns()`
+   * （scene-npc-noun-registry.ts）：登记表里没有被"当前场景实际在场
+   * 实体"代表的那些词，只认登记过的词，不做分词/不自动扩词——能力
+   * 边界与登记表本身一致。
+   */
+  sceneFabricableCharacterNouns?: string[];
 }
 
 // ============================================================
@@ -235,8 +250,9 @@ export class ConstraintEngine {
   checkDialogue(
     text: string, sceneId?: string,
     ruleset?: import("../rules/rules-engine").RulesetId,
+    sceneFabricableCharacterNouns?: string[],
   ): ConstraintAction | null {
-    const ctx: ConstraintContext = { text, sceneId, ruleset };
+    const ctx: ConstraintContext = { text, sceneId, ruleset, sceneFabricableCharacterNouns };
     for (const c of this.constraints) {
       if (!this.hasScope(c, "dialogue")) continue;
       if (!this.matchesScene(c, ctx)) continue;
@@ -248,6 +264,7 @@ export class ConstraintEngine {
             : c.matchText.test(text);
         if (match) return c.action;
       }
+      if (c.matchPredicate && c.matchPredicate(ctx)) return c.action;
     }
     return null;
   }
@@ -330,6 +347,17 @@ export class ConstraintEngine {
  * CoC 7e 1920s 默认约束。
  * 这些是通用规则，模组可通过 applyModuleOverrides 替换。
  */
+/**
+ * `dialogue_fabricated_character` 命中时的 blockMessage——单独导出成
+ * 常量，供 npc-agent.ts 区分"是不是这一条约束命中"（这条约束值得
+ * 重生成一次给 LLM 一个纠正的机会，其它 scope=dialogue 的约束——
+ * 时代错置/meta 词汇——沿用既有的"直接换安全话术"处理，两种处置
+ * 不是同一回事，不能靠 ConstraintAction 本身的 type 区分，因为都是
+ * "block"）。
+ */
+export const DIALOGUE_FABRICATED_CHARACTER_BLOCK_MESSAGE =
+  "NPC 对话把不存在的角色当成场景成分说了出来，与模组事实矛盾";
+
 export const DEFAULT_CONSTRAINTS: WorldConstraint[] = [
   // ── 物品年代约束 ──
   {
@@ -398,6 +426,40 @@ export const DEFAULT_CONSTRAINTS: WorldConstraint[] = [
     action: { type: "block", blockMessage: "NPC不应出现角色meta词汇" },
   },
 
+  // ── NPC 对话不得把不存在的角色当成场景成分说出来 ──
+  // 开发·约束层补角色实体域 N9（todo-56）：todo-43 记过的"凭空发明的
+  // 名词"那一半——真实案例：酒吧保镖说"名单什么的早让老板锁进抽屉了"，
+  // weisen_bar 没有"老板"这个 NPC，applyConstraints/旧的
+  // checkDialogueText 都放行。
+  //
+  // 范围刻意收窄：只管【角色名词】，不是"对话里所有名词都必须存在"——
+  // 那会拦掉一切（任何场景描述都可能提一堆没建过 NPC 的东西）。复用
+  // `scene-npc-noun-registry.ts` 的登记表（`CHARACTER_NOUN_REGISTRY`），
+  // 不新建一份角色名词表——同一份词表已经在 N7 用来扫"线索要求的角色，
+  // 场景是否真的有"，这里问的是反过来的问题（"NPC 说的角色，场景是否
+  // 真的有"），但认定"这是个角色名词"这件事必须与那份判据一致，不能
+  // 出现"扫描判据认为场景该有这个角色，运行时约束却不认识这个词"这种
+  // 自相矛盾。
+  //
+  // 判定靠 `ctx.sceneFabricableCharacterNouns`（调用方用
+  // `unrepresentedCharacterNouns()` 算好、传进来的"登记表里这个场景
+  // 没有对应 NPC 的词"），不在这里重新判定一次"这个场景有没有这个
+  // NPC"——两处判定迟早会漂，这次只应该有一处。
+  {
+    id: "dialogue_fabricated_character",
+    priority: ConstraintPriority.SCENE_FACT,
+    source: "NPC 对话不得把不存在的角色当成场景成分说出来（todo-56）",
+    scope: ["dialogue"],
+    matchPredicate: (ctx) => {
+      if (!ctx.text || !ctx.sceneFabricableCharacterNouns?.length) return false;
+      return ctx.sceneFabricableCharacterNouns.some((noun) => ctx.text!.includes(noun));
+    },
+    action: {
+      type: "block",
+      blockMessage: DIALOGUE_FABRICATED_CHARACTER_BLOCK_MESSAGE,
+    },
+  },
+
   // ── KP 叙事不得指名否认场景里一条尚未发现的线索 ──
   // 开发·意图与约束补漏 任务3，缺口 B：约束层原本只有"时代错置"与"对话
   // meta 词汇"两个域，没有"不得与模组事实矛盾"这个域——
@@ -461,9 +523,10 @@ function deniesNamedUndiscoveredClue(text: string, keys: readonly string[]): boo
 export function checkDialogueText(
   text: string, sceneId?: string,
   ruleset?: import("../rules/rules-engine").RulesetId,
+  sceneFabricableCharacterNouns?: string[],
 ): ConstraintAction | null {
   const engine = new ConstraintEngine(DEFAULT_CONSTRAINTS);
-  return engine.checkDialogue(text, sceneId, ruleset);
+  return engine.checkDialogue(text, sceneId, ruleset, sceneFabricableCharacterNouns);
 }
 
 /**

@@ -25,6 +25,7 @@ import { CompanionManager } from "../combat/companion-manager";
 import { PlayerSession, type VisibilityRule } from "../session/player-session";
 import { InvestigationEngine } from "../investigation/investigation-engine";
 import { decideClueMatch, extractLocationHint, splitKeys } from "../investigation/clue-match";
+import { unrepresentedCharacterNouns } from "../investigation/scene-npc-noun-registry";
 import { SpellEngine } from "../spell/spell-engine";
 import { WorldModelLoader, sharedWorldModel, DEFAULT_CTHULHU_PATH } from "../world/world-model-loader";
 import { WorldModelIntegrator, type SceneContext, type NPCPresentProfile } from "../world/world-model-integrator";
@@ -3215,6 +3216,22 @@ export class GameSession {
    */
   private static readonly GENERIC_PARTY_WORDS = new Set(["同伴", "队友", "大家", "伙伴", "他们", "众人"]);
 
+  /**
+   * 登记表（`CHARACTER_NOUN_REGISTRY`）里当前场景没有对应 NPC 的角色
+   * 名词——开发·约束层补角色实体域 N9 任务 B。供 `handleTalk` 与
+   * `server.ts` 的 `/npc-chat` 端点共用，不各自重复"取在场实体、算
+   * 未代表的词"这段逻辑。按【实际在场的实体】算，不读模组静态数据
+   * （那是 N7 扫描判据 `scene-npc-noun-registry.ts` 的事，这里要的是
+   * 运行时真相——万一某个 NPC 死了/离场，运行时会如实反映）。
+   */
+  sceneFabricableCharacterNouns(sceneId: string = this.getDisplayedScene()): string[] {
+    const presentNames = this.world
+      .getEntitiesInScene(sceneId)
+      .filter((e) => e.type === "npc" || e.type === "monster")
+      .map((e) => ({ name: e.name }));
+    return unrepresentedCharacterNouns(presentNames);
+  }
+
   private async handleTalk(
     intent: ActionIntent,
     input: string,
@@ -3284,7 +3301,9 @@ export class GameSession {
     try {
       const history = this.getHistory(10);
       const reply = await npcAgent.respond(input, history.messages, {
-        sceneId: pos, ruleset: this.activeRuleset,
+        sceneId: pos,
+        ruleset: this.activeRuleset,
+        sceneFabricableCharacterNouns: this.sceneFabricableCharacterNouns(pos),
       });
       const mood = npcAgent.getMood();
       messages.push({
