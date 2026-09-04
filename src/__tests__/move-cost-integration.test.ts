@@ -62,12 +62,13 @@ describe("跨图移动：按最短跳数额外付时间", () => {
   });
 });
 
-describe("孤立/不可达目标：拒绝移动并说明，不编代价", () => {
-  it("「奇怪的卡片」是孤立场景（物品被误当场景注册），移动被拒绝且不改变位置", async () => {
-    const beforeScene = session.getDisplayedScene();
-    const res = await session.act("前往奇怪的卡片");
-    expect(session.getDisplayedScene()).toBe(beforeScene); // 位置没变
-    expect(res.narrative + JSON.stringify(res.events)).not.toContain("undefined");
+describe("步骤 2a-1 验收：「奇怪的卡片」已从 MythosModule.sceneDescriptions 删除", () => {
+  // 「奇怪的卡片」是 gabi_trailer 场景里的一张线索物品（clue_card），
+  // 不是地点。此前被误放进 sceneDescriptions 导致它成为一个孤立的
+  // 注册场景（没有任何 exit 指向它，BFS 找不到路径）。步骤 2a-1 已修正：
+  // 把它从 sceneDescriptions 删掉，不再作为场景注册。
+  it("「奇怪的卡片」已从 sceneDescriptions 删除，模组加载后不再注册为场景节点", async () => {
+    expect(session.world.getScene("奇怪的卡片")).toBeNull();
   });
 });
 

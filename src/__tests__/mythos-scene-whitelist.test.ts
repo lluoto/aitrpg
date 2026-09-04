@@ -62,25 +62,28 @@ function createMockHost(): MythosModuleHost & { registeredScenes: string[] } {
   } as any;
 }
 
-// 谷仓模组实测混进去的 13 个非地点（文档小标题/hook narration 条件，来自
+// 谷仓模组实测混进去的 14 个非地点（文档小标题/hook narration 条件，来自
 // on_read_tome / 结构化章节标题，不是可移动到的场景）。
+// 步骤 2a-1 后 "奇怪的卡片" 从 sceneDescriptions 删除（它是 clue_card，不是地点），
+// 加入此列表：它仍在 hooks 里，但不在 sceneDescriptions/exits 里，故不被注册。
 const BARN_GARBAGE = [
   "在小镇内询问路人", "绑架犯的报道", "关于艾米丽难产的事件",
   "抽屉里的关于_号农场的转购协议", "与背景", "可选",
   "艾德里安会在外围布置_3_种陷阱", "与米戈的战斗", "关于缸中脑最后的去向",
   "结局", "主要_npc", "可能的敌人类", "以下的法术则视情况让_mi_go_使用",
+  "奇怪的卡片", // 步骤 2a-1：线索，非地点，已从 sceneDescriptions 删除
 ];
 
 describe("模组场景注册按来源判定白名单，不把 hook.condition 当场景（任务2）", () => {
-  it("**正确**：谷仓模组注册场景数 39 → 26", () => {
+  it("**正确**：谷仓模组注册场景数 39 → 25（步骤 2a-1 后奇怪的卡片不再注册）", () => {
     const host = createMockHost();
     const loader = new MythosModuleLoader(host);
     loader.import(MODULE_PREMIERS_BARN);
     const unique = new Set(host.registeredScenes);
-    expect(unique.size).toBe(26);
+    expect(unique.size).toBe(25);
   });
 
-  it("**错误行为红线**：13 个非地点一个都不在注册结果里", () => {
+  it("**错误行为红线**：14 个非地点一个都不在注册结果里", () => {
     const host = createMockHost();
     const loader = new MythosModuleLoader(host);
     loader.import(MODULE_PREMIERS_BARN);
