@@ -1481,3 +1481,74 @@ fallback，标准调用串"普瑞米尔的谷仓"必然命中 `.includes("谷仓
 - 这份文档本身是**方案设计**，不是收敛工作的执行记录——下一轮
   要做收敛，应该从 (g) 的步骤 1 开始，按顺序推进，每步都有独立
   验收标准，不需要重新调研，直接执行即可。
+
+### 执行 (g) 步骤 1 前的补充复核：场景 id 改中文，跟摄取管线的「纯 ASCII」约束不冲突（开发·场景 id 收敛 N11，2026-09-04）
+
+(b) 的理由 3（"没有任何运行时读者依赖 `Scene.id` 是 ASCII"）只查了运行时，
+执行 (g) 步骤 1 前先查了摄取管线这一侧——`src/ingest/ids.ts:7` 与
+`ingest-ids.test.ts:49/124/183` 三处写着"纯 ASCII"，`inherit-ids.ts`
+又会让管线按 `name` 继承 `BARN_OF_PREMIER.scenes[].id` 这个基准 id，
+表面上像是要跟步骤 1 撞车。逐层查证后**结论：不冲突，问题是这两处
+断言各自在说不同阶段的 id，字面上共用"纯 ASCII"这个词造成了误读**。
+
+**查证过程**：
+1. `assignSceneIds`/`assignItemIds`/`assignNpcIds`（`ids.ts:35-96`）是
+   管线自己的**内部句柄生成器**——按块在原文里的顺序编号，产出
+   `scene_NN`/`item_NN`/`npc_NN`，**从不读取 `BARN_OF_PREMIER` 一个
+   字节**，函数签名上根本没有基准数据这个输入。`ingest-ids.test.ts`
+   里全部 3 处 `toMatch(/^[a-z0-9_]+$/)` 断言（`:53`/`:128`/`:186`）
+   测的都是这三个函数**自己的直接返回值**，不是继承之后的最终 id。
+   这批断言在 `BARN_OF_PREMIER.scenes[].id` 变成什么样之后都继续
+   成立——它们跟基准 id 的形态毫无关系，步骤 1 不会碰它们。
+2. 基准 id 唯一流入管线产物的地方是 `inherit-ids.ts` 的
+   `computeIdInheritance`/`applySceneIdInheritance`/
+   `applyItemIdInheritance`/`applyClueIdInheritance`——这四个函数
+   全部是纯字符串 `Map` 操作（按 `stripDisplayAnnotation` 归一化后
+   的 `name` 配对，配上就把内部 `scene_NN` 替换成基准的 `id` 值），
+   没有任何一处对 id 的字符集做假设或校验。实测（构造中文基准 id
+   `"维修间"`/`"霍姆斯医院"` 调用 `computeIdInheritance`+
+   `applySceneIdInheritance`）：配对、替换、连带改写
+   `connections[].targetSceneId` 全部正确工作，中文字符串跟 ASCII
+   字符串在这套纯 `Map` 逻辑里没有任何差别。
+3. 逐条核对"中文 id 会渗进存档文件名与 `Provenance.path`"这句测试
+   注释里点名的两个风险点，**都不成立**：
+   - **存档文件名**：全仓唯一按 id 拼文件名的地方是
+     `api/module-editor.ts:115`（`` `${module.id}.json` ``），用的是
+     `ModuleData.id`（模组顶层 id，`BARN_OF_PREMIER` 里是
+     `"premiers_barn"`，`types.ts:6`），跟 `Scene.id`（步骤 1 要改的
+     那个字段）是完全不同的两个字段，互不影响；`scripts/ingest/run.ts`
+     的产物文件名（`scenes.json`/`items.json`/`provenance.json`/
+     `report.txt` 等，`run.ts:203-339`）全部是写死的字符串，不掺
+     任何场景 id。全仓找不到第二处把 `Scene.id` 拼进文件名的代码。
+   - **`Provenance.path`**：形如
+     `` `scenes[${sceneId}].openingAtmosphere` ``（`build-narrative.ts:409`
+     等），是写进 JSON 产物里给人读的一段"类 JS 路径"展示字符串，
+     不是真实文件系统路径，也没有任何代码把它当路径去 `readFileSync`/
+     正则解析——中文字符出现在这里没有功能后果，只是"看起来不像
+     western 风格的路径"，纯审美，不影响任何机制。
+4. `ids.ts:7` 那句"id 的功能需求只有四条：…纯 ASCII…"，对照
+   `inherit-ids.ts` 头部注释（`:9-15`，"已定方向：不迁移 id，让
+   管线继承基准 id"）能看出这句注释写的时候心里想的场景是"配不上
+   基准、只能用内部 `scene_NN` 兜底"这一支路径——那一支确实应该
+   保持纯 ASCII（`scene_NN` 这个格式本身天然就是），但**继承成功的
+   那一支，最终 id 形态从来就是"基准是什么形状，继承到的就是什么
+   形状"，这是 todo-48 定下的设计目标本身**（"内容层可重新生成，
+   id 层人工维护"），不是"id 必须是 ASCII"，只是过去基准恰好是
+   ASCII，两件事没被区分开来，注释写法上把"内部句柄的性质"和
+   "继承后的性质"混成了一句话。
+
+**裁决：选 (ii) 的加强版**——不是"接受中文 id 之后在边界处 sanitize"，
+是**查证后确认现在完全没有一个真实存在的边界需要 sanitize**：
+`Scene.id`（不管 ASCII 还是中文）从来没有流向文件系统路径或者任何
+做字符集假设的解析逻辑；真正拼文件名的 `ModuleData.id` 是另一个
+字段，本轮不改它。(i)/(iii)/(iv) 三个选项都不需要——(i) 会让 todo-48
+刚做完的 id 继承机制失去意义；(iii) 已被 (b) 自己的 287:135 引用量
+否掉；(iv) 是重新引入一层翻译，跟步骤 1 要删翻译层的目标相反。
+
+**连带修正（避免下一个人从字面误读，重蹈"注释比代码少说一件事"的
+坑）**：`ids.ts:7` 的注释与 `ingest-ids.test.ts:49` 的测试标题都已
+更新，明确"纯 ASCII"这条约束的范围限定在
+`assignSceneIds`/`assignItemIds`/`assignNpcIds` 自己产出的**内部
+句柄阶段**，不覆盖继承基准 id 之后的最终形态——两处改动只是文字
+澄清，不改断言逻辑本身（`toMatch(/^[a-z0-9_]+$/)` 测的对象没变，
+只是标题/注释说清楚了它测的是哪个阶段）。

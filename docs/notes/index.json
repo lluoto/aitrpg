@@ -13,7 +13,7 @@
       "id": "engine",
       "name": "运行引擎 / 主循环",
       "file": "docs/notes/engine.md",
-      "count": 35
+      "count": 36
     },
     {
       "id": "ingest",
@@ -413,6 +413,17 @@
       "line": 1161,
       "lines": 324,
       "summary": "本节回答任务原文 (a)~(g)，是方案设计，不是本轮的执行结果——本轮"
+    },
+    {
+      "id": "engine-36",
+      "title": "执行 (g) 步骤 1 前的补充复核：场景 id 改中文，跟摄取管线的「纯 ASCII」约束不冲突（开发·场景 id 收敛 N11，2026-09-04）",
+      "date": "2026-09-04",
+      "status": "note",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 1485,
+      "lines": 71,
+      "summary": "(b) 的理由 3（\"没有任何运行时读者依赖 `Scene.id` 是 ASCII\"）只查了运行时，"
     },
     {
       "id": "ingest-01",

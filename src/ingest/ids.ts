@@ -4,9 +4,19 @@
 // assignSceneIds 给**每个块**编号（含前言、附录、空标题前置块），
 // 而本轮又要给 ▶ 条目编号，两者共用同一套编号实现。
 //
-// id 的功能需求只有四条：唯一、同一 PDF 重跑稳定、纯 ASCII、能被 targetSceneId 解析。
+// 这里说的「id」是本文件产出的内部句柄（scene_NN/item_NN/npc_NN），
+// 功能需求只有四条：唯一、同一 PDF 重跑稳定、纯 ASCII、能被 targetSceneId 解析。
 // 可读性不在其中 —— 中文原名在 Scene.name 里，校准报告按 name 配对之后
 // 路径印的也是中文名，看报告的人不需要认得 id。
+//
+// ⚠ 这四条约束只管这一份内部句柄，不管 inherit-ids.ts 把它替换成基准 id
+// 之后的最终形态——继承成功后 id 变成什么样，取决于基准（BARN_OF_PREMIER.
+// scenes[].id）本身是什么形状，那是另一层设计决定（todo-48：「不迁移 id，
+// 让管线继承基准 id」），跟这里的纯 ASCII 无关。开发·场景 id 收敛 N11
+// 把 BARN_OF_PREMIER 的场景 id 从 ASCII 改成中文展示名时查证过这一点
+// （docs/notes/engine.md「执行 (g) 步骤 1 前的补充复核」一节）：继承逻辑
+// 是纯字符串 Map 操作，不对字符集做任何假设，中文基准 id 照样工作；
+// 全仓也找不到第二处把 Scene.id（不是 ModuleData.id）拼进文件路径的代码。
 //
 // 所以形态定为 scene_01…scene_NN：
 //   零依赖 —— 拼音要加一个字典包，而 te_li_kan_jia 并不比 特里坎家 多告诉你任何东西；

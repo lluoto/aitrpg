@@ -46,7 +46,7 @@ describe("assignSceneIds", () => {
     expect(ids[0]).not.toBe(ids[1]);
   });
 
-  test("纯 ASCII —— 中文 id 会渗进存档文件名与 Provenance.path", () => {
+  test("纯 ASCII —— 只管 assignSceneIds 自己产出的内部句柄，不管继承基准 id 之后的最终形态（见 ids.ts:7 附近的注释与 docs/notes/engine.md「执行 (g) 步骤 1 前的补充复核」一节）", () => {
     const ids = assignSceneIds([sec("特里坎家"), sec("霍姆斯医院")]);
     expect(ids.length).toBe(2); // 空表会让下面的循环一条断言都不跑 —— 先钉住它非空
     for (const id of ids) {
