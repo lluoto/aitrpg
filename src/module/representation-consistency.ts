@@ -236,18 +236,60 @@ export function findBarnRepresentationInconsistencies(): RepresentationInconsist
 export interface KnownInconsistency {
   category: InconsistencyCategory;
   key: string;
-  /** 为什么先登记不先修——本轮（N10 B1）只登记发现，裁决哪一侧对
-   *  是 B2 的范围，B2 会把这里的 reason 换成裁决结论。 */
+  /** 为什么先登记不先修，以及（对 npc_scene/numeric_fact 这类真正
+   *  存在事实分歧的条目）裁决哪一侧对——N10 B1 先登记发现，N10 B2
+   *  逐条核对 tools/modules/raw/ 原文后把 reason 换成裁决结论；
+   *  scene_set 类条目从一开始就是结构性差异，不是事实分歧，B1
+   *  给出的结构成因本身就是结论，不需要另外裁决对错。 */
   reason: string;
 }
 
 export const KNOWN_INCONSISTENCIES: KnownInconsistency[] = [
-  { category: "npc_scene", key: "艾德里安·埃斯特鲁姆", reason: "开发·陈旧记录纠正+收敛前置 N10 B1 发现，待 B2 核对原文裁决" },
-  { category: "npc_scene", key: "艾米丽·埃斯特鲁姆", reason: "开发·陈旧记录纠正+收敛前置 N10 B1 发现，待 B2 核对原文裁决" },
-  { category: "npc_scene", key: "爱莉·埃斯特鲁姆", reason: "开发·陈旧记录纠正+收敛前置 N10 B1 发现，待 B2 核对原文裁决" },
-  { category: "npc_scene", key: "流浪汉", reason: "开发·陈旧记录纠正+收敛前置 N10 B1 发现，待 B2 核对原文裁决" },
-  { category: "npc_scene", key: "Mi-Go（来自尤格斯的真菌）", reason: "开发·陈旧记录纠正+收敛前置 N10 B1 发现，待 B2 核对原文裁决" },
-  { category: "numeric_fact", key: "绑架人数", reason: "开发·陈旧记录纠正+收敛前置 N10 B1 发现，待 B2 核对原文裁决" },
+  {
+    category: "npc_scene",
+    key: "艾德里安·埃斯特鲁姆",
+    reason:
+      "B2 裁决：MythosModule 错（sceneId=艾德里安的农场）。原文 section_11.txt 抓捕通报写着他被捕枪伤后" +
+      "「于霍姆斯医院接受治疗，处于意识不清状态」——ModuleData（与艾德里安的会面/医院）对，MythosModule" +
+      "把他抓捕前的落脚点当成了故事发生时的当前位置。核对不出出处，本轮只裁决不改数据（B3 才定收敛方案）。",
+  },
+  {
+    category: "npc_scene",
+    key: "艾米丽·埃斯特鲁姆",
+    reason:
+      "B2 裁决：不算错，是场景颗粒度差异。原文 section_12.txt:1-38「维修间：」这一节本身把「▶比较大的" +
+      "奇怪管道」「▶艾米丽与爱莉的棺材」写成同一场景块内的 ▶ 子小节——ModuleData 把它们并成一个场景" +
+      "（maintenance_room）与 MythosModule 拆成独立场景节点，两者都对得上原文结构，只是颗粒度不同。",
+  },
+  {
+    category: "npc_scene",
+    key: "爱莉·埃斯特鲁姆",
+    reason: "B2 裁决：同「艾米丽·埃斯特鲁姆」条——不算错，是场景颗粒度差异，两侧站位都对得上原文结构。",
+  },
+  {
+    category: "npc_scene",
+    key: "流浪汉",
+    reason:
+      "B2 裁决：MythosModule 错（sceneId=农场外围）。原文 section_06.txt:50-62 逐字写着流浪汉占据的是" +
+      "艾德里安在镇内那栋荒废的独门独户小别墅（与「艾德里安在镇子内的住宅」这个场景的描述文本逐句对上），" +
+      "农场周围的原文段落从未出现过流浪汉。ModuleData 对。核对不出出处，本轮只裁决不改数据。",
+  },
+  {
+    category: "npc_scene",
+    key: "Mi-Go（来自尤格斯的真菌）",
+    reason:
+      "B2 裁决：MythosModule 错（sceneId=下水道）。原文 section_12.txt:25-38 写明米戈出现的地点是" +
+      "「维修间」场景内部的「▶比较大的奇怪管道」子小节，下水道只是去维修间必经的更早一跳路径，不是米戈" +
+      "现身的地方。ModuleData（maintenance_room）对。核对不出出处，本轮只裁决不改数据。",
+  },
+  {
+    category: "numeric_fact",
+    key: "绑架人数",
+    reason:
+      "B2 裁决：MythosModule 错（写 11）。原文受害者档案通报明确写的是 10 人，MythosModule 把「第 11 次" +
+      "行动被警方发现交火」（这次行动本身就是失败被捕）和「总共绑架了多少人」两件事混成了一件事。" +
+      "ModuleData（10）对。核对不出出处，本轮只裁决不改数据。",
+  },
   { category: "scene_set", key: "奇怪的卡片", reason: "ModuleData 侧是 clue_card（线索不是场景），MythosModule 把线索建成了伪场景节点" },
   { category: "scene_set", key: "旅店", reason: "ModuleData 侧有孤儿常量 S.HOTEL（barn-of-premier.ts）但从未接进 buildScenes()，是真地点但漏建" },
   { category: "scene_set", key: "比较大的奇怪管道", reason: "ModuleData 侧并进了 maintenance_room 场景内的 clue_final_pipe，不是独立场景" },
