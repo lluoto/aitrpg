@@ -407,6 +407,15 @@ function buildScenes(): Scene[] {
       unlocks: [],
       found: false,
       importance: "core",
+      // 开发·约束层补角色实体域 N9 任务 D（todo-57）：这条线索的唯一
+      // 获取路径是"问起其他医护人员"（原文：问起其他医护人员关于
+      // 艾德里安的情况，先幸运判定遇到愿意开口的那位，再信誉或社交
+      // 检定让对方说出真相）——与维森酒吧/报亭同一形状的缺口，
+      // scene-npc-noun-registry.ts 扫出来的。"医护人员"是要问的对象，
+      // "信誉"对应原文给出的第二道检定方式；不收"护士"——原文提到的
+      // "实习护士"是一年前出事故的那个人，是历史背景，不是现在能找
+      // 去问话的在场角色，登记这个词会制造假阳性。
+      matchTexts: ["医护人员", "信誉"],
     },
   ];
   scenes.push({
@@ -414,7 +423,7 @@ function buildScenes(): Scene[] {
     name: "霍姆斯医院",
     description: S.HOSPITAL,
     clues: hospitalClues,
-    npcIds: [],
+    npcIds: ["hospital_staff"],
     connections: [
       { targetSceneId: "town_premier", condition: "返回镇上" },
       { targetSceneId: "adrian_hospital_meeting", condition: "前往艾德里安的病房（需通过门口警员的检查）" },
@@ -1168,6 +1177,34 @@ function buildNpcs(): ModuleNPC[] {
         "旧报纸都堆着等废纸场来收，谁要翻旧报道嫌麻烦，不如买去自己找",
       ],
       secrets: [],
+    },
+    {
+      id: "hospital_staff",
+      name: "医护人员",
+      role: "医护人员",
+      sceneId: "hospital",
+      // 事实层（原文有，模组 PDF 医院一节）：多数医护人员会回避这个
+      // 话题（原文"这件事对于医院来说属于污名，不会愿意轻易透露"）；
+      // 真正知情的那位需要先幸运判定才能遇到，再用信誉或社交检定让
+      // 对方开口——两道检定都落在 clue_emily_birth 的 findMethods 里，
+      // 这里只放"这事不好说"的暗示，真正的内容（艾米丽难产事故的真相）
+      // 走线索检定这条路，不靠闲聊套出来，同 weisen_bar 前台的处理
+      // 方式。外貌/性格是叙事层，原文没写。
+      description: "霍姆斯医院的医护人员，行色匆匆。",
+      personality: {
+        traits: ["谨慎", "守口如瓶"],
+        speech: "对陌生人的问询很警惕，除非确认对方值得信任才肯松口。",
+        attitude: "多数情况选择回避→（幸运判定成功）遇到愿意开口的那位→（信誉或社交检定成功）在安静地方说出真相",
+      },
+      knowledge: [
+        "有些事情属于医院的污名，不该随便跟外人说。",
+      ],
+      // secrets：真相内容（艾米丽难产事故）不直接写进 knowledge——
+      // 原文明确要求两道检定才能得知，写进 knowledge 会绕开检定门槛，
+      // checkSecretLeak 兜底防止闲聊时被套出来。
+      secrets: [
+        "艾德里安的妻子艾米丽一年前因难产事故大出血，是实习护士的疏忽用了没有修缮的推床，艾德里安持枪冲进抢救室把妻子抢走了，院方选择了沉默",
+      ],
     },
 
     // ========== 神话生物（原始模块提供完整数据） ==========

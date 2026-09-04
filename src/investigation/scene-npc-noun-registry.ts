@@ -32,6 +32,12 @@ export const CHARACTER_NOUN_REGISTRY: string[] = [
   // `representsCharacterNoun` 依旧判定它代表这个词；`findModuleChara
   // cterNounGaps` 实测过加了这条之后全模组仍是 0 命中。
   "老板",
+  // 开发·约束层补角色实体域 N9 任务 D（todo-57）：hospital 场景同一
+  // 形状的缺口——clue_emily_birth 要求"问起其他医护人员"，此前场景
+  // npcIds 是空数组。补了 hospital_staff（"医护人员"）之后收进登记表。
+  // 不收"护士"——原文提到的"实习护士"是一年前出事故的历史背景人物，
+  // 不是现在能找去问话的在场角色，登记会制造假阳性。
+  "医护人员",
 ];
 
 /** 场景内确属跨场景引用、不需要本场景补 NPC 的豁免登记。 */

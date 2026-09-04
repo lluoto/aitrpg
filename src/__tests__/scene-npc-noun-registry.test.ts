@@ -8,7 +8,6 @@ import { describe, it, expect } from "bun:test";
 import {
   findSceneCharacterNounGaps,
   findModuleCharacterNounGaps,
-  CHARACTER_NOUN_REGISTRY,
 } from "../investigation/scene-npc-noun-registry";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
 import type { Scene, ModuleNPC } from "../module/types";
@@ -97,13 +96,18 @@ describe("对 BARN_OF_PREMIER 实跑：weisen_bar/newsstand 当前 0 缺口", ()
     expect(gaps.some((g) => g.sceneId === "newsstand")).toBe(false);
   });
 
-  it("**能力边界（真实数据负面确认）**：医院场景「医护人员」缺口真实存在（本轮未修，另立 todo），但登记表没收这个词，判据不会报——证明这份判据不是「扫描全模组自动找齐所有缺口」，只认登记过的词", () => {
-    const gaps = findModuleCharacterNounGaps(BARN_OF_PREMIER); // 用默认登记表（不含"医护人员"）
-    expect(gaps.some((g) => g.sceneId === "hospital")).toBe(false);
-    // 但只要临时把"医护人员"加进登记表去查，这个缺口立刻现形——
-    // 证明"没登记"不等于"扫描器认为医院没问题"，只是这份判据的能力
-    // 边界如实体现在这里，不是漏检。
-    const withMedStaff = findModuleCharacterNounGaps(BARN_OF_PREMIER, [...CHARACTER_NOUN_REGISTRY, "医护人员"]);
-    expect(withMedStaff.some((g) => g.sceneId === "hospital" && g.noun === "医护人员")).toBe(true);
+  it("**能力边界（合成数据负面确认）**：一个真实存在于线索文本、但没登记进表的角色名词不会被抓到——直到手动把它加进登记表才现形，证明这份判据不是「扫描全模组自动找齐所有缺口」，只认登记过的词", () => {
+    // 用合成数据而不是依赖 BARN_OF_PREMIER 某处永远保持"已知但未修"的
+    // 状态——开发·约束层补角色实体域 N9 任务 D 把 hospital 的
+    // "医护人员" 缺口修完并登记之后，真实数据里已经不再有这个可以
+    // 拿来演示能力边界的现成反例，改用与本文件其它合成用例同一套
+    // 写法自己搭一个。
+    const scenes = [
+      scene("s1", [clue("c1", "问问店小二这里最近的事", "问店小二")], []),
+    ];
+    const withoutRegistering = findSceneCharacterNounGaps(scenes, [], ["前台"]); // 默认登记表没有"店小二"
+    expect(withoutRegistering).toEqual([]);
+    const afterRegistering = findSceneCharacterNounGaps(scenes, [], ["前台", "店小二"]);
+    expect(afterRegistering.some((g) => g.noun === "店小二")).toBe(true);
   });
 });
