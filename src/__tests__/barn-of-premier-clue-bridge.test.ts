@@ -60,12 +60,15 @@ describe("BARN_OF_PREMIER 线索桥接 — 注册", () => {
     expect(withBracket.length).toBe(0);
   });
 
-  it("此前诊断为不可达的两条老线索（挂在 NPC 名/事件名下）依然只在原处，不受桥接影响", async () => {
+  it("步骤 2a-2 后：clue_0/clue_1 已从伪场景节点「菲碧_特里坎」迁移到真实场景「特里坎家」", async () => {
     await session.act("加载模组 普瑞米尔的谷仓");
     const investigation: any = (session as any).investigation;
-    // clue_0/clue_1 仍然挂在 NPC 名"菲碧_特里坎"下 —— 这是 premiers_barn.ts
-    // 自身的既有问题，本轮任务范围是"新增可达线索"，不是"修复老线索的归属"。
-    expect(investigation.getSceneClues("菲碧_特里坎")).toContain("clue_0");
+    // 步骤 2a-2 把 clue_0/clue_1 的 scene 从 "菲碧_特里坎"（已删伪场景节点）
+    // 改为 "特里坎家"（菲碧的真实所在场景）。
+    expect(investigation.getSceneClues("特里坎家")).toContain("clue_0");
+    expect(investigation.getSceneClues("特里坎家")).toContain("clue_1");
+    // 旧的伪场景节点下不再有任何线索。
+    expect(investigation.getSceneClues("菲碧_特里坎")).toHaveLength(0);
   });
 });
 
