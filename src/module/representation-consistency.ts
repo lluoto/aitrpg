@@ -307,5 +307,4 @@ export const KNOWN_INCONSISTENCIES: KnownInconsistency[] = [
   { category: "scene_set", key: "旅店", reason: "ModuleData 侧有孤儿常量 S.HOTEL（barn-of-premier.ts）但从未接进 buildScenes()，是真地点但漏建" },
   { category: "scene_set", key: "比较大的奇怪管道", reason: "ModuleData 侧并进了 维修间 场景内的 clue_final_pipe，不是独立场景" },
   { category: "scene_set", key: "艾米丽与爱莉的棺材", reason: "ModuleData 侧并进了 维修间 场景内的 clue_final_coffin，不是独立场景——也是上面 3 条 npc_scene 里 Emily/Ailey 站位矛盾的根源" },
-  { category: "scene_set", key: "米尔_特里坎", reason: "同上，MythosModule 把 NPC 建成了伪场景节点" },
 ];
