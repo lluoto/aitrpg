@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-04 09:05
+> 生成于 2026-09-04 10:08
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,11 +13,13 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 3f3466d docs: design barn representation convergence plan (B3) |
-| 测试 | 2938 条 / 197 文件  全绿 |
-| 工作树 | **2 个文件未提交** |
+| HEAD | 359ed5b refactor: delete the now-dead scene id translation layer (g.1.2) |
+| 测试 | 2939 条 / 197 文件  全绿 |
+| 工作树 | **4 个文件未提交** |
 
 未提交：
+- `M docs/notes/engine.md`
+- `M docs/notes/index.json`
 - `M docs/test-baseline.json`
 - `M docs/todo.json`
 
@@ -119,14 +121,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 359ed5b refactor: delete the now-dead scene id translation layer (g.1.2)
+- 6abae97 chore: remove stray commit-message scratch file
+- f4555a5 refactor: converge BARN_OF_PREMIER scene ids to Chinese names (g.1.1)
+- 144e564 docs: write handoff rule between the two fabrication registries (N11)
+- bf7d39e docs: fix stale projection claim in index-world-model.md (N11 2A)
+- b287d7c docs: clear ASCII-scene-id conflict before converging ids (N11 step 0)
+- 44f857e docs: close out N10 (update todo/baseline/now/handoff)
 - 3f3466d docs: design barn representation convergence plan (B3)
-- e1756cf docs: adjudicate 6 barn representation inconsistencies (B2)
-- 0f790bb feat: add cross-representation consistency judge (todo-19/20 prep)
-- 54ffc9e docs: correct stale line refs and counts in todo-19/20/23/27/31/33
-- 687eb32 docs: close todo-56/todo-57, update todo-43, refresh snapshots
-- e696e7b docs: clarify that adding NPCs never fixed clue reachability
-- 538cc42 feat: add hospital's missing medical-staff NPC (todo-57)
-- f8b2cf2 docs: record item-domain feasibility findings, no implementation
 
 ## 找东西
 

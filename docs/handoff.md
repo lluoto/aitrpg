@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-04 09:06  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-04 10:09  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：3f3466d docs: design barn representation convergence plan (B3)  ·  **测试**：2938 条 / 197 文件，全绿（基线 2938，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：359ed5b refactor: delete the now-dead scene id translation layer (g.1.2)  ·  **测试**：2939 条 / 197 文件，全绿（基线 2939，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -207,18 +207,18 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- 359ed5b refactor: delete the now-dead scene id translation layer (g.1.2)
+- 6abae97 chore: remove stray commit-message scratch file
+- f4555a5 refactor: converge BARN_OF_PREMIER scene ids to Chinese names (g.1.1)
+- 144e564 docs: write handoff rule between the two fabrication registries (N11)
+- bf7d39e docs: fix stale projection claim in index-world-model.md (N11 2A)
+- b287d7c docs: clear ASCII-scene-id conflict before converging ids (N11 step 0)
+- 44f857e docs: close out N10 (update todo/baseline/now/handoff)
 - 3f3466d docs: design barn representation convergence plan (B3)
 - e1756cf docs: adjudicate 6 barn representation inconsistencies (B2)
 - 0f790bb feat: add cross-representation consistency judge (todo-19/20 prep)
 - 54ffc9e docs: correct stale line refs and counts in todo-19/20/23/27/31/33
 - 687eb32 docs: close todo-56/todo-57, update todo-43, refresh snapshots
-- e696e7b docs: clarify that adding NPCs never fixed clue reachability
-- 538cc42 feat: add hospital's missing medical-staff NPC (todo-57)
-- f8b2cf2 docs: record item-domain feasibility findings, no implementation
-- 7c76082 feat: add a constraint domain against fabricated NPC characters
-- cccedbc fix: wire sceneId into NPC dialogue constraint checks
-- 48471e1 docs: log the coverage-asymmetry failure mode and refresh snapshots
-- 0fa8346 docs: verify clue_bar_guest_identity's skill field isn't actually empty
 
 ## 代码地图
 

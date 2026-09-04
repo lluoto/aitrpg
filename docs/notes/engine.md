@@ -1552,3 +1552,61 @@ fallback，标准调用串"普瑞米尔的谷仓"必然命中 `.includes("谷仓
 句柄阶段**，不覆盖继承基准 id 之后的最终形态——两处改动只是文字
 澄清，不改断言逻辑本身（`toMatch(/^[a-z0-9_]+$/)` 测的对象没变，
 只是标题/注释说清楚了它测的是哪个阶段）。
+
+### (g) 步骤 1 执行记录：场景 id 收敛（开发·场景 id 收敛 N11，2026-09-04）
+
+前置裁决（上一节）确认无冲突后，执行了方案文档 (g) 的步骤 1，分两次
+独立提交，各自可回滚：
+
+**1.1（commit f4555a5）**：把 `BARN_OF_PREMIER.scenes` 全部 20 个
+`id` 从 ASCII（`tricam_house`/`maintenance_room`/…）改成对应的去
+括号中文展示名（`特里坎家`/`维修间`/…），同步改写文件内全部
+`targetSceneId`/`sceneId`/`requiredScenes`/`hubSceneId`/
+`finaleSceneId`/`earlyGameEndSceneId` 引用，以及仓库里其余 20 个
+硬编码这些旧 id 的消费文件（严格限定在实际 `import` 了
+`module/barn-of-premier` 的文件范围内，避免误碰 `rules/
+mythos-module.ts` 里恰好复用了相同 ASCII slug 的已死第三份表示
+`PREMIERS_BARN_MODULE`——两者是巧合同名，不是同一份数据）。
+机械替换之外手工修了两处：`scene-resolve.test.ts` 里两处用旧 id 做
+"对象属性访问"（不是字符串字面量，替换脚本按设计扫不到）构造别名
+表；`ending-namespace-truth-source.test.ts` 有一条测试原本就是在
+钉"ASCII id 与运行时 id 不同、但翻译后可查"，这条不一致本身正是这一步
+要消灭的东西，改成直接断言相等。新增
+`scene-id-bridge.test.ts` 的显式判据钉住 `barnSceneIdMap()`
+在这一步之后是恒等映射（不靠其余测试全绿去推断）。
+
+**1.2（commit 359ed5b）**：删除因此变成死代码的翻译层——
+`GameSession.barnSceneIdMap()`（连带它的缓存字段）与
+`GameSession.stripBracketSuffix`（只有两个调用点，一个是刚删的
+`barnSceneIdMap()`，另一个是 `bridgeBarnOfPremierClues()`，后者
+改成直接读 `scene.id` 不再需要重新计算）。`isSceneVisited()` 从
+"先判断当前模组是不是 premiers_barn、是则经翻译层查、否则原样查"
+简化成一行直接查，不再有模组专属分支。`representation-consistency.ts`
+里独立内联的同一份去括号函数**没有删**——那份管的是
+`ModuleData.Scene.name`（这个字段仍然带括号后缀，没变过）与
+`MythosModule` 场景名的比较，跟 `GameSession` 这层 id 格式桥接是
+两回事，只是巧合用了同一个正则，不在这次删除范围内。
+
+**验收结果**（对照方案文档 (g) 给的验收标准逐条核对）：
+- `barnSceneIdMap()` 在 1.1 后确认是恒等映射（新判据钉住），1.2 后
+  确认整个方法已从 `GameSession` 实例上消失（新判据钉住，不是靠读
+  代码肉眼确认）。
+- `representation-consistency.ts` 的 `KNOWN_INCONSISTENCIES`（12 条）
+  数字全程未变——该判据比较的是 `Scene.name`，不读 `Scene.id`，
+  与本次改动的字段无关，`findBarnRepresentationInconsistencies()`
+  与登记表精确相等的测试全程保持绿，符合"逐条可解释、不该动的没动"
+  的验收要求。
+- True End 端到端回放（`scene-id-bridge.test.ts` 里"端到端：通过
+  确认离开流程也能拿到 True End 正文"一条）、64 态结局穷举
+  （`end-narration-32-states.test.ts`）、`scene-matchtext-collision.ts`
+  判据、三方审计、`scene-npc-noun-registry.ts`、WS 可见性、
+  learn-gate 20 条、`dialogue_fabricated_character` 约束，全部
+  保持绿，两次提交前后各跑过一次 `bun test`/`bun scripts/
+  preflight.ts` 确认。
+- `bun test`：2938（N10 结束基线）→ 2940（1.1，+2：新的恒等映射
+  判据）→ 2939（1.2，新判据替换掉恒等映射判据，净 -1）。
+
+**没有做的事（留给 (g) 后续步骤）**：场景集合收敛（步骤 2，
+"奇怪的卡片"等 6 处 scene_set 差异）、B2 已裁决的 4 处事实错误订正
+（步骤 3）、第三份表示 `PREMIERS_BARN_MODULE` 清理（步骤 4）、
+字段合并（步骤 5）——全部原样保留，本轮只做了步骤 1。
