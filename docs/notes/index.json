@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-03",
+  "generated": "2026-09-04",
   "note": "问题记录索引。按 file+line 取正文，不必整份读。正文只追加，改动请重跑 bun scripts/docs-index.ts",
   "statusLegend": {
     "fixed": "已修，有实测数",
@@ -13,7 +13,7 @@
       "id": "engine",
       "name": "运行引擎 / 主循环",
       "file": "docs/notes/engine.md",
-      "count": 32
+      "count": 33
     },
     {
       "id": "ingest",
@@ -380,6 +380,17 @@
       "line": 1014,
       "lines": 61,
       "summary": "todo-41 的真实撞坑（analysis/sim/2026-08-30-barn-natural-play.md:58,86）："
+    },
+    {
+      "id": "engine-33",
+      "title": "澄清一条容易误解的因果：补 NPC 不等于修好可达性（开发·约束层补角色实体域 N9 任务 E，2026-09-03，前几轮漏记，本轮补）",
+      "date": "2026-09-03",
+      "status": "note",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 1075,
+      "lines": 43,
+      "summary": "检验（`weisen-bar-front-desk-reachability.test.ts` 的提交历史，"
     },
     {
       "id": "ingest-01",
