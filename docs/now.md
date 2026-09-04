@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-04 10:08
+> 生成于 2026-09-04 13:28
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,14 +13,11 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 359ed5b refactor: delete the now-dead scene id translation layer (g.1.2) |
+| HEAD | 85ed8e9 refactor: remove "米尔_特里坎" pseudo-scene from MythosModule (2a-3) |
 | 测试 | 2939 条 / 197 文件  全绿 |
-| 工作树 | **4 个文件未提交** |
+| 工作树 | **1 个文件未提交** |
 
 未提交：
-- `M docs/notes/engine.md`
-- `M docs/notes/index.json`
-- `M docs/test-baseline.json`
 - `M docs/todo.json`
 
 ## 开工前
@@ -121,14 +118,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 85ed8e9 refactor: remove "米尔_特里坎" pseudo-scene from MythosModule (2a-3)
+- 954012f refactor: remove "菲碧_特里坎" pseudo-scene, migrate clues (2a-2)
+- 09678b3 refactor: remove "奇怪的卡片" pseudo-scene from MythosModule (2a-1)
+- e486e77 docs: close out N11 (record step-1 execution, refresh snapshots)
 - 359ed5b refactor: delete the now-dead scene id translation layer (g.1.2)
 - 6abae97 chore: remove stray commit-message scratch file
 - f4555a5 refactor: converge BARN_OF_PREMIER scene ids to Chinese names (g.1.1)
 - 144e564 docs: write handoff rule between the two fabrication registries (N11)
-- bf7d39e docs: fix stale projection claim in index-world-model.md (N11 2A)
-- b287d7c docs: clear ASCII-scene-id conflict before converging ids (N11 step 0)
-- 44f857e docs: close out N10 (update todo/baseline/now/handoff)
-- 3f3466d docs: design barn representation convergence plan (B3)
 
 ## 找东西
 
