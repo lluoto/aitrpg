@@ -13,7 +13,7 @@
       "id": "engine",
       "name": "运行引擎 / 主循环",
       "file": "docs/notes/engine.md",
-      "count": 34
+      "count": 35
     },
     {
       "id": "ingest",
@@ -402,6 +402,17 @@
       "line": 1118,
       "lines": 43,
       "summary": "复核了 `docs/todo.json` 里 30 条 open 待办中带 `file.ext:line` 风格"
+    },
+    {
+      "id": "engine-35",
+      "title": "谷仓模组两份表示收敛方案（开发·陈旧记录纠正+收敛前置 N10 任务②B3，2026-09-04）",
+      "date": "2026-09-04",
+      "status": "note",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 1161,
+      "lines": 324,
+      "summary": "本节回答任务原文 (a)~(g)，是方案设计，不是本轮的执行结果——本轮"
     },
     {
       "id": "ingest-01",

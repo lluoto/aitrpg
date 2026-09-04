@@ -1157,3 +1157,327 @@ matchTexts（N7 任务 C，本轮任务①②在此基础上消掉了别名互�
 补了"记录纠正"段落。如果未来漂移量级明显增加（比如同一批复核发现
 远超 1/12 的引用是"指向完全无关代码"这种严重级别），再重新评估要不
 要投入建判据；现状不值得。
+
+### 谷仓模组两份表示收敛方案（开发·陈旧记录纠正+收敛前置 N10 任务②B3，2026-09-04）
+
+本节回答任务原文 (a)~(g)，是**方案设计**，不是本轮的执行结果——本轮
+（N10）明确约束**不改两份表示本身、不动场景 id、不删第三份表示**，
+这份文档是给下一轮收敛工作的输入，不是收工验收物。B4（本轮没做的事）
+见本节末尾。
+
+背景：`BARN_OF_PREMIER`（ModuleData，`module/barn-of-premier.ts`，
+20 个 ASCII `id` 场景+中文 `name` 展示名）与 `MODULE_PREMIERS_BARN`
+（MythosModule，`rules/custom-modules/premiers_barn.ts`，中文场景名
+本身就是 key，GameSession 自由跑团实际加载的那份）是需要收敛的两份
+表示；`PREMIERS_BARN_MODULE`（`rules/mythos-module.ts:959`，同样是
+MythosModule 类型但用 ASCII 场景 id）是第三份、已确认死亡的表示，
+见 (e)。
+
+#### (a) "ModuleData 为权威源、MythosModule 降级为投影产物"——独立复核结论：不成立，缺口是双向的
+
+`docs/index-world-model.md:36-37` 已有同向记载，但独立复核（对比
+`module/types.ts` 的 `ModuleData`/`Scene`/`Clue`/`ModuleItem`/
+`EndNarration` 与 `rules/mythos-module.ts` 的 `MythosModule`/
+`ModuleNPC`/`ModuleEnding`/`ModuleItem` 两套类型的完整字段表）发现：
+**两个方向都有对方补不出来的结构**，不是单向投影关系。
+
+- **MythosModule → ModuleData 补不出来的**（任务提示的方向，验证
+  属实）：`Clue.findMethods`（线索发现方式的结构化描述，MythosModule
+  的 `clues` 只有 `{scene, clueType, description?, sanCost?}`，没有
+  "怎么发现"这个维度）、`Clue.unlocks`（解锁关系，MythosModule 完全
+  没有线索间依赖这个概念）、`ModuleItem.trap`（`TrapMechanics` 整个
+  结构——伤害/侦测/规避/挣脱/持续效果，MythosModule 的 `ModuleItem`
+  只有 `{name, sceneId, description?}`，没有陷阱概念）、
+  `EndNarration.condition`（机器可判定的 `{requiredClues,
+  excludeClues?, requiredScenes?}` 结构，MythosModule 的
+  `ModuleEnding` 只有 `conditionText: string` 自由文本，交给 LLM KP
+  自行判断，不是机器可核验的条件）。这四项确认"人的判断产物"
+  （哪条线索该怎么找、找到什么解锁什么、陷阱怎么触发、结局条件怎么
+  精确判定）只存在于 ModuleData，MythosModule 目前是更粗糙的投影。
+- **ModuleData → MythosModule 也补不出来的**（任务提示没问，但独立
+  复核时必须一并验证，否则"单向"这个结论就是没查对方向就下结论）：
+  `activation`（模组整体触发条件）、`difficulty`、`introNarration`、
+  `spells`/`tomes`（法术/魔法书系统，战斗规则相关）、`rewards`
+  （结局奖励的 SAN/CM/reputation/skillGrowth 结构化变化）、`kpNotes`、
+  `source`、`initialEffects`（NPC 初始状态覆盖）——这些是 MythosModule
+  为"引擎能直接跑起来的可加载模组"这个用途设计的运行时钩子，
+  ModuleData 完全没有对应字段，`ModuleSupport`（`types.ts:539-581`，
+  `BARN_SUPPORT`）也只覆盖了 `evaluateEnding`/`traumaticClues`/
+  `hubSceneId` 等少数几个概念，不是全部。此外 `ModuleNPC` 两侧形状
+  完全不同——MythosModule 的 NPC 是战斗/属性导向
+  （`hp/maxHp/ac/skills/attributes/faction`），ModuleData 的 NPC 是
+  叙事导向（`entrance/knowledge/secrets/behaviors/llmExpanded`），
+  谁都补不出对方那一半。
+
+**结论**：不用"权威源/投影"这一对词描述两者关系——准确的说法是
+"ModuleData 是叙事/线索结构的权威源，MythosModule 是引擎可加载运行
+时的权威源"，收敛方案不能是"以一份为准、另一份降级"，必须是
+"合并成一份同时满足两种权威性的结构"（这直接决定了 (g) 的方向：
+不能简单删掉一份，需要真正的字段合并）。
+
+#### (b) 场景 id 形态决策——本轮最重要的结论：id 空间收敛到"中文展示名"，不是 ASCII
+
+复核证据（实测覆盖 `src/__tests__/` 与非测试 `src/` 下引用本模组
+中文场景名字符串字面量的文件）：以 5 个代表性场景名
+（维修间/艾德里安的农场/与艾德里安的会面/农场外围/加比的拖车房）
+取并集去重统计，`src/__tests__/` 下 **48 个文件、287 处引用**直接
+写死这些中文场景名字符串；非测试 `src/` 下还有 **19 个文件、135 处
+引用**（含 `game-session.ts` 本身、ingest 管线多个文件、
+`llm/npc-dialogue-prompts.ts`、`play/scene-resolve.ts` 等）。反过来，
+`BARN_OF_PREMIER` 的 ASCII 场景 id（如 `adrian_hospital_meeting`/
+`maintenance_room`/`farm_periphery`）目前**只在 `barn-of-premier.ts`
+自己和依赖它读 `Scene.id` 字段的少数几个判据/桥接函数里出现**
+（`barnSceneIdMap()`/`bridgeBarnOfPremierClues()`/
+`scene-npc-noun-registry.ts`/`scene-matchtext-collision.ts` 这类）。
+
+更关键的证据：`GameSession.stripBracketSuffix`
+（`game-session.ts:4099-4101`）+ `barnSceneIdMap()`
+（`:4123-4134`）的存在本身就说明，**运行时（GameSession +
+MythosModuleLoader + InvestigationEngine）从来没有真正使用过 ASCII
+场景 id**——`state.scene`、`investigation.getSceneClues()`、
+`movePlayerToScene()` 全部拿中文展示名当 key；`BARN_OF_PREMIER` 的
+ASCII id 只是它自己内部的私有句柄，每次要跟运行时打交道都得先经过
+一次"ASCII id → 去括号后缀的中文名"的翻译。也就是说，**中文展示名
+早就是事实上的运行时 canonical id**，ASCII id 是需要额外翻译层才能
+用的那一个。
+
+**决策**：收敛后的场景 id 形态应该是**中文展示名（去括号后缀）**，
+不是统一成 ASCII。理由：
+1. 改动量差 287:135 处以上——统一成 ASCII 需要动 `src/__tests__/`
+   下至少 48 个文件（还不算这次只抽样了 5 个场景名，实际全部 20+
+   个场景名覆盖的文件数只会更多），而让 `BARN_OF_PREMIER` 改用中文
+   展示名当 `id`，只需要动 `barn-of-premier.ts` 自己 + 少数几个直接
+   读 `Scene.id` 字段做翻译的桥接/判据文件（`game-session.ts` 的
+   `barnSceneIdMap()`/`bridgeBarnOfPremierClues()`、
+   `representation-consistency.ts`），量级在个位数到十位数文件，
+   不是 38 vs 3 这种任务最初设想的数字（复核后的真实差距其实更
+   悬殊，方向结论不变，量级说明作废，以本段实测为准）。
+2. 运行时已经在用中文名当事实上的 id，改 ASCII 是在制造一个"新
+   canonical id 空间"，还要再写一层新翻译；改中文名是"删掉一层已经
+   不必要的翻译"，工作量小且直接消灭 `stripBracketSuffix`/
+   `barnSceneIdMap` 这类专门为弥合两个 id 空间而存在的代码。
+3. `ModuleData.Scene.id` 目前是 ASCII 这件事本身没有任何运行时读者
+   依赖它是 ASCII——没有代码把它当数据库主键、URL 片段或者需要
+   ASCII 安全性的场合使用，改成中文字符串不会破坏任何现有约束。
+
+**分步建议**（细节留给 (g)，这里只定方向）：先让
+`barnSceneIdMap()` 的翻译层退化成恒等映射（即：给
+`BARN_OF_PREMIER.scenes` 的每个 `id` 都改成对应的去括号中文展示名，
+`barnSceneIdMap()` 变成 `id => id` 的空操作），验证全部相关测试仍绿
+后，再把 `barnSceneIdMap()`/`stripBracketSuffix` 这类翻译代码整体
+删除——不是一步改完，是先让两边的 id 值相等，再删掉"处理不相等"
+的代码，每一步都可以单独验证、单独回滚。
+
+#### (c) MythosModule 独有字段落进 ModuleSupport 的复核——不能，形态不对，需要新字段而不是塞进旧结构
+
+任务提示的 9 个字段（activation/difficulty/introNarration/spells/
+tomes/hooks/rewards/kpNotes/sceneBgm）+ 复核中额外发现的
+`sceneAliases`/`source`/`exits`/`sceneDescriptions`/`initialEffects`/
+顶层 `clues`，逐项核对 `ModuleSupport`（`types.ts:543-581`）：
+`ModuleSupport` 目前只有 `traumaticClues`/`evaluateEnding`（一个
+函数，不是数据）/`endLabels`/`encounters`/`hubSceneId`/
+`finaleSceneId`/`earlyGameEndSceneId?`/`finaleClueId`/
+`bossNpcIdPattern`/`players?` 这十个字段，**没有一个能直接承载**
+上面这些 MythosModule 独有字段——`ModuleSupport` 的设计定位是
+"ModuleData 之外，引擎跑单条模组需要的少量运行时钩子/常量"
+（`types.ts:538-542` 原注释），不是"MythosModule 专属字段的容器"。
+把 `activation`/`spells`/`tomes`/`rewards` 这类整块结构硬塞进
+`ModuleSupport` 会让它变成两份表示专属字段的大杂烩，违背它自己
+"少量运行时钩子"的定位。
+
+**结论**：不塞进 `ModuleSupport`，需要在合并后的统一模组类型上新增
+对应字段（例如 `ModuleData` 补一个可选的 `runtimeHooks?:
+{activation?, difficulty?, spells?, tomes?, rewards?, kpNotes?,
+source?, initialEffects?}` 之类的分组字段，具体形状留给真正做合并
+的那一轮设计，这里只确认"不能塞进现有 ModuleSupport"这个否定性
+结论）。两个字段需要特别标注语义重叠、不能直接合并：
+- `sceneAliases`（MythosModule，场景别名）与 `Clue.matchTexts`
+  （ModuleData，线索文本别名）——`types.ts:313-314` 的既有注释已经
+  写明"是同一件事在两种载体上的对应字段"，合并时要决定统一成哪种
+  载体（场景 or 线索），不是简单地都保留。
+- `sceneBgm`（MythosModule，场景→BGM 的直接映射）与
+  `meta.bgmHints`/`Scene.bgmHint`（ModuleData，两个不同粒度的 BGM
+  相关字段）——三者语义相近但形状都不同，合并时要选一种。
+
+#### (d) MythosModule 独有的 6 个运行时场景——处置方案
+
+B1/B2 已经给出成因（见 `representation-consistency.ts` 的
+`KNOWN_INCONSISTENCIES`），本节给出正式处置方案：
+
+1. **"奇怪的卡片"**（ModuleData 侧是 `clue_card`，线索不是场景）：
+   处置方案——保持现状，不需要在 ModuleData 里新建一个同名场景。
+   这是 MythosModule 把"一件线索物品"错误建模成了"可导航场景节点"，
+   收敛时应该在 MythosModule 侧删掉这个伪场景节点，让"奇怪的卡片"
+   回归线索身份，不是反过来在 ModuleData 里补一个场景。
+2. **"旅店"**（ModuleData 侧有孤儿常量 `S.HOTEL` 但从未接进
+   `buildScenes()`）：处置方案——这是真地点，只是 ModuleData 侧漏接。
+   收敛时把 `S.HOTEL` 正式接入 `buildScenes()`（需要人工核对原文
+   确认这个场景在故事里出现的必要性，不是自动化判据能决定的），
+   让两侧都有这个场景，不是从 MythosModule 删掉它。
+3. **"比较大的奇怪管道"/"艾米丽与爱莉的棺材"**（ModuleData 侧并进
+   `maintenance_room`，MythosModule 侧拆成独立场景节点）：B2 已确认
+   这是场景颗粒度差异，两侧都对得上原文结构（原文"维修间"一节本身
+   把它们写成 ▶ 子小节）。处置方案——**保留 MythosModule 的细粒度
+   拆分**，让 ModuleData 也拆出对应的子场景（而不是让 MythosModule
+   合并回粗粒度），理由：MythosModule 是运行时实跑加载的那份，细
+   粒度场景让玩家能更精确地"走到管道前"/"走到棺材旁"而不是笼统地
+   "在维修间"，叙事精度更高，收敛应该取更精细的一侧，不是取更粗糙
+   的一侧。
+4. **"菲碧_特里坎"/"米尔_特里坎"**（MythosModule 把 NPC 建成了可
+   导航的伪场景节点）：处置方案——同"奇怪的卡片"，这是建模错误，
+   收敛时应在 MythosModule 侧删掉这两个伪场景节点，让这两个 NPC
+   回归"挂在 `tricam_house` 场景下的 NPC"身份（ModuleData 侧本来
+   就是这么建的，`Scene.npcIds`），不需要在 ModuleData 里新建同名
+   场景。
+
+#### (e) 第三份表示 `PREMIERS_BARN_MODULE` 怎么处理——已确认死代码，但 6 处消费方需要先处理才能删
+
+复核确认：`api/game-session.ts:4004`（`handleLoadModule` 里
+`getCustomModule("premiers_barn")` 命中优先于 `builtinModules`
+fallback，标准调用串"普瑞米尔的谷仓"必然命中 `.includes("谷仓")`
+分支）使得 `PREMIERS_BARN_MODULE` 在当前生产路径下**不可能被执行到
+**——它是一个只有在"自定义模组注册表本身坏掉"时才会触发的死 fallback。
+真实消费方是 6 个测试文件：`confirmed-fabrication-log.test.ts`（序列化
+后做防回弹字面串检查）、`ingest-three-way-audit.test.ts`（三方审计
+的第三个语料源）、`mythos-scene-whitelist.test.ts`（场景白名单公式
+的第三个被测对象）、`npc-secret-truth-consistency.test.ts`（专门验证
+过一个历史 bug——`adrian_estrom.personality.secrets` 方向反了，见
+`confirmed-fabrication-log.ts` 的 `adrian-secrets-aware` 条目）。
+
+**处置方案（分两步，不能一步删）**：
+1. 第一步——**先给这 4 个测试文件找替代数据源**：
+   `confirmed-fabrication-log.ts` 的 `adrian-secrets-aware` 条目挂靠
+   `source: "mythos-module"`（即 `PREMIERS_BARN_MODULE`），需要先
+   确认这个历史 bug 的等价说法要不要在 `MODULE_PREMIERS_BARN` 里
+   也检查一遍（如果从未在那份数据里出现过，直接放心删除这条对
+   `PREMIERS_BARN_MODULE` 的依赖；如果曾经或可能出现，需要迁移检查
+   目标）；`ingest-three-way-audit.test.ts`/`mythos-scene-whitelist.
+   test.ts` 需要把"第三个语料源/被测对象"这个位置直接去掉（两份
+   表示收敛之后本来就该只审计两份，不是把第三份换成别的凑数）；
+   `npc-secret-truth-consistency.test.ts` 需要确认
+   `MODULE_PREMIERS_BARN` 是否也曾有过同类"secrets 方向反了"的
+   历史问题（B2 没有专门核对这一条，需要单独复核）——如果没有，
+   这个测试本身随第三份表示一起归档/删除即可。
+2. 第二步——**4 个测试文件都不再 import `PREMIERS_BARN_MODULE`
+   后，删除 `rules/mythos-module.ts:959` 的定义本身**，连带清理
+   `api/game-session.ts:46/4010/4018` 的 import 与死 fallback 分支
+   （删除死代码，不是保留一个永远走不到的分支"以防万一"——它已经
+   被验证走不到，留着只会误导下一个读代码的人以为它是活的）。
+
+**不能颠倒顺序的原因**：如果先删定义再处理测试，会有 4 个测试文件
+直接编译失败，得不到任何有效判据结果去验证删除本身是否安全；先处理
+消费方再删定义，每一步删除都能立刻用 `bun test`/`bun run typecheck`
+验证。
+
+#### (f) 判据网在收敛中的角色分类
+
+- **不受影响**（判的是场景/线索/NPC 数据本身的内部一致性，跟"有
+  几份表示"无关，两份合并成一份之后原样继续跑）：
+  `scene-npc-noun-registry.test.ts`、`scene-matchtext-collision.
+  test.ts`、`end-narration-clue-reachability.test.ts`、
+  `hospital-staff-reachability.test.ts`、`backstory-name-clash.
+  test.ts` 等一大批读 `BARN_OF_PREMIER` 具体字段做叙事/匹配逻辑
+  校验的测试——合并后这些字段仍然存在（只是可能挂在合并后的统一
+  结构上），判据本身不需要改逻辑，最多改 import 路径。
+- **安全网**（专门为"防止两份表示悄悄失步"而存在，收敛完成前必须
+  留着，收敛完成那一刻自动变成"名单归零"的绿灯，可以直接删除或者
+  转成"防止未来再长出第二份表示"的哨兵）：
+  `representation-consistency.test.ts`（`KNOWN_INCONSISTENCIES`
+  归零 = 收敛完成的验收标准，判据本身写在其头部注释里）、
+  `module-endings-consistency.test.ts`（3 路结局 id 集合比对，收敛
+  成一份后自动退化成只剩 1~2 路，判据逻辑要跟着简化）。
+- **收敛后失效，需要删除或改写**（判的是"两个 id 空间之间的翻译
+  是否正确"，翻译层被删除之后这些测试测的东西根本不存在了）：
+  `scene-id-bridge.test.ts`、`ending-namespace-truth-source.test.ts`
+  ——这两个测的是 `stripBracketSuffix`/`barnSceneIdMap` 这类桥接
+  代码本身，(b) 的方案会把这些桥接代码整体删除，测试要跟着删除
+  （不是改写，因为它们的被测对象将不复存在）。
+- **半成立，需要拆分或重新定位**（`barn-of-premier-clue-bridge.
+  test.ts` 测的是"32 条 ModuleData 侧线索被桥接进运行时"这件事本身
+  ——收敛成一份数据结构之后，"桥接"这个动作也不复存在，但它验证的
+  "这些线索确实可以通过真实场景导航+技能检定被玩家摸到"这个更底层
+  的行为不能丢，需要拆成"直接对合并后的统一数据跑端到端可达性"的
+  新测试，不是简单删除）。
+- **依赖第三份表示，随 (e) 处理**：
+  `confirmed-fabrication-log.test.ts`、`ingest-three-way-audit.
+  test.ts`、`mythos-scene-whitelist.test.ts`、
+  `npc-secret-truth-consistency.test.ts`——见 (e) 的两步处置方案。
+
+#### (g) 分步顺序与每步验收判据
+
+每一步必须能独立跑绿、独立回滚，不允许"这一步半成品，等下一步才能
+测"。建议顺序（编号是执行顺序，不是优先级）：
+
+1. **场景 id 形态收敛**（(b) 的方案）：
+   1.1 把 `BARN_OF_PREMIER.scenes` 每个 `id` 改成对应的去括号中文
+       展示名（`barn-of-premier.ts` 单文件改动）。
+   验收：`barnSceneIdMap()` 退化为恒等映射后
+   `barn-of-premier-clue-bridge.test.ts`/`scene-id-bridge.test.ts`/
+   `ending-namespace-truth-source.test.ts` 全绿；
+   `representation-consistency.ts` 的 npc_scene/scene_set 判据
+   （因为不再需要跨 id 空间比对，直接用同一套中文名比较）逻辑可以
+   简化，先跑一遍确认原有 12 条不一致里跟"id 形态不同"无关的那些
+   （B2 已裁决的 4 条真实错误 + 2 条颗粒度差异 + 部分 scene_set 条目）
+   不受影响，数字不因为这一步改动而意外变化。
+   1.2 删除 `stripBracketSuffix`/`barnSceneIdMap`/
+   `bridgeBarnOfPremierClues` 里的翻译逻辑（保留桥接動作本身，只删
+   "id 不一致所以要翻译"这部分）。
+   验收：同上全部测试保持绿，`git diff` 确认这一步只删代码不改
+   数据。可独立回滚（`git revert` 这一个 commit 即可，因为 1.1 已经
+   让 id 空间提前对齐，1.2 只是清理死代码）。
+
+2. **场景集合收敛**（(d) 的方案）：按 (d) 给出的 4 类分别处理——
+   "奇怪的卡片"/"菲碧_特里坎"/"米尔_特里坎" 从 MythosModule 删除
+   伪场景节点（3 个改动，可以分别提交分别验收）；"旅店"接入
+   `buildScenes()`（1 个改动）；管道/棺材两个子场景在 ModuleData
+   侧补出对应拆分（1 个改动）。每个改动后跑
+   `representation-consistency.ts` 的 `findSceneSetInconsistencies`，
+   验收标准是"这一条从 `KNOWN_INCONSISTENCIES` 里消失"。
+
+3. **确认的事实错误订正**（(a)(b) 无关，独立于收敛，B2 已裁决）：
+   艾德里安/流浪汉/Mi-Go 的 `sceneId` 与绑架人数，在 MythosModule
+   侧改成 B2 裁决的正确值。验收：`findNpcSceneInconsistencies`/
+   `findNumericFactInconsistencies` 对应 4 条从 `KNOWN_INCONSISTENCIES`
+   消失；`npc-secret-truth-consistency.test.ts` 这类叙事一致性测试
+   保持绿（顺手确认这次订正没有引入新的叙事矛盾）。
+
+4. **第三份表示清理**（(e) 的两步方案）：先处理 4 个测试文件的
+   数据源依赖，验收每个测试文件独立改完后仍绿；再删
+   `PREMIERS_BARN_MODULE` 定义与 `game-session.ts` 里的死 fallback，
+   验收 `bun run typecheck`（确认没有遗漏的 import）+ 全量
+   `bun test`。
+
+5. **字段合并**（(a)(c) 的方案，工作量最大，放最后）：设计并落地
+   合并后的统一模组类型（`ModuleData` 补 `runtimeHooks?` 之类的分组
+   字段承载 MythosModule 独有的运行时钩子），把
+   `MODULE_PREMIERS_BARN` 与 `BARN_OF_PREMIER` 合并成一份数据、一个
+   加载路径。这一步影响面最大，应该拆成"先让统一类型能同时表达两边
+   现有字段而不删任何东西"（验收：新类型的 typecheck 通过，两份
+   原始数据都能无损转换成新类型）与"实际合并成一份、删除另一份"
+   （验收：`representation-consistency.ts` 整个判据模块因为找不到
+   第二份表示可比对而被删除，删除本身就是最终验收标准）两个子步骤。
+
+**每步之间的依赖**：1 必须先于 2/3（id 形态统一之后场景/事实层面的
+比对才不用再操心 id 空间不一致带来的噪音）；2/3/4 互相独立，谁先谁
+后不影响正确性；5 必须最后做（依赖 1/2/3/4 都完成，字段/场景/事实
+层面先对齐，合并才不会把还没订正的错误一起合并进最终结构）。
+
+#### B4：本轮（N10）明确没有做的事
+
+- **没有改动 `BARN_OF_PREMIER`/`MODULE_PREMIERS_BARN` 任何一份表示
+  的数据**——B2 裁决出的 4 处确认错误（艾德里安/流浪汉/Mi-Go 站位、
+  绑架人数）**没有订正**，只是把裁决结论写进了
+  `KNOWN_INCONSISTENCIES.reason`；(g) 步骤 3 才是订正它们的地方。
+- **没有动场景 id**——(b) 只是方案结论，`BARN_OF_PREMIER.scenes` 的
+  `id` 字段仍然是 ASCII，`stripBracketSuffix`/`barnSceneIdMap` 仍然
+  存在且仍在被使用；(g) 步骤 1 才是执行这个决策的地方。
+- **没有删除第三份表示 `PREMIERS_BARN_MODULE`**——(e) 只是方案，
+  `rules/mythos-module.ts:959` 的定义、`game-session.ts:46/4010/4018`
+  的 import 与死 fallback、4 个依赖它的测试文件全部原样保留；(g)
+  步骤 4 才是执行的地方。
+- **没有新建任何字段**（`ModuleData.runtimeHooks?` 之类）——(c)/(a)
+  只是给出"不能塞进 `ModuleSupport`、需要新字段"这个否定性+方向性
+  结论，没有落地任何新类型定义；(g) 步骤 5 才是执行的地方。
+- 这份文档本身是**方案设计**，不是收敛工作的执行记录——下一轮
+  要做收敛，应该从 (g) 的步骤 1 开始，按顺序推进，每步都有独立
+  验收标准，不需要重新调研，直接执行即可。
