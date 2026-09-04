@@ -23,6 +23,12 @@
 // 本轮范围：只建判据、裁决红条目该信哪一侧（見
 // `confirmed-fabrication-log.ts` 同一处置：核对不出处的记非法臆造），
 // 不修数据——现在改会让这份判据的红/绿失去"收敛进度表"的意义。
+//
+// 与 `ingest/confirmed-fabrication-log.ts` 的分工 + 交接规则见该文件
+// 头部注释（开发·场景 id 收敛 N11 补记）：`KNOWN_INCONSISTENCIES` 存
+// 未修复的发现，`CONFIRMED_FABRICATION_LOG` 存已修复+带字面串回归
+// 护栏的臆造——某一条一旦被订正，要从这里迁过去补一条护栏，不能直接
+// 删除了事。
 
 import { BARN_OF_PREMIER, END_NARRATIONS } from "./barn-of-premier";
 import { MODULE_PREMIERS_BARN } from "../rules/custom-modules/premiers_barn";
