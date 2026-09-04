@@ -13,7 +13,7 @@
       "id": "engine",
       "name": "运行引擎 / 主循环",
       "file": "docs/notes/engine.md",
-      "count": 33
+      "count": 34
     },
     {
       "id": "ingest",
@@ -391,6 +391,17 @@
       "line": 1075,
       "lines": 43,
       "summary": "检验（`weisen-bar-front-desk-reachability.test.ts` 的提交历史，"
+    },
+    {
+      "id": "engine-34",
+      "title": "待办里的行号引用值不值得建一条判据校验它没漂移（开发·陈旧记录纠正+收敛前置 N10，2026-09-03）",
+      "date": "2026-09-03",
+      "status": "note",
+      "group": "engine",
+      "file": "docs/notes/engine.md",
+      "line": 1118,
+      "lines": 43,
+      "summary": "复核了 `docs/todo.json` 里 30 条 open 待办中带 `file.ext:line` 风格"
     },
     {
       "id": "ingest-01",
