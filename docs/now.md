@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-04 03:27
+> 生成于 2026-09-04 09:05
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,8 +13,8 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | e696e7b docs: clarify that adding NPCs never fixed clue reachability |
-| 测试 | 2921 条 / 196 文件  全绿 |
+| HEAD | 3f3466d docs: design barn representation convergence plan (B3) |
+| 测试 | 2938 条 / 197 文件  全绿 |
 | 工作树 | **2 个文件未提交** |
 
 未提交：
@@ -119,14 +119,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 3f3466d docs: design barn representation convergence plan (B3)
+- e1756cf docs: adjudicate 6 barn representation inconsistencies (B2)
+- 0f790bb feat: add cross-representation consistency judge (todo-19/20 prep)
+- 54ffc9e docs: correct stale line refs and counts in todo-19/20/23/27/31/33
+- 687eb32 docs: close todo-56/todo-57, update todo-43, refresh snapshots
 - e696e7b docs: clarify that adding NPCs never fixed clue reachability
 - 538cc42 feat: add hospital's missing medical-staff NPC (todo-57)
 - f8b2cf2 docs: record item-domain feasibility findings, no implementation
-- 7c76082 feat: add a constraint domain against fabricated NPC characters
-- cccedbc fix: wire sceneId into NPC dialogue constraint checks
-- 48471e1 docs: log the coverage-asymmetry failure mode and refresh snapshots
-- 0fa8346 docs: verify clue_bar_guest_identity's skill field isn't actually empty
-- 33fa0da fix: remove all matchTexts collisions the new judge found
 
 ## 找东西
 
