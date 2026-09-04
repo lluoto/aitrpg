@@ -3283,7 +3283,9 @@ export class GameSession {
 
     try {
       const history = this.getHistory(10);
-      const reply = await npcAgent.respond(input, history.messages);
+      const reply = await npcAgent.respond(input, history.messages, {
+        sceneId: pos, ruleset: this.activeRuleset,
+      });
       const mood = npcAgent.getMood();
       messages.push({
         speaker: target.name,

@@ -16,7 +16,20 @@ import {
 import { NPCStore } from "../db/index";
 import { applyConstraints } from "./constraints";
 import { checkDialogueText } from "../world/world-constraint";
+import type { RulesetId } from "../rules/rules-engine";
 import { log } from "../log";
+
+/**
+ * `respond()`/`speakUp()` 的可选约束上下文——开发·约束层补角色实体域
+ * N9 任务 A。不传时（既有调用点，本轮之外的路径）`checkDialogueText`
+ * 拿不到 sceneId，场景限定的约束（目前还没有任何一条用到它，todo-43
+ * 记的正是这个缺口）天然不命中，行为与改动前一致——与
+ * `NarrateConstraintOpts`（kp-agent.ts）同一个设计，先接线、不改判定。
+ */
+export interface NPCDialogueConstraintOpts {
+  sceneId?: string;
+  ruleset?: RulesetId;
+}
 
 const MAX_RECENT_MEMORIES = 20;
 const SYSTEM_PROMPT_PREAMBLE = `你是一个 TRPG 非玩家角色（NPC）。你必须始终以角色的身份说话，不要跳出角色、不要评论游戏机制、不要替其他角色发言。
@@ -214,7 +227,8 @@ export class NPCAgent {
    */
   async respond(
     context: string,
-    recentMessages: AgentMessage[] = []
+    recentMessages: AgentMessage[] = [],
+    constraintOpts?: NPCDialogueConstraintOpts,
   ): Promise<string> {
     const messages: LLMMessage[] = [
       { role: "system", content: this.systemPrompt },
@@ -259,7 +273,7 @@ export class NPCAgent {
       }
 
       // 时代约束层 — 1920s 世界模型：LLM 输出含跨时代科技词 → 拦截并替换为安全话术
-      if (checkDialogueText(response)) {
+      if (checkDialogueText(response, constraintOpts?.sceneId, constraintOpts?.ruleset)) {
         log.warn("npc", `NPC ${this.name} 时代约束拦截（输出含现代科技词）`);
         response = this.anachronismSafeReply();
       }
@@ -280,7 +294,8 @@ export class NPCAgent {
    */
   async speakUp(
     trigger: string,
-    recentMessages: AgentMessage[] = []
+    recentMessages: AgentMessage[] = [],
+    constraintOpts?: NPCDialogueConstraintOpts,
   ): Promise<string> {
     const messages: LLMMessage[] = [
       { role: "system", content: this.systemPrompt },
@@ -317,7 +332,7 @@ export class NPCAgent {
       }
 
       // 时代约束层 — 1920s 世界模型：主动发言含跨时代科技词 → 替换为安全话术
-      if (checkDialogueText(response)) {
+      if (checkDialogueText(response, constraintOpts?.sceneId, constraintOpts?.ruleset)) {
         log.warn("npc", `NPC ${this.name} 主动发言时代约束拦截（含现代科技词）`);
         response = this.anachronismSafeReply();
       }

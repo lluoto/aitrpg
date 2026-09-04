@@ -611,7 +611,9 @@ async function handleMovement(
   for (const entity of nearby) {
     const npc = registry.get(entity.name);
     if (npc && Math.random() < 0.4) {
-      const speak = await npc.speakUp("有陌生人进入了你的区域", getPlayerHistory());
+      const speak = await npc.speakUp("有陌生人进入了你的区域", getPlayerHistory(), {
+        sceneId: world.getCurrentState().scene, ruleset: activeRuleset as RulesetId,
+      });
       console.log(`  💬 ${entity.name}: ${speak}`);
       addMessage(entity.name, speak);
       turnMessages.push({ speaker: entity.name, content: speak, type: "dialogue" });
@@ -630,7 +632,8 @@ async function handleFreeNarration(input: string, turnMessages: AgentMessage[]) 
     if (input.includes(npc.name)) {
       const response = await npc.respond(
         `调查员对我说: "${input}"。KP的旁白: "${kpNarration}"`,
-        getPlayerHistory()
+        getPlayerHistory(),
+        { sceneId: world.getCurrentState().scene, ruleset: activeRuleset as RulesetId },
       );
       console.log(`  💬 ${npc.name}: ${response}`);
       addMessage(npc.name, response, "dialogue");
@@ -643,7 +646,9 @@ async function handleFreeNarration(input: string, turnMessages: AgentMessage[]) 
   const agents = registry.getAll();
   if (Math.random() < 0.3 && agents.length > 0) {
     const randomNpc = agents[Math.floor(Math.random() * agents.length)];
-    const speakUp = await randomNpc.speakUp("KP刚描述了新进展", getPlayerHistory());
+    const speakUp = await randomNpc.speakUp("KP刚描述了新进展", getPlayerHistory(), {
+      sceneId: world.getCurrentState().scene, ruleset: activeRuleset as RulesetId,
+    });
     if (speakUp && !speakUp.includes("没什么可说") && !speakUp.includes("保持沉默")) {
       console.log(`  💬 ${randomNpc.name}(主动): ${speakUp}`);
       addMessage(randomNpc.name, speakUp, "dialogue");

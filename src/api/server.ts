@@ -531,7 +531,9 @@ async function handleRequest(req: Request): Promise<Response> {
         const npcAgent = session.registry.findAgentByName(npcName);
         if (!npcAgent) return respondError(`未找到 NPC: ${npcName}`, 404);
         const history = session.getHistory(10);
-        const reply = await npcAgent.respond(playerMsg, history.messages);
+        const reply = await npcAgent.respond(playerMsg, history.messages, {
+          sceneId: session.getDisplayedScene(), ruleset: session.activeRuleset,
+        });
         // 记录到 session 历史；情绪在此刻固定，供未来语音层选择音色
         session.addMessage(npcName, reply, "dialogue", { mood: npcAgent.getMood() });
         return respondJson({ npc: npcName, reply });
