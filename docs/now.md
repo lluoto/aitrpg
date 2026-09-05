@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-05 03:45
+> 生成于 2026-09-05 06:07
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,7 +13,7 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 546ffa9 refactor: wire "旅店" into BARN_OF_PREMIER.buildScenes() (step 2b) |
+| HEAD | d38d0c4 docs: revise engine.md (d) to reflect 2c reversal on sub-scenes |
 | 测试 | 2939 条 / 197 文件  全绿 |
 | 工作树 | **1 个文件未提交** |
 
@@ -118,14 +118,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- d38d0c4 docs: revise engine.md (d) to reflect 2c reversal on sub-scenes
+- 822843e refactor: merge coffin sub-scene into "维修间", move NPCs (2c-2)
+- fc36cd2 refactor: merge pipe sub-scene into "维修间" in MythosModule (2c-1)
+- 2a0842e docs: close out step 2b (update todo/now/handoff)
 - 546ffa9 refactor: wire "旅店" into BARN_OF_PREMIER.buildScenes() (step 2b)
 - 2785297 docs: close out N12 scene-set step 2a (update todo/now/handoff)
 - 85ed8e9 refactor: remove "米尔_特里坎" pseudo-scene from MythosModule (2a-3)
 - 954012f refactor: remove "菲碧_特里坎" pseudo-scene, migrate clues (2a-2)
-- 09678b3 refactor: remove "奇怪的卡片" pseudo-scene from MythosModule (2a-1)
-- e486e77 docs: close out N11 (record step-1 execution, refresh snapshots)
-- 359ed5b refactor: delete the now-dead scene id translation layer (g.1.2)
-- 6abae97 chore: remove stray commit-message scratch file
 
 ## 找东西
 
