@@ -14,16 +14,14 @@
 import { describe, it, expect } from "bun:test";
 import { CONFIRMED_FABRICATION_LOG, findReintroducedFabrications } from "../ingest/confirmed-fabrication-log";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
-import { PREMIERS_BARN_MODULE } from "../rules/mythos-module";
 import { MODULE_PREMIERS_BARN } from "../rules/custom-modules/premiers_barn";
 
 const barnText = JSON.stringify(BARN_OF_PREMIER);
-const mythosText = JSON.stringify(PREMIERS_BARN_MODULE);
 const premiersText = JSON.stringify(MODULE_PREMIERS_BARN);
 
 describe("存档形状", () => {
   it("都有完整字段，fabricatedText 非空", () => {
-    expect(CONFIRMED_FABRICATION_LOG).toHaveLength(7);
+    expect(CONFIRMED_FABRICATION_LOG).toHaveLength(6);
     for (const e of CONFIRMED_FABRICATION_LOG) {
       expect(e.fabricatedText.length).toBeGreaterThan(0);
       expect(e.discoveredBy.length).toBeGreaterThan(0);
@@ -44,11 +42,6 @@ describe("**主判据**：已确证臆造都不再逐字出现在真实模组数
     expect(hits).toEqual([]);
   });
 
-  it("mythos-module.ts 里挂靠的条目（艾德里安 secrets）", () => {
-    const hits = findReintroducedFabrications(mythosText, "mythos-module");
-    expect(hits).toEqual([]);
-  });
-
   it("premiers_barn.ts 里挂靠的条目（步骤 3 修复的 B2 裁决错误）", () => {
     const hits = findReintroducedFabrications(premiersText, "premiers-barn");
     expect(hits).toEqual([]);
@@ -62,13 +55,7 @@ describe("变异检验：三条各自单独验证判据能变红（不是只验�
     expect(hits.map((h) => h.id)).toEqual(["true-end-emily-knew"]);
   });
 
-  it("②「意识到被米-戈欺骗」原样放回去，判据必须红", () => {
-    const mutated = mythosText + "意识到被米-戈欺骗";
-    const hits = findReintroducedFabrications(mutated, "mythos-module");
-    expect(hits.map((h) => h.id)).toEqual(["adrian-secrets-aware"]);
-  });
-
-  it("③「照片背面写着农场的地址坐标。」原样放回去，判据必须红", () => {
+  it("②「照片背面写着农场的地址坐标。」原样放回去，判据必须红", () => {
     const mutated = barnText + "照片背面写着农场的地址坐标。";
     const hits = findReintroducedFabrications(mutated, "barn-of-premier");
     expect(hits.map((h) => h.id)).toEqual(["photo-farm-coordinates"]);
@@ -107,7 +94,6 @@ describe("变异检验：三条各自单独验证判据能变红（不是只验�
 
   it("对照组：真实数据不掺假时不会误报任何一条（否则上面各条红没有意义）", () => {
     expect(findReintroducedFabrications(barnText, "barn-of-premier")).toEqual([]);
-    expect(findReintroducedFabrications(mythosText, "mythos-module")).toEqual([]);
     expect(findReintroducedFabrications(premiersText, "premiers-barn")).toEqual([]);
   });
 });
@@ -119,12 +105,6 @@ describe("**负面确认**：能力边界是真的——换一种说法的同义
     // 字面串护栏只挡原样重现，语义层面的同义改写会绕过去。
     const paraphrased = barnText + "艾米丽其实心知肚明，米-戈的谎言骗过的不止艾德里安一个人。";
     const hits = findReintroducedFabrications(paraphrased, "barn-of-premier");
-    expect(hits).toEqual([]);
-  });
-
-  it("「意识到被米-戈欺骗」换个说法（「察觉了米-戈的骗局」），判据同样看不见", () => {
-    const paraphrased = mythosText + "他其实早就察觉了米-戈的骗局，只是没有说出口。";
-    const hits = findReintroducedFabrications(paraphrased, "mythos-module");
     expect(hits).toEqual([]);
   });
 });

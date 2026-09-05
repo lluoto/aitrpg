@@ -75,7 +75,7 @@ export interface ConfirmedFabricationEntry {
   /** 臆造原文——逐字，变异检验会把它原样放回数据里验证判据变红 */
   fabricatedText: string;
   /** 这段文本挂靠哪份模组数据——判据据此决定序列化谁 */
-  source: "barn-of-premier" | "mythos-module" | "premiers-barn";
+  source: "barn-of-premier" | "premiers-barn"; // "mythos-module" 已随步骤4删除第三份表示一起清除
   /** 具体位置（文件 + 字段路径），供人复核 */
   location: string;
   /** 怎么被发现的——这几条无一例外都是人工通读原文才发现的 */
@@ -101,22 +101,6 @@ export const CONFIRMED_FABRICATION_LOG: ConfirmedFabricationEntry[] = [
       "查得到，这句话里一个词单独查都能在原文找到出处（\"知道\"\"欺骗\"都是原文词汇），只有整句" +
       "话拼起来的意思与原文矛盾，而这属于三方审计文件头 :21-33 早就写明的能力边界——它看不见语义矛盾。",
     fixCommit: "a0fd9f9",
-  },
-  {
-    id: "adrian-secrets-aware",
-    fabricatedText: "意识到被米-戈欺骗",
-    source: "mythos-module",
-    location: "PREMIERS_BARN_MODULE.npcs[adrian_estrom].personality.secrets",
-    discoveredBy:
-      "人工核对 section_01:15-18（\"完全没有意识到自己完全是被利用了\"）与 True End 自己的第 2 行" +
-      "（\"艾德里安直到瘫痪在病床上，都没有意识到自己不过是被利用的工具\"）时发现两处互相矛盾——" +
-      "secrets 写的是「知道」，原文与另一处叙事都写的是「不知道」，方向正相反。",
-    whyToolMissed:
-      "同上一条，字面词汇本身都能在原文查到出处（\"意识到\"\"欺骗\"都是常见词），三方审计的" +
-      "存在性检查查不出\"这句话的意思是不是反的\"；而且这条数据在 secrets 字段里，" +
-      "`AUDITED_MODULE_FILES` 当时虽然已经覆盖 mythos-module.ts（阶段7任务②），覆盖的是" +
-      "\"文件被扫到没有\"，不是\"扫到的每句话语义对不对\"。",
-    fixCommit: "34dbcad",
   },
   {
     id: "photo-farm-coordinates",
