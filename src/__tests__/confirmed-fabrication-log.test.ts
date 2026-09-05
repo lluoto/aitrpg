@@ -23,7 +23,7 @@ const premiersText = JSON.stringify(MODULE_PREMIERS_BARN);
 
 describe("存档形状", () => {
   it("都有完整字段，fabricatedText 非空", () => {
-    expect(CONFIRMED_FABRICATION_LOG).toHaveLength(4);
+    expect(CONFIRMED_FABRICATION_LOG).toHaveLength(5);
     for (const e of CONFIRMED_FABRICATION_LOG) {
       expect(e.fabricatedText.length).toBeGreaterThan(0);
       expect(e.discoveredBy.length).toBeGreaterThan(0);
@@ -84,6 +84,13 @@ describe("变异检验：三条各自单独验证判据能变红（不是只验�
     const mutated = premiersText + '"sceneId":"艾德里安的农场"';
     const hits = findReintroducedFabrications(mutated, "premiers-barn");
     expect(hits.map((h) => h.id)).toEqual(["premiers-barn-adrian-at-farm"]);
+  });
+
+  it('⑤流浪汉 sceneId 错值放回去，判据必须红', () => {
+    const fragment = '"id":"流浪汉","name":"流浪汉","type":"npc","hp":12,"maxHp":12,"ac":10,"faction":"人类","sceneId":"农场外围"';
+    const mutated = premiersText + fragment;
+    const hits = findReintroducedFabrications(mutated, "premiers-barn");
+    expect(hits.map((h) => h.id)).toContain("premiers-barn-tramp-at-farm-outskirts");
   });
 
   it("对照组：真实数据不掺假时不会误报任何一条（否则上面各条红没有意义）", () => {

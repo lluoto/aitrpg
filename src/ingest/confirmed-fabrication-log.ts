@@ -152,6 +152,22 @@ export const CONFIRMED_FABRICATION_LOG: ConfirmedFabricationEntry[] = [
       "只有跨表示一致性判据（representation-consistency.ts）才会比对两侧站位是否一致。",
     fixCommit: "34e1f0c",
   },
+  {
+    id: "premiers-barn-tramp-at-farm-outskirts",
+    // 注意："sceneId":"农场外围" 单独出现 4 次（捕兽夹 3 件物品 + 流浪汉 NPC），
+    // 需要带足够的 NPC 上下文才能唯一定位——使用 id/name/type/hp 组合，1 次出现。
+    fabricatedText: '"id":"流浪汉","name":"流浪汉","type":"npc","hp":12,"maxHp":12,"ac":10,"faction":"人类","sceneId":"农场外围"',
+    source: "premiers-barn",
+    location: "MODULE_PREMIERS_BARN.npcs[流浪汉].sceneId",
+    discoveredBy:
+      "N10 任务②B2：findNpcSceneInconsistencies 报出两侧站位不一致，人工核对 section_06.txt:57-62" +
+      "（「房子被周围的流浪汉所占据」）确认流浪汉占据的是艾德里安在镇内那栋荒废别墅，" +
+      "农场周围段落从未出现流浪汉。",
+    whyToolMissed:
+      "结构化 NPC.sceneId 字段，不在方括号审计与声明实体审计的检查范围内，" +
+      "只有跨表示一致性判据（representation-consistency.ts）才会比对两侧站位。",
+    fixCommit: "05b17b5",
+  },
 ];
 
 /**
