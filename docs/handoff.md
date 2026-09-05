@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-04 13:28  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-05 03:45  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：85ed8e9 refactor: remove "米尔_特里坎" pseudo-scene from MythosModule (2a-3)  ·  **测试**：2939 条 / 197 文件，全绿（基线 2939，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：546ffa9 refactor: wire "旅店" into BARN_OF_PREMIER.buildScenes() (step 2b)  ·  **测试**：2939 条 / 197 文件，全绿（基线 2939，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -207,6 +207,8 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- 546ffa9 refactor: wire "旅店" into BARN_OF_PREMIER.buildScenes() (step 2b)
+- 2785297 docs: close out N12 scene-set step 2a (update todo/now/handoff)
 - 85ed8e9 refactor: remove "米尔_特里坎" pseudo-scene from MythosModule (2a-3)
 - 954012f refactor: remove "菲碧_特里坎" pseudo-scene, migrate clues (2a-2)
 - 09678b3 refactor: remove "奇怪的卡片" pseudo-scene from MythosModule (2a-1)
@@ -217,8 +219,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - 144e564 docs: write handoff rule between the two fabrication registries (N11)
 - bf7d39e docs: fix stale projection claim in index-world-model.md (N11 2A)
 - b287d7c docs: clear ASCII-scene-id conflict before converging ids (N11 step 0)
-- 44f857e docs: close out N10 (update todo/baseline/now/handoff)
-- 3f3466d docs: design barn representation convergence plan (B3)
 
 ## 代码地图
 
