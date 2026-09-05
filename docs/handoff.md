@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-05 06:07  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-05 09:21  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：d38d0c4 docs: revise engine.md (d) to reflect 2c reversal on sub-scenes  ·  **测试**：2939 条 / 197 文件，全绿（基线 2939，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：de7a365 chore: migrate kidnap-count error into fabrication guard (3-4b)  ·  **测试**：2944 条 / 197 文件，全绿（基线 2944，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -207,18 +207,18 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- de7a365 chore: migrate kidnap-count error into fabrication guard (3-4b)
+- 6d38927 fix: correct kidnap count in MODULE_PREMIERS_BARN (step 3-4)
+- 12c0780 chore: migrate Mi-Go sceneId error into fabrication guard (3-3b)
+- fe1ae36 fix: correct Mi-Go sceneId in MODULE_PREMIERS_BARN (step 3-3)
+- ee9fe04 chore: migrate "流浪汉" sceneId error into fabrication guard (3-2b)
+- 05b17b5 fix: correct "流浪汉" sceneId in MODULE_PREMIERS_BARN (step 3-2)
+- 0442356 chore: migrate "艾德里安" sceneId error into fabrication guard (3-1b)
+- 34e1f0c fix: correct "艾德里安" sceneId in MODULE_PREMIERS_BARN (step 3-1)
+- 086d69b docs: close out step 2c (update todo/now/handoff)
 - d38d0c4 docs: revise engine.md (d) to reflect 2c reversal on sub-scenes
 - 822843e refactor: merge coffin sub-scene into "维修间", move NPCs (2c-2)
 - fc36cd2 refactor: merge pipe sub-scene into "维修间" in MythosModule (2c-1)
-- 2a0842e docs: close out step 2b (update todo/now/handoff)
-- 546ffa9 refactor: wire "旅店" into BARN_OF_PREMIER.buildScenes() (step 2b)
-- 2785297 docs: close out N12 scene-set step 2a (update todo/now/handoff)
-- 85ed8e9 refactor: remove "米尔_特里坎" pseudo-scene from MythosModule (2a-3)
-- 954012f refactor: remove "菲碧_特里坎" pseudo-scene, migrate clues (2a-2)
-- 09678b3 refactor: remove "奇怪的卡片" pseudo-scene from MythosModule (2a-1)
-- e486e77 docs: close out N11 (record step-1 execution, refresh snapshots)
-- 359ed5b refactor: delete the now-dead scene id translation layer (g.1.2)
-- 6abae97 chore: remove stray commit-message scratch file
 
 ## 代码地图
 

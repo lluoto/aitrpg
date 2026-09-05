@@ -1,5 +1,5 @@
 {
-  "tests": 2939,
+  "tests": 2944,
   "files": 197,
   "unwiredMethods": 84,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。 86->84（开发·多人可见性 N6）：setPlayerScene 被整个删除少 1 处，getPlayersInScene 有了真调用方（player-scene-authority.test.ts）再少 1 处，两处一起解释这次的净减 2。",
@@ -639,6 +639,11 @@
       "tests": 2939,
       "files": 197,
       "when": "开发·场景id收敛 N11，5个提交，基线2938/197推送后开工。前置裁决：核实(b)理由3只查了运行时，摄取管线的assignSceneIds/assignItemIds/assignNpcIds是纯内部句柄生成器(从不读基准数据，产scene_NN，与基准id形态无关)，唯一让基准id流入管线产物的inherit-ids.ts是纯字符串Map操作，无字符集假设；实测中文基准id能正确继承；「存档文件名」风险不成立(唯一按id拼文件名的是ModuleData.id不是Scene.id，摄取产物文件名是写死字符串)；裁决无冲突，澄清ids.ts:7注释与ingest-ids.test.ts:49标题的范围歧义(commit b287d7c)。②A(commit bf7d39e)订正docs/index-world-model.md「应由ModuleData投影生成」的过时结论。②B(commit 144e564)写KNOWN_INCONSISTENCIES与CONFIRMED_FABRICATION_LOG的分工与交接规则，标注N10 B2裁决的4条待迁移项。执行(g)步骤1：1.1(commit f4555a5)把BARN_OF_PREMIER.scenes[]全部20个id从ASCII改成运行时早就在用的中文展示名，同步改写文件内全部targetSceneId/sceneId/requiredScenes/hubSceneId/finaleSceneId/earlyGameEndSceneId引用及20个外部消费文件(严格限定import了module/barn-of-premier的文件，避免误碰mythos-module.ts里巧合同名的已死第三份表示)，手工修复2处按对象属性访问用旧id的test fixture，新增barnSceneIdMap()恒等映射判据。1.2(commit 359ed5b)删除因此变成死代码的GameSession.barnSceneIdMap()/stripBracketSuffix翻译层，isSceneVisited()简化成一行直接查；representation-consistency.ts里比较Scene.name(不是id)的独立去括号函数不受影响，未删。验收：KNOWN_INCONSISTENCIES 12条全程未变(判据比较name不比较id)；True End端到端回放/64态穷举/matchTexts冲突/三方审计/scene-npc-noun-registry/WS可见性/learn-gate/dialogue_fabricated_character全程保持绿。步骤2~5(场景集合收敛/事实错误订正/第三份表示清理/字段合并)未开始，两份表示仍未合并，todo-19/20保持open。typecheck 0；bun test 2938->2940->2939(1.1+2，1.2net-1，196->197文件不变)；preflight 12/12(每次提交前后各跑一次)。"
+    },
+    {
+      "tests": 2944,
+      "files": 197,
+      "when": "开发·场景集合收敛 N12 步骤 3，8个提交(3-1a/3-1b/3-2a/3-2b/3-3a/3-3b/3-4a/3-4b)，基线2939/197推送后开工。B2已裁决的4条MythosModule事实错误按fix/migrate分离提交逐条订正：①艾德里安sceneId农场→医院(commit 34e1f0c)；②流浪汉sceneId农场外围→镇内别墅(commit 05b17b5)；③Mi-Go sceneId下水道→维修间(commit fe1ae36，与步骤2c一致)；④绑架人数11→10(commit 6d38927)。各fix提交同步把对应条目从KNOWN_INCONSISTENCIES移除；各migrate提交把条目迁入CONFIRMED_FABRICATION_LOG(source: 新增的\"premiers-barn\"，指向MODULE_PREMIERS_BARN)，并在confirmed-fabrication-log.test.ts里各补一条变异检验。4条migrate提交各自upd toHaveLength(3→7)。KNOWN_INCONSISTENCIES归零，CONFIRMED_FABRICATION_LOG 3→7条。验证：findBarnRepresentationInconsistencies()=0，findReintroducedFabrications全绿，True End/64态/三方审计全绿。KNOWN_INCONSISTENCIES模块按方案(f)安全网使命完成，等步骤5后退役。步骤4/5尚未开始，todo-19/20继续open。typecheck 0；bun test 2939->2944(+5，197文件不变)；preflight 12/12。"
     }
   ]
 }
