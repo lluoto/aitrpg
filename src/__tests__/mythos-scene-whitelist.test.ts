@@ -75,12 +75,12 @@ const BARN_GARBAGE = [
 ];
 
 describe("模组场景注册按来源判定白名单，不把 hook.condition 当场景（任务2）", () => {
-  it("**正确**：谷仓模组注册场景数 → 23（步骤 2a-1/2a-2/2a-3 后三个伪场景节点不再注册）", () => {
+  it("**正确**：谷仓模组注册场景数 → 22（步骤 2c-1 后「比较大的奇怪管道」不再注册）", () => {
     const host = createMockHost();
     const loader = new MythosModuleLoader(host);
     loader.import(MODULE_PREMIERS_BARN);
     const unique = new Set(host.registeredScenes);
-    expect(unique.size).toBe(23);
+    expect(unique.size).toBe(22);
   });
 
   it("**错误行为红线**：14 个非地点一个都不在注册结果里", () => {
