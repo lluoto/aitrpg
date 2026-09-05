@@ -19,7 +19,6 @@ import { collectPrebakeEntries, voiceKey, type PrebakeEntry } from "../src/voice
 import {
   INNSMOUTH_MODULE,
   ARKHAM_LIBRARY_MODULE,
-  PREMIERS_BARN_MODULE,
 } from "../src/rules/mythos-module";
 import { MODULE_PREMIERS_BARN } from "../src/rules/custom-modules/premiers_barn";
 import { runModule } from "../src/play-module";
@@ -91,8 +90,7 @@ const collected = [
   ...collectPrebakeEntries([
     INNSMOUTH_MODULE,
     ARKHAM_LIBRARY_MODULE,
-    PREMIERS_BARN_MODULE,
-    MODULE_PREMIERS_BARN,
+    MODULE_PREMIERS_BARN, // PREMIERS_BARN_MODULE (第三份已死表示) 已在步骤 4 删除
   ]),
   ...(await harvestScripted()),
 ];
