@@ -168,6 +168,19 @@ export const CONFIRMED_FABRICATION_LOG: ConfirmedFabricationEntry[] = [
       "只有跨表示一致性判据（representation-consistency.ts）才会比对两侧站位。",
     fixCommit: "05b17b5",
   },
+  {
+    id: "premiers-barn-migo-at-sewer",
+    fabricatedText: '"sceneId":"下水道","mythosCreatureId":"mi_go"',
+    source: "premiers-barn",
+    location: "MODULE_PREMIERS_BARN.npcs[mi-go].sceneId",
+    discoveredBy:
+      "N10 任务②B2：findNpcSceneInconsistencies 报出两侧站位不一致，人工核对 section_12.txt:25-35" +
+      "（▶比较大的奇怪管道在「维修间：」节下）确认米戈出现在维修间内，下水道只是必经前一跳路径。" +
+      "步骤 2c-1 把「比较大的奇怪管道」并入维修间，正确 sceneId 即为「维修间」。",
+    whyToolMissed:
+      "结构化 NPC.sceneId 字段，不在方括号审计与声明实体审计的检查范围内。",
+    fixCommit: "fe1ae36",
+  },
 ];
 
 /**
