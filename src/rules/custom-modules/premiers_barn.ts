@@ -42,7 +42,10 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
     //   原场景描述（92 字）已并入上方 维修间 描述的"往里走"段落，与原文结构一致
     //   （原文是 维修间 这一节内的 ▶ 子小节，不是独立房间）。详细玩法
     //   内容（按钮触发米戈出现）见 BARN_OF_PREMIER 的 clue_final_pipe。
-    "艾米丽与爱莉的棺材": "一副散发着阴冷气息的..长方形物体。有些像是电冰箱的样子，外边布置着线缆，连接着一个发电机，在角落似乎还裹着一些冰蓝颜色的物体。封边上也似乎有些黏液。",
+    // ▶ 艾米丽与爱莉的棺材（section_12.txt:39-57）：步骤 2c-2 已删除该伪场景节点，
+    //   原场景描述（75 字）已并入下方 维修间 on_enter_scene hook，替换了旧的"暗门通往另一个
+    //   狭小空间"说法，与原文一致（棺材和脑中脑都在维修间内，不需要通过暗门）。
+    //   详细玩法内容见 BARN_OF_PREMIER 的 clue_final_coffin；NPC 艾米丽/爱莉已迁至维修间。
   },
   // 六条氛围床复用于 21 个场景，而不是一场景一曲：
   // 环境音的作用是标记"你在什么性质的空间里"，不是标记"你在哪个房间"。
@@ -75,7 +78,6 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
     // 玩家从"潮湿封闭"走进"机械不安"时能听出空间性质变了。
     "下水道": "underground",
     "维修间": "dread",
-    "艾米丽与爱莉的棺材": "dread",
   },
   // 开发·卧室线索修复 任务②a（迁移自 game-session.ts 曾经的
   // if (r.id === "维修间") 硬编码分支，本轮改为数据层）：
@@ -154,9 +156,7 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
     ],
     "维修间": [
       { target: "下水道", desc: "下水道" },
-      { target: "艾米丽与爱莉的棺材", desc: "房间角落的冷冻柜" },
     ],
-    "艾米丽与爱莉的棺材": [{ target: "维修间", desc: "维修间" }],
   },
   spells: [
     {
@@ -255,8 +255,11 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
     { type: "on_enter_scene", condition: "中控室", narration: "跟随着灯光转过拐角，这间房间的门是打开着的。一台看上去非常高科技的大家伙占据了整间房间非常大的区域，有着3个显示器上面有一些红色警报。下面有控制台，许多按钮都没有标注。机器持续发出不小的风扇轰鸣声。这里还有一台冰箱与一个中型储藏柜。", effect: "进入中控室" },
     { type: "on_enter_scene", condition: "艾德里安的卧室", narration: "这是一间很简洁的卧室，一张单人床，一个床头柜，一个枪柜，仅此而已。衣服整洁地叠在床上，这里应该是他休息的地方。", effect: "进入艾德里安的卧室" },
     { type: "on_enter_scene", condition: "下水道", narration: "这似乎是一处废弃的下水道，应该是强行挖通过来的。这段下水道已经干涸了，周围的墙壁上长着青苔，充斥着腐烂与陈朽的味道，几乎没有光线透进来。", effect: "进入下水道" },
-    { type: "on_enter_scene", condition: "维修间", narration: "这就是下水道的尽头了。这里被改造过，墙边安装着一些看上去像是医疗仪器的设备，还有一些生理盐水瓶和营养液。房间还有明显的暗门通往另一个狭小空间。", effect: "进入维修间" },
-    { type: "on_enter_scene", condition: "艾米丽与爱莉的棺材", narration: "这是一个令人窒息的狭小空间。映入眼帘的是两台仍在运行的仪器——缸中脑维持装置。两个透明的营养罐中各漂浮着一个人类大脑，连接着密密麻麻的管线。", effect: "发现缸中脑" },
+    // hook 更新（步骤 2c-2）：删去"暗门通往另一个狭小空间"（原用于跳转到现已删除的
+    // 棺材伪场景节点），改为直接描述棺材在房间内的样子——与原文结构一致（section_12.txt:
+    // 39-57「▶艾米丽与爱莉的棺材：」是维修间内的子小节，不需要穿过暗门才能到达）。
+    { type: "on_enter_scene", condition: "维修间", narration: "这就是下水道的尽头了。这里被改造过，墙边安装着一些看上去像是医疗仪器的设备，还有一些生理盐水瓶和营养液。角落里放着一副散发着阴冷气息的长方形物体，有些像是电冰箱的样子，外边布置着线缆，连接着一个发电机；封边上似乎有些黏液。", effect: "进入维修间" },
+
     { type: "on_enter_scene", condition: "与米戈的战斗", narration: "Mi-Go 可能会出现在下水道维修处。它会使用修改版法术：僵尸创造术（6MP，2轮，复生尸体攻击生者）、纳克-提特障壁创建术、帕祖祖之息。请调查员做好准备。", effect: "触发与Mi-Go的战斗" },
     { type: "on_enter_scene", condition: "关于缸中脑最后的去向", narration: "如果调查员发现了缸中脑的真相，可以选择报警、告知医院或保守秘密。不同的选择将导向不同的结局。", effect: "触发缸中脑处置" },
     { type: "on_enter_scene", condition: "结局", narration: "根据调查员在模组中的行动，结算对应结局与奖励。共有4种结局：Normal End、Good End、Bad End、True End。", effect: "触发结局结算" },
@@ -294,7 +297,7 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
       maxHp: 4,
       ac: 10,
       faction: "人类",
-      sceneId: "艾米丽与爱莉的棺材",
+      sceneId: "维修间", // 步骤 2c-2：从已删除的「艾米丽与爱莉的棺材」伪场景节点迁至维修间
       gender: "female",
       attributes: { power: 60, constitution: 15, education: 82, size: 5, intelligence: 92 },
       skills: { "聆听": 70, "电子学": 92, "神秘学": 30, "克苏鲁": 20, "图书馆": 80, "博物学": 80 },
@@ -313,7 +316,7 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
       maxHp: 4,
       ac: 10,
       faction: "人类",
-      sceneId: "艾米丽与爱莉的棺材",
+      sceneId: "维修间", // 步骤 2c-2：从已删除的「艾米丽与爱莉的棺材」伪场景节点迁至维修间
       gender: "female",
       age: 0,
       attributes: {  },

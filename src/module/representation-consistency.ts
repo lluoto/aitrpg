@@ -269,19 +269,6 @@ export const KNOWN_INCONSISTENCIES: KnownInconsistency[] = [
   },
   {
     category: "npc_scene",
-    key: "艾米丽·埃斯特鲁姆",
-    reason:
-      "B2 裁决：不算错，是场景颗粒度差异。原文 section_12.txt:1-38「维修间：」这一节本身把「▶比较大的" +
-      "奇怪管道」「▶艾米丽与爱莉的棺材」写成同一场景块内的 ▶ 子小节——ModuleData 把它们并成一个场景" +
-      "（维修间）与 MythosModule 拆成独立场景节点，两者都对得上原文结构，只是颗粒度不同。",
-  },
-  {
-    category: "npc_scene",
-    key: "爱莉·埃斯特鲁姆",
-    reason: "B2 裁决：同「艾米丽·埃斯特鲁姆」条——不算错，是场景颗粒度差异，两侧站位都对得上原文结构。",
-  },
-  {
-    category: "npc_scene",
     key: "流浪汉",
     reason:
       "B2 裁决：MythosModule 错（sceneId=农场外围）。原文 section_06.txt:50-62 逐字写着流浪汉占据的是" +
@@ -304,5 +291,4 @@ export const KNOWN_INCONSISTENCIES: KnownInconsistency[] = [
       "行动被警方发现交火」（这次行动本身就是失败被捕）和「总共绑架了多少人」两件事混成了一件事。" +
       "ModuleData（10）对。核对不出出处，本轮只裁决不改数据。",
   },
-  { category: "scene_set", key: "艾米丽与爱莉的棺材", reason: "ModuleData 侧并进了 维修间 场景内的 clue_final_coffin，不是独立场景——也是上面 3 条 npc_scene 里 Emily/Ailey 站位矛盾的根源" },
 ];
