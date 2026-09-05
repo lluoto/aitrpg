@@ -261,14 +261,6 @@ export interface KnownInconsistency {
 export const KNOWN_INCONSISTENCIES: KnownInconsistency[] = [
   {
     category: "npc_scene",
-    key: "艾德里安·埃斯特鲁姆",
-    reason:
-      "B2 裁决：MythosModule 错（sceneId=艾德里安的农场）。原文 section_11.txt 抓捕通报写着他被捕枪伤后" +
-      "「于霍姆斯医院接受治疗，处于意识不清状态」——ModuleData（与艾德里安的会面/医院）对，MythosModule" +
-      "把他抓捕前的落脚点当成了故事发生时的当前位置。核对不出出处，本轮只裁决不改数据（B3 才定收敛方案）。",
-  },
-  {
-    category: "npc_scene",
     key: "流浪汉",
     reason:
       "B2 裁决：MythosModule 错（sceneId=农场外围）。原文 section_06.txt:50-62 逐字写着流浪汉占据的是" +

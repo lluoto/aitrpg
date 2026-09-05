@@ -276,7 +276,7 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
       maxHp: 14,
       ac: 10,
       faction: "人类",
-      sceneId: "艾德里安的农场",
+      sceneId: "与艾德里安的会面", // 步骤 3 修正：被捕后在霍姆斯医院接受治疗（section_11.txt），不在农场
       gender: "male",
       attributes: { strength: 50, dexterity: 65, power: 80, constitution: 70, appearance: 55, education: 75, size: 70, intelligence: 80 },
       skills: { "斗殴": 65, "手枪": 60, "步枪/霰弹枪": 60, "闪避": 60, "生物学": 75, "神秘学": 50, "克苏鲁": 20, "侦查": 50, "聆听": 50, "图书馆": 80, "法语": 40 },
