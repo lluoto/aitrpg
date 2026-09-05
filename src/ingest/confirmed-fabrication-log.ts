@@ -181,6 +181,24 @@ export const CONFIRMED_FABRICATION_LOG: ConfirmedFabricationEntry[] = [
       "结构化 NPC.sceneId 字段，不在方括号审计与声明实体审计的检查范围内。",
     fixCommit: "fe1ae36",
   },
+  {
+    id: "premiers-barn-kidnap-count-eleven",
+    // fabricatedText 不含 JSON 双引号包裹，因为该值嵌在 background 散文里，
+    // 不是独立 JSON 字符串值。"第11次行动"另存在同一背景里是正确信息（保留），
+    // "已绑架11人"特指错误的受害人数断言，修正后变为"已绑架10人"，此串消失。
+    fabricatedText: "已绑架11人",
+    source: "premiers-barn",
+    location: "MODULE_PREMIERS_BARN.npcs[艾德里安·埃斯特鲁姆].personality.background",
+    discoveredBy:
+      "N10 任务②B2：findNumericFactInconsistencies 报出绑架人数两侧不一致（10 vs 11），" +
+      "人工核对原文受害者档案通报确认真实人数是 10 人；MythosModule 把「第 11 次行动被警方发现交火」" +
+      "（这次行动本身就是失败被捕，不是成功绑架）和「总共绑架了多少人」两件事混为一谈。",
+    whyToolMissed:
+      "散文数字（personality.background 里的 11 这个数字）不在方括号审计与声明实体审计的检查范围内，" +
+      "只有 NUMERIC_FACT_CHECKS + findNumericFactInconsistencies 才能发现两侧数值不一致；" +
+      "两侧各自单独看都是自洽的，矛盾只在跨表示比对时才浮现。",
+    fixCommit: "6d38927",
+  },
 ];
 
 /**
