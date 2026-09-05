@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-04",
+  "generated": "2026-09-05",
   "note": "问题记录索引。按 file+line 取正文，不必整份读。正文只追加，改动请重跑 bun scripts/docs-index.ts",
   "statusLegend": {
     "fixed": "已修，有实测数",
@@ -411,7 +411,7 @@
       "group": "engine",
       "file": "docs/notes/engine.md",
       "line": 1161,
-      "lines": 324,
+      "lines": 341,
       "summary": "本节回答任务原文 (a)~(g)，是方案设计，不是本轮的执行结果——本轮"
     },
     {
@@ -421,7 +421,7 @@
       "status": "note",
       "group": "engine",
       "file": "docs/notes/engine.md",
-      "line": 1485,
+      "line": 1502,
       "lines": 71,
       "summary": "(b) 的理由 3（\"没有任何运行时读者依赖 `Scene.id` 是 ASCII\"）只查了运行时，"
     },
@@ -432,7 +432,7 @@
       "status": "note",
       "group": "engine",
       "file": "docs/notes/engine.md",
-      "line": 1556,
+      "line": 1573,
       "lines": 58,
       "summary": "前置裁决（上一节）确认无冲突后，执行了方案文档 (g) 的步骤 1，分两次"
     },
