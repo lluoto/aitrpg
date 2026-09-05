@@ -175,7 +175,7 @@ describe("对真实的谷仓两份表示实跑：当前红条目与登记表精�
     // 数字本身也钉住，防止「集合碰巧对上但条数其实不一样」（理论上不可能，
     // 但显式断言一次不多余）。
     expect(actual.length).toBe(KNOWN_INCONSISTENCIES.length);
-    expect(actual.length).toBeGreaterThanOrEqual(2); // 步骤 3 逐条修正中，当前值：2
+    expect(actual.length).toBeGreaterThanOrEqual(1); // 步骤 3 逐条修正中，当前值：1
   });
 
   it("**目标行为错误的对照**：登记表外新出现的不一致必须让这条判据变红——构造一份多一条的登记表，equality 断言必须失败", () => {

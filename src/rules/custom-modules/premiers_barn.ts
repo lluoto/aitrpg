@@ -471,7 +471,7 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
       maxHp: 11,
       ac: 10,
       faction: "敌对神话生物",
-      sceneId: "下水道",
+      sceneId: "维修间", // 步骤 3 修正：section_12.txt:25-35 写米戈在维修间的▶管道子小节（已并入维修间）
       mythosCreatureId: "mi_go",
       attributes: { strength: 40, constitution: 40, size: 70, dexterity: 90, intelligence: 65, power: 85 },
       skills: { "潜行": 60, "飞行": 75, "科学(外星)": 80, "医学(外星)": 70 },

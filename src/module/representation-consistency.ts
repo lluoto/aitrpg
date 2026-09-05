@@ -260,14 +260,6 @@ export interface KnownInconsistency {
 
 export const KNOWN_INCONSISTENCIES: KnownInconsistency[] = [
   {
-    category: "npc_scene",
-    key: "Mi-Go（来自尤格斯的真菌）",
-    reason:
-      "B2 裁决：MythosModule 错（sceneId=下水道）。原文 section_12.txt:25-38 写明米戈出现的地点是" +
-      "「维修间」场景内部的「▶比较大的奇怪管道」子小节，下水道只是去维修间必经的更早一跳路径，不是米戈" +
-      "现身的地方。ModuleData（维修间）对。核对不出出处，本轮只裁决不改数据。",
-  },
-  {
     category: "numeric_fact",
     key: "绑架人数",
     reason:
