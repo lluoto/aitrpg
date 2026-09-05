@@ -75,7 +75,7 @@ export interface ConfirmedFabricationEntry {
   /** 臆造原文——逐字，变异检验会把它原样放回数据里验证判据变红 */
   fabricatedText: string;
   /** 这段文本挂靠哪份模组数据——判据据此决定序列化谁 */
-  source: "barn-of-premier" | "mythos-module";
+  source: "barn-of-premier" | "mythos-module" | "premiers-barn";
   /** 具体位置（文件 + 字段路径），供人复核 */
   location: string;
   /** 怎么被发现的——这几条无一例外都是人工通读原文才发现的 */
@@ -133,6 +133,24 @@ export const CONFIRMED_FABRICATION_LOG: ConfirmedFabricationEntry[] = [
       "捷径，替换掉了原文写明的检定流程。三方审计的方括号术语审计与声明实体审计都不查散文里的自由" +
       "叙述文本（`ModuleItem.revelation` 从不带方括号），这类臆造只能靠人逐句核对原文才能发现。",
     fixCommit: "80abf68",
+  },
+  // ── 步骤 3（开发·场景集合收敛 N12，2026-09-04）: 从 KNOWN_INCONSISTENCIES 迁移 ──
+  // B2 裁决的 4 条确认错误，在真正订正时按交接规则迁入此处（source: "premiers-barn"
+  // 指向 MODULE_PREMIERS_BARN，即 rules/custom-modules/premiers_barn.ts，
+  // 不是第三份表示 PREMIERS_BARN_MODULE/mythos-module.ts）。
+  {
+    id: "premiers-barn-adrian-at-farm",
+    fabricatedText: '"sceneId":"艾德里安的农场"',
+    source: "premiers-barn",
+    location: "MODULE_PREMIERS_BARN.npcs[艾德里安·埃斯特鲁姆].sceneId",
+    discoveredBy:
+      "N10 任务②B2：findNpcSceneInconsistencies 报出两侧站位不一致，人工核对 section_11.txt" +
+      "抓捕通报（「于霍姆斯医院接受治疗，处于意识不清状态」）确认他被捕枪伤后在医院，" +
+      "MythosModule 把抓捕前的落脚点当成了故事发生时的当前位置。",
+    whyToolMissed:
+      "结构化 NPC.sceneId 字段，不在方括号审计与声明实体审计的检查范围内，" +
+      "只有跨表示一致性判据（representation-consistency.ts）才会比对两侧站位是否一致。",
+    fixCommit: "34e1f0c",
   },
 ];
 

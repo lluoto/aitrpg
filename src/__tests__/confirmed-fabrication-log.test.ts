@@ -15,13 +15,15 @@ import { describe, it, expect } from "bun:test";
 import { CONFIRMED_FABRICATION_LOG, findReintroducedFabrications } from "../ingest/confirmed-fabrication-log";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
 import { PREMIERS_BARN_MODULE } from "../rules/mythos-module";
+import { MODULE_PREMIERS_BARN } from "../rules/custom-modules/premiers_barn";
 
 const barnText = JSON.stringify(BARN_OF_PREMIER);
 const mythosText = JSON.stringify(PREMIERS_BARN_MODULE);
+const premiersText = JSON.stringify(MODULE_PREMIERS_BARN);
 
 describe("存档形状", () => {
-  it("三条都有完整字段，fabricatedText 非空", () => {
-    expect(CONFIRMED_FABRICATION_LOG).toHaveLength(3);
+  it("都有完整字段，fabricatedText 非空", () => {
+    expect(CONFIRMED_FABRICATION_LOG).toHaveLength(4);
     for (const e of CONFIRMED_FABRICATION_LOG) {
       expect(e.fabricatedText.length).toBeGreaterThan(0);
       expect(e.discoveredBy.length).toBeGreaterThan(0);
@@ -36,7 +38,7 @@ describe("存档形状", () => {
   });
 });
 
-describe("**主判据**：三条已确证臆造都不再逐字出现在真实模组数据里", () => {
+describe("**主判据**：已确证臆造都不再逐字出现在真实模组数据里", () => {
   it("barn-of-premier.ts 里挂靠的条目（True End 台词 / photo_farm.revelation）", () => {
     const hits = findReintroducedFabrications(barnText, "barn-of-premier");
     expect(hits).toEqual([]);
@@ -44,6 +46,11 @@ describe("**主判据**：三条已确证臆造都不再逐字出现在真实模
 
   it("mythos-module.ts 里挂靠的条目（艾德里安 secrets）", () => {
     const hits = findReintroducedFabrications(mythosText, "mythos-module");
+    expect(hits).toEqual([]);
+  });
+
+  it("premiers_barn.ts 里挂靠的条目（步骤 3 修复的 B2 裁决错误）", () => {
+    const hits = findReintroducedFabrications(premiersText, "premiers-barn");
     expect(hits).toEqual([]);
   });
 });
@@ -73,9 +80,16 @@ describe("变异检验：三条各自单独验证判据能变红（不是只验�
     expect(hits.map((h) => h.id).sort()).toEqual(["photo-farm-coordinates", "true-end-emily-knew"].sort());
   });
 
-  it("对照组：真实数据不掺假时不会误报任何一条（否则上面三条红没有意义）", () => {
+  it("④「\"sceneId\":\"艾德里安的农场\"」原样放回去，判据必须红", () => {
+    const mutated = premiersText + '"sceneId":"艾德里安的农场"';
+    const hits = findReintroducedFabrications(mutated, "premiers-barn");
+    expect(hits.map((h) => h.id)).toEqual(["premiers-barn-adrian-at-farm"]);
+  });
+
+  it("对照组：真实数据不掺假时不会误报任何一条（否则上面各条红没有意义）", () => {
     expect(findReintroducedFabrications(barnText, "barn-of-premier")).toEqual([]);
     expect(findReintroducedFabrications(mythosText, "mythos-module")).toEqual([]);
+    expect(findReintroducedFabrications(premiersText, "premiers-barn")).toEqual([]);
   });
 });
 
