@@ -394,7 +394,7 @@ export const MODULE_PREMIERS_BARN: MythosModule = {
       maxHp: 12,
       ac: 10,
       faction: "人类",
-      sceneId: "农场外围",
+      sceneId: "艾德里安在镇子内的住宅", // 步骤 3 修正：section_06.txt:57-62 写的是流浪汉占据镇内荒废别墅
       gender: "male",
       attributes: { dexterity: 50 },
       skills: { "斗殴": 45, "闪避": 55 },

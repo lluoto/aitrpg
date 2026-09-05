@@ -261,14 +261,6 @@ export interface KnownInconsistency {
 export const KNOWN_INCONSISTENCIES: KnownInconsistency[] = [
   {
     category: "npc_scene",
-    key: "流浪汉",
-    reason:
-      "B2 裁决：MythosModule 错（sceneId=农场外围）。原文 section_06.txt:50-62 逐字写着流浪汉占据的是" +
-      "艾德里安在镇内那栋荒废的独门独户小别墅（与「艾德里安在镇子内的住宅」这个场景的描述文本逐句对上），" +
-      "农场周围的原文段落从未出现过流浪汉。ModuleData 对。核对不出出处，本轮只裁决不改数据。",
-  },
-  {
-    category: "npc_scene",
     key: "Mi-Go（来自尤格斯的真菌）",
     reason:
       "B2 裁决：MythosModule 错（sceneId=下水道）。原文 section_12.txt:25-38 写明米戈出现的地点是" +
