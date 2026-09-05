@@ -258,13 +258,8 @@ export interface KnownInconsistency {
   reason: string;
 }
 
-export const KNOWN_INCONSISTENCIES: KnownInconsistency[] = [
-  {
-    category: "numeric_fact",
-    key: "绑架人数",
-    reason:
-      "B2 裁决：MythosModule 错（写 11）。原文受害者档案通报明确写的是 10 人，MythosModule 把「第 11 次" +
-      "行动被警方发现交火」（这次行动本身就是失败被捕）和「总共绑架了多少人」两件事混成了一件事。" +
-      "ModuleData（10）对。核对不出出处，本轮只裁决不改数据。",
-  },
-];
+// 步骤 3（开发·场景集合收敛 N12，2026-09-04）：4 条 B2 裁决的事实错误均已修复，
+// KNOWN_INCONSISTENCIES 归零。各条已按交接规则迁入 CONFIRMED_FABRICATION_LOG。
+// 本判据模块按方案 (f)「安全网」角色完成了使命（已归零 = 收敛完成的验收标准）。
+// 方案 (g) 步骤 5（字段合并、两份表示最终合并成一份）完成后再退役此模块。
+export const KNOWN_INCONSISTENCIES: KnownInconsistency[] = [];
