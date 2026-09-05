@@ -234,6 +234,7 @@ function buildScenes(): Scene[] {
       { targetSceneId: "警察局", condition: "前往警察局" },
       { targetSceneId: "霍姆斯医院", condition: "前往霍姆斯医院" },
       { targetSceneId: "报亭", condition: "前往报亭" },
+      { targetSceneId: "旅店", condition: "前往旅店" },
       { targetSceneId: "交火现场", condition: "前往城外交火现场" },
       { targetSceneId: "艾德里安在镇子内的住宅", condition: "前往艾德里安在镇子内的住宅" },
       { targetSceneId: "艾德里安的农场", condition: "前往郊外的艾德里安农场" },
@@ -540,6 +541,22 @@ function buildScenes(): Scene[] {
     connections: [
       { targetSceneId: "警察局", condition: "返回警察局" },
     ],
+  });
+
+  // 7. 旅店（步骤 2b 补接：ModuleData 侧漏建，S.HOTEL 常量已有完整描述）
+  scenes.push({
+    id: "旅店",
+    name: "旅店",
+    description: S.HOTEL,
+    clues: [],   // 原文明确「没有什么特别之处」，无定义线索——是数据忠实而非遗漏。
+                 // 原文提到「可以从服务生或老板嘴里套出一些当地情况」，
+                 // 但没有给出具体信息、检定要求或 NPC 名称，属于叙事氛围描写，
+                 // 不是可实现的线索机制。MythosModule 侧同样是空场景（0 clue/npc/item）。
+    npcIds: [],
+    connections: [
+      { targetSceneId: "普瑞米尔", condition: "返回镇上" },
+    ],
+    atmosphere: "这里仅仅是一个给予调查员落脚地点的旅店。没有什么特别之处，不过调查员依然可以在这里从服务生或者老板嘴里套出一些当地的情况。",
   });
 
   // 8. 交火现场

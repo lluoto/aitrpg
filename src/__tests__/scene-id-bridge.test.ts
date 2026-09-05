@@ -43,7 +43,7 @@ describe("(g) 步骤 1.2 验收：全仓再无 barnSceneIdMap() / GameSession.st
 
 describe("20 个场景 id 全部能直接互通，不需要翻译（穷举，不是抽查）", () => {
   it("BARN_OF_PREMIER.scenes 里每一个 id，走到对应场景后 isSceneVisited(id) 都为 true", () => {
-    expect(BARN_OF_PREMIER.scenes.length).toBe(20); // 判据本身要测在真实数据量上，不是空跑
+    expect(BARN_OF_PREMIER.scenes.length).toBe(21); // 判据本身要测在真实数据量上，不是空跑
 
     for (const scene of BARN_OF_PREMIER.scenes) {
       // 运行时场景确实存在（否则下面的移动会静默失败，断言会落空）——
