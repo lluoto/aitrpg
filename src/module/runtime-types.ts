@@ -160,6 +160,7 @@ export interface ModuleRuntimeConfig {
   loaderSceneDescriptions?: Record<string, string>;
   loaderExits?: Record<string, Array<{ target: string; desc?: string }>>;
   runtimeNpcOrder?: string[];
+  runtimeNpcs?: RuntimeNpcSnapshot[];
   npcStats?: Record<string, Record<string, number | string>>;
   legacyEndings?: RuntimeModuleEnding[];
   itemPlacements?: RuntimeItemPlacement[];

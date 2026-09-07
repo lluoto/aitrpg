@@ -70,6 +70,7 @@ export function readMythosRuntimeFields(module: MythosModule): ModuleRuntimeConf
     loaderSceneDescriptions: module.sceneDescriptions,
     loaderExits: module.exits,
     runtimeNpcOrder: (module.npcs ?? []).map((npc) => npc.id),
+    runtimeNpcs: (module.npcs ?? []).map(projectRuntimeNpc),
     legacyEndings: module.endings,
     itemPlacements: module.items,
     clueBindings: module.clues,
@@ -91,7 +92,7 @@ export function findRuntimeProjectionDifferences(
   const fields: Array<keyof ModuleRuntimeConfig> = [
     "sourceIdentity", "activation", "difficulty", "source", "introNarration", "spells", "tomes",
     "rewards", "kpNotes", "initialEffects", "hooks", "sceneBgm", "sceneAliases",
-    "loaderSceneDescriptions", "loaderExits", "runtimeNpcOrder", "npcStats",
+    "loaderSceneDescriptions", "loaderExits", "runtimeNpcOrder", "runtimeNpcs", "npcStats",
     "legacyEndings", "itemPlacements", "clueBindings",
   ];
   return fields.flatMap((field) =>
@@ -118,34 +119,30 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function runtimeNpcIndex(runtimeModule: MythosModule): Map<string, RuntimeNpcSnapshot> {
+function runtimeNpcIndex(snapshots: RuntimeNpcSnapshot[]): Map<string, RuntimeNpcSnapshot> {
   const byName = new Map<string, RuntimeNpcSnapshot>();
   const sourceIds = new Set<string>();
-  for (const sourceNpc of runtimeModule.npcs ?? []) {
-    if (sourceIds.has(sourceNpc.id)) {
-      throw new Error(`runtime NPC sourceId 重复：${sourceNpc.id}`);
+  for (const snapshot of snapshots) {
+    if (sourceIds.has(snapshot.sourceId)) {
+      throw new Error(`runtime NPC sourceId 重复：${snapshot.sourceId}`);
     }
-    sourceIds.add(sourceNpc.id);
-    const name = normalizeName(sourceNpc.name);
+    sourceIds.add(snapshot.sourceId);
+    const name = normalizeName(snapshot.sourceName);
     if (byName.has(name)) {
       throw new Error(`runtime NPC 归一化姓名重复：${name}`);
     }
-    byName.set(name, projectRuntimeNpc(sourceNpc));
+    byName.set(name, isolated(snapshot));
   }
   return byName;
 }
 
-// A rehearsal only: it copies both inputs, detects ambiguous/missing NPC
-// matches, and returns a standalone ModuleData snapshot. No loader consumes it.
-export function buildUnifiedModuleData(
-  narrative: ModuleData,
-  runtimeModule: MythosModule,
-  npcStats?: Record<string, Record<string, number | string>>,
-): ModuleData {
-  const narrativeSnapshot = isolated(narrative);
-  const runtimeByName = runtimeNpcIndex(runtimeModule);
+export function attachRuntimeNpcs(
+  narrativeNpcs: ModuleNPC[],
+  snapshots: RuntimeNpcSnapshot[],
+): ModuleNPC[] {
+  const runtimeByName = runtimeNpcIndex(snapshots);
   const matchedSourceIds = new Set<string>();
-  const npcs: ModuleNPC[] = narrativeSnapshot.npcs.map((npc) => {
+  const npcs = narrativeNpcs.map((npc) => {
     const runtime = runtimeByName.get(normalizeName(npc.name));
     if (!runtime) return npc;
     matchedSourceIds.add(runtime.sourceId);
@@ -157,12 +154,22 @@ export function buildUnifiedModuleData(
   if (missing.length > 0) {
     throw new Error(`runtime NPC 无对应叙事 NPC：${missing.join(", ")}`);
   }
+  return npcs;
+}
 
+// A rehearsal only: it copies both inputs, detects ambiguous/missing NPC
+// matches, and returns a standalone ModuleData snapshot. No loader consumes it.
+export function buildUnifiedModuleData(
+  narrative: ModuleData,
+  runtimeModule: MythosModule,
+  npcStats?: Record<string, Record<string, number | string>>,
+): ModuleData {
+  const narrativeSnapshot = isolated(narrative);
   const runtime = projectMythosRuntime(runtimeModule);
   if (npcStats) runtime.npcStats = isolated(npcStats);
   return {
     ...narrativeSnapshot,
-    npcs,
+    npcs: attachRuntimeNpcs(narrativeSnapshot.npcs, runtime.runtimeNpcs ?? []),
     runtime,
   };
 }

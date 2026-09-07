@@ -29,7 +29,7 @@ function narrativeNpc(npc: typeof unified.npcs[number]) {
 describe("步骤 5A：统一 ModuleData 类型无损承载两份活跃表示", () => {
   it("14 个 ModuleData NPC 的叙事字段逐对象不丢，runtime 嵌套不覆盖叙事字段", () => {
     expect(BARN_OF_PREMIER.npcs).toHaveLength(14);
-    expect(unified.npcs.map(narrativeNpc)).toEqual(BARN_OF_PREMIER.npcs);
+    expect(unified.npcs.map(narrativeNpc)).toEqual(BARN_OF_PREMIER.npcs.map(narrativeNpc));
   });
 
   it("11 个 Mythos NPC 的运行/战斗字段逐对象无损落进对应 ModuleNPC.runtime", () => {
