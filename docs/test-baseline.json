@@ -1,6 +1,6 @@
 {
-  "tests": 2938,
-  "files": 196,
+  "tests": 2945,
+  "files": 197,
   "unwiredMethods": 84,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。 86->84（开发·多人可见性 N6）：setPlayerScene 被整个删除少 1 处，getPlayersInScene 有了真调用方（player-scene-authority.test.ts）再少 1 处，两处一起解释这次的净减 2。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -649,6 +649,11 @@
       "tests": 2938,
       "files": 196,
       "when": "开发·场景集合收敛 N12 步骤 4，基线2944/197推送后开工。先处理全部消费方再删除第三份表示：gen-speech（prompt漏列）、confirmed-fabrication-log（删除仅挂靠已删表示的adrian-secrets-aware，live MODULE_PREMIERS_BARN核实无同类问题）、npc-secret-truth-consistency（随死表示删除）、ingest-three-way-audit（保留两份谷仓表示）、mythos-scene-whitelist（保留其它内置模组）、game-session（保留共用import行的其它两个模组，清掉谷仓fallback）、probe-semantic-contradiction（保留live模块）。最后删除mythos-module.ts尾部PREMIERS_BARN_MODULE定义。scanImports/findReverseImports扫描380个源码文件：仍有6个合法mythos-module文件级import（其它内置模组），PREMIERS_BARN_MODULE symbol mentions为0；typecheck 0，全量bun test 2944->2938（删除npc-secret测试及旧护栏测试），preflight 12/12。步骤5尚未开始。"
+    },
+    {
+      "tests": 2945,
+      "files": 197,
+      "when": "开发·场景集合收敛 N12 步骤5A，基线2938/196推送后开工。字段迁移矩阵落 docs/module-unification-matrix.md，逐字段列目标落点/迁移方式/消费方/验收。新增中立 src/module/runtime-types.ts：共享 runtime 类型从 mythos-module.ts 移出，ModuleData.runtime 可承载 activation/difficulty/source/introNarration/spells/tomes/rewards/kpNotes/initialEffects/hooks/sceneBgm/sceneAliases/legacy endings/items/clues；ModuleNPC.runtime 显式承载战斗字段与 source identity，避免同名不同义。新增 unified-module.ts 纯投影/回投/结构差异函数，未接入任何 loader。unified-module.test.ts 对实际数据钉住14叙事NPC/11运行NPC/4 spells/1 tome/9 rewards/8 kpNotes/34 hooks/19 BGM/1 aliases/32 Clue/4 trap条目且3 TrapMechanics/5 EndNarration/4 epilogue；运行时字段结构化 roundtrip 对账。探针用 source-scan 的 scanImports/importPointsTo 证明四个活跃加载入口不 import unified-module。真实变异：临时删 ModuleRuntimeConfig.rewards，typecheck 报9处错误（投影/回投/差异/断言），还原绿。prompt 的4 TrapMechanics前提不符，核实音响陷阱已失效、是第4 trap条目但无 trap结构，按4/3双口径对账。typecheck 0；bun test 2938->2945(+7，196->197文件)；preflight 12/12。"
     }
   ]
 }

@@ -1621,3 +1621,39 @@ mythos-module.ts` 里恰好复用了相同 ASCII slug 的已死第三份表示
 "奇怪的卡片"等 6 处 scene_set 差异）、B2 已裁决的 4 处事实错误订正
 （步骤 3）、第三份表示 `PREMIERS_BARN_MODULE` 清理（步骤 4）、
 字段合并（步骤 5）——全部原样保留，本轮只做了步骤 1。
+
+### 步骤 5A：统一类型可表达性（开发·场景集合收敛 N12，2026-09-07）
+
+步骤 2（场景集合）、步骤 3（4 条事实错误）和步骤 4（第三份表示）已在
+后续轮次完成；两份活跃表示现为 `BARN_OF_PREMIER`（叙事/线索）与
+`MODULE_PREMIERS_BARN`（运行/战斗）。步骤 5A 只建立最终目标类型的表达
+能力和无损对账，不切换 loader，不迁移这两份活跃数据。
+
+**目标形态**：`ModuleData` 仍是最终统一类型，新增可选 `runtime` 分组；
+`ModuleNPC` 新增可选 `runtime` 嵌套。叙事字段保持顶层，战斗/加载字段
+显式嵌套，避免同名 `ModuleNPC`/`ModuleItem`/`Ending`/`Clue` 被误当成
+可直接交叉的同一个结构。共享运行类型移到中立
+`src/module/runtime-types.ts`，`MythosModule` 复用并 re-export 历史类型名，
+所以 `module/types.ts` 没有反向 import `rules/mythos-module.ts`。
+
+`runtime` 承载 activation/difficulty/source/introNarration、spells/tomes、
+rewards（含 reputation/skillGrowth）、KP notes、initial effects、hooks、
+sceneBgm/sceneAliases，以及显式命名的 legacy endings/item placements/clue
+bindings。`hooks` 不等于 `Scene.events`，`introNarration` 不等于 `prologue`，
+`ModuleReward` 不等于 `Ending` 奖励，全部并存不降级。`ModuleSupport` 未扩展。
+
+**机器验收**：`unified-module.test.ts` 对实际谷仓数据做结构化对账：14 个
+叙事 NPC、11 个运行 NPC、4 spells、1 tome、9 rewards、8 KP notes、34 hooks、
+19 sceneBgm、1 sceneAliases、32 丰富 Clue、4 trap 条目/其中 3 个
+`TrapMechanics`、5 可求值结局和 4 epilogue。任务提示的「4 个
+TrapMechanics」经核实不准确：第 4 个音响陷阱是原文已失效的纯叙事 trap
+条目，刻意没有 `trap` 结构；两种计数都被独立钉住。
+
+真实变异检验：临时删除 `ModuleRuntimeConfig.rewards` 字段，typecheck 报 9
+个错误，覆盖投影、回投、字段差异检查和 rewards 断言；还原后 typecheck/
+测试全绿。`scanImports`/`importPointsTo` 解析四条活跃入口的真实 imports，
+确认它们都不 import `unified-module`，所以本轮「能表达」不等于已切换运行时。
+
+未做：删除两份活跃表示、迁移实际数据、切换 GameSession 或剧本杀 loader、
+删除 `representation-consistency.ts`。这些均留给步骤 5B/5C；后者完成前，
+归零的 representation consistency 判据仍保留作安全网。
