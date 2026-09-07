@@ -1,6 +1,8 @@
 // 模组数据核心类型定义
 // 用于将原始模组 PDF 文本解析为结构化数据
 
+import type { ModuleRuntimeConfig, RuntimeNpcConfig } from "./runtime-types";
+
 /** 模组数据顶层结构 */
 export interface ModuleData {
   id: string;
@@ -42,6 +44,12 @@ export interface ModuleData {
    * 出问题时无从判断到底是原文如此，还是生成阶段擅自改的。
    */
   provenance?: Provenance[];
+  /**
+   * 可选运行配置：步骤 5A 为统一类型预留的 MythosModule 字段落点。
+   * 当前活跃数据未迁移，GameSession/剧本杀加载器也不会读取这里；步骤 5B
+   * 才决定切换哪个加载路径。不得把这一组塞进 ModuleSupport。
+   */
+  runtime?: ModuleRuntimeConfig;
 }
 
 /** 一条改写记录：原文、结果、理由，三者缺一不可 */
@@ -264,6 +272,8 @@ export interface Scene {
   stateVars?: Record<string, boolean | string>;
   /** 未来发展：BGM 提示 */
   bgmHint?: string;
+  /** 场景额外称呼；对应 MythosModule.sceneAliases 的逐场迁移目标。 */
+  aliases?: string[];
   /** 未来发展：图像生成提示 */
   imageHint?: string;
 }
@@ -423,6 +433,11 @@ export interface ModuleNPC {
   portraitHint?: string;
   /** 未来发展：NPC 语音提示 */
   voiceHint?: string;
+  /**
+   * 运行时战斗/加载配置。与上面的叙事字段显式分层，防止把同名但不同义
+   * 的 MythosModule.ModuleNPC 误当成已有 ModuleNPC。
+   */
+  runtime?: RuntimeNpcConfig;
 }
 
 /** NPC 行为规则 */

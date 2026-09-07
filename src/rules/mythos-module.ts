@@ -28,138 +28,36 @@ import type { MythosCreature } from "./mythos-expansion";
 import { MYTHOS_CREATURES } from "./mythos-expansion";
 // 与 WorldStateManager 读 exits 用的是**同一份**解析（见该文件顶部说明）
 import { parseExits, mergeExits } from "../state/scene-exits";
+import type {
+  RuntimeClueBinding,
+  RuntimeInitialEffect,
+  RuntimeItemPlacement,
+  RuntimeModuleEnding,
+  RuntimeModuleHook,
+  RuntimeModuleReward,
+  RuntimeModuleSpell,
+  RuntimeModuleTome,
+  RuntimeNpcConfig,
+} from "../module/runtime-types";
 
 // ============================================================
 // 模组类型定义
 // ============================================================
 
-/** 模组中需注册的法术 */
-interface ModuleSpell {
-  name: string;
-  sanCost: string;
-  mpCost: number;
-  description: string;
-  effectType?: string;
-}
-
-/** 模组中需放置的典籍 */
-interface ModuleTome {
-  name: string;
-  /** 出现在哪个场景 */
-  sceneId: string;
-  /** SAN 损失格式 */
-  sanCost: string;
-  /** 典籍评级（用于 CM 技能成长计算） */
-  tomeRating: number;
-  /** 可教授的法术名列表 */
-  spells: string[];
-  /** 打开时的叙事文字 */
-  openDescription: string;
-}
-
-/**
- * 模组结局定义 — 游戏结束条件与触发描述
- */
-interface ModuleEnding {
-  id: string;
-  /** 结局名称（如 "Normal End"、"True End"） */
-  name: string;
-  /** 结局描述文本 */
-  description: string;
-  /** 触发条件文本（供 LLM KP 判断调查员行为是否匹配） */
-  conditionText: string;
-  /** 可选 — 激活该结局时触发的钩子/特殊旁白 */
-  narration?: string;
-}
-
-/**
- * 模组奖励规则 — 根据调查员行为自动结算
- * 与 endings 独立：同一个结局可能触发多条奖励规则，不同结局也可能共享规则
- */
-interface ModuleReward {
-  id: string;
-  description: string;
-  /** 触发条件文本（供 LLM KP 判断是否满足） */
-  conditionText: string;
-  /** SAN 变化，如 "+d6"（回复）、"-d6"（削减）、"rescued*d3"（按变量计算） */
-  sanChange?: string;
-  /** CM 变化（正值为增长） */
-  cmChange?: number;
-  /** 信誉变化 */
-  reputationChange?: number;
-  /** 技能成长，如 { "斗殴": "d10", "侦查": "d10" } */
-  skillGrowth?: Record<string, string>;
-}
-
-/** 模组中的物品放置 */
-export interface ModuleItem {
-  name: string;
-  sceneId: string;
-  description?: string;
-}
-
-/** 模组中的 NPC/生物 */
-export interface ModuleNPC {
+// Shared runtime data types live in module/runtime-types.ts so ModuleData can
+// reference them without importing this loader module. Re-export the historical Mythos
+// names to avoid breaking external type consumers while keeping their semantics explicit.
+export type ModuleSpell = RuntimeModuleSpell;
+export type ModuleTome = RuntimeModuleTome;
+export type ModuleEnding = RuntimeModuleEnding;
+export type ModuleReward = RuntimeModuleReward;
+export type ModuleItem = RuntimeItemPlacement;
+export type ModuleNPC = RuntimeNpcConfig & {
   id: string;
   name: string;
-  type: "npc" | "monster";
-  hp: number;
-  maxHp: number;
-  ac: number;
-  faction: string;
   sceneId: string;
-  tacticsKey?: string;
-  /** 若指定，则从 mythos-expansion MYTHOS_CREATURES 取属性覆盖 hp/ac/str 等 */
-  mythosCreatureId?: string;
-  attributes?: Record<string, number>;
-  /** CoC 技能列表（技能名 → 百分比），如 { "斗殴": 65, "侦查": 50, "克苏鲁": 20 } */
-  skills?: Record<string, number>;
-
-  // ── 人设元数据（供 KP 上下文注入，防止 LLM 臆造年龄/性别）──
-  /** 年龄（模组原文权威值；缺失时以 personality.background 文本为准） */
   age?: number;
-  /** 性别（模组原文权威值；缺失时以 personality.background 文本为准） */
-  gender?: "male" | "female";
-
-  // ── NPC 人格系统集成 ──
-  /** 对话提示（供 LLM 生成对话） */
-  dialogHints?: string[];
-  /**
-   * 引用 npcs.yaml 中定义的 NPC 人格（使用 NPC 名称匹配）
-   * 设置后 module loader 将创建 NPCAgent 并注册到 GameSession
-   */
-  npcPersonalityId?: string;
-  /**
-   * 内联 NPC 人格定义（适用于模组专属NPC）
-   * 当未指定 npcPersonalityId 或需要覆盖默认人格时使用
-   */
-  personality?: {
-    role?: string;
-    personality?: string;
-    background?: string;
-    goals?: string[];
-    speech_style?: string;
-    knowledge?: string[];
-    secrets?: string[];
-    attitudes?: Record<string, string>;
-    traits?: {
-      courage: number;
-      friendliness: number;
-      suspicion: number;
-      curiosity: number;
-      stability: number;
-    };
-    /**
-     * 声明成 NPCMood 而不是 string。
-     *
-     * 写成 string 时这里放过了一个 "paranoid" —— NPCMood 没有这个取值。
-     * 它经 NPCAgent.getMood() 原样流到消息上（实测 /history 里就是 paranoid），
-     * 而下游按八个取值分派：语音层选不到音色，任何 switch 都会掉到 default。
-     */
-    initialMood?: NPCMood;
-    factions?: Array<{ name: string; loyalty: number }>;
-  };
-}
+};
 
 /** 剧本杀模组 */
 export interface MythosModule {
@@ -217,24 +115,11 @@ export interface MythosModule {
   /** 在世界中生成的NPC/生物 */
   npcs?: ModuleNPC[];
   /** 模组激活时的一些特殊状态变更 */
-  initialEffects?: Array<{
-    target: string;
-    field: string;
-    value: any;
-  }>;
+  initialEffects?: RuntimeInitialEffect[];
 
   // ── 调查线索 ──
   /** 注册到 investigation engine 的线索 */
-  clues?: Array<{
-    /** 关联场景名 */
-    scene: string;
-    /** 线索标识（需在 investigation.yaml 中有定义，或预先注册） */
-    clueType: string;
-    /** 线索描述 */
-    description?: string;
-    /** SAN 损失格式 "0/1d3" */
-    sanCost?: string;
-  }>;
+  clues?: RuntimeClueBinding[];
 
   // ── 场景事件钩子 ──
   /**
@@ -248,12 +133,7 @@ export interface MythosModule {
    * narration: KP 旁白文本
    * effect: 额外效果描述（非功能性，仅用于提示）
    */
-  hooks?: Array<{
-    type: "on_enter_scene" | "on_combat_start" | "on_read_tome" | "on_investigate";
-    condition: string;
-    narration?: string;
-    effect?: string;
-  }>;
+  hooks?: RuntimeModuleHook[];
 
   // ── 结局与奖励 ──
   /** 模组结局列表 */
