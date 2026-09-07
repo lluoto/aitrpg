@@ -43,7 +43,7 @@ import { listTables, rollTable } from "../rules/random-tables";
 
 import { MythosModuleLoader, type MythosModuleHost } from "../rules/mythos-module";
 import { PoliticoEconomyEngine } from "../economy/politic-economy-engine";
-import { PREMIERS_BARN_MODULE, ARKHAM_LIBRARY_MODULE, INNSMOUTH_MODULE } from "../rules/mythos-module";
+import { ARKHAM_LIBRARY_MODULE, INNSMOUTH_MODULE } from "../rules/mythos-module";
 import { getModule as getCustomModule } from "../rules/custom-modules/index";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
 import { resolveSceneTarget, mentionedSceneNames, hasMovementSignalNearMention, type SceneRow } from "../play/scene-resolve";
@@ -3998,7 +3998,6 @@ export class GameSession {
     // 回退到内置模"
     if (!mod && moduleName) {
       const builtinModules: Record<string, any> = {
-        "普瑞米尔的谷仓": PREMIERS_BARN_MODULE,
         "阿卡姆档案检查": ARKHAM_LIBRARY_MODULE,
         "印斯茅斯的阴影": INNSMOUTH_MODULE,
       };
@@ -4006,7 +4005,7 @@ export class GameSession {
     }
     // 列出所有可用模"
     const allModules: Record<string, any> = {
-"普瑞米尔的谷仓": moduleName?.includes("谷仓") ? mod : PREMIERS_BARN_MODULE,
+        "普瑞米尔的谷仓": mod,
         "阿卡姆档案检查": ARKHAM_LIBRARY_MODULE,
         "印斯茅斯的阴影": INNSMOUTH_MODULE,
     };
