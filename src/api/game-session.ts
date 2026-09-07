@@ -41,11 +41,13 @@ import { CareerFileStore } from "../character/career-file";
 import { createGameTime, advanceTime, formatGameTime, periodAtmosphere, type GameTime } from "../rules/game-time";
 import { listTables, rollTable } from "../rules/random-tables";
 
-import { MythosModuleLoader, type MythosModuleHost } from "../rules/mythos-module";
+import { MYTHOS_CREATURE_BY_ID, MYTHOS_CREATURE_MAP, MythosModuleLoader, type MythosModule, type MythosModuleHost } from "../rules/mythos-module";
 import { PoliticoEconomyEngine } from "../economy/politic-economy-engine";
 import { ARKHAM_LIBRARY_MODULE, INNSMOUTH_MODULE } from "../rules/mythos-module";
 import { getModule as getCustomModule } from "../rules/custom-modules/index";
-import { BARN_OF_PREMIER } from "../module/barn-of-premier";
+import { ModuleDataRuntimeLoader, type ModuleDataRuntimeHost } from "../module/module-data-runtime-loader";
+import type { Clue, ModuleData } from "../module/types";
+import type { RuntimeModuleReward, RuntimeNpcPersonality } from "../module/runtime-types";
 import { resolveSceneTarget, mentionedSceneNames, hasMovementSignalNearMention, type SceneRow } from "../play/scene-resolve";
 import { buildSceneGraph, shortestHops } from "../play/move-graph";
 import { isExplicitLeaveIntent, isConfirmReply, MODULE_ENDING_SUPPORT, GENERIC_DEPARTURE_LINES } from "../play/module-departure";
@@ -55,6 +57,12 @@ import type { NPCPersonality, AgentMessage, MessageType, NPCMood } from "../agen
 import { asNPCMood } from "../agent/types";
 import { voiceKeyFor } from "../voice/speech-plan";
 import { log } from "../log";
+
+type LoadedModule = MythosModule | ModuleData;
+
+function isModuleData(module: LoadedModule): module is ModuleData {
+  return "title" in module && Array.isArray(module.scenes);
+}
 
 export interface ActionResponse {
   narrative: string;
@@ -350,7 +358,7 @@ export class GameSession {
    * 因此留在进程内而不进真相源：它不会被玩法改变，重载模组即可重建。
    */
   private sceneBgm: Record<string, string> = {};
-  private registeredModules: any[] = [];
+  private registeredModules: LoadedModule[] = [];
   private lastNarrative: string = "";
   private lastDiceRoll: { expr: string; total: number; detail?: string; bonus?: number } | null = null;
   private lastRolls: Array<{skill: string; roll: number; target: number; success: boolean}> = [];
@@ -369,9 +377,13 @@ export class GameSession {
   /** 各 PC 在休息时已结算的成长（skill → 新值），模组结算时并入传承记录 */
   private _growthChangesByPC: Map<string, string[]> = new Map();
   private mythosSpells: Map<string, { sanCost: string; mpCost: number; description: string; effect?: string }> = new Map();
+  private moduleItemDescriptions: Map<string, string> = new Map();
+  private moduleKpNotes: Map<string, string> = new Map();
+  private moduleRewards: Map<string, RuntimeModuleReward> = new Map();
   public knownMythosSpells: string[] = [];
   private _lastPushedRoll: { skill: string; roll: number; target: number } | null = null;
   private _moduleLoader?: MythosModuleLoader;
+  private _moduleDataLoader?: ModuleDataRuntimeLoader;
   private _loadedModules: Map<string, boolean> = new Map();
   /**
    * 建会话时 HTTP 传的 p1 扮演字段（personality/backstory/currentGoal）。
@@ -737,9 +749,8 @@ export class GameSession {
    * 人数——那需要先把两套模组类型统一，不在本轮范围。
    */
   private recommendedPartySize(): { min: number; max: number } | null {
-    if (this.registeredModules.some((m) => m?.id === "premiers_barn")) {
-      return parsePlayerCountRange(BARN_OF_PREMIER.meta.playerCount);
-    }
+    const module = this.registeredModules.find((entry) => isModuleData(entry) && entry.id === "premiers_barn");
+    if (module && isModuleData(module)) return parsePlayerCountRange(module.meta.playerCount);
     return null;
   }
 
@@ -1009,8 +1020,8 @@ export class GameSession {
   /**
    * 结局条件用的两个谓词——队伍里**任一人**发现过 / 到过。
    *
-   * 命名空间已核对：BARN_OF_PREMIER 的线索通过 bridgeBarnOfPremierClues()
-   * 用 `clue.id` 原样注册进 InvestigationEngine（见该方法注释），
+    * 命名空间已核对：步骤 5C 的 ModuleDataRuntimeLoader 直接用
+    * `clue.id` 注册 BARN_OF_PREMIER 的丰富线索进 InvestigationEngine，
    * END_NARRATIONS 引用的正是同一份 `clue.id`，两边不会对不上——
    * 已用真实模组数据验过（ending-namespace-truth-source.test.ts）。
    * requiredScenes 那半边同理：开发·场景 id 收敛 N11 把
@@ -1128,7 +1139,7 @@ export class GameSession {
    * ModuleNPC.personality 字段是 ModuleNPC 风格（role/background/goals/secrets/traits...），
    * 需映射为 NPCPersonality 风格（含必填 speech_style/knowledge，缺失时给默认值）。
    */
-  private registerModuleNPCPersonality(npcName: string, personality: any, npcPersonalityId?: string): void {
+  private registerModuleNPCPersonality(npcName: string, personality: RuntimeNpcPersonality | undefined, npcPersonalityId?: string): void {
     if (!npcName) return;
     // 已注册则跳过（模组重复加载保护）
     if (this.registry.has(npcName)) return;
@@ -1194,34 +1205,48 @@ export class GameSession {
     if (!presentNPCs || presentNPCs.length === 0) return [];
     const norm = this.normalizeNpcNameSeparators;
     const profiles: NPCPresentProfile[] = [];
+    const currentStateFor = (name: string, hooks: Array<{ type: string; condition: string; narration?: string }>): string | undefined => {
+      const keys = [name, String(name).split("·")[0] ?? ""]
+        .map(norm)
+        .filter((key) => key.length >= 2);
+      const hook = hooks.find((candidate) => {
+        if (candidate.type !== "on_enter_scene" || !candidate.condition) return false;
+        const condition = norm(candidate.condition);
+        return keys.some((key) => condition.includes(key) || key.includes(condition));
+      });
+      return hook?.narration?.split("。")[0]?.slice(0, 40);
+    };
     for (const mod of this.registeredModules) {
-      if (!mod?.npcs || !Array.isArray(mod.npcs)) continue;
-      const hooks = (mod.hooks ?? []) as any[];
-      for (const npc of mod.npcs) {
-        if (!presentNPCs.includes(npc.name)) continue;
-        // 候选匹配键：全名 + 名字部分（"·"前，如 "艾德里安"）
-        const keys = [npc.name, String(npc.name).split("·")[0] ?? ""]
-          .map(norm)
-          .filter((k: string) => k.length >= 2);
-        // currentState：仅匹配 NPC 专属场景 hook（场景名不含 NPC 名时不会命中）
-        let currentState: string | undefined;
-        const npcHook = hooks.find((h: any) => {
-          if (h?.type !== "on_enter_scene" || !h?.condition) return false;
-          const cond = norm(String(h.condition));
-          return keys.some((k: string) => cond.includes(k) || k.includes(cond));
-        });
-        if (npcHook?.narration) {
-          currentState = String(npcHook.narration).split("。")[0]?.slice(0, 40) ?? undefined;
+      if (isModuleData(mod)) {
+        const hooks = mod.runtime?.hooks ?? [];
+        for (const npc of mod.npcs) {
+          const runtime = npc.runtime;
+          const name = runtime?.sourceName ?? npc.name;
+          if (!presentNPCs.includes(name)) continue;
+          profiles.push({
+            name,
+            age: runtime?.age ?? npc.age,
+            gender: runtime?.gender,
+            role: runtime?.personality?.role ?? npc.role,
+            currentState: currentStateFor(name, hooks),
+            background: runtime?.personality?.background ?? npc.description,
+            dialogHints: runtime?.dialogHints,
+          });
         }
-        profiles.push({
-          name: npc.name,
-          age: npc.age,
-          gender: npc.gender,
-          role: npc.personality?.role,
-          currentState,
-          background: npc.personality?.background,
-          dialogHints: npc.dialogHints,
-        });
+      } else {
+        const hooks = mod.hooks ?? [];
+        for (const npc of mod.npcs ?? []) {
+          if (!presentNPCs.includes(npc.name)) continue;
+          profiles.push({
+            name: npc.name,
+            age: npc.age,
+            gender: npc.gender,
+            role: npc.personality?.role,
+            currentState: currentStateFor(npc.name, hooks),
+            background: npc.personality?.background,
+            dialogHints: npc.dialogHints,
+          });
+        }
       }
     }
     return profiles;
@@ -1346,7 +1371,11 @@ export class GameSession {
       }),
       npcs: Object.values(worldState.entities).filter(e => (e.type === "npc" || e.type === "monster") && e.hp > 0).map(e => ({ name: e.name, type: e.type, hp: e.hp, maxHp: e.maxHp })),
       sceneItems, difficulty: this.activeDifficulty,
-      module: curModule ? { id: curModule.id, name: curModule.name, difficulty: curModule.difficulty } : null,
+      module: curModule ? {
+        id: curModule.id,
+        name: isModuleData(curModule) ? curModule.title : curModule.name,
+        difficulty: isModuleData(curModule) ? curModule.runtime?.difficulty : curModule.difficulty,
+      } : null,
       gameTime: { day: this.gameTime.day, period: this.gameTime.period, label: formatGameTime(this.gameTime) },
       politicoEconomy: this.politicoEconomy.getBriefState(),
     };
@@ -2671,7 +2700,9 @@ export class GameSession {
             id: `ce_${Date.now().toString(36)}_${pid}`,
             characterName: char.name,
             moduleId: modId ?? "unknown",
-            moduleName: this.registeredModules[0]?.name ?? "未知模组",
+            moduleName: this.registeredModules[0]
+              ? (isModuleData(this.registeredModules[0]) ? this.registeredModules[0].title : this.registeredModules[0].name)
+              : "未知模组",
             completedAt: new Date().toISOString(),
             endingId,
             endingName,
@@ -2811,8 +2842,8 @@ export class GameSession {
    *
    * investigation/perception 是通用兜底；其余键是 BARN_OF_PREMIER 32 条线索
    * findMethods 里实际用到的技能（侦查/取悦/社交/图书馆/信誉/精神分析/医学/
-   * 急救/母语，译名见 SKILL_NAME_MAP），加上 luck/strength 两个属性代理
-   * （幸运/力量——见 bridgeBarnOfPremierClues 的注释）。不在这个集合里的技能
+    * 急救/母语，译名见 SKILL_NAME_MAP），加上 luck/strength 两个属性代理
+    * （幸运/力量由 ModuleDataRuntimeLoader 注册时映射）。不在这个集合里的技能
    * 即使 ClueDef 已经注册好，也不会走到 investigateCoC，线索还是查不到。
    */
   private static readonly INVESTIGATIVE_SKILLS = new Set([
@@ -3572,6 +3603,7 @@ export class GameSession {
     const pos = this.getDisplayedScene();
     return Object.values(state.entities).filter((e) => {
       if (!((e.type === "monster" || e.type === "npc") && (e.hp ?? 0) > 0)) return false;
+      if (e.status.includes("narrative_noncombat")) return false;
       if (pos === "unknown") return true;
       return (e.scene_id ?? e.position) === pos;
     });
@@ -3942,6 +3974,123 @@ export class GameSession {
   }
 
   // ── 加载模组 ──
+  private registerRichModuleClue(sceneId: string, clue: Clue): void {
+    const skillMethods = clue.findMethods.filter((method) => method.type === "skill" && method.skillName);
+    const nonAttribute = skillMethods.find((method) => SKILL_NAME_MAP[method.skillName!]);
+    const chosen = nonAttribute ?? skillMethods[0];
+    const skillKey = chosen
+      ? (SKILL_NAME_MAP[chosen.skillName!] ?? GameSession.BARN_CLUE_ATTRIBUTE_SKILLS[chosen.skillName!] ?? "spot_hidden")
+      : "spot_hidden";
+    this.investigation.addClueType(clue.id, {
+      description: clue.description,
+      scene: sceneId,
+      matchTexts: [clue.name, ...clue.findMethods.map((method) => method.description), ...(clue.matchTexts ?? [])],
+      displayName: clue.name,
+      importance: clue.importance,
+      unlocks: clue.unlocks,
+      coc_primary: {
+        skill: skillKey,
+        regular: clue.revelation,
+        hard: clue.revelation,
+        extreme: clue.revelation,
+        critical: clue.revelation,
+        fail: "你仔细搜查了一番，但这次没能看出什么名堂。",
+      },
+    });
+  }
+
+  private moduleDataRuntimeHost(): ModuleDataRuntimeHost {
+    const addTurnMessage = (speaker: string, content: string, type: MessageType, verbatim = false) => {
+      if (this._turnMessages) {
+        this._turnMessages.push({ speaker, content, type, ...(verbatim ? { verbatim: true as const } : {}) });
+      } else {
+        this.addMessage(speaker, content, type, { ...(verbatim ? { verbatim: true } : {}) });
+      }
+    };
+    return {
+      registerScene: (scene) => {
+        this.world.registerScene(scene.id, scene.name, scene.description);
+        this.world.setSceneExits(scene.id, scene.exits);
+        this.sceneDisplayNames[scene.id] = scene.name;
+        this.sceneAliases[scene.id] = [scene.name];
+      },
+      registerRuntimeNpc: (_npc, runtime) => {
+        const creature = runtime.mythosCreatureId
+          ? MYTHOS_CREATURE_BY_ID.get(runtime.mythosCreatureId) ?? MYTHOS_CREATURE_MAP.get(runtime.mythosCreatureId)
+          : undefined;
+        this.world.upsertEntity({
+          id: runtime.sourceId,
+          name: runtime.sourceName,
+          type: runtime.type,
+          hp: creature?.hp ?? runtime.hp,
+          maxHp: creature?.maxHp ?? runtime.maxHp,
+          ac: creature?.ac ?? runtime.ac,
+          status: [],
+          position: runtime.sceneId,
+          scene_id: runtime.sceneId,
+          faction: creature && runtime.faction === "神话生物" ? creature.name : runtime.faction,
+          attributes: runtime.attributes ?? {},
+        });
+        this.registerModuleNPCPersonality(runtime.sourceName, runtime.personality, runtime.npcPersonalityId);
+      },
+      registerNarrativeNpc: (npc) => {
+        // No hp/ac/skills are supplied here. World storage has placeholders,
+        // but the explicit status makes this a non-combat narrative entity.
+        this.world.upsertEntity({
+          id: npc.id,
+          name: npc.name,
+          type: "npc",
+          status: ["narrative_noncombat"],
+          position: npc.sceneId,
+          scene_id: npc.sceneId,
+        });
+        this.registerModuleNPCPersonality(npc.name, {
+          role: npc.role,
+          personality: npc.personality.traits.join("、"),
+          background: npc.description,
+          knowledge: npc.knowledge,
+          secrets: npc.secrets,
+        });
+      },
+      registerRichClue: (sceneId, clue) => this.registerRichModuleClue(sceneId, clue),
+      registerLegacyClue: (binding) => this.investigation.registerSceneClue(binding.scene, binding.clueType, binding.description, binding.sanCost),
+      registerTome: (tome) => {
+        const items = this.sceneItems.get(tome.sceneId) ?? [];
+        if (!items.includes(tome.name)) items.push(tome.name);
+        this.sceneItems.set(tome.sceneId, items);
+      },
+      registerItemPlacement: (item) => {
+        const items = this.sceneItems.get(item.sceneId) ?? [];
+        if (!items.includes(item.name)) items.push(item.name);
+        this.sceneItems.set(item.sceneId, items);
+        if (item.description) this.moduleItemDescriptions.set(item.name, item.description);
+      },
+      registerRichItem: (item) => {
+        const items = this.sceneItems.get(item.sceneId) ?? [];
+        if (!items.includes(item.name)) items.push(item.name);
+        this.sceneItems.set(item.sceneId, items);
+        this.moduleItemDescriptions.set(item.id, item.description);
+      },
+      registerSpell: (spell) => {
+        if (!this.mythosSpells.has(spell.name)) {
+          this.mythosSpells.set(spell.name, { sanCost: spell.sanCost, mpCost: spell.mpCost, description: spell.description, effect: spell.effectType });
+        }
+      },
+      registerHook: () => {}, // hooks remain available through registeredModules for current runtime consumers.
+      registerRewards: (rewards) => rewards.forEach((reward) => this.moduleRewards.set(reward.id, reward)),
+      registerKpNotes: (notes) => Object.entries(notes).forEach(([key, note]) => this.moduleKpNotes.set(key, note)),
+      registerSceneBgm: (bgm) => Object.assign(this.sceneBgm, bgm),
+      registerSceneAliases: (aliases) => {
+        for (const [sceneId, values] of Object.entries(aliases)) {
+          const current = this.sceneAliases[sceneId] ?? [];
+          for (const alias of values) if (!current.includes(alias)) current.push(alias);
+          this.sceneAliases[sceneId] = current;
+        }
+      },
+      addIntroNarration: (text) => addTurnMessage("KP", text, "narration", true),
+    };
+  }
+
   private handleLoadModule(input: string, msg: (s: string) => number): boolean {
     const moduleName = input.replace(/^(?:加载|装载|载入|启用|使用)\s*(?:模组|剧本|模块)\s*/, "").trim();
 
@@ -3980,7 +4129,7 @@ export class GameSession {
         this.investigation.registerSceneClue(sceneName, clueType, description, sanCost);
       },
         // 读取模块：将模组 NPC 内联人格注册进 NPC Agent 系统（供 /npc-chat 对话）
-        registerNPCPersonality: (npcName: string, personality: any, npcPersonalityId?: string) => {
+        registerNPCPersonality: (npcName: string, personality: RuntimeNpcPersonality | undefined, npcPersonalityId?: string) => {
           this.registerModuleNPCPersonality(npcName, personality, npcPersonalityId);
         },
       };
@@ -3988,23 +4137,23 @@ export class GameSession {
     }
 
     // 优先从自定义模组库查"
-    let mod: any = null;
+    let mod: LoadedModule | null = null;
     if (moduleName) {
       const customMod = getCustomModule("premiers_barn");
-      if (customMod && (customMod.name === moduleName || customMod.module.name === moduleName || moduleName.includes("谷仓"))) {
+      if (customMod && (customMod.name === moduleName || (isModuleData(customMod.module) ? customMod.module.title : customMod.module.name) === moduleName || moduleName.includes("谷仓"))) {
         mod = customMod.module;
       }
     }
     // 回退到内置模"
     if (!mod && moduleName) {
-      const builtinModules: Record<string, any> = {
+      const builtinModules: Record<string, MythosModule> = {
         "阿卡姆档案检查": ARKHAM_LIBRARY_MODULE,
         "印斯茅斯的阴影": INNSMOUTH_MODULE,
       };
       mod = builtinModules[moduleName];
     }
     // 列出所有可用模"
-    const allModules: Record<string, any> = {
+    const allModules: Record<string, LoadedModule | null> = {
         "普瑞米尔的谷仓": mod,
         "阿卡姆档案检查": ARKHAM_LIBRARY_MODULE,
         "印斯茅斯的阴影": INNSMOUTH_MODULE,
@@ -4023,55 +4172,51 @@ export class GameSession {
     }
 
     try {
-      if (!this._moduleLoader) {
-        throw new Error("Module loader not initialized");
-      }
-      const loader = this._moduleLoader;
       const loaded = this._loadedModules;
       if (loaded.has(mod.id)) {
-        msg(`模组「${mod.name}」已导入。`);
-        this.lastNarrative = `模组「${mod.name}」已导入。`;
+        const title = isModuleData(mod) ? mod.title : mod.name;
+        msg(`模组「${title}」已导入。`);
+        this.lastNarrative = `模组「${title}」已导入。`;
         return true;
       }
-      const lines = loader.import(mod);
-      loaded.set(mod.id, true);
-      this.registeredModules.push(mod);
-      // premiers_barn.ts 自带的 10 条线索有 2 条 scene 字段填的是 NPC 名，
-      // 且合成的 ClueDef 没有技能/难度梯度——见 bridgeBarnOfPremierClues 注释。
-      if (mod.id === "premiers_barn") this.bridgeBarnOfPremierClues();
-      if (mod.sceneBgm) Object.assign(this.sceneBgm, mod.sceneBgm);
-      // 填充模组场景显示名/别名（scenes 表已由 registerScene 写入，含模组原文描写）
-      try {
-        for (const r of this.world.listScenes()) {
-          if (!r.name || r.name === "unknown") continue;
-          this.sceneDisplayNames[r.id] = r.name;
-          if (r.description.length > 0) this.sceneAliases[r.id] = [r.name];
-        }
-        // 模组自带的额外场景别名（MythosModule.sceneAliases，开发·别名
-        // 迁移轮从原来 game-session.ts 里"维修间"那一条硬编码特例改成
-        // 数据层字段）——追加而不是覆盖，上面那一步已经把场景自己的
-        // 展示名放进去了，这里合并进去的是模组自己想额外登记的说法。
-        const extraAliases = mod.sceneAliases as Record<string, string[]> | undefined;
-        if (extraAliases) {
-          for (const [sceneId, aliases] of Object.entries(extraAliases)) {
-            if (!this.sceneAliases[sceneId]) this.sceneAliases[sceneId] = [];
-            for (const alias of aliases) {
-              if (!this.sceneAliases[sceneId]!.includes(alias)) this.sceneAliases[sceneId]!.push(alias);
+      let lines: string[];
+      let entryScene: string | undefined;
+      if (isModuleData(mod)) {
+        if (!this._moduleDataLoader) this._moduleDataLoader = new ModuleDataRuntimeLoader(this.moduleDataRuntimeHost());
+        const result = this._moduleDataLoader.import(mod);
+        lines = result.lines;
+        entryScene = result.entryScene ?? undefined;
+      } else {
+        if (!this._moduleLoader) throw new Error("Module loader not initialized");
+        lines = this._moduleLoader.import(mod);
+        if (mod.sceneBgm) Object.assign(this.sceneBgm, mod.sceneBgm);
+        try {
+          for (const r of this.world.listScenes()) {
+            if (!r.name || r.name === "unknown") continue;
+            this.sceneDisplayNames[r.id] = r.name;
+            if (r.description.length > 0) this.sceneAliases[r.id] = [r.name];
+          }
+          if (mod.sceneAliases) {
+            for (const [sceneId, aliases] of Object.entries(mod.sceneAliases)) {
+              const current = this.sceneAliases[sceneId] ?? [];
+              for (const alias of aliases) if (!current.includes(alias)) current.push(alias);
+              this.sceneAliases[sceneId] = current;
             }
           }
-        }
-      } catch { /* 忽略 DB 错误 */ }
-      // 玩家初始位置 → 模组入口场景（优先 sceneDescriptions 第一个 key，兜底 scenes 表第一行），确保场景描写可注入
-      const pos = this.getPlayerPosition();
-      if (!pos || pos === "unknown" || pos === "tavern") {
-        const entryScene = mod.sceneDescriptions
-          ? Object.keys(mod.sceneDescriptions).find(k => k !== "unknown")
+        } catch { /* 忽略 DB 错误 */ }
+        entryScene = mod.sceneDescriptions
+          ? Object.keys(mod.sceneDescriptions).find((key) => key !== "unknown")
           : Object.keys(this.sceneDisplayNames)[0];
-        if (entryScene) this.movePlayerToScene(entryScene);
+      }
+      loaded.set(mod.id, true);
+      this.registeredModules.push(mod);
+      const pos = this.getPlayerPosition();
+      if ((!pos || pos === "unknown" || pos === "tavern") && entryScene) {
+        this.movePlayerToScene(entryScene);
       }
       const resultText = lines.join("\n");
       msg(resultText);
-      this.lastNarrative = `已加载模组: ${mod.name}`;
+      this.lastNarrative = `已加载模组: ${isModuleData(mod) ? mod.title : mod.name}`;
     } catch (e) {
       msg(`模组加载失败: ${(e as Error).message}`);
       this.lastNarrative = `模组加载失败。`;
@@ -4090,77 +4235,6 @@ export class GameSession {
     "力量": "strength",
   };
 
-  /**
-   * 把 BARN_OF_PREMIER（32 条完整线索，带 findMethods/revelation/importance）
-   * 桥接进 InvestigationEngine，只在加载"普瑞米尔的谷仓"时调用一次。
-   *
-   * 背景：premiers_barn.ts 自带的 10 条线索走 host.registerSceneClue（见
-   * mythos-module.ts:634），其中 clue_0/clue_1 的 scene 字段填的是 NPC 名
-   * "菲碧_特里坎"、clue_8/clue_9 填的是事件名"与艾德里安的会面"——都不是玩家
-   * 能走到的场景 id，这两条线索永远进不了 sceneClues 索引。而且
-   * registerSceneClue 四参版合成的 ClueDef 全走 spot_hidden + 单一描述文本，
-   * 没有技能/难度梯度。
-   *
-   * BARN_OF_PREMIER 是同一模组更完整的数据源（32 条，带 findMethods/
-   * revelation/importance），与原有 10 条 id 命名空间不重叠
-   * （clue_0.. vs clue_pistol_in_bag..），按场景名并存注册，不覆盖、不删除
-   * 原有 10 条。
-   *
-   * 场景名桥接：开发·场景 id 收敛 N11 之前，这里要另外调用一个去括号
-   * 函数把 Scene.name 的展示名（如"维修间（终局场景）"）转成运行时注册
-   * 用的短名（"维修间"）——现在 `scene.id` 本身就是那个去括号短名
-   * （(g) 步骤 1.1 的收敛结果），直接用 `scene.id` 即可，不需要再转换。
-   */
-  private bridgeBarnOfPremierClues(): void {
-    for (const scene of BARN_OF_PREMIER.scenes) {
-      const sceneName = scene.id;
-      for (const clue of scene.clues) {
-        // 优先挑一条真正的技能路径；只有属性（幸运/力量）可用时才退回属性名。
-        const skillMethods = clue.findMethods.filter((f) => f.type === "skill" && f.skillName);
-        const nonAttribute = skillMethods.find((f) => SKILL_NAME_MAP[f.skillName!]);
-        const chosen = nonAttribute ?? skillMethods[0];
-        const skillKey = chosen
-          ? (SKILL_NAME_MAP[chosen.skillName!] ?? GameSession.BARN_CLUE_ATTRIBUTE_SKILLS[chosen.skillName!] ?? "spot_hidden")
-          : "spot_hidden";
-        // ModuleData 只给一句 revelation，没有分层文本——四档共用同一句是
-        // 如实反映数据颗粒度，不是偷懒（registerSceneClue 的合成版也是这么做的）。
-        //
-        // ⚠ 这里此前把 findMethods[].description 整个丢了，只取 skillName
-        // 映射了技能。而这些描述里恰恰是位置/动作提示（"侦查休息区/仔细检查
-        // 床底""侦查卫生间/仔细检查洗漱用具"）——同一个场景三条线索都靠
-        // spot_hidden 一个技能触发时，选取层（resolveSceneClueMatch）只能
-        // 靠这份文本区分玩家具体想搜哪儿，不然「侦查卫生间」和「侦查餐厅」
-        // 拿到的都是场景里第一条未发现线索。存进 matchTexts，不在这一层做
-        // 匹配（匹配逻辑见 clue-match.ts + resolveSceneClueMatch）。
-        this.investigation.addClueType(clue.id, {
-          description: clue.description,
-          scene: sceneName,
-          // 开发·别名迁移轮：clue.matchTexts 是数据层字段（module/types.ts），
-          // 曾经的 BARN_CLUE_MATCH_ALIASES 静态表已并入 barn-of-premier.ts
-          // 里 clue_final_brain_jars 自己的 matchTexts，这里不再维护一份
-          // 引擎侧的按 id 查表。
-          matchTexts: [
-            clue.name,
-            ...clue.findMethods.map((f) => f.description),
-            ...(clue.matchTexts ?? []),
-          ],
-          displayName: clue.name,
-          importance: clue.importance,
-          unlocks: clue.unlocks,
-          coc_primary: {
-            skill: skillKey,
-            regular: clue.revelation,
-            hard: clue.revelation,
-            extreme: clue.revelation,
-            critical: clue.revelation,
-            // 只改措辞，不改判定：与 :2282 附近「这里没什么特别的」（措辞对不上，
-            // 没进检定）是两种不同的"没找到"，这里是真掷过骰子没过。
-            fail: "你仔细搜查了一番，但这次没能看出什么名堂。",
-          },
-        });
-      }
-    }
-  }
 
   // ── 模组结算/技能成长 ──
   private handleSkillAdvancement(messages: AgentMessage[], msg: (s: string) => number): boolean {
@@ -4216,7 +4290,9 @@ export class GameSession {
             id: `ce_${Date.now().toString(36)}_${pid}`,
             characterName: char.name,
             moduleId: this.registeredModules[0]?.id ?? "unknown",
-            moduleName: this.registeredModules[0]?.name ?? "未知模组",
+            moduleName: this.registeredModules[0]
+              ? (isModuleData(this.registeredModules[0]) ? this.registeredModules[0].title : this.registeredModules[0].name)
+              : "未知模组",
             completedAt: new Date().toISOString(),
             endingId: "completed",
             endingName: "模组完成",

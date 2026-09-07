@@ -14,13 +14,20 @@
  */
 
 import type { MythosModule } from "../mythos-module";
+import type { ModuleData } from "../../module/types";
 import { MODULE_REGISTRY as PREMIERS_BARN_REGISTRY } from "./premiers_barn";
 
 // ── 模组注册表 ──
 // 所有已提取的社区模组在此注册
-const _moduleMap = new Map<string, { name: string; module: MythosModule }>();
+export type CustomModuleData = MythosModule | ModuleData;
+export interface CustomModuleEntry {
+  name: string;
+  module: CustomModuleData;
+}
 
-function register(entries: Array<{ id: string; name: string; module: MythosModule }>) {
+const _moduleMap = new Map<string, CustomModuleEntry>();
+
+function register(entries: Array<{ id: string; name: string; module: CustomModuleData }>) {
   for (const entry of entries) {
     _moduleMap.set(entry.id, entry);
   }
@@ -32,6 +39,6 @@ register(PREMIERS_BARN_REGISTRY);
 // ── 公开接口 ──
 
 /** 按 ID 获取模组 */
-export function getModule(id: string): { name: string; module: MythosModule } | undefined {
+export function getModule(id: string): CustomModuleEntry | undefined {
   return _moduleMap.get(id);
 }
