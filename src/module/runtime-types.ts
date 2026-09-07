@@ -13,6 +13,15 @@ export interface RuntimeActivation {
   condition: string;
 }
 
+// Kept alongside runtime config during 5A so a future migration does not
+// silently choose ModuleData's top-level copy when the two source values differ.
+export interface RuntimeModuleIdentity {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+}
+
 export interface RuntimeModuleSpell {
   name: string;
   sanCost: string;
@@ -113,16 +122,26 @@ export interface RuntimeNpcConfig {
   mythosCreatureId?: string;
   attributes?: Record<string, number>;
   skills?: Record<string, number>;
+  age?: number;
   gender?: "male" | "female";
   dialogHints?: string[];
   npcPersonalityId?: string;
   personality?: RuntimeNpcPersonality;
 }
 
+// A runtime snapshot is what gets nested in a narrative ModuleNPC. Source
+// identity stays explicit because the two active representations can differ.
+export interface RuntimeNpcSnapshot extends RuntimeNpcConfig {
+  sourceId: string;
+  sourceName: string;
+  sceneId: string;
+}
+
 // ModuleData.runtime is deliberately loader-shaped rather than ModuleSupport:
 // it stores serializable configuration, while ModuleSupport remains reserved
 // for module-specific executable hooks and constants.
 export interface ModuleRuntimeConfig {
+  sourceIdentity?: RuntimeModuleIdentity;
   activation?: RuntimeActivation;
   difficulty?: RuntimeDifficulty;
   source?: string;

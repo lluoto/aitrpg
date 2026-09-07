@@ -1,7 +1,7 @@
 // 模组数据核心类型定义
 // 用于将原始模组 PDF 文本解析为结构化数据
 
-import type { ModuleRuntimeConfig, RuntimeNpcConfig } from "./runtime-types";
+import type { ModuleRuntimeConfig, RuntimeNpcSnapshot } from "./runtime-types";
 
 /** 模组数据顶层结构 */
 export interface ModuleData {
@@ -437,7 +437,7 @@ export interface ModuleNPC {
    * 运行时战斗/加载配置。与上面的叙事字段显式分层，防止把同名但不同义
    * 的 MythosModule.ModuleNPC 误当成已有 ModuleNPC。
    */
-  runtime?: RuntimeNpcConfig;
+  runtime?: RuntimeNpcSnapshot;
 }
 
 /** NPC 行为规则 */
