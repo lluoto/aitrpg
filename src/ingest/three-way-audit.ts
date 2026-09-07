@@ -369,8 +369,8 @@ export interface EntityFabricationEntry {
 
 /**
  * 已确证"原文查无此实体"的 NPC/场景名——目前是空的。阶段7 实测跑过
- * BARN_OF_PREMIER 的全部 npcs/scenes、PREMIERS_BARN_MODULE 的全部
- * npcs、MODULE_PREMIERS_BARN 的全部 npcs/scenes，归一化括号注解后一个
+ * BARN_OF_PREMIER 与 MODULE_PREMIERS_BARN 的全部 npcs/scenes，归一化
+ * 括号注解后一个
  * 不剩地能在原文查到。判据用法与 FABRICATION_REGISTRY 相同：查无此名
  * 的集合必须与这份名单精确相等——空数组不是没有认真查，是真的一个
  * 无据的人名/地名都不剩。

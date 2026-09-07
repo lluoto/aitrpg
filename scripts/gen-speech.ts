@@ -90,7 +90,7 @@ const collected = [
   ...collectPrebakeEntries([
     INNSMOUTH_MODULE,
     ARKHAM_LIBRARY_MODULE,
-    MODULE_PREMIERS_BARN, // PREMIERS_BARN_MODULE (第三份已死表示) 已在步骤 4 删除
+    MODULE_PREMIERS_BARN, // 第三份已死表示已在步骤 4 删除
   ]),
   ...(await harvestScripted()),
 ];

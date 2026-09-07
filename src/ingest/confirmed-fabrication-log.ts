@@ -24,7 +24,7 @@
 //
 // 判据用法（`confirmed-fabrication-log.test.ts`）：对每一条，把它挂靠
 // 的模组数据（`source` 字段指明是 `barn-of-premier.ts` 的默认导出还是
-// `mythos-module.ts` 的 `PREMIERS_BARN_MODULE`）序列化成文本，断言
+// `premiers_barn.ts` 的 `MODULE_PREMIERS_BARN`）序列化成文本，断言
 // `fabricatedText` 不再是这段文本的子串。名单外的模组数据没有这层
 // 保护——同 `FABRICATION_REGISTRY`/`KNOWN_UNREACHABLE` 一个模式：
 // 显式登记 + 判据对每一条断言，不是自动扫描发现新的。
@@ -120,8 +120,7 @@ export const CONFIRMED_FABRICATION_LOG: ConfirmedFabricationEntry[] = [
   },
   // ── 步骤 3（开发·场景集合收敛 N12，2026-09-04）: 从 KNOWN_INCONSISTENCIES 迁移 ──
   // B2 裁决的 4 条确认错误，在真正订正时按交接规则迁入此处（source: "premiers-barn"
-  // 指向 MODULE_PREMIERS_BARN，即 rules/custom-modules/premiers_barn.ts，
-  // 不是第三份表示 PREMIERS_BARN_MODULE/mythos-module.ts）。
+  // 指向 MODULE_PREMIERS_BARN，即 rules/custom-modules/premiers_barn.ts）。
   {
     id: "premiers-barn-adrian-at-farm",
     fabricatedText: '"sceneId":"艾德里安的农场"',
@@ -189,7 +188,7 @@ export const CONFIRMED_FABRICATION_LOG: ConfirmedFabricationEntry[] = [
  * 判据：给定一份序列化好的模组数据文本，返回其中仍然逐字出现的
  * 已知臆造条目——空数组表示这份数据里一条都不剩，是"绿"的意思。
  *
- * 不在这里做序列化（不 import BARN_OF_PREMIER/PREMIERS_BARN_MODULE）：
+ * 不在这里做序列化（不 import BARN_OF_PREMIER/MODULE_PREMIERS_BARN）：
  * 让调用方决定怎么序列化、序列化谁，变异检验才能传一份构造出来的
  * 假文本进来，不用真的去改数据文件。
  */
