@@ -1323,9 +1323,12 @@ const moduleData: ModuleData = {
 };
 
 // 自动为所有带 knowledge[] 的 NPC 生成 llmExpanded（已有手动编写的不会被覆盖）
-// 步骤 5B：把唯一维护于 BARN_RUNTIME 的 11 个运行 NPC snapshot 显式嵌入
-// 对应叙事 NPC。匹配异常会在模块初始化时失败，不允许静默覆盖或丢弃。
-moduleData.npcs = attachRuntimeNpcs(moduleData.npcs, BARN_RUNTIME.runtimeNpcs ?? []);
+// 步骤 5B：把迁移用 runtimeNpcs 列表一次性嵌入对应叙事 NPC；嵌入后删除
+// 过渡列表，避免同一 snapshot 在 runtime 与 ModuleNPC.runtime 双处维护。
+// 匹配异常会在模块初始化时失败，不允许静默覆盖或丢弃。
+const runtimeNpcSnapshots = BARN_RUNTIME.runtimeNpcs ?? [];
+moduleData.npcs = attachRuntimeNpcs(moduleData.npcs, runtimeNpcSnapshots);
+delete BARN_RUNTIME.runtimeNpcs;
 applyAllLlmExpanded(moduleData.npcs);
 
 export default moduleData;
