@@ -37,7 +37,6 @@ import { LLMClient } from "../../src/llm/client";
 import { writeReport } from "../../src/diagnostics/report";
 import { readOriginalCorpus } from "../../src/ingest/three-way-audit";
 import { BARN_OF_PREMIER, END_NARRATIONS, BARN_SUPPORT } from "../../src/module/barn-of-premier";
-import { PREMIERS_BARN_MODULE } from "../../src/rules/mythos-module";
 import { MODULE_PREMIERS_BARN } from "../../src/rules/custom-modules/premiers_barn";
 
 interface Candidate {
@@ -84,13 +83,13 @@ const CALIBRATION_CASES: CalibrationCase[] = [
     id: "cal-negative-3",
     text: "生物学教授，妻难产濒死，使用一战遗迹笔记召唤米-戈，被欺骗后绑架10人。第11次时与警交火弹片击中头部导致瘫痪。",
     expectedContradiction: false,
-    note: "mythos-module.ts:1058 background——忠于原文 section_01 全段",
+    note: "MODULE_PREMIERS_BARN.personality.background——忠于原文 section_01 全段",
   },
   {
     id: "cal-negative-4",
     text: "坚信米-戈会兑现承诺救回妻女，至今没有意识到自己不过是被利用的工具",
     expectedContradiction: false,
-    note: "mythos-module.ts:1061 修复后的 secrets——本轮任务①的修复结果，探针不该把自己的修复又标成矛盾",
+    note: "历史修复后的 secrets——探针不该把自己的修复又标成矛盾",
   },
   {
     id: "cal-negative-5",
@@ -120,7 +119,6 @@ function collectCandidates(): Candidate[] {
   }
 
   for (const npc of BARN_OF_PREMIER.npcs) pushNpc("barn-of-premier.ts", npc as any);
-  for (const npc of PREMIERS_BARN_MODULE.npcs ?? []) pushNpc("mythos-module.ts", npc as any);
   for (const npc of MODULE_PREMIERS_BARN.npcs ?? []) pushNpc("premiers_barn.ts", npc as any);
 
   for (const en of END_NARRATIONS) {
