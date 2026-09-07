@@ -11,15 +11,62 @@ import {
   findRuntimeProjectionDifferences,
   projectMythosRuntime,
   projectRuntimeNpc,
-  readMythosRuntimeFields,
   restoreMythosRuntimeFields,
 } from "../module/unified-module";
 import { MODULE_PREMIERS_BARN } from "../rules/custom-modules/premiers_barn";
 import type { MythosModule } from "../rules/mythos-module";
+import type { ModuleRuntimeConfig } from "../module/runtime-types";
 
 const unified = buildUnifiedModuleData(BARN_OF_PREMIER, MODULE_PREMIERS_BARN, NPC_STATS);
 const projectedRuntime = projectMythosRuntime(MODULE_PREMIERS_BARN);
-const sourceRuntime = readMythosRuntimeFields(MODULE_PREMIERS_BARN);
+
+// Intentionally independent from projectMythosRuntime/readMythosRuntimeFields:
+// this expectation reads every field directly from the raw Mythos input, so
+// deleting a projection assignment cannot make both sides omit it together.
+function expectedRuntimeFromRaw(module: MythosModule): ModuleRuntimeConfig {
+  return {
+    sourceIdentity: { id: module.id, name: module.name, version: module.version, description: module.description },
+    activation: module.activation,
+    difficulty: module.difficulty,
+    source: module.source,
+    introNarration: module.introNarration,
+    spells: module.spells,
+    tomes: module.tomes,
+    rewards: module.rewards,
+    kpNotes: module.kpNotes,
+    initialEffects: module.initialEffects,
+    hooks: module.hooks,
+    sceneBgm: module.sceneBgm,
+    sceneAliases: module.sceneAliases,
+    loaderSceneDescriptions: module.sceneDescriptions,
+    loaderExits: module.exits,
+    runtimeNpcOrder: (module.npcs ?? []).map((npc) => npc.id),
+    runtimeNpcs: (module.npcs ?? []).map((npc) => ({
+      sourceId: npc.id,
+      sourceName: npc.name,
+      sceneId: npc.sceneId,
+      type: npc.type,
+      hp: npc.hp,
+      maxHp: npc.maxHp,
+      ac: npc.ac,
+      faction: npc.faction,
+      tacticsKey: npc.tacticsKey,
+      mythosCreatureId: npc.mythosCreatureId,
+      attributes: npc.attributes,
+      skills: npc.skills,
+      age: npc.age,
+      gender: npc.gender,
+      dialogHints: npc.dialogHints,
+      npcPersonalityId: npc.npcPersonalityId,
+      personality: npc.personality,
+    })),
+    legacyEndings: module.endings,
+    itemPlacements: module.items,
+    clueBindings: module.clues,
+  };
+}
+
+const sourceRuntime = expectedRuntimeFromRaw(MODULE_PREMIERS_BARN);
 
 function narrativeNpc(npc: typeof unified.npcs[number]) {
   const { runtime: _runtime, ...narrative } = npc;
