@@ -2,6 +2,8 @@
 // representations without switching any loader or mutating either source.
 
 import { describe, expect, it } from "bun:test";
+import { readFileSync } from "fs";
+import { importPointsTo, scanImports } from "../diagnostics/source-scan";
 import { BARN_OF_PREMIER, END_NARRATIONS } from "../module/barn-of-premier";
 import {
   buildUnifiedModuleData,
@@ -76,5 +78,18 @@ describe("步骤 5A：统一 ModuleData 类型无损承载两份活跃表示", (
     expect(findRuntimeProjectionDifferences(projectedRuntime, broken)).toEqual([
       expect.objectContaining({ field: "rewards" }),
     ]);
+  });
+
+  it("5A 不切换加载路径：活跃入口没有运行时 import unified-module", () => {
+    const activeLoaders = [
+      "src/api/game-session.ts",
+      "src/play-module.ts",
+      "src/index.ts",
+      "src/api/scripted-session.ts",
+    ];
+    for (const file of activeLoaders) {
+      const imports = scanImports(readFileSync(file, "utf8"));
+      expect(imports.some((entry) => importPointsTo(entry.path, "unified-module"))).toBe(false);
+    }
   });
 });

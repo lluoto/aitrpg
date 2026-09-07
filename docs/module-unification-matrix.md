@@ -66,3 +66,11 @@
 - 切换 `GameSession` 或剧本杀加载器
 - 迁移两份活跃数据到 `ModuleData.runtime`
 - 删除 `representation-consistency.ts`
+
+## 探针纪律
+
+“5A 尚未切换加载路径”不是 grep 字符串结论。`unified-module.test.ts`
+对 `game-session.ts`、`play-module.ts`、`index.ts`、`scripted-session.ts`
+用 `diagnostics/source-scan.ts` 的 `scanImports` + `importPointsTo` 解析
+运行时 import，断言没有一个入口指向 `unified-module`。解析器或读取失败
+会让测试失败；探针不会在命令失败后继续打印“0 个引用”的成功摘要。
