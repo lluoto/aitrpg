@@ -58,6 +58,10 @@
 `introNarration` 不是 `prologue`：前者是 loader 导入时单段 KP 旁白；后者
 是剧本杀路径按调查员模板渲染的多行开场。二者并存，不能覆盖。
 
+Mythos 可选字段值为 `undefined` 时，“对象上是否有这个 own property”不作为
+兼容契约：旧 loader 全部通过可选读取消费，JSON 持久化也不会保存 undefined。
+兼容契约是定义字段的值、数组顺序和冻结 loader 输出；这些均逐字段对账。
+
 ## 5A 范围
 
 步骤 5B 已迁入运行数据并改写旧导出为薄适配。明确仍不做：

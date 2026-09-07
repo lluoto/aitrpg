@@ -159,7 +159,7 @@ describe("步骤 5B：薄适配保持迁移前 Mythos loader 关键输出", () =
   it("**变异检验**：漏掉一个 runtime NPC 会让旧接口派生显式失败，不静默丢弃", () => {
     const broken = structuredClone(BARN_OF_PREMIER);
     broken.npcs = broken.npcs.filter((npc) => npc.runtime?.sourceId !== "mi-go");
-    expect(() => deriveMythosModule(broken)).toThrow("缺少运行 NPC：mi-go");
+    expect(() => deriveMythosModule(broken)).toThrow("runtimeNpcOrder 引用不存在 snapshot：mi-go");
   });
 
   it("统一来源的值改变会改变旧接口派生输出，证明没有第二份手填值", () => {

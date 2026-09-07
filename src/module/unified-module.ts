@@ -197,13 +197,28 @@ function requireRuntime(module: ModuleData): ReadyRuntimeConfig {
 // It has no dependency on that entry point, preventing an adapter cycle.
 export function deriveMythosModule(module: ModuleData): MythosModule {
   const runtime = requireRuntime(module);
-  const runtimeById = new Map(
-    module.npcs.flatMap((npc) => npc.runtime ? [[npc.runtime.sourceId, npc.runtime] as const] : []),
-  );
-  const npcs = (runtime.runtimeNpcOrder ?? []).map((sourceId) => {
+  const snapshots = module.npcs.flatMap((npc) => npc.runtime ? [npc.runtime] : []);
+  const runtimeById = new Map<string, RuntimeNpcSnapshot>();
+  for (const snapshot of snapshots) {
+    if (runtimeById.has(snapshot.sourceId)) throw new Error(`统一 ModuleData runtime NPC sourceId 重复：${snapshot.sourceId}`);
+    runtimeById.set(snapshot.sourceId, snapshot);
+  }
+  const order = runtime.runtimeNpcOrder ?? [];
+  if (new Set(order).size !== order.length) throw new Error("统一 ModuleData runtimeNpcOrder 含重复 sourceId");
+  for (const sourceId of order) {
+    if (!runtimeById.has(sourceId)) throw new Error(`统一 ModuleData runtimeNpcOrder 引用不存在 snapshot：${sourceId}`);
+  }
+  const unconsumed = [...runtimeById.keys()].filter((sourceId) => !order.includes(sourceId));
+  if (unconsumed.length > 0) throw new Error(`统一 ModuleData runtime snapshot 未被 order 消费：${unconsumed.join(", ")}`);
+  if (runtime.runtimeNpcs) {
+    const embeddedIds = new Set(snapshots.map((snapshot) => snapshot.sourceId));
+    const unmatched = runtime.runtimeNpcs.filter((snapshot) => !embeddedIds.has(snapshot.sourceId));
+    if (unmatched.length > 0) throw new Error(`runtime NPC 无对应叙事 NPC：${unmatched.map((snapshot) => snapshot.sourceId).join(", ")}`);
+  }
+  const npcs = order.map((sourceId) => {
     const snapshot = runtimeById.get(sourceId);
     if (!snapshot) throw new Error(`统一 ModuleData 缺少运行 NPC：${sourceId}`);
-    return {
+    return isolated({
       id: snapshot.sourceId,
       name: snapshot.sourceName,
       sceneId: snapshot.sceneId,
@@ -221,7 +236,7 @@ export function deriveMythosModule(module: ModuleData): MythosModule {
       dialogHints: snapshot.dialogHints,
       npcPersonalityId: snapshot.npcPersonalityId,
       personality: snapshot.personality,
-    };
+    });
   });
   const identity = runtime.sourceIdentity;
   return {

@@ -156,6 +156,44 @@ describe("步骤 5A：统一 ModuleData 类型无损承载两份活跃表示", (
     expect(deriveMythosModule(unified)).toEqual(MODULE_PREMIERS_BARN);
   });
 
+  it("派生 Mythos NPC 是独立深层快照，修改 attributes/skills/dialogHints/personality 不污染统一源", () => {
+    const source = structuredClone(BARN_OF_PREMIER);
+    const derived = deriveMythosModule(source);
+    const target = derived.npcs?.find((npc) => npc.id === "艾德里安·埃斯特鲁姆")!;
+    const sourceNpc = source.npcs.find((npc) => npc.runtime?.sourceId === target.id)!;
+    target.attributes!.strength = 999;
+    target.skills!["斗殴"] = 999;
+    target.dialogHints!.push("派生隔离变异");
+    target.personality!.goals!.push("派生隔离目标");
+    expect(sourceNpc.runtime?.attributes?.strength).not.toBe(999);
+    expect(sourceNpc.runtime?.skills?.["斗殴"]).not.toBe(999);
+    expect(sourceNpc.runtime?.dialogHints).not.toContain("派生隔离变异");
+    expect(sourceNpc.runtime?.personality?.goals).not.toContain("派生隔离目标");
+  });
+
+  it("派生前完整校验 runtime order/snapshot：重复、悬空、漏消费、无叙事 NPC 都显式失败", () => {
+    const duplicateSource = structuredClone(BARN_OF_PREMIER);
+    const embedded = duplicateSource.npcs.filter((npc) => npc.runtime);
+    embedded[1]!.runtime!.sourceId = embedded[0]!.runtime!.sourceId;
+    expect(() => deriveMythosModule(duplicateSource)).toThrow("sourceId 重复");
+
+    const duplicateOrder = structuredClone(BARN_OF_PREMIER);
+    duplicateOrder.runtime!.runtimeNpcOrder!.push(duplicateOrder.runtime!.runtimeNpcOrder![0]!);
+    expect(() => deriveMythosModule(duplicateOrder)).toThrow("runtimeNpcOrder 含重复");
+
+    const missingSnapshot = structuredClone(BARN_OF_PREMIER);
+    missingSnapshot.runtime!.runtimeNpcOrder![0] = "missing-snapshot";
+    expect(() => deriveMythosModule(missingSnapshot)).toThrow("引用不存在 snapshot");
+
+    const unconsumed = structuredClone(BARN_OF_PREMIER);
+    unconsumed.runtime!.runtimeNpcOrder = unconsumed.runtime!.runtimeNpcOrder!.slice(1);
+    expect(() => deriveMythosModule(unconsumed)).toThrow("snapshot 未被 order 消费");
+
+    const unmatched = structuredClone(BARN_OF_PREMIER);
+    unmatched.runtime!.runtimeNpcs = [{ ...unmatched.npcs.find((npc) => npc.runtime)!.runtime!, sourceId: "unmatched" }];
+    expect(() => deriveMythosModule(unmatched)).toThrow("无对应叙事 NPC");
+  });
+
   it("NPC 归一化匹配遇到重复 sourceId、重名或未匹配时显式失败，不静默覆盖", () => {
     const npcs = MODULE_PREMIERS_BARN.npcs ?? [];
     const first = npcs[0]!;
