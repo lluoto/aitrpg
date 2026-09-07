@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-07 09:07  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-07 13:54  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：3a1dca0 test: use raw source expectations for unified projection (step 5B-B5)  ·  **测试**：2954 条 / 198 文件，全绿（基线 2954，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：be6974d fix: enforce direct loader entry and rich-clue SAN behavior (step 5C)  ·  **测试**：2966 条 / 200 文件，全绿（基线 2966，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -209,18 +209,18 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- be6974d fix: enforce direct loader entry and rich-clue SAN behavior (step 5C)
+- 5b7bb4a test: harden direct ModuleData loading behavior (step 5C-C5)
+- fc3cd68 test: assert direct loader builds 46 unified exits (step 5C-C5)
+- d4368e3 fix: apply adjudicated ModuleData scene descriptions (step 5C-C2)
+- 0255178 test: enforce runtime NPC integrity and adapter isolation (step 5C-C0)
+- cd92b2e refactor: load barn ModuleData directly in GameSession (step 5C)
+- e379aa8 docs: close out unified source migration (step 5B)
 - 3a1dca0 test: use raw source expectations for unified projection (step 5B-B5)
 - c92f06d refactor: derive MODULE_PREMIERS_BARN from unified source (step 5B-B4)
 - 9c76ac4 refactor: migrate Mythos runtime data into ModuleData (step 5B-B3)
 - 48f0086 test: harden unified module lossless projections (step 5B-B1/B2)
 - 274d1e5 docs: close out unified type groundwork (step 5A-G)
-- 947c50b test: verify unified module stays off active loaders (step 5A-F)
-- 16f5bfe test: add lossless unified module projection checks (step 5A-D)
-- 3ce12fd refactor: add shared runtime types to ModuleData (step 5A-B/C)
-- 33c18b5 docs: add unified module field migration matrix (step 5A-A)
-- 7ca8c58 docs: close out step 4 (update todo/baseline/now/handoff)
-- b1e813e refactor: delete unreachable 3rd module definition (step 4-del)
-- 4152dba chore: remove deleted 3rd representation from semantic probe (step 4-6)
 
 ## 代码地图
 

@@ -93,3 +93,27 @@ import。迁移前 loader 输出被冻结在
 用 `diagnostics/source-scan.ts` 的 `scanImports` + `importPointsTo` 解析
 运行时 import，断言没有一个入口指向 `unified-module`。解析器或读取失败
 会让测试失败；探针不会在命令失败后继续打印“0 个引用”的成功摘要。
+
+## 步骤 5C 直接加载
+
+`src/module/module-data-runtime-loader.ts` 直接消费 `ModuleData` 和
+`ModuleData.runtime`，不 import `unified-module` 或 `mythos-module`。
+custom registry 的谷仓条目返回 `BARN_OF_PREMIER`；GameSession 对谷仓走
+direct loader，对 Arkham/InnsMouth 保留明确 MythosModule legacy 分支。
+
+**等价迁移**：11 个 runtime NPC、10 个 legacy clue bindings、spells/tomes/
+item placements/rewards/KP notes/hooks/BGM/aliases、intro narration 均保持旧
+loader 输入或输出；冻结 fixture 持续对账旧接口。
+
+**有意行为修复**：direct loader 采用 21 个 ModuleData Scene 与 46 条
+connections（比 legacy 多 2 descriptions/5 edges），加载 32 条 rich Clue
+及其 findMethods/matchTexts/difficulty/unlocks/revelation/SAN，加载 4 trap
+条目/3 个 TrapMechanics，并激活前台、报亭老板、医护人员三个
+`narrative_noncombat` NPC。具体场景裁决见 `docs/module-scene-reconciliation.md`。
+
+**5D 删除条件**：`MODULE_PREMIERS_BARN`/`deriveMythosModule` 当前仍有 11 个
+兼容消费方（审计、旧适配 fixture、结局/白名单测试、语音脚本与 registry）。
+这些消费方全部改读 ModuleData/direct loader 后，方可删除适配导出、冻结旧
+Mythos fixture 和 `loaderSceneDescriptions/loaderExits` 过渡字段；届时再退役
+`representation-consistency.ts`。`MythosModuleLoader` 仍服务另外两个模组，
+不在 5D 删除范围。

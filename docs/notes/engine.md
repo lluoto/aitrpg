@@ -1679,3 +1679,37 @@ NPC、人格、线索、法术、典籍物品、奖励、KP notes、hooks 与消
 **仍未做（步骤 5C）**：`GameSession`/剧本杀/CLI 自己读取 `ModuleData.runtime`
 的加载器切换；`runtime.loaderSceneDescriptions/loaderExits` 与丰富
 `Scene.description/connections` 的最终语义收敛；退役 `representation-consistency.ts`。
+
+### 步骤 5C：GameSession 直接加载 ModuleData（开发·场景集合收敛 N12，2026-09-07）
+
+custom registry 的谷仓条目已从 MythosModule 适配结果改为
+`BARN_OF_PREMIER`；`GameSession.registeredModules` 由 `any[]` 改成
+`ModuleData | MythosModule` 联合类型。谷仓走新的
+`ModuleDataRuntimeLoader`，该 loader 不 import `deriveMythosModule` 或
+`MythosModuleLoader`；Arkham/InnsMouth 仍走明确 legacy 分支。
+
+旧 `bridgeBarnOfPremierClues` 已删除。direct loader 从 Scene 注册 21 场景/
+46 边，从丰富 Clue 注册 findMethods/matchTexts/difficulty/unlocks/revelation
+和结构化 SAN；从 ModuleData.items 注册 4 trap 条目/3 TrapMechanics，并从
+runtime 注册 spells/tomes/legacy items/clues/rewards/KP/hooks/BGM/aliases。
+ModuleData 的 endings/epilogues/prologue/partySetup/narrative 随 load result
+保留，GameSession 的 existing ending support 继续消费统一来源。
+
+三名无 runtime snapshot 的叙事 NPC（前台/报亭老板/医护人员）用明确
+`narrative_noncombat` 状态进入世界，不提交 hp/ac/skills；SQLite 的 hp=0 只是
+存储占位，敌人选择显式排除此状态。自然语言交谈、行动锚点和原 matchTexts
+线索路径均有独立端到端测试，仍然不把“NPC 存在”等同于线索可达。
+
+场景描述/出口差异全部由原文裁决，无 D 类冲突；详见
+`docs/module-scene-reconciliation.md`。采用 ModuleData 的 2 个新增描述和 5
+条正确边是有意行为修复，旧 Mythos 运行字段则是等价迁移。rich Clue SAN
+此前被 bridge 丢失，5C 后 True End 自然语言回放会在两条恐怖线索后实际扣
+SAN，这是另一个有意修复，不是文本回归。
+
+真实变异：删 rich Clue 注册红 14 条；漏加载前台红 2 条；删报亭→医院边红
+场景图测试；direct loader 偷 import deriveMythosModule 红结构判据。最终
+KNOWN/actual inconsistency 均为 0，6 条 fabrication guards 均绿。
+
+5D 尚需迁移 `MODULE_PREMIERS_BARN`/`deriveMythosModule` 的 11 个兼容消费方，
+再删除旧适配、冻结 fixture、loaderSceneDescriptions/loaderExits 和
+representation-consistency。`MythosModuleLoader` 仍服务另外两个模组，不删。

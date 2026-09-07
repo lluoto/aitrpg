@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-07 09:07
+> 生成于 2026-09-07 13:54
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,8 +13,8 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 3a1dca0 test: use raw source expectations for unified projection (step 5B-B5) |
-| 测试 | 2954 条 / 198 文件  全绿 |
+| HEAD | be6974d fix: enforce direct loader entry and rich-clue SAN behavior (step 5C) |
+| 测试 | 2966 条 / 200 文件  全绿 |
 | 工作树 | **7 个文件未提交** |
 
 未提交：
@@ -126,14 +126,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- be6974d fix: enforce direct loader entry and rich-clue SAN behavior (step 5C)
+- 5b7bb4a test: harden direct ModuleData loading behavior (step 5C-C5)
+- fc3cd68 test: assert direct loader builds 46 unified exits (step 5C-C5)
+- d4368e3 fix: apply adjudicated ModuleData scene descriptions (step 5C-C2)
+- 0255178 test: enforce runtime NPC integrity and adapter isolation (step 5C-C0)
+- cd92b2e refactor: load barn ModuleData directly in GameSession (step 5C)
+- e379aa8 docs: close out unified source migration (step 5B)
 - 3a1dca0 test: use raw source expectations for unified projection (step 5B-B5)
-- c92f06d refactor: derive MODULE_PREMIERS_BARN from unified source (step 5B-B4)
-- 9c76ac4 refactor: migrate Mythos runtime data into ModuleData (step 5B-B3)
-- 48f0086 test: harden unified module lossless projections (step 5B-B1/B2)
-- 274d1e5 docs: close out unified type groundwork (step 5A-G)
-- 947c50b test: verify unified module stays off active loaders (step 5A-F)
-- 16f5bfe test: add lossless unified module projection checks (step 5A-D)
-- 3ce12fd refactor: add shared runtime types to ModuleData (step 5A-B/C)
 
 ## 找东西
 
