@@ -740,13 +740,8 @@ export class GameSession {
   /**
    * 当前加载的模组推荐几个玩家，解析不出来给 null（不警告，不是"猜一个"）。
    *
-   * 只认 BARN_OF_PREMIER：`this.registeredModules` 装的是 MythosModule
-   * （`rules/mythos-module.ts`），跟 BARN_OF_PREMIER 所属的 ModuleData
-   * （`module/types.ts`）是两套类型系统，后者没有被整体接进
-   * `registeredModules`——只在加载 "premiers_barn" 时才额外读它做线索桥接
-   * （见 bridgeBarnOfPremierClues）。这里按同一条件（`mod.id ===
-   * "premiers_barn"`）复用它的 meta.playerCount，不是给所有模组都接了推荐
-   * 人数——那需要先把两套模组类型统一，不在本轮范围。
+   * 步骤 5C 后，谷仓 ModuleData 直接进入 registeredModules，因此可直接读
+   * meta.playerCount；仍走 MythosModule 的其它模组没有该字段，返回 null。
    */
   private recommendedPartySize(): { min: number; max: number } | null {
     const module = this.registeredModules.find((entry) => isModuleData(entry) && entry.id === "premiers_barn");
@@ -3974,7 +3969,7 @@ export class GameSession {
   }
 
   // ── 加载模组 ──
-  private registerRichModuleClue(sceneId: string, clue: Clue): void {
+  private registerRichModuleClue(sceneId: string, clue: Clue, sanCost?: string): void {
     const skillMethods = clue.findMethods.filter((method) => method.type === "skill" && method.skillName);
     const nonAttribute = skillMethods.find((method) => SKILL_NAME_MAP[method.skillName!]);
     const chosen = nonAttribute ?? skillMethods[0];
@@ -3988,6 +3983,7 @@ export class GameSession {
       displayName: clue.name,
       importance: clue.importance,
       unlocks: clue.unlocks,
+      ...(sanCost ? { san_cost: sanCost } : {}),
       coc_primary: {
         skill: skillKey,
         regular: clue.revelation,
@@ -4052,7 +4048,7 @@ export class GameSession {
           secrets: npc.secrets,
         });
       },
-      registerRichClue: (sceneId, clue) => this.registerRichModuleClue(sceneId, clue),
+      registerRichClue: (sceneId, clue, sanCost) => this.registerRichModuleClue(sceneId, clue, sanCost),
       registerLegacyClue: (binding) => this.investigation.registerSceneClue(binding.scene, binding.clueType, binding.description, binding.sanCost),
       registerTome: (tome) => {
         const items = this.sceneItems.get(tome.sceneId) ?? [];
@@ -4087,6 +4083,7 @@ export class GameSession {
           this.sceneAliases[sceneId] = current;
         }
       },
+      applyInitialEffects: () => {}, // 当前谷仓为空；字段由 direct loader 显式读取，行为留给后续通用世界状态规则。
       addIntroNarration: (text) => addTurnMessage("KP", text, "narration", true),
     };
   }

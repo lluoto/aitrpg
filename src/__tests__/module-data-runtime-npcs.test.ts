@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { GameSession } from "../api/game-session";
+import { BARN_OF_PREMIER } from "../module/barn-of-premier";
 
 const config = { apiKey: "sk-placeholder", baseUrl: "http://localhost:9999", model: "mock", maxTokens: 512, temperature: 0.7 };
 
@@ -22,6 +23,12 @@ describe("步骤 5C：ModuleData 叙事 NPC 进入自由跑团", () => {
       const session = await loadedSession(entry.npc);
       await session.act(`前往${entry.scene}`);
       expect(session.getSuggestions("p1")).toContain(`与 ${entry.npc} 交谈`);
+      const sourceNpc = BARN_OF_PREMIER.npcs.find((npc) => npc.name === entry.npc);
+      if (!sourceNpc) throw new Error(`source NPC missing: ${entry.npc}`);
+      expect(sourceNpc?.runtime).toBeUndefined();
+      const entity = session.world.getEntity(sourceNpc.id);
+      expect(entity?.status).toContain("narrative_noncombat");
+      expect(entity?.hp).toBe(0); // storage placeholder, not an authored combat stat
       const response = await session.act(entry.utterance);
       expect(response.events.some((event) => event.speaker === entry.npc || event.speaker === "系统")).toBe(true);
     });
@@ -34,5 +41,16 @@ describe("步骤 5C：ModuleData 叙事 NPC 进入自由跑团", () => {
     const output = [loaded.narrative, ...loaded.events.map((event) => event.content)].join("\n");
     expect(output).toContain("【统一模组：普瑞米尔的谷仓】");
     expect(output).not.toContain("【剧本杀模组：普瑞米尔的谷仓】");
+  });
+
+  it("14 个统一叙事 NPC 全部进入世界；其中 11 个用 runtime identity，3 个走非战斗路径", async () => {
+    const session = await loadedSession("all-14");
+    const ids = BARN_OF_PREMIER.npcs.map((npc) => npc.runtime?.sourceId ?? npc.id);
+    expect(ids).toHaveLength(14);
+    for (const id of ids) expect(session.world.getEntity(id)).not.toBeNull();
+    expect(BARN_OF_PREMIER.npcs.filter((npc) => npc.runtime)).toHaveLength(11);
+    expect(BARN_OF_PREMIER.npcs.filter((npc) => !npc.runtime).map((npc) => npc.name).sort()).toEqual(
+      ["前台", "医护人员", "报亭老板"].sort(),
+    );
   });
 });

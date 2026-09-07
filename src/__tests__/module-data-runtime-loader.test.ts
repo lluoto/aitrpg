@@ -3,40 +3,55 @@ import { readFileSync } from "fs";
 import { importPointsTo, scanImports } from "../diagnostics/source-scan";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
 import { ModuleDataRuntimeLoader, type ModuleDataRuntimeHost } from "../module/module-data-runtime-loader";
+import type { Clue, ModuleItem } from "../module/types";
+import { getModule } from "../rules/custom-modules";
 
 function makeHost() {
   const scenes: Array<{ id: string; name: string; description: string; exits: Array<{ target: string; desc: string }> }> = [];
   const runtimeNpcs: string[] = [];
   const narrativeNpcs: string[] = [];
-  const richClues: string[] = [];
+  const richClues: Array<{ clue: Clue; sceneId: string; sanCost?: string }> = [];
   const legacyClues: string[] = [];
-  const richItems: string[] = [];
+  const richItems: ModuleItem[] = [];
   const itemPlacements: string[] = [];
   const spells: string[] = [];
   const hooks: string[] = [];
   const rewards: string[] = [];
   const messages: string[] = [];
+  const bgm: Record<string, string> = {};
+  const aliases: Record<string, string[]> = {};
+  const kpNotes: Record<string, string> = {};
+  const initialEffects: unknown[] = [];
   const host: ModuleDataRuntimeHost = {
     registerScene: (scene) => scenes.push(scene),
     registerRuntimeNpc: (_npc, runtime) => runtimeNpcs.push(runtime.sourceId),
     registerNarrativeNpc: (npc) => narrativeNpcs.push(npc.id),
-    registerRichClue: (_sceneId, clue) => richClues.push(clue.id),
+    registerRichClue: (sceneId, clue, sanCost) => richClues.push({ clue: structuredClone(clue), sceneId, sanCost }),
     registerLegacyClue: (binding) => legacyClues.push(binding.clueType),
     registerTome: () => {},
     registerItemPlacement: (item) => itemPlacements.push(item.name),
-    registerRichItem: (item) => richItems.push(item.id),
+    registerRichItem: (item) => richItems.push(structuredClone(item)),
     registerSpell: (spell) => spells.push(spell.name),
     registerHook: (hook) => hooks.push(hook.condition),
     registerRewards: (items) => rewards.push(...items.map((item) => item.id)),
-    registerKpNotes: () => {},
-    registerSceneBgm: () => {},
-    registerSceneAliases: () => {},
+    registerKpNotes: (items) => Object.assign(kpNotes, items),
+    registerSceneBgm: (items) => Object.assign(bgm, items),
+    registerSceneAliases: (items) => Object.assign(aliases, items),
+    applyInitialEffects: (items) => initialEffects.push(...items),
     addIntroNarration: (text) => messages.push(text),
   };
-  return { host, scenes, runtimeNpcs, narrativeNpcs, richClues, legacyClues, richItems, itemPlacements, spells, hooks, rewards, messages };
+  return { host, scenes, runtimeNpcs, narrativeNpcs, richClues, legacyClues, richItems, itemPlacements, spells, hooks, rewards, messages, bgm, aliases, kpNotes, initialEffects };
 }
 
 describe("ModuleDataRuntimeLoader：直接读取统一 ModuleData", () => {
+  it("custom module registry 的谷仓条目返回 ModuleData，不再返回 MythosModule 适配结果", () => {
+    const entry = getModule("premiers_barn");
+    expect(entry).toBeDefined();
+    expect(entry?.module).toHaveProperty("scenes");
+    expect(entry?.module).toHaveProperty("runtime");
+    expect(entry?.module).not.toHaveProperty("sceneDescriptions");
+  });
+
   it("不经 Mythos 适配，注册场景/ModuleData 连接/丰富线索/运行配置", () => {
     const capture = makeHost();
     const result = new ModuleDataRuntimeLoader(capture.host).import(BARN_OF_PREMIER);
@@ -51,14 +66,29 @@ describe("ModuleDataRuntimeLoader：直接读取统一 ModuleData", () => {
     expect(capture.runtimeNpcs).toHaveLength(11);
     expect(capture.narrativeNpcs.sort()).toEqual(["bar_receptionist", "hospital_staff", "newsstand_owner"]);
     expect(capture.richClues).toHaveLength(32);
-    expect(BARN_OF_PREMIER.scenes.flatMap((scene) => scene.clues).find((clue) => clue.id === "clue_bar_mass_booking")?.matchTexts).toEqual(["包场", "登记", "免费饮品", "小费"]);
+    const brainJars = capture.richClues.find((entry) => entry.clue.id === "clue_final_brain_jars");
+    expect(brainJars?.sceneId).toBe("维修间");
+    expect(brainJars?.sanCost).toBe("1/1d6");
+    const massBooking = capture.richClues.find((entry) => entry.clue.id === "clue_bar_mass_booking")?.clue;
+    expect(massBooking?.matchTexts).toEqual(["包场", "登记", "免费饮品", "小费"]);
+    expect(massBooking?.findMethods[0]?.difficulty).toBe("regular");
+    expect(massBooking?.unlocks).toEqual(["clue_bar_guest_identity"]);
+    expect(massBooking?.revelation).toContain("贵客包下了酒吧");
     expect(capture.legacyClues).toHaveLength(10);
     expect(capture.richItems).toHaveLength(10);
+    expect(capture.richItems.find((item) => item.id === "trap_bear")?.trap?.damage).toBe("1D4+1");
     expect(capture.itemPlacements).toHaveLength(10);
     expect(capture.spells).toHaveLength(4);
     expect(capture.hooks).toHaveLength(34);
     expect(capture.rewards).toHaveLength(9);
     expect(capture.messages).toHaveLength(1);
+    expect(Object.keys(capture.bgm)).toHaveLength(19);
+    expect(capture.aliases["维修间"]).toEqual(["维修室"]);
+    expect(Object.keys(capture.kpNotes)).toHaveLength(8);
+    expect(result.narrative.endings).toHaveLength(5);
+    expect(result.narrative.epilogues).toHaveLength(4);
+    expect(result.narrative.prologue?.lines.length).toBeGreaterThan(0);
+    expect(result.narrative.partySetup?.hooks).toHaveLength(2);
   });
 
   it("重复导入不重复注册或污染 host", () => {
@@ -70,6 +100,14 @@ describe("ModuleDataRuntimeLoader：直接读取统一 ModuleData", () => {
     expect(capture.scenes).toHaveLength(21);
     expect(capture.richClues).toHaveLength(32);
     expect(capture.runtimeNpcs).toHaveLength(11);
+  });
+
+  it("覆盖可选 initialEffects 字段，不因真实谷仓当前为空而形成盲点", () => {
+    const capture = makeHost();
+    const module = structuredClone(BARN_OF_PREMIER);
+    module.runtime!.initialEffects = [{ target: "test", field: "flag", value: { nested: true } }];
+    new ModuleDataRuntimeLoader(capture.host).import(module);
+    expect(capture.initialEffects).toEqual([{ target: "test", field: "flag", value: { nested: true } }]);
   });
 
   it("结构判据：direct loader 不 import unified-module 或 mythos-module，不能偷偷走旧路径", () => {

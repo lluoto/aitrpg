@@ -165,4 +165,6 @@ export interface ModuleRuntimeConfig {
   legacyEndings?: RuntimeModuleEnding[];
   itemPlacements?: RuntimeItemPlacement[];
   clueBindings?: RuntimeClueBinding[];
+  /** rich ModuleData clue id -> structured CoC SAN cost. */
+  richClueSanCosts?: Record<string, string>;
 }

@@ -3069,6 +3069,9 @@ const TRAUMATIC_CLUES: Record<string, string> = {
   "clue_control_lever": "1d3+1/1d6+1",
 };
 
+// 同一份 SAN 成本表同时服务 ModuleSupport 与 5C direct loader，不复制值。
+BARN_RUNTIME.richClueSanCosts = TRAUMATIC_CLUES;
+
 /** 结局显示标签（ending id → 标题） */
 const END_LABELS: Record<string, string> = {
   true: "True End", near_truth: "Near-Truth End",

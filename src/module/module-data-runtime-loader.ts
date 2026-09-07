@@ -24,7 +24,7 @@ export interface ModuleDataRuntimeHost {
   registerScene(scene: { id: string; name: string; description: string; exits: RuntimeSceneExit[] }): void;
   registerRuntimeNpc(npc: ModuleNPC, runtime: RuntimeNpcSnapshot): void;
   registerNarrativeNpc(npc: ModuleNPC): void;
-  registerRichClue(sceneId: string, clue: Clue): void;
+  registerRichClue(sceneId: string, clue: Clue, sanCost?: string): void;
   registerLegacyClue(binding: RuntimeClueBinding): void;
   registerTome(tome: RuntimeModuleTome): void;
   registerItemPlacement(item: RuntimeItemPlacement): void;
@@ -35,6 +35,7 @@ export interface ModuleDataRuntimeHost {
   registerKpNotes(notes: Record<string, string>): void;
   registerSceneBgm(bgm: Record<string, string>): void;
   registerSceneAliases(aliases: Record<string, string[]>): void;
+  applyInitialEffects(effects: NonNullable<ModuleRuntimeConfig["initialEffects"]>): void;
   addIntroNarration(text: string): void;
 }
 
@@ -97,7 +98,7 @@ export class ModuleDataRuntimeLoader {
     lines.push(`注册 ${module.npcs.length} 个叙事 NPC，其中 ${module.npcs.filter((npc) => npc.runtime).length} 个带运行配置`);
 
     for (const scene of module.scenes) {
-      for (const clue of scene.clues) this.host.registerRichClue(scene.id, clue);
+      for (const clue of scene.clues) this.host.registerRichClue(scene.id, clue, runtime.richClueSanCosts?.[clue.id]);
     }
     lines.push(`注册 ${module.scenes.flatMap((scene) => scene.clues).length} 条丰富线索`);
 
@@ -113,6 +114,7 @@ export class ModuleDataRuntimeLoader {
     if (runtime.kpNotes) this.host.registerKpNotes(runtime.kpNotes);
     if (runtime.sceneBgm) this.host.registerSceneBgm(runtime.sceneBgm);
     if (runtime.sceneAliases) this.host.registerSceneAliases(runtime.sceneAliases);
+    if (runtime.initialEffects) this.host.applyInitialEffects(runtime.initialEffects);
     if (runtime.introNarration) this.host.addIntroNarration(runtime.introNarration);
 
     return {

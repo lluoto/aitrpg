@@ -93,7 +93,7 @@ export function findRuntimeProjectionDifferences(
     "sourceIdentity", "activation", "difficulty", "source", "introNarration", "spells", "tomes",
     "rewards", "kpNotes", "initialEffects", "hooks", "sceneBgm", "sceneAliases",
     "loaderSceneDescriptions", "loaderExits", "runtimeNpcOrder", "runtimeNpcs", "npcStats",
-    "legacyEndings", "itemPlacements", "clueBindings",
+    "legacyEndings", "itemPlacements", "clueBindings", "richClueSanCosts",
   ];
   return fields.flatMap((field) =>
     structuredEqual(expected[field], actual[field]) ? [] : [{ field, expected: expected[field], actual: actual[field] }],
