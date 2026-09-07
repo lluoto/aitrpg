@@ -1657,3 +1657,25 @@ TrapMechanics」经核实不准确：第 4 个音响陷阱是原文已失效的�
 未做：删除两份活跃表示、迁移实际数据、切换 GameSession 或剧本杀 loader、
 删除 `representation-consistency.ts`。这些均留给步骤 5B/5C；后者完成前，
 归零的 representation consistency 判据仍保留作安全网。
+
+### 步骤 5B：统一维护入口与旧 Mythos 导出适配（开发·场景集合收敛 N12，2026-09-07）
+
+步骤 5A 的类型 rehearsal 已完成后，运行字段已从
+`custom-modules/premiers_barn.ts` 迁入 `barn-of-premier.ts` 的
+`BARN_OF_PREMIER.runtime`。这不是把整个旧对象塞进 runtime：字段按运行配置
+分组维护，Mythos `items/clues/endings` 使用显式 legacy 名称，场景图用
+`loaderSceneDescriptions/loaderExits` 过渡字段保留现 loader 精确输入，11 个
+运行 NPC snapshot 嵌在对应叙事 NPC 的 `runtime` 下，`NPC_STATS` 的混合
+数值/特殊字符串表也原样迁入 `runtime.npcStats`。
+
+`MODULE_PREMIERS_BARN` 的旧 import/registry 接口保留，但
+`custom-modules/premiers_barn.ts` 已删除独立数据正文，只调用
+`deriveMythosModule(BARN_OF_PREMIER)`。统一入口不反向 import 适配入口；
+迁移前的 loader 行为冻结为结构化 fixture，测试独立对比派生输出的场景、出口、
+NPC、人格、线索、法术、典籍物品、奖励、KP notes、hooks 与消息。额外对账：
+漏 rewards、漏出口、漏 NPC 都必然红；修改统一来源会改变旧接口输出，证明没有
+第二份手填值。
+
+**仍未做（步骤 5C）**：`GameSession`/剧本杀/CLI 自己读取 `ModuleData.runtime`
+的加载器切换；`runtime.loaderSceneDescriptions/loaderExits` 与丰富
+`Scene.description/connections` 的最终语义收敛；退役 `representation-consistency.ts`。

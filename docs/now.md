@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-07 07:08
+> 生成于 2026-09-07 09:07
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,12 +13,13 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 947c50b test: verify unified module stays off active loaders (step 5A-F) |
-| 测试 | 2945 条 / 197 文件  全绿 |
-| 工作树 | **6 个文件未提交** |
+| HEAD | 3a1dca0 test: use raw source expectations for unified projection (step 5B-B5) |
+| 测试 | 2954 条 / 198 文件  全绿 |
+| 工作树 | **7 个文件未提交** |
 
 未提交：
 - `M docs/architecture.json`
+- `M docs/module-unification-matrix.md`
 - `M docs/notes/engine.md`
 - `M docs/notes/index.json`
 - `M docs/test-baseline.json`
@@ -125,14 +126,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 3a1dca0 test: use raw source expectations for unified projection (step 5B-B5)
+- c92f06d refactor: derive MODULE_PREMIERS_BARN from unified source (step 5B-B4)
+- 9c76ac4 refactor: migrate Mythos runtime data into ModuleData (step 5B-B3)
+- 48f0086 test: harden unified module lossless projections (step 5B-B1/B2)
+- 274d1e5 docs: close out unified type groundwork (step 5A-G)
 - 947c50b test: verify unified module stays off active loaders (step 5A-F)
 - 16f5bfe test: add lossless unified module projection checks (step 5A-D)
 - 3ce12fd refactor: add shared runtime types to ModuleData (step 5A-B/C)
-- 33c18b5 docs: add unified module field migration matrix (step 5A-A)
-- 7ca8c58 docs: close out step 4 (update todo/baseline/now/handoff)
-- b1e813e refactor: delete unreachable 3rd module definition (step 4-del)
-- 4152dba chore: remove deleted 3rd representation from semantic probe (step 4-6)
-- a6f6eff refactor: remove deleted 3rd representation from game-session (step 4-5)
 
 ## 找东西
 

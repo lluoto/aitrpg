@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-07 07:09  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-07 09:07  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：947c50b test: verify unified module stays off active loaders (step 5A-F)  ·  **测试**：2945 条 / 197 文件，全绿（基线 2945，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：3a1dca0 test: use raw source expectations for unified projection (step 5B-B5)  ·  **测试**：2954 条 / 198 文件，全绿（基线 2954，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -209,6 +209,11 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- 3a1dca0 test: use raw source expectations for unified projection (step 5B-B5)
+- c92f06d refactor: derive MODULE_PREMIERS_BARN from unified source (step 5B-B4)
+- 9c76ac4 refactor: migrate Mythos runtime data into ModuleData (step 5B-B3)
+- 48f0086 test: harden unified module lossless projections (step 5B-B1/B2)
+- 274d1e5 docs: close out unified type groundwork (step 5A-G)
 - 947c50b test: verify unified module stays off active loaders (step 5A-F)
 - 16f5bfe test: add lossless unified module projection checks (step 5A-D)
 - 3ce12fd refactor: add shared runtime types to ModuleData (step 5A-B/C)
@@ -216,11 +221,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - 7ca8c58 docs: close out step 4 (update todo/baseline/now/handoff)
 - b1e813e refactor: delete unreachable 3rd module definition (step 4-del)
 - 4152dba chore: remove deleted 3rd representation from semantic probe (step 4-6)
-- a6f6eff refactor: remove deleted 3rd representation from game-session (step 4-5)
-- 6265106 test: remove deleted 3rd representation from scene whitelist (step 4-4)
-- eaeef46 test: remove deleted 3rd representation from entity audit (step 4-3)
-- 6cdae11 test: delete npc-secret-truth-consistency.test.ts (step 4-2)
-- e04e9cd chore: remove mythos-module guard for deleted representation (4-1)
 
 ## 代码地图
 
