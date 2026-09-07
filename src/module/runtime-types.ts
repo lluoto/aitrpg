@@ -154,6 +154,13 @@ export interface ModuleRuntimeConfig {
   hooks?: RuntimeModuleHook[];
   sceneBgm?: Record<string, string>;
   sceneAliases?: Record<string, string[]>;
+  // Transitional loader-shaped scene graph. Final semantic landing remains
+  // Scene.description/connections, but 5B keeps these exact legacy maps so
+  // the untouched GameSession loader receives identical input.
+  loaderSceneDescriptions?: Record<string, string>;
+  loaderExits?: Record<string, Array<{ target: string; desc?: string }>>;
+  runtimeNpcOrder?: string[];
+  npcStats?: Record<string, Record<string, number | string>>;
   legacyEndings?: RuntimeModuleEnding[];
   itemPlacements?: RuntimeItemPlacement[];
   clueBindings?: RuntimeClueBinding[];
