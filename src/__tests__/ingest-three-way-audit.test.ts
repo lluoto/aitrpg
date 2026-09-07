@@ -35,7 +35,6 @@ import {
   type DeclaredEntityRef,
 } from "../ingest/three-way-audit";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
-import { PREMIERS_BARN_MODULE } from "../rules/mythos-module";
 import { MODULE_PREMIERS_BARN } from "../rules/custom-modules/premiers_barn";
 
 describe("normalizeForMatch：写法差异不能误判成臆造", () => {
@@ -240,12 +239,6 @@ describe("声明实体审计：NPC 名/场景名是否在原文里真实存在�
     for (const scene of BARN_OF_PREMIER.scenes) {
       entities.push({ name: scene.name, kind: "scene", source: "src/module/barn-of-premier.ts" });
     }
-    for (const npc of PREMIERS_BARN_MODULE.npcs ?? []) {
-      entities.push({ name: npc.name, kind: "npc", source: "src/rules/mythos-module.ts" });
-    }
-    for (const name of Object.keys(PREMIERS_BARN_MODULE.sceneDescriptions ?? {})) {
-      entities.push({ name, kind: "scene", source: "src/rules/mythos-module.ts" });
-    }
     for (const npc of MODULE_PREMIERS_BARN.npcs ?? []) {
       entities.push({ name: npc.name, kind: "npc", source: "src/rules/custom-modules/premiers_barn.ts" });
     }
@@ -280,7 +273,7 @@ describe("声明实体审计：NPC 名/场景名是否在原文里真实存在�
     expect(notFound).toEqual([{ name: "凭空捏造的角色", kind: "npc", source: "test" }]);
   });
 
-  it.skipIf(!corpus.ok)("**主判据**：三个文件声明的 NPC/场景名，查无此名的集合必须与 ENTITY_FABRICATION_REGISTRY 精确相等", () => {
+  it.skipIf(!corpus.ok)("**主判据**：两个谷仓表示文件声明的 NPC/场景名，查无此名的集合必须与 ENTITY_FABRICATION_REGISTRY 精确相等", () => {
     if (!corpus.ok) return;
     const notFound = auditDeclaredEntities(collectEntities(), corpus.text);
     const notFoundKeys = new Set(notFound.map((e) => `${e.kind}:${stripDisplayAnnotation(e.name)}`));
@@ -288,18 +281,17 @@ describe("声明实体审计：NPC 名/场景名是否在原文里真实存在�
     expect(notFoundKeys).toEqual(registryKeys);
   });
 
-  it.skipIf(!corpus.ok)("清单确实是空的——不是没查，是三个文件里的人名地名一个不剩地能在原文查到", () => {
+  it.skipIf(!corpus.ok)("清单确实是空的——不是没查，是两个谷仓表示文件里的人名地名一个不剩地能在原文查到", () => {
     if (!corpus.ok) return;
     expect(ENTITY_FABRICATION_REGISTRY).toEqual([]);
     const notFound = auditDeclaredEntities(collectEntities(), corpus.text);
     expect(notFound).toEqual([]);
   });
 
-  it("**回归**：三个文件确实各自贡献了实体（不是收集器悄悄漏掉了某个文件）", () => {
+  it("**回归**：两个谷仓表示文件确实各自贡献了实体（不是收集器悄悄漏掉了某个文件）", () => {
     const entities = collectEntities();
     const sources = new Set(entities.map((e) => e.source));
     expect(sources.has("src/module/barn-of-premier.ts")).toBe(true);
-    expect(sources.has("src/rules/mythos-module.ts")).toBe(true);
     expect(sources.has("src/rules/custom-modules/premiers_barn.ts")).toBe(true);
     // 至少要有 npc 和 scene 两种 kind，否则可能是漏收了一整类
     expect(entities.some((e) => e.kind === "npc")).toBe(true);
