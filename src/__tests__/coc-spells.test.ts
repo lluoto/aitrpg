@@ -146,7 +146,7 @@ describe("剧本杀模组导入", () => {
     const res = await session.act("加载模组 普瑞米尔的谷仓");
     const content = res.events.map(e => e.content).join("\n");
     expect(content).not.toMatch(/场景出口连接失败/);
-    expect(content).toMatch(/构建 \d+ (?:条模组场景显式出口|个模组场景出口)/);
+    expect(content).toContain("构建 46 条统一场景出口");
   });
 });
 
