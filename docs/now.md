@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-05 09:20
+> 生成于 2026-09-07 03:14
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,13 +13,17 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | de7a365 chore: migrate kidnap-count error into fabrication guard (3-4b) |
-| 测试 | 2944 条 / 197 文件  全绿 |
-| 工作树 | **2 个文件未提交** |
+| HEAD | b1e813e refactor: delete unreachable 3rd module definition (step 4-del) |
+| 测试 | 2938 条 / 196 文件  全绿 |
+| 工作树 | **6 个文件未提交** |
 
 未提交：
+- `M docs/index-world-model.md`
+- `M docs/notes/engine.md`
+- `M docs/notes/index.json`
 - `M docs/test-baseline.json`
 - `M docs/todo.json`
+- `?? docs/notes/world-model.md`
 
 ## 开工前
 
@@ -28,7 +32,7 @@ bun scripts/preflight.ts     # 改动前后各跑一次，机器判据挡住反�
 bun scripts/now.ts           # 收工前刷新这份文件
 ```
 
-## 已定位未修（21）
+## 已定位未修（22）
 
 - ️ 「引擎别再替玩家挪窝」这一步单独做不成立（2026-08-20）
   `docs/notes/engine.md:514`
@@ -72,6 +76,8 @@ bun scripts/now.ts           # 收工前刷新这份文件
   `docs/notes/ingest.md:1718`
 - 展示格式渗进输出契约——这是第三次（2026-09-02）
   `docs/notes/ingest.md:1746`
+- 数据化躯体建模等待原始描述（2026-09-06）
+  `docs/notes/world-model.md:56`
 
 ## 动手前先扫一眼的坑（41）
 
@@ -119,14 +125,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
-- de7a365 chore: migrate kidnap-count error into fabrication guard (3-4b)
-- 6d38927 fix: correct kidnap count in MODULE_PREMIERS_BARN (step 3-4)
-- 12c0780 chore: migrate Mi-Go sceneId error into fabrication guard (3-3b)
-- fe1ae36 fix: correct Mi-Go sceneId in MODULE_PREMIERS_BARN (step 3-3)
-- ee9fe04 chore: migrate "流浪汉" sceneId error into fabrication guard (3-2b)
-- 05b17b5 fix: correct "流浪汉" sceneId in MODULE_PREMIERS_BARN (step 3-2)
-- 0442356 chore: migrate "艾德里安" sceneId error into fabrication guard (3-1b)
-- 34e1f0c fix: correct "艾德里安" sceneId in MODULE_PREMIERS_BARN (step 3-1)
+- b1e813e refactor: delete unreachable 3rd module definition (step 4-del)
+- 4152dba chore: remove deleted 3rd representation from semantic probe (step 4-6)
+- a6f6eff refactor: remove deleted 3rd representation from game-session (step 4-5)
+- 6265106 test: remove deleted 3rd representation from scene whitelist (step 4-4)
+- eaeef46 test: remove deleted 3rd representation from entity audit (step 4-3)
+- 6cdae11 test: delete npc-secret-truth-consistency.test.ts (step 4-2)
+- e04e9cd chore: remove mythos-module guard for deleted representation (4-1)
+- 824b529 chore: drop PREMIERS_BARN_MODULE from gen-speech.ts (step 4-0)
 
 ## 找东西
 

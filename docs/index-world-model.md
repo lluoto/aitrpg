@@ -49,15 +49,17 @@
 > 引擎可加载运行时的权威源，收敛需要合并两者，不是让一方降级为另一方
 > 的投影**。详细论证、字段级证据与合并方案见上述小节。
 
-当前《普瑞米尔的谷仓》仍存在三份表述：
+【步骤 4 已完成，开发·场景集合收敛 N12，2026-09-06】当前《普瑞米尔的谷仓》保留两份表述；
+第三份 `PREMIERS_BARN_MODULE` 已从 `mythos-module.ts` 删除。消费方先迁移/清理，
+再删除定义，typecheck 与全量测试保持通过：
 
 | 文件 | 类型 | 风险 |
 |---|---|---|
 | `poc/src/module/barn-of-premier.ts` | 手写 `ModuleData` | 当前剧本引擎使用 |
 | `poc/src/rules/custom-modules/premiers_barn.ts` | 生成式 `MythosModule` | `game-session.ts` 路径使用 |
-| `poc/src/rules/mythos-module.ts` 的内联 `PREMIERS_BARN_MODULE` | 简版 `MythosModule` | 与上一份存在重复 ID 映射 |
+| `poc/src/rules/mythos-module.ts` | 其他内置模组类型与 loader | 不再承载谷仓第三份表示 |
 
-在确定唯一权威源前，不应向这三份内容继续新增模组事实。
+两份谷仓表示仍待步骤 5 字段合并；在合并完成前，不应继续向两份内容分别新增事实。
 
 其余已接入的模组相关文件：`poc/src/module/types.ts`（模组类型契约，23 个
 interface：`ModuleData`/`Scene`/`Clue`/`ModuleItem`/`TrapMechanics`/`Provenance` 等）、

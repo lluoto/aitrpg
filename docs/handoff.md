@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-05 09:21  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-07 03:14  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：de7a365 chore: migrate kidnap-count error into fabrication guard (3-4b)  ·  **测试**：2944 条 / 197 文件，全绿（基线 2944，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：b1e813e refactor: delete unreachable 3rd module definition (step 4-del)  ·  **测试**：2938 条 / 196 文件，全绿（基线 2938，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -160,7 +160,7 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 用法：跑局类脚本都收 `[局数] [起始局号]`，
 `bun scripts/diag/diag-downed.ts 3 4` = 第 4~6 局，便于分批跑而不重叠。
 
-## 手上还挂着的（21）
+## 手上还挂着的（22）
 
 - ️ 「引擎别再替玩家挪窝」这一步单独做不成立（2026-08-20）
   `docs/notes/engine.md:514`
@@ -204,21 +204,23 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
   `docs/notes/ingest.md:1718`
 - 展示格式渗进输出契约——这是第三次（2026-09-02）
   `docs/notes/ingest.md:1746`
+- 数据化躯体建模等待原始描述（2026-09-06）
+  `docs/notes/world-model.md:56`
 
 ## 最近做了什么
 
+- b1e813e refactor: delete unreachable 3rd module definition (step 4-del)
+- 4152dba chore: remove deleted 3rd representation from semantic probe (step 4-6)
+- a6f6eff refactor: remove deleted 3rd representation from game-session (step 4-5)
+- 6265106 test: remove deleted 3rd representation from scene whitelist (step 4-4)
+- eaeef46 test: remove deleted 3rd representation from entity audit (step 4-3)
+- 6cdae11 test: delete npc-secret-truth-consistency.test.ts (step 4-2)
+- e04e9cd chore: remove mythos-module guard for deleted representation (4-1)
+- 824b529 chore: drop PREMIERS_BARN_MODULE from gen-speech.ts (step 4-0)
+- d4f101b docs: close out step 3 (update baseline/todo/now/handoff)
 - de7a365 chore: migrate kidnap-count error into fabrication guard (3-4b)
 - 6d38927 fix: correct kidnap count in MODULE_PREMIERS_BARN (step 3-4)
 - 12c0780 chore: migrate Mi-Go sceneId error into fabrication guard (3-3b)
-- fe1ae36 fix: correct Mi-Go sceneId in MODULE_PREMIERS_BARN (step 3-3)
-- ee9fe04 chore: migrate "流浪汉" sceneId error into fabrication guard (3-2b)
-- 05b17b5 fix: correct "流浪汉" sceneId in MODULE_PREMIERS_BARN (step 3-2)
-- 0442356 chore: migrate "艾德里安" sceneId error into fabrication guard (3-1b)
-- 34e1f0c fix: correct "艾德里安" sceneId in MODULE_PREMIERS_BARN (step 3-1)
-- 086d69b docs: close out step 2c (update todo/now/handoff)
-- d38d0c4 docs: revise engine.md (d) to reflect 2c reversal on sub-scenes
-- 822843e refactor: merge coffin sub-scene into "维修间", move NPCs (2c-2)
-- fc36cd2 refactor: merge pipe sub-scene into "维修间" in MythosModule (2c-1)
 
 ## 代码地图
 

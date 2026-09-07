@@ -1,6 +1,6 @@
 {
-  "tests": 2944,
-  "files": 197,
+  "tests": 2938,
+  "files": 196,
   "unwiredMethods": 84,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。 86->84（开发·多人可见性 N6）：setPlayerScene 被整个删除少 1 处，getPlayersInScene 有了真调用方（player-scene-authority.test.ts）再少 1 处，两处一起解释这次的净减 2。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -644,6 +644,11 @@
       "tests": 2944,
       "files": 197,
       "when": "开发·场景集合收敛 N12 步骤 3，8个提交(3-1a/3-1b/3-2a/3-2b/3-3a/3-3b/3-4a/3-4b)，基线2939/197推送后开工。B2已裁决的4条MythosModule事实错误按fix/migrate分离提交逐条订正：①艾德里安sceneId农场→医院(commit 34e1f0c)；②流浪汉sceneId农场外围→镇内别墅(commit 05b17b5)；③Mi-Go sceneId下水道→维修间(commit fe1ae36，与步骤2c一致)；④绑架人数11→10(commit 6d38927)。各fix提交同步把对应条目从KNOWN_INCONSISTENCIES移除；各migrate提交把条目迁入CONFIRMED_FABRICATION_LOG(source: 新增的\"premiers-barn\"，指向MODULE_PREMIERS_BARN)，并在confirmed-fabrication-log.test.ts里各补一条变异检验。4条migrate提交各自upd toHaveLength(3→7)。KNOWN_INCONSISTENCIES归零，CONFIRMED_FABRICATION_LOG 3→7条。验证：findBarnRepresentationInconsistencies()=0，findReintroducedFabrications全绿，True End/64态/三方审计全绿。KNOWN_INCONSISTENCIES模块按方案(f)安全网使命完成，等步骤5后退役。步骤4/5尚未开始，todo-19/20继续open。typecheck 0；bun test 2939->2944(+5，197文件不变)；preflight 12/12。"
+    },
+    {
+      "tests": 2938,
+      "files": 196,
+      "when": "开发·场景集合收敛 N12 步骤 4，基线2944/197推送后开工。先处理全部消费方再删除第三份表示：gen-speech（prompt漏列）、confirmed-fabrication-log（删除仅挂靠已删表示的adrian-secrets-aware，live MODULE_PREMIERS_BARN核实无同类问题）、npc-secret-truth-consistency（随死表示删除）、ingest-three-way-audit（保留两份谷仓表示）、mythos-scene-whitelist（保留其它内置模组）、game-session（保留共用import行的其它两个模组，清掉谷仓fallback）、probe-semantic-contradiction（保留live模块）。最后删除mythos-module.ts尾部PREMIERS_BARN_MODULE定义。scanImports/findReverseImports扫描380个源码文件：仍有6个合法mythos-module文件级import（其它内置模组），PREMIERS_BARN_MODULE symbol mentions为0；typecheck 0，全量bun test 2944->2938（删除npc-secret测试及旧护栏测试），preflight 12/12。步骤5尚未开始。"
     }
   ]
 }

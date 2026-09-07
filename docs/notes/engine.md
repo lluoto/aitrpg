@@ -1347,44 +1347,38 @@ B1/B2 已经给出成因（见 `representation-consistency.ts` 的
    就是这么建的，`Scene.npcIds`），不需要在 ModuleData 里新建同名
    场景。
 
-#### (e) 第三份表示 `PREMIERS_BARN_MODULE` 怎么处理——已确认死代码，但 6 处消费方需要先处理才能删
+#### (e) 第三份表示 `PREMIERS_BARN_MODULE`——步骤 4 已完成（开发·场景集合收敛 N12，2026-09-06）
 
-复核确认：`api/game-session.ts:4004`（`handleLoadModule` 里
-`getCustomModule("premiers_barn")` 命中优先于 `builtinModules`
-fallback，标准调用串"普瑞米尔的谷仓"必然命中 `.includes("谷仓")`
-分支）使得 `PREMIERS_BARN_MODULE` 在当前生产路径下**不可能被执行到
-**——它是一个只有在"自定义模组注册表本身坏掉"时才会触发的死 fallback。
-真实消费方是 6 个测试文件：`confirmed-fabrication-log.test.ts`（序列化
-后做防回弹字面串检查）、`ingest-three-way-audit.test.ts`（三方审计
-的第三个语料源）、`mythos-scene-whitelist.test.ts`（场景白名单公式
-的第三个被测对象）、`npc-secret-truth-consistency.test.ts`（专门验证
-过一个历史 bug——`adrian_estrom.personality.secrets` 方向反了，见
-`confirmed-fabrication-log.ts` 的 `adrian-secrets-aware` 条目）。
+复核确认：`getCustomModule("premiers_barn")` 命中优先于
+`builtinModules` fallback，标准调用串"普瑞米尔的谷仓"必然命中
+`.includes("谷仓")` 分支，因此 `PREMIERS_BARN_MODULE` 在生产加载路径不可达。
+执行步骤 4 前又核到一个 prompt 遗漏：`scripts/gen-speech.ts` 也消费了
+该符号，实际消费方不止 prompt 列出的 6 处。
 
-**处置方案（分两步，不能一步删）**：
-1. 第一步——**先给这 4 个测试文件找替代数据源**：
-   `confirmed-fabrication-log.ts` 的 `adrian-secrets-aware` 条目挂靠
-   `source: "mythos-module"`（即 `PREMIERS_BARN_MODULE`），需要先
-   确认这个历史 bug 的等价说法要不要在 `MODULE_PREMIERS_BARN` 里
-   也检查一遍（如果从未在那份数据里出现过，直接放心删除这条对
-   `PREMIERS_BARN_MODULE` 的依赖；如果曾经或可能出现，需要迁移检查
-   目标）；`ingest-three-way-audit.test.ts`/`mythos-scene-whitelist.
-   test.ts` 需要把"第三个语料源/被测对象"这个位置直接去掉（两份
-   表示收敛之后本来就该只审计两份，不是把第三份换成别的凑数）；
-   `npc-secret-truth-consistency.test.ts` 需要确认
-   `MODULE_PREMIERS_BARN` 是否也曾有过同类"secrets 方向反了"的
-   历史问题（B2 没有专门核对这一条，需要单独复核）——如果没有，
-   这个测试本身随第三份表示一起归档/删除即可。
-2. 第二步——**4 个测试文件都不再 import `PREMIERS_BARN_MODULE`
-   后，删除 `rules/mythos-module.ts:959` 的定义本身**，连带清理
-   `api/game-session.ts:46/4010/4018` 的 import 与死 fallback 分支
-   （删除死代码，不是保留一个永远走不到的分支"以防万一"——它已经
-   被验证走不到，留着只会误导下一个读代码的人以为它是活的）。
+**已执行（按消费方先于定义删除）**：
+- `gen-speech.ts`：保留 `MODULE_PREMIERS_BARN`，删除第三份表示。
+- `confirmed-fabrication-log.test.ts`/log：确认 `MODULE_PREMIERS_BARN`
+  没有历史 `adrian-secrets-aware` 同类错误，删除该旧护栏及其 dead-module
+  测试；步骤 3 的 `premiers-barn` 护栏仍保持 6 条。
+- `npc-secret-truth-consistency.test.ts`：删除。它专门测试已删除第三份
+  表示的历史 bug；live `MODULE_PREMIERS_BARN` 的 secrets 已核对为正确，
+  从未出现该错误，迁移测试反而会改变测试语义。
+- `ingest-three-way-audit.test.ts`：审计仍保留 BARN_OF_PREMIER 与
+  MODULE_PREMIERS_BARN 两份谷仓表示；`mythos-module.ts` 的其他内置模组
+  仍由通用审计源覆盖，不把同文件其他模组误删。
+- `mythos-scene-whitelist.test.ts`：保留 INNSMOUTH/ARKHAM 两个内置模组
+  的边界循环，仅移除第三份谷仓表示。
+- `game-session.ts`：保留同一 import 行中的 ARKHAM/INNSMOUTH；删除谷仓
+  builtin fallback 值，allModules 的谷仓 key 保留但 value 使用现有 `mod`。
+- `probe-semantic-contradiction.ts`：保留 live MODULE_PREMIERS_BARN，
+  删除第三份采集源。
+- 最后删除 `mythos-module.ts:959` 到文件末尾的
+  `PREMIERS_BARN_MODULE` 定义。
 
-**不能颠倒顺序的原因**：如果先删定义再处理测试，会有 4 个测试文件
-直接编译失败，得不到任何有效判据结果去验证删除本身是否安全；先处理
-消费方再删定义，每一步删除都能立刻用 `bun test`/`bun run typecheck`
-验证。
+**现状**：运行时 import 扫描仍发现 6 个合法的 `mythos-module` 文件级
+import（它们使用 Arkham/InnsMouth/loader 等其他导出），但源码中
+`PREMIERS_BARN_MODULE` symbol mentions 为 0；typecheck 与全量测试均通过。
+第三份表示删除完成，步骤 5 才退役 `representation-consistency.ts`，本轮不删。
 
 #### (f) 判据网在收敛中的角色分类
 
