@@ -259,12 +259,14 @@ describe("④ 全链路：纯自然语句从卧室走到 True End（开发·真�
     // 留任何空间。
     expect(r.steps[1].scene).toBe("艾德里安的卧室");
     expect(r.steps[2].narrative).toBe("发现日记本、老旧文件（与Mi-Go联络术相关）、生锈钥匙（打开下水道维修间门）。");
-    expect(r.steps[3].narrative).toBe("发现Mi-Go联络术（sc1/1d3+1，研究2周可学会，CM+3）。");
+    // 5C direct loader 不再丢 rich clue 的结构化 SAN 成本；固定 seed 下
+    // 本步实际扣 1 SAN。旧 bridge 只注册 revelation，曾漏掉这项。
+    expect(r.steps[3].narrative).toBe("发现Mi-Go联络术（sc1/1d3+1，研究2周可学会，CM+3）。\n（SAN -1）");
     expect(r.steps[4].scene).toBe("维修间");
 
     // 任务①之前，这句话（引擎叙事自己反复用的"培养缸"）会被 deny——
     // 这一步是本条判据的关键，也是变异检验要盯住的那一步。
-    expect(r.steps[5].narrative).toBe("发现艾米丽和爱莉的缸中脑（Sc1/1d6）。艾米丽以为自己只是失去了视觉触觉。");
+    expect(r.steps[5].narrative).toBe("发现艾米丽和爱莉的缸中脑（Sc1/1d6）。艾米丽以为自己只是失去了视觉触觉。\n（SAN -1）");
 
     expect(r.steps[7].dead).toBe(true);
     const trueEndNarration = END_NARRATIONS.find((e) => e.id === "true")!;

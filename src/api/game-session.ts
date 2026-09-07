@@ -4209,7 +4209,9 @@ export class GameSession {
       this.registeredModules.push(mod);
       const pos = this.getPlayerPosition();
       if ((!pos || pos === "unknown" || pos === "tavern") && entryScene) {
-        this.movePlayerToScene(entryScene);
+        if (!this.movePlayerToScene(entryScene)) {
+          throw new Error(`模组入口场景「${entryScene}」没能激活`);
+        }
       }
       const resultText = lines.join("\n");
       msg(resultText);
