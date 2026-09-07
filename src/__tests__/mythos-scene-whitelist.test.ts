@@ -19,7 +19,6 @@ import {
   MythosModuleLoader,
   INNSMOUTH_MODULE,
   ARKHAM_LIBRARY_MODULE,
-  PREMIERS_BARN_MODULE,
   type MythosModule,
   type MythosModuleHost,
 } from "../rules/mythos-module";
@@ -111,8 +110,8 @@ describe("模组场景注册按来源判定白名单，不把 hook.condition 当
     expect(unique).toEqual(expectedWhitelist(MODULE_PREMIERS_BARN));
   });
 
-  it("**边界**：内置模组（印斯茅斯/阿卡姆/谷仓精简版）场景数没有异常下跌——与独立重算的白名单公式一致", () => {
-    for (const m of [INNSMOUTH_MODULE, ARKHAM_LIBRARY_MODULE, PREMIERS_BARN_MODULE]) {
+  it("**边界**：其它内置模组（印斯茅斯/阿卡姆）场景数没有异常下跌——与独立重算的白名单公式一致", () => {
+    for (const m of [INNSMOUTH_MODULE, ARKHAM_LIBRARY_MODULE]) {
       const host = createMockHost();
       const loader = new MythosModuleLoader(host);
       loader.import(m);
