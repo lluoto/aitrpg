@@ -24,7 +24,7 @@ beforeEach(() => {
   }, undefined, "调查员");
 });
 
-describe("BARN_OF_PREMIER 线索桥接 — 注册", () => {
+describe("BARN_OF_PREMIER rich Clue 直接加载 — 注册", () => {
   it("加载模组后，BARN_OF_PREMIER 的专属线索 id 应被注册进 InvestigationEngine", async () => {
     await session.act("加载模组 普瑞米尔的谷仓");
     const investigation: any = (session as any).investigation;
@@ -34,15 +34,12 @@ describe("BARN_OF_PREMIER 线索桥接 — 注册", () => {
     expect(investigation.hasClueType("clue_bar_guest_identity")).toBe(true);
   });
 
-  it("新线索与 premiers_barn.ts 原有 10 条线索并存，不覆盖不删除", async () => {
+  it("只注册 32 条 rich Clue；clue_0..9 已退出生产", async () => {
     await session.act("加载模组 普瑞米尔的谷仓");
     const investigation: any = (session as any).investigation;
-    // 老 10 条线索的 id 格式是 clue_0..clue_9
-    expect(investigation.hasClueType("clue_2")).toBe(true);
-    expect(investigation.hasClueType("clue_3")).toBe(true);
-    // 同一场景下新老线索都在列表里
+    expect(investigation.hasClueType("clue_2")).toBe(false);
+    expect(investigation.hasClueType("clue_3")).toBe(false);
     const gabiClues: string[] = investigation.getSceneClues("加比的拖车房");
-    expect(gabiClues).toContain("clue_2");
     expect(gabiClues).toContain("clue_pistol_in_bag");
     expect(gabiClues).toContain("clue_drugs");
     expect(gabiClues).toContain("clue_card");
@@ -60,15 +57,13 @@ describe("BARN_OF_PREMIER 线索桥接 — 注册", () => {
     expect(withBracket.length).toBe(0);
   });
 
-  it("步骤 2a-2 后：clue_0/clue_1 已从伪场景节点「菲碧_特里坎」迁移到真实场景「特里坎家」", async () => {
+  it("菲碧旧 clue_0/clue_1 不再伪装成可搜查线索；内容由已激活的菲碧 NPC 承载", async () => {
     await session.act("加载模组 普瑞米尔的谷仓");
     const investigation: any = (session as any).investigation;
-    // 步骤 2a-2 把 clue_0/clue_1 的 scene 从 "菲碧_特里坎"（已删伪场景节点）
-    // 改为 "特里坎家"（菲碧的真实所在场景）。
-    expect(investigation.getSceneClues("特里坎家")).toContain("clue_0");
-    expect(investigation.getSceneClues("特里坎家")).toContain("clue_1");
-    // 旧的伪场景节点下不再有任何线索。
+    expect(investigation.getSceneClues("特里坎家")).not.toContain("clue_0");
+    expect(investigation.getSceneClues("特里坎家")).not.toContain("clue_1");
     expect(investigation.getSceneClues("菲碧_特里坎")).toHaveLength(0);
+    expect(session.world.getEntity("菲碧·特里坎")).not.toBeNull();
   });
 });
 
