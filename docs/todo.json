@@ -514,6 +514,27 @@
       "severity": "info",
       "status": "open",
       "text": "【立项调研，不含实现，开发·约束层补角色实体域 N9 任务 C，2026-09-03】物品域（拦「NPC 编造模组里不存在的物品」）的可行性调研，结论：有一种能确定性收窄的思路，但它接不住本轮真实案例，实现价值存疑，本轮不做。\n\n物品确实有一个比「所有名词」窄得多、结构化程度堪比 NPC 的子集——`ModuleItem`（`module/types.ts:212`）：每条都有 `sceneId`（场景归属）+ `type`（key/document/weapon/loot/trap），是模组数据里明确登记过的「可交互物品」，与 `ModuleNPC.sceneId` 同一种结构，理论上能照抄角色域的思路建一份「物品跨场景误用」检查——NPC 说出的物品名如果是【模组里某个别的场景真实存在的 ModuleItem，但不属于当前场景】，判定为可疑（结构上等价于 `unrepresentedCharacterNouns`，只是反过来检查「跨场景」而不是「场景内缺失」）。\n\n但这条思路接不住 todo-56 的真实案例：「抽屉」「名单」都不是 BARN_OF_PREMIER 任何一个场景的真实 `ModuleItem`——它们是纯粹凭空捏造，不是把 A 场景的真实物品错安到了 B 场景。跨场景误用检查只能抓「借用了别处真实存在的物品」，抓不住「凭空发明一个全模组都没有的新物品」，而后者正是这次实测到的失效模式。做了这个收窄版本，会让人以为物品域已经覆盖，实际上对这次真正撞到的问题一个字都没解决——这是本条不建议实现的核心理由，不是太难所以偷懒。\n\n真正想拦住凭空捏造这件事，需要的是一份「这个场景允许提到哪些物品名词」的正向白名单（不是跨场景对照），而这份白名单没有 NPC 那样天然的边界——一个场景里能合理提到的家具/道具/背景物件（柜子、桌子、酒瓶、灯……）在原文散文里数量不受控，穷举等于把叙事允许提到的所有名词整个搬过来，就是任务描述里明确要避免的拦掉一切。NPC 之所以能收窄，是因为一个场景的角色阵容本来就小（模组会明确写这里有谁），而一个场景里可能存在的物件没有这种天然的小基数上限。\n\n结论：本轮不实现物品域。如果将来要做，两个可能方向留档：①先做「跨场景真实 ModuleItem 误用」这个较窄版本（结构上零成本复用角色域同一套模式），如实承认它解决的是另一个问题（误用），不是这次的问题（捏造）；②给 `ModuleItem` 加一个「叙事允许提及的关联名词」字段（类似 `Clue.matchTexts` 但用途是防呆而不是助记），把这个场景可以合理提到什么变成模组数据的一部分而不是运行时枚举——这条路径本身就是一次新的模组数据设计决策，不是本轮接线+收窄能顺手做完的事。"
+    },
+    {
+      "id": "todo-60",
+      "category": "Cthulhu 数据集运行时接入风险",
+      "severity": "warn",
+      "status": "open",
+      "text": "`src/world/world-model-integrator.ts` 的作品 scope 依赖 `activeNovel`；缺省或传空时可能把同名实体的跨作品记录放进同一候选上下文。Cthulhu typed adapter 已要求非空 `allowedWorkIds` 并按 workId 隔离，但尚未接入现有运行时。切换前必须让运行时也 fail-closed，不能把 adapter 的严格 scope 在调用边界重新放宽。"
+    },
+    {
+      "id": "todo-61",
+      "category": "Cthulhu 数据集运行时接入风险",
+      "severity": "warn",
+      "status": "open",
+      "text": "现有旧 Cthulhu 上下文按聚合 JSONL 固定切片，无法证明切片结果属于当前作品；在 Cool Air、The Curse of Yig、The Colour out of Space 等内容并存时有跨作品污染风险。新 adapter 明确不加载聚合物并要求 allowedWorkIds，但本轮不替换 `src/world/world-model-loader.ts` 的运行路径。"
+    },
+    {
+      "id": "todo-62",
+      "category": "Cthulhu 数据集运行时接入风险",
+      "severity": "warn",
+      "status": "open",
+      "text": "`src/rules/mythos-expansion.ts` 的通用神话生物数据已经进入自由跑团路径，可能覆盖模组自身登记的生物属性；已知 Mi-Go 模组值 HP 11/AC 10 会被通用库 HP 12/AC 14 覆盖。Cthulhu lore candidates 不得参与这种数值覆盖；未来接线前需定义模组事实优先级并把冲突显式化。"
     }
   ]
 }

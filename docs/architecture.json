@@ -123,6 +123,11 @@
               "loadConfig, LLMConfig"
             ],
             [
+              "src/dataset/cthulhu-manifest.ts / cthulhu-dataset.ts",
+              "外部 Cthulhu 数据集的固定来源清单、完整性校验与按作品 scope 查询；只产 LoreClaimCandidate，尚未接入运行时",
+              "CTHULHU_DATASET_MANIFEST, loadCthulhuDataset, queryLoreCandidates"
+            ],
+            [
               "src/log.ts",
               "诊断日志；明确划界——面向玩家的正文不走本模块",
               "log, LogLevel"
