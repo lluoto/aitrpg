@@ -29,6 +29,10 @@ describe("步骤 5C：ModuleData 叙事 NPC 进入自由跑团", () => {
       const entity = session.world.getEntity(sourceNpc.id);
       expect(entity?.status).toContain("narrative_noncombat");
       expect(entity?.hp).toBe(0); // storage placeholder, not an authored combat stat
+      expect(session.getState().npcs.map((npc) => npc.name)).toContain(entry.npc);
+      const aliveEnemies: unknown = Reflect.apply(Reflect.get(session, "aliveEnemies"), session, []);
+      if (!Array.isArray(aliveEnemies)) throw new Error("aliveEnemies did not return an array");
+      expect(aliveEnemies.some((enemy) => typeof enemy === "object" && enemy !== null && Reflect.get(enemy, "name") === entry.npc)).toBe(false);
       const response = await session.act(entry.utterance);
       expect(response.events.some((event) => event.speaker === entry.npc || event.speaker === "系统")).toBe(true);
     });
@@ -41,6 +45,15 @@ describe("步骤 5C：ModuleData 叙事 NPC 进入自由跑团", () => {
     const output = [loaded.narrative, ...loaded.events.map((event) => event.content)].join("\n");
     expect(output).toContain("【统一模组：普瑞米尔的谷仓】");
     expect(output).not.toContain("【剧本杀模组：普瑞米尔的谷仓】");
+    expect(Reflect.get(session, "_moduleLoader")).toBeUndefined();
+  });
+
+  it("legacy MythosModuleLoader 只在 Arkham/InnsMouth 分支按需创建", async () => {
+    const session = new GameSession("module-data-npc-legacy-lazy", "cosmic-horror", config, undefined, "调查员");
+    expect(Reflect.get(session, "_moduleLoader")).toBeUndefined();
+    const loaded = await session.act("加载模组 阿卡姆档案检查");
+    expect(Reflect.get(session, "_moduleLoader")).toBeDefined();
+    expect(loaded.events.map((event) => event.content).join("\n")).toContain("【剧本杀模组：密斯卡托尼克之秘】");
   });
 
   it("14 个统一叙事 NPC 全部进入世界；其中 11 个用 runtime identity，3 个走非战斗路径", async () => {

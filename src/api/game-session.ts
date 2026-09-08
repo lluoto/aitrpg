@@ -789,7 +789,7 @@ export class GameSession {
       if (e.position === pos) present.set(e.id, e);
     }
     const inScene = [...present.values()];
-    const npcs = inScene.filter(e => e.type === "npc" && e.hp > 0);
+    const npcs = inScene.filter(e => e.type === "npc" && (e.hp > 0 || e.status.includes("narrative_noncombat")));
     const monsters = inScene.filter(e => e.type === "monster" && e.hp > 0);
     // 同伴的血量/位置在世界实体上，CompanionState 只持有 entityId。
     // 此前直接读 c.hp / c.position，两者都不存在，返回给前端的一直是 undefined。
@@ -1364,7 +1364,9 @@ export class GameSession {
           skills: c.config.skills, resolveState: c.resolveState,
         };
       }),
-      npcs: Object.values(worldState.entities).filter(e => (e.type === "npc" || e.type === "monster") && e.hp > 0).map(e => ({ name: e.name, type: e.type, hp: e.hp, maxHp: e.maxHp })),
+      npcs: Object.values(worldState.entities)
+        .filter(e => (e.type === "npc" || e.type === "monster") && (e.hp > 0 || e.status.includes("narrative_noncombat")))
+        .map(e => ({ name: e.name, type: e.type, hp: e.hp, maxHp: e.maxHp })),
       sceneItems, difficulty: this.activeDifficulty,
       module: curModule ? {
         id: curModule.id,
@@ -4049,7 +4051,6 @@ export class GameSession {
         });
       },
       registerRichClue: (sceneId, clue, sanCost) => this.registerRichModuleClue(sceneId, clue, sanCost),
-      registerLegacyClue: (binding) => this.investigation.registerSceneClue(binding.scene, binding.clueType, binding.description, binding.sanCost),
       registerTome: (tome) => {
         const items = this.sceneItems.get(tome.sceneId) ?? [];
         if (!items.includes(tome.name)) items.push(tome.name);
@@ -4088,9 +4089,7 @@ export class GameSession {
     };
   }
 
-  private handleLoadModule(input: string, msg: (s: string) => number): boolean {
-    const moduleName = input.replace(/^(?:加载|装载|载入|启用|使用)\s*(?:模组|剧本|模块)\s*/, "").trim();
-
+  private legacyModuleLoader(): MythosModuleLoader {
     if (!this._moduleLoader) {
       const worldAdapter: MythosModuleHost["world"] = {
         upsertEntity: (entity) => this.world.upsertEntity(entity),
@@ -4132,6 +4131,13 @@ export class GameSession {
       };
       this._moduleLoader = new MythosModuleLoader(host);
     }
+
+    if (!this._moduleLoader) throw new Error("Module loader not initialized");
+    return this._moduleLoader;
+  }
+
+  private handleLoadModule(input: string, msg: (s: string) => number): boolean {
+    const moduleName = input.replace(/^(?:加载|装载|载入|启用|使用)\s*(?:模组|剧本|模块)\s*/, "").trim();
 
     // 优先从自定义模组库查"
     let mod: LoadedModule | null = null;
@@ -4184,8 +4190,7 @@ export class GameSession {
         lines = result.lines;
         entryScene = result.entryScene ?? undefined;
       } else {
-        if (!this._moduleLoader) throw new Error("Module loader not initialized");
-        lines = this._moduleLoader.import(mod);
+        lines = this.legacyModuleLoader().import(mod);
         if (mod.sceneBgm) Object.assign(this.sceneBgm, mod.sceneBgm);
         try {
           for (const r of this.world.listScenes()) {
