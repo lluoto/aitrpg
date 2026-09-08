@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-08 02:05
+> 生成于 2026-09-08 10:21
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,17 +13,18 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | b5f8041 test: retire legacy clue coexistence expectations (step 5C-B) |
-| 测试 | 2971 条 / 201 文件  全绿 |
-| 工作树 | **7 个文件未提交** |
+| HEAD | 279e09f docs: define Cthulhu dataset integration boundary |
+| 测试 | 2989 条 / 202 文件  全绿 |
+| 工作树 | **8 个文件未提交** |
 
 未提交：
-- `M docs/architecture.json`
-- `M docs/module-unification-matrix.md`
-- `M docs/notes/engine.md`
+- `M docs/deploy.md`
+- `M docs/handoff.md`
+- `M docs/index-world-model.md`
 - `M docs/notes/index.json`
-- `M docs/test-baseline.json`
-- `M docs/todo.json`
+- `M docs/now.md`
+- `M scripts/backup-critical.ts`
+- `M src/world/world-model-loader.ts`
 - `?? docs/notes/world-model.md`
 
 ## 开工前
@@ -80,7 +81,7 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 数据化躯体建模等待原始描述（2026-09-06）
   `docs/notes/world-model.md:56`
 
-## 动手前先扫一眼的坑（41）
+## 动手前先扫一眼的坑（44）
 
 - 改动前后各跑一次 `bun scripts/preflight.ts`。它把反复犯的几类错做成了机器判据：切割截断语义单元、搬运残渣、循环依赖、语法错。别靠记性。
 - 同一类失误连着犯到第 3 次就停手，换一双眼睛（另一个模型 review diff）。本轮机械切割边界连错 5 次才自己发现——失效模式相同的人查不出自己的系统性错误。
@@ -123,17 +124,20 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 【已验证，开发·在场实体与线索路径 N7，2026-09-03】约束层拦不住「NPC 编造模组里不存在的人/物」——用真实撞坑案例实测：酒吧保镖那句「名单什么的早让老板锁进抽屉了，哪轮得到你翻。」（analysis/sim/2026-08-30-barn-natural-play.md:58）编出了
 - 【已修复，开发·约束层补角色实体域 N9 任务 D，2026-09-03】【开发·在场实体与线索路径 N7 用 scene-npc-noun-registry.ts 扫出，2026-09-03】霍姆斯医院（hospital 场景）与维森酒吧/报亭是同一个形状的缺口：`clue_emily_birth
 - 【已修复，开发·把已有判据补齐到手写侧 N8，2026-09-03】新的一类失效模式：判据只覆盖了机器产出的那一侧，人手写的同类数据绕过了它。learn-gate（`src/ingest/narrative-guard.ts` 的 `evaluateObjectMentionClaims`）对摄取管
+- `src/world/world-model-integrator.ts` 的作品 scope 依赖 `activeNovel`；缺省或传空时可能把同名实体的跨作品记录放进同一候选上下文。Cthulhu typed adapter 已要求非空 `allowedWorkIds` 并按 workId 隔
+- 现有旧 Cthulhu 上下文按聚合 JSONL 固定切片，无法证明切片结果属于当前作品；在 Cool Air、The Curse of Yig、The Colour out of Space 等内容并存时有跨作品污染风险。新 adapter 明确不加载聚合物并要求 allowedWorkIds，但
+- `src/rules/mythos-expansion.ts` 的通用神话生物数据已经进入自由跑团路径，可能覆盖模组自身登记的生物属性；已知 Mi-Go 模组值 HP 11/AC 10 会被通用库 HP 12/AC 14 覆盖。Cthulhu lore candidates 不得参与这种数值覆盖；未
 
 ## 最近提交
 
+- 279e09f docs: define Cthulhu dataset integration boundary
+- 2aa8dea test: verify Cthulhu dataset evidence boundaries
+- 43a72c9 feat: add source-bound Cthulhu dataset adapter
+- 542c9c9 docs: close out direct loader retry and visibility fixes
 - b5f8041 test: retire legacy clue coexistence expectations (step 5C-B)
 - cb6a807 fix: expose narrative NPCs and create legacy loader lazily
 - a87b81d fix: make direct module loading retryable and retire legacy clues
 - ff8b8ec docs: close out direct ModuleData loading (step 5C)
-- be6974d fix: enforce direct loader entry and rich-clue SAN behavior (step 5C)
-- 5b7bb4a test: harden direct ModuleData loading behavior (step 5C-C5)
-- fc3cd68 test: assert direct loader builds 46 unified exits (step 5C-C5)
-- d4368e3 fix: apply adjudicated ModuleData scene descriptions (step 5C-C2)
 
 ## 找东西
 
