@@ -1,6 +1,6 @@
 {
-  "tests": 2966,
-  "files": 200,
+  "tests": 2971,
+  "files": 201,
   "unwiredMethods": 84,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。 86->84（开发·多人可见性 N6）：setPlayerScene 被整个删除少 1 处，getPlayersInScene 有了真调用方（player-scene-authority.test.ts）再少 1 处，两处一起解释这次的净减 2。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -664,6 +664,11 @@
       "tests": 2966,
       "files": 200,
       "when": "开发·场景集合收敛 N12 步骤5C，基线2954/198推送后开工。C0补 derive NPC 深拷贝与 runtimeNpcOrder/snapshot 完整性（重复sourceId、重复order、悬空order、未消费snapshot、无叙事NPC均显式失败），期望独立来自原始/冻结数据。C2逐项裁决21/19 descriptions、46/41 exits，无D类冲突；采用ModuleData多2描述/5正确边，4处legacy玩家文案迁回Scene。C1/C4新增ModuleDataRuntimeLoader，custom registry谷仓返回ModuleData，GameSession注册表改联合类型，谷仓不调用derive/MythosModuleLoader，Arkham/InnsMouth保留legacy分支；删除bridgeBarnOfPremierClues。C3激活前台/报亭老板/医护人员为narrative_noncombat，不伪造战斗属性；14 NPC全部进入世界。C5对账rich Clue全部字段/SAN、4 trap/3 mechanics、runtime配置、重复加载；rich SAN使True End自然回放两处实际SAN-1（有意修复）。变异：删rich clue注册红14；漏前台红2；删报亭到医院边红1；偷import derive红1。KNOWN/actual=0，6 guards全绿。typecheck 0；bun test 2954->2966(+12，198->200文件)；preflight 12/12。5D尚需清理11个兼容适配消费方。"
+    },
+    {
+      "tests": 2971,
+      "files": 201,
+      "when": "开发·场景集合收敛 N12 步骤5C收尾，基线2966/200。A：direct loader 全结构预验证后再写host，成功操作账本支持中途失败真实重试，imported仅全部成功后写；回退旧顺序变异使重试测试红1。B：clueBindings退出生产，仅32 rich Clue；10条内容逐项确认由rich clue或菲碧knowledge/secrets承载。可匹配id不变，未发现列表只去clue_0..9；特里坎家建议从误导搜查改为环顾四周。C：narrative_noncombat HP仍0，但进入state.npcs/KP状态，继续排除战斗；状态/锚点/对话/战斗分别验证。D：MythosModuleLoader仅Arkham/InnsMouth分支按需创建，谷仓后仍undefined。E：derive深克隆和order/snapshot五类完整性判据保持绿。记录修正：GameSession不调用derive，但registry import仍构造派生对象，待5D删除。typecheck 0；bun test 2966->2971(+5，200->201文件)；preflight 12/12。"
     }
   ]
 }

@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-07 13:54
+> 生成于 2026-09-08 02:05
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,8 +13,8 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | be6974d fix: enforce direct loader entry and rich-clue SAN behavior (step 5C) |
-| 测试 | 2966 条 / 200 文件  全绿 |
+| HEAD | b5f8041 test: retire legacy clue coexistence expectations (step 5C-B) |
+| 测试 | 2971 条 / 201 文件  全绿 |
 | 工作树 | **7 个文件未提交** |
 
 未提交：
@@ -126,14 +126,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- b5f8041 test: retire legacy clue coexistence expectations (step 5C-B)
+- cb6a807 fix: expose narrative NPCs and create legacy loader lazily
+- a87b81d fix: make direct module loading retryable and retire legacy clues
+- ff8b8ec docs: close out direct ModuleData loading (step 5C)
 - be6974d fix: enforce direct loader entry and rich-clue SAN behavior (step 5C)
 - 5b7bb4a test: harden direct ModuleData loading behavior (step 5C-C5)
 - fc3cd68 test: assert direct loader builds 46 unified exits (step 5C-C5)
 - d4368e3 fix: apply adjudicated ModuleData scene descriptions (step 5C-C2)
-- 0255178 test: enforce runtime NPC integrity and adapter isolation (step 5C-C0)
-- cd92b2e refactor: load barn ModuleData directly in GameSession (step 5C)
-- e379aa8 docs: close out unified source migration (step 5B)
-- 3a1dca0 test: use raw source expectations for unified projection (step 5B-B5)
 
 ## 找东西
 

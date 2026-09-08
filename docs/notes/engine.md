@@ -1713,3 +1713,27 @@ KNOWN/actual inconsistency 均为 0，6 条 fabrication guards 均绿。
 5D 尚需迁移 `MODULE_PREMIERS_BARN`/`deriveMythosModule` 的 11 个兼容消费方，
 再删除旧适配、冻结 fixture、loaderSceneDescriptions/loaderExits 和
 representation-consistency。`MythosModuleLoader` 仍服务另外两个模组，不删。
+
+### 步骤 5C 收尾：重试、legacy clues 与状态可见性（2026-09-07）
+
+修正一句容易过头的记录：**GameSession 的谷仓加载分支不调用 derive 或旧
+loader，但 custom registry 在模块 import 时仍会执行
+`MODULE_PREMIERS_BARN = deriveMythosModule(BARN_OF_PREMIER)`**。registry
+实际返回的是 ModuleData，派生对象不参与谷仓生产加载，但它仍被兼容消费方构造；
+彻底不构造要等 5D 删除旧导出及 11 个消费方。
+
+`ModuleDataRuntimeLoader.imported` 改为全部 host 操作成功后才写入。所有结构
+预验证在 host 写入前完成；中途失败保留成功操作账本，重试只继续未完成操作，
+不会重复 hooks/messages/items/scenes/clues。真实变异把 imported 写回旧位置，
+失败后的第二次调用错误返回“已导入”，重试测试按预期变红。
+
+`runtime.clueBindings` 的 10 条 legacy clues 已退出生产注册，但仍保留迁移
+对账。逐条核对确认无独有事实：clue_0/1 在菲碧 knowledge/secrets，clue_2..9
+在 rich Clue（部分结合 NPC knowledge）。rich 可匹配 id 不变；未发现列表移除
+clue_0..9。唯一建议变化是特里坎家不再把 NPC 情报误报成“仔细搜查这里”，
+改回“环顾四周”。
+
+`narrative_noncombat` NPC 的 HP 仍为 0 存储占位，但 `state.npcs`/KP 状态现显式
+包含它们；敌人选择继续按状态排除。状态接口、行动锚点、自然语言对话、战斗
+排除分别有测试。MythosModuleLoader 构造已移入 Arkham/InnsMouth legacy
+分支；加载谷仓时 `_moduleLoader` 保持 undefined。

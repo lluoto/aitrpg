@@ -101,9 +101,12 @@ import。迁移前 loader 输出被冻结在
 custom registry 的谷仓条目返回 `BARN_OF_PREMIER`；GameSession 对谷仓走
 direct loader，对 Arkham/InnsMouth 保留明确 MythosModule legacy 分支。
 
-**等价迁移**：11 个 runtime NPC、10 个 legacy clue bindings、spells/tomes/
-item placements/rewards/KP notes/hooks/BGM/aliases、intro narration 均保持旧
-loader 输入或输出；冻结 fixture 持续对账旧接口。
+**等价迁移**：11 个 runtime NPC、spells/tomes/item placements/rewards/
+KP notes/hooks/BGM/aliases、intro narration 均保持旧 loader 输入或输出；
+冻结 fixture 持续对账旧接口。10 个 legacy clueBindings 只保留迁移对账，
+已退出生产注册：clue_2..9 由 rich Clue 承载，clue_0/1 由菲碧的
+knowledge/secrets 承载。可匹配 id 不变；特里坎家从误导性的“仔细搜查”
+恢复为“环顾四周”是有意修复。
 
 **有意行为修复**：direct loader 采用 21 个 ModuleData Scene 与 46 条
 connections（比 legacy 多 2 descriptions/5 edges），加载 32 条 rich Clue
