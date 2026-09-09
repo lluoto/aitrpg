@@ -17,6 +17,7 @@ import {
   findReintroducedFabrications,
   resolveFabricationSourceText,
 } from "../ingest/confirmed-fabrication-log";
+import { BARN_OF_PREMIER } from "../module/barn-of-premier";
 
 const barnText = resolveFabricationSourceText("barn-of-premier");
 const premiersText = resolveFabricationSourceText("premiers-barn");
@@ -69,27 +70,43 @@ describe("变异检验：三条各自单独验证判据能变红（不是只验�
     expect(hits.map((h) => h.id).sort()).toEqual(["photo-farm-coordinates", "true-end-emily-knew"].sort());
   });
 
-  it("④ 历史艾德里安错误场景值原样放回统一 resolver 文本，判据必须红", () => {
-    const mutated = premiersText + '"sceneId":"艾德里安的农场"';
+  it("④ 艾德里安错误场景写回统一 runtime 后，判据必须红", () => {
+    const mutatedModule = structuredClone(BARN_OF_PREMIER);
+    const runtime = mutatedModule.npcs.find((npc) => npc.runtime?.sourceId === "艾德里安·埃斯特鲁姆")?.runtime;
+    if (!runtime) throw new Error("Adrian runtime NPC missing");
+    runtime.sceneId = "艾德里安的农场";
+    const mutated = resolveFabricationSourceText("premiers-barn", mutatedModule);
     const hits = findReintroducedFabrications(mutated, "premiers-barn");
     expect(hits.map((h) => h.id)).toEqual(["premiers-barn-adrian-at-farm"]);
   });
 
-  it("⑦ 绑架人数错值放回去，判据必须红", () => {
-    const mutated = premiersText + "已绑架11人";
+  it("⑦ 绑架人数错值写回统一 runtime 后，判据必须红", () => {
+    const mutatedModule = structuredClone(BARN_OF_PREMIER);
+    const runtime = mutatedModule.npcs.find((npc) => npc.runtime?.sourceId === "艾德里安·埃斯特鲁姆")?.runtime;
+    if (!runtime?.personality?.background) throw new Error("Adrian runtime background missing");
+    runtime.personality.background = runtime.personality.background.replace("已绑架10人", "已绑架11人");
+    if (!runtime.personality.background.includes("已绑架11人")) throw new Error("kidnap mutation did not apply");
+    const mutated = resolveFabricationSourceText("premiers-barn", mutatedModule);
     const hits = findReintroducedFabrications(mutated, "premiers-barn");
     expect(hits.map((h) => h.id)).toContain("premiers-barn-kidnap-count-eleven");
   });
 
-  it("⑥ Mi-Go sceneId 错值放回去，判据必须红", () => {
-    const mutated = premiersText + '"sceneId":"下水道","mythosCreatureId":"mi_go"';
+  it("⑥ Mi-Go 场景错值写回统一 runtime 后，判据必须红", () => {
+    const mutatedModule = structuredClone(BARN_OF_PREMIER);
+    const runtime = mutatedModule.npcs.find((npc) => npc.runtime?.sourceId === "mi-go")?.runtime;
+    if (!runtime) throw new Error("Mi-Go runtime NPC missing");
+    runtime.sceneId = "下水道";
+    const mutated = resolveFabricationSourceText("premiers-barn", mutatedModule);
     const hits = findReintroducedFabrications(mutated, "premiers-barn");
     expect(hits.map((h) => h.id)).toContain("premiers-barn-migo-at-sewer");
   });
 
-  it('⑤流浪汉 sceneId 错值放回去，判据必须红', () => {
-    const fragment = '"id":"流浪汉","name":"流浪汉","type":"npc","hp":12,"maxHp":12,"ac":10,"faction":"人类","sceneId":"农场外围"';
-    const mutated = premiersText + fragment;
+  it("⑤ 流浪汉场景错值写回统一 runtime 后，判据必须红", () => {
+    const mutatedModule = structuredClone(BARN_OF_PREMIER);
+    const runtime = mutatedModule.npcs.find((npc) => npc.runtime?.sourceId === "流浪汉")?.runtime;
+    if (!runtime) throw new Error("tramp runtime NPC missing");
+    runtime.sceneId = "农场外围";
+    const mutated = resolveFabricationSourceText("premiers-barn", mutatedModule);
     const hits = findReintroducedFabrications(mutated, "premiers-barn");
     expect(hits.map((h) => h.id)).toContain("premiers-barn-tramp-at-farm-outskirts");
   });

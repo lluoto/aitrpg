@@ -67,6 +67,7 @@
 // 因为两份登记表之间没有写清楚交接规则而被漏掉。
 
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
+import type { ModuleData } from "../module/types";
 
 export interface ConfirmedFabricationEntry {
   /** 唯一 id，供测试按名索引，不依赖数组下标 */
@@ -198,13 +199,34 @@ export function findReintroducedFabrications(
   );
 }
 
-/** Resolve both historical source labels against the single live ModuleData source. */
-export function resolveFabricationSourceText(source: ConfirmedFabricationEntry["source"]): string {
+/**
+ * Resolve both historical source labels from the one live ModuleData source.
+ * The former Mythos label is a guard-only serialization, not a runtime adapter.
+ */
+export function resolveFabricationSourceText(
+  source: ConfirmedFabricationEntry["source"],
+  module: Pick<ModuleData, "runtime" | "npcs"> = BARN_OF_PREMIER,
+): string {
   if (source === "premiers-barn") {
     return JSON.stringify({
-      runtime: BARN_OF_PREMIER.runtime,
-      runtimeNpcs: BARN_OF_PREMIER.npcs.map((npc) => npc.runtime).filter(Boolean),
+      runtime: module.runtime,
+      // Preserve the historical field names only to match repaired facts against
+      // their current ModuleNPC.runtime owners; this never creates MythosModule.
+      runtimeNpcs: module.npcs.flatMap((npc) => npc.runtime ? [{
+        id: npc.runtime.sourceId,
+        name: npc.runtime.sourceName,
+        type: npc.runtime.type,
+        hp: npc.runtime.hp,
+        maxHp: npc.runtime.maxHp,
+        ac: npc.runtime.ac,
+        faction: npc.runtime.faction,
+        sceneId: npc.runtime.sceneId,
+        mythosCreatureId: npc.runtime.mythosCreatureId,
+        attributes: npc.runtime.attributes,
+        skills: npc.runtime.skills,
+        personality: npc.runtime.personality,
+      }] : []),
     });
   }
-  return JSON.stringify(BARN_OF_PREMIER);
+  return JSON.stringify(module);
 }
