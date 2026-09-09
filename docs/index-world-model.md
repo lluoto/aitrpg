@@ -34,32 +34,20 @@
 |---|---|---|---|
 | 原著世界内容库 | `poc/src/rules/mythos-expansion.ts` | 神话生物、典籍、法术等跨模组内容 | 仅 prompt 层引用，未接入剧本引擎 |
 | 摄取中间表示 | `poc/src/module/types.ts` 的 `ModuleData` | PDF 读取模块应产出的权威结构 | 已接入 |
-| 运行时导入容器 | `poc/src/rules/mythos-module.ts` 的 `MythosModule` | activation、loader、hooks、initialEffects | 已接入；**不是**由 ModuleData 投影生成（订正见下） |
+| 运行时导入容器 | `poc/src/rules/mythos-module.ts` 的 `MythosModule` | legacy activation、loader、hooks、initialEffects | 已接入；服务 Arkham/InnsMouth，不承载谷仓 |
 
-> 【订正，开发·场景 id 收敛 N11，2026-09-04】上表"应由 ModuleData 投影
-> 生成"这句不成立——`docs/notes/engine.md` 的
-> 「谷仓模组两份表示收敛方案（开发·陈旧记录纠正+收敛前置 N10 任务②B3，2026-09-04）」一节
-> 的 (a) 逐字段核对过两侧类型定义，两个方向都有对方补不出来的
-> 结构：`MythosModule` 缺 `findMethods`/`unlocks`/`TrapMechanics`/
-> 结构化 `EndNarration.condition`；`ModuleData` 同样缺
-> `activation`/`spells`/`tomes`/`rewards`/`initialEffects` 这类运行时
-> 钩子，且两侧 `ModuleNPC` 是完全不同目的的建模（`MythosModule` 战斗
-> 属性导向，`ModuleData` 叙事导向）——不是一份能把另一份投影出来。
-> 准确说法：**ModuleData 是叙事/线索结构的权威源，MythosModule 是
-> 引擎可加载运行时的权威源，收敛需要合并两者，不是让一方降级为另一方
-> 的投影**。详细论证、字段级证据与合并方案见上述小节。
-
-【步骤 4 已完成，开发·场景集合收敛 N12，2026-09-06】当前《普瑞米尔的谷仓》保留两份表述；
-第三份 `PREMIERS_BARN_MODULE` 已从 `mythos-module.ts` 删除。消费方先迁移/清理，
-再删除定义，typecheck 与全量测试保持通过：
+【步骤 5D 已完成，2026-09-08】谷仓运行字段已迁入 `ModuleData.runtime`，
+唯一维护数据为 `BARN_OF_PREMIER`。薄适配、投影函数与过渡场景图/线索绑定
+均已删除；`ModuleDataRuntimeLoader` 直接加载谷仓。`MythosModule` 与 loader
+仍是 Arkham/InnsMouth 的 legacy 容器，不受此迁移影响：
 
 | 文件 | 类型 | 风险 |
 |---|---|---|
-| `poc/src/module/barn-of-premier.ts` | 手写 `ModuleData` | 当前剧本引擎使用 |
-| `poc/src/rules/custom-modules/premiers_barn.ts` | 生成式 `MythosModule` | `game-session.ts` 路径使用 |
-| `poc/src/rules/mythos-module.ts` | 其他内置模组类型与 loader | 不再承载谷仓第三份表示 |
+| `poc/src/module/barn-of-premier.ts` | 手写 `ModuleData` | 谷仓唯一维护入口，剧本与自由跑团均直接读取 |
+| `poc/src/rules/mythos-module.ts` | 其他内置模组类型与 loader | 仅服务 Arkham/InnsMouth legacy 分支 |
 
-两份谷仓表示仍待步骤 5 字段合并；在合并完成前，不应继续向两份内容分别新增事实。
+谷仓的跨表示内容比对已退役为禁止第二份表示复生的结构哨兵；详见
+`docs/module-unification-matrix.md`。
 
 其余已接入的模组相关文件：`poc/src/module/types.ts`（模组类型契约，23 个
 interface：`ModuleData`/`Scene`/`Clue`/`ModuleItem`/`TrapMechanics`/`Provenance` 等）、
@@ -120,6 +108,7 @@ interface：`ModuleData`/`Scene`/`Clue`/`ModuleItem`/`TrapMechanics`/`Provenance
 | `D:\aitrpg\世界模型\*.txt`、`*.epub` | 原始小说语料 | 保留，不与章节切片去重 |
 | `D:\aitrpg\世界模型\chapters_*` | 原文的章节/合成切片 | 派生输入；保留与来源文本的血缘 |
 | `D:\aitrpg\世界模型\v18_output` | POC 当前运行时参考语料 | 保留，未被 v2 替换 |
+| `D:\aitrpg\世界模型\datasets\cthulhu` | 克苏鲁原文、章节、提取结果与专用管线 | POC 开发侧可直接消费的独立数据集 |
 | `D:\aitrpg\世界模型\relics`、`verification_*`、`output`、`results` | 旧提取、遗物和验证实验 | 历史/参考；不可作为 v2 新结论依据 |
 | `D:\aitrpg\世界模型\worldmodel` | 当前来源绑定 v2 提取工程 | 活跃 |
 

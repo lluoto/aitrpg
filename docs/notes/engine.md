@@ -1737,3 +1737,30 @@ clue_0..9。唯一建议变化是特里坎家不再把 NPC 情报误报成“仔
 包含它们；敌人选择继续按状态排除。状态接口、行动锚点、自然语言对话、战斗
 排除分别有测试。MythosModuleLoader 构造已移入 Arkham/InnsMouth legacy
 分支；加载谷仓时 `_moduleLoader` 保持 undefined。
+
+### 步骤 5D：删除谷仓 Mythos 兼容表示（2026-09-08）
+
+解析式 import 审计使用 `diagnostics/source-scan.ts` 的 `scanImports` 与
+`findReverseImports`，实测旧薄适配的 11 个消费者是 custom registry、语音脚本、
+语义矛盾 probe、fabrication guard、三方审计、legacy adapter fixture、结局一致性、
+scene whitelist、representation consistency 与 unified projection 测试。全部迁到
+`BARN_OF_PREMIER` 或直接退役后，`premiers_barn`、`unified-module`、
+`representation-consistency` 均无反向 import。
+
+谷仓 registry 现在直接登记 `BARN_OF_PREMIER`，不会在 import 时派生 MythosModule。
+`scripts/gen-speech.ts` 直接读取 `runtime.introNarration`；semantic probe 只收统一
+ModuleData 的叙事/runtime NPC；历史 `source:"premiers-barn"` fabrication records
+保留标签但 resolver 检查统一 runtime NPC。三方审计只扫描唯一维护文件，结局检查
+比较 `EndNarration`、display endings 与 `runtime.legacyEndings`，而不是比较同一投影
+函数两端。Mythos scene whitelist 只保留 Arkham/InnsMouth。
+
+删除 `MODULE_PREMIERS_BARN`、薄包装、`deriveMythosModule` 及投影/回投函数、旧
+loader fixture、跨表示比较器，以及 `loaderSceneDescriptions`、`loaderExits`、
+`clueBindings`。`runtime-npc-attachment.ts` 保留唯一仍需的 runtime snapshot 组装。
+旧内容比对退役为 `barn-unification-sentinel.test.ts`：禁止旧 adapter/symbol/包装与三项
+过渡字段复生，并验证 GameSession 谷仓路径不 import adapter。
+
+真实变异逐项验证：registry 重引 wrapper 使两个 import 哨兵红；runtime 恢复
+`loaderExits` 使字段哨兵红；删 rich Clue 注册使 direct loader 与自然语言 True End
+回放红；fabrication resolver 指回已删除文件产生 ENOENT。还原后 typecheck 与全量测试
+均绿。步骤 5 没有已定义的 5E 工作；Arkham/InnsMouth 的 ModuleData 迁移属于独立决策。

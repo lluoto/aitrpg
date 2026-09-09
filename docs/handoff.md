@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-08 10:19  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-09 11:52  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：279e09f docs: define Cthulhu dataset integration boundary  ·  **测试**：2989 条 / 202 文件，全绿（基线 2989，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：bc098e6 refactor: retire Barn Mythos compatibility adapter  ·  **测试**：2957 条 / 201 文件，全绿（基线 2957，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -209,6 +209,8 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- bc098e6 refactor: retire Barn Mythos compatibility adapter
+- e1ed60d docs: refresh Cthulhu adapter handoff
 - 279e09f docs: define Cthulhu dataset integration boundary
 - 2aa8dea test: verify Cthulhu dataset evidence boundaries
 - 43a72c9 feat: add source-bound Cthulhu dataset adapter
@@ -219,8 +221,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - ff8b8ec docs: close out direct ModuleData loading (step 5C)
 - be6974d fix: enforce direct loader entry and rich-clue SAN behavior (step 5C)
 - 5b7bb4a test: harden direct ModuleData loading behavior (step 5C-C5)
-- fc3cd68 test: assert direct loader builds 46 unified exits (step 5C-C5)
-- d4368e3 fix: apply adjudicated ModuleData scene descriptions (step 5C-C2)
 
 ## 代码地图
 

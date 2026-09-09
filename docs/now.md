@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-08 10:21
+> 生成于 2026-09-09 11:52
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,17 +13,24 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 279e09f docs: define Cthulhu dataset integration boundary |
-| 测试 | 2989 条 / 202 文件  全绿 |
-| 工作树 | **8 个文件未提交** |
+| HEAD | bc098e6 refactor: retire Barn Mythos compatibility adapter |
+| 测试 | 2957 条 / 201 文件  全绿 |
+| 工作树 | **15 个文件未提交** |
 
 未提交：
+- `M docs/architecture.json`
 - `M docs/deploy.md`
 - `M docs/handoff.md`
 - `M docs/index-world-model.md`
+- `M docs/module-unification-matrix.md`
+- `M docs/notes/engine.md`
 - `M docs/notes/index.json`
 - `M docs/now.md`
+- `M docs/test-baseline.json`
+- `M docs/todo.json`
 - `M scripts/backup-critical.ts`
+- `M src/__tests__/cthulhu-dataset.test.ts`
+- `M src/dataset/cthulhu-manifest.ts`
 - `M src/world/world-model-loader.ts`
 - `?? docs/notes/world-model.md`
 
@@ -130,14 +137,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- bc098e6 refactor: retire Barn Mythos compatibility adapter
+- e1ed60d docs: refresh Cthulhu adapter handoff
 - 279e09f docs: define Cthulhu dataset integration boundary
 - 2aa8dea test: verify Cthulhu dataset evidence boundaries
 - 43a72c9 feat: add source-bound Cthulhu dataset adapter
 - 542c9c9 docs: close out direct loader retry and visibility fixes
 - b5f8041 test: retire legacy clue coexistence expectations (step 5C-B)
 - cb6a807 fix: expose narrative NPCs and create legacy loader lazily
-- a87b81d fix: make direct module loading retryable and retire legacy clues
-- ff8b8ec docs: close out direct ModuleData loading (step 5C)
 
 ## 找东西
 
