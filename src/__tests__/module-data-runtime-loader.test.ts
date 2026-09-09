@@ -48,6 +48,7 @@ describe("ModuleDataRuntimeLoader：直接读取统一 ModuleData", () => {
     expect(entry?.module).toHaveProperty("scenes");
     expect(entry?.module).toHaveProperty("runtime");
     expect(entry?.module).not.toHaveProperty("sceneDescriptions");
+    expect(entry?.module).toBe(BARN_OF_PREMIER);
   });
 
   it("不经 Mythos 适配，注册场景/ModuleData 连接/丰富线索/运行配置", () => {
@@ -64,8 +65,7 @@ describe("ModuleDataRuntimeLoader：直接读取统一 ModuleData", () => {
     expect(capture.runtimeNpcs).toHaveLength(11);
     expect(capture.narrativeNpcs.sort()).toEqual(["bar_receptionist", "hospital_staff", "newsstand_owner"]);
     expect(capture.richClues).toHaveLength(32);
-    expect(BARN_OF_PREMIER.runtime?.clueBindings).toHaveLength(10); // 迁移对账仍保留
-    expect(result.lines.some((line) => line.includes("兼容线索绑定"))).toBe(false); // 生产不消费
+    expect(BARN_OF_PREMIER.runtime).not.toHaveProperty("clueBindings");
     const brainJars = capture.richClues.find((entry) => entry.clue.id === "clue_final_brain_jars");
     expect(brainJars?.sceneId).toBe("维修间");
     expect(brainJars?.sanCost).toBe("1/1d6");
@@ -75,6 +75,8 @@ describe("ModuleDataRuntimeLoader：直接读取统一 ModuleData", () => {
     expect(massBooking?.unlocks).toEqual(["clue_bar_guest_identity"]);
     expect(massBooking?.revelation).toContain("贵客包下了酒吧");
     expect(capture.richItems).toHaveLength(10);
+    expect(capture.richItems.filter((item) => item.type === "trap")).toHaveLength(4);
+    expect(capture.richItems.filter((item) => item.trap)).toHaveLength(3);
     expect(capture.richItems.find((item) => item.id === "trap_bear")?.trap?.damage).toBe("1D4+1");
     expect(capture.itemPlacements).toHaveLength(10);
     expect(capture.spells).toHaveLength(4);
@@ -146,9 +148,8 @@ describe("ModuleDataRuntimeLoader：直接读取统一 ModuleData", () => {
     expect(capture.initialEffects).toEqual([{ target: "test", field: "flag", value: { nested: true } }]);
   });
 
-  it("结构判据：direct loader 不 import unified-module 或 mythos-module，不能偷偷走旧路径", () => {
+  it("结构判据：direct loader 不 import MythosModule，不能偷偷走旧路径", () => {
     const imports = scanImports(readFileSync("src/module/module-data-runtime-loader.ts", "utf8"));
-    expect(imports.some((entry) => importPointsTo(entry.path, "unified-module"))).toBe(false);
     expect(imports.some((entry) => importPointsTo(entry.path, "mythos-module"))).toBe(false);
   });
 });

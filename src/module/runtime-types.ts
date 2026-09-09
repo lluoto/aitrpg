@@ -13,8 +13,8 @@ export interface RuntimeActivation {
   condition: string;
 }
 
-// Kept alongside runtime config during 5A so a future migration does not
-// silently choose ModuleData's top-level copy when the two source values differ.
+// Runtime identity remains explicit because the direct loader needs stable
+// module metadata without reinterpreting narrative fields.
 export interface RuntimeModuleIdentity {
   id: string;
   name: string;
@@ -154,17 +154,11 @@ export interface ModuleRuntimeConfig {
   hooks?: RuntimeModuleHook[];
   sceneBgm?: Record<string, string>;
   sceneAliases?: Record<string, string[]>;
-  // Transitional loader-shaped scene graph. Final semantic landing remains
-  // Scene.description/connections, but 5B keeps these exact legacy maps so
-  // the untouched GameSession loader receives identical input.
-  loaderSceneDescriptions?: Record<string, string>;
-  loaderExits?: Record<string, Array<{ target: string; desc?: string }>>;
   runtimeNpcOrder?: string[];
   runtimeNpcs?: RuntimeNpcSnapshot[];
   npcStats?: Record<string, Record<string, number | string>>;
   legacyEndings?: RuntimeModuleEnding[];
   itemPlacements?: RuntimeItemPlacement[];
-  clueBindings?: RuntimeClueBinding[];
   /** rich ModuleData clue id -> structured CoC SAN cost. */
   richClueSanCosts?: Record<string, string>;
 }

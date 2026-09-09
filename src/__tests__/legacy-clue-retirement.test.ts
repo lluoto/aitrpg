@@ -18,38 +18,16 @@ function move(session: GameSession, scene: string): void {
   if (moved !== true) throw new Error(`failed to move to ${scene}`);
 }
 
-describe("步骤 5C 收尾：legacy clueBindings 退出生产", () => {
-  it("可文本匹配 id 不变；未发现列表只移除 clue_0..9；建议文本的唯一变化是特里坎家不再误提示搜查", async () => {
-    const after = await loaded("after");
-    const before = await loaded("before-simulated");
-    for (const binding of BARN_OF_PREMIER.runtime?.clueBindings ?? []) {
-      before.investigation.registerSceneClue(binding.scene, binding.clueType, binding.description, binding.sanCost);
-    }
+describe("迁移后的丰富线索替代 legacy clueBindings", () => {
+  it("统一 runtime 不再保存绑定；运行时仍注册可匹配的丰富线索且不暴露 clue_0..9", async () => {
+    const session = await loaded("rich-clues");
+    expect(BARN_OF_PREMIER.runtime).not.toHaveProperty("clueBindings");
+    const ids = session.investigation.listModuleClueIds({ onlyWithMatchTexts: true });
+    expect(ids).not.toEqual([]);
+    for (let index = 0; index < 10; index++) expect(ids).not.toContain(`clue_${index}`);
 
-    expect(after.investigation.listModuleClueIds({ onlyWithMatchTexts: true }).sort()).toEqual(
-      before.investigation.listModuleClueIds({ onlyWithMatchTexts: true }).sort(),
-    );
-
-    const scenes = ["特里坎家", "加比的拖车房", "维森酒吧", "与艾德里安的会面"];
-    const legacyIds = new Set(Array.from({ length: 10 }, (_, index) => `clue_${index}`));
-    for (const scene of scenes) {
-      const afterIds = after.investigation.getUndiscoveredSceneClues(scene, "p1");
-      const beforeIds = before.investigation.getUndiscoveredSceneClues(scene, "p1");
-      const removed = beforeIds.filter((id) => !afterIds.includes(id));
-      expect(removed.every((id) => legacyIds.has(id))).toBe(true);
-      expect(afterIds.some((id) => legacyIds.has(id))).toBe(false);
-
-      move(after, scene);
-      move(before, scene);
-      const afterSuggestions = after.getSuggestions("p1");
-      const beforeSuggestions = before.getSuggestions("p1");
-      if (scene === "特里坎家") {
-        expect(beforeSuggestions).toContain("仔细搜查这里");
-        expect(afterSuggestions).toContain("环顾四周");
-      } else {
-        expect(afterSuggestions).toEqual(beforeSuggestions);
-      }
-    }
+    move(session, "特里坎家");
+    expect(session.getSuggestions("p1")).toContain("环顾四周");
   });
 
   it("10 条 legacy 内容均有 rich Clue 或叙事 NPC knowledge/secrets 承载", () => {

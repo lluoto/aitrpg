@@ -12,12 +12,14 @@
 // bun test src/__tests__/confirmed-fabrication-log.test.ts
 
 import { describe, it, expect } from "bun:test";
-import { CONFIRMED_FABRICATION_LOG, findReintroducedFabrications } from "../ingest/confirmed-fabrication-log";
-import { BARN_OF_PREMIER } from "../module/barn-of-premier";
-import { MODULE_PREMIERS_BARN } from "../rules/custom-modules/premiers_barn";
+import {
+  CONFIRMED_FABRICATION_LOG,
+  findReintroducedFabrications,
+  resolveFabricationSourceText,
+} from "../ingest/confirmed-fabrication-log";
 
-const barnText = JSON.stringify(BARN_OF_PREMIER);
-const premiersText = JSON.stringify(MODULE_PREMIERS_BARN);
+const barnText = resolveFabricationSourceText("barn-of-premier");
+const premiersText = resolveFabricationSourceText("premiers-barn");
 
 describe("存档形状", () => {
   it("都有完整字段，fabricatedText 非空", () => {
@@ -42,7 +44,7 @@ describe("**主判据**：已确证臆造都不再逐字出现在真实模组数
     expect(hits).toEqual([]);
   });
 
-  it("premiers_barn.ts 里挂靠的条目（步骤 3 修复的 B2 裁决错误）", () => {
+  it("历史 premiers-barn 标签的条目现在检查统一 runtime NPC 数据", () => {
     const hits = findReintroducedFabrications(premiersText, "premiers-barn");
     expect(hits).toEqual([]);
   });
@@ -67,7 +69,7 @@ describe("变异检验：三条各自单独验证判据能变红（不是只验�
     expect(hits.map((h) => h.id).sort()).toEqual(["photo-farm-coordinates", "true-end-emily-knew"].sort());
   });
 
-  it("④「\"sceneId\":\"艾德里安的农场\"」原样放回去，判据必须红", () => {
+  it("④ 历史艾德里安错误场景值原样放回统一 resolver 文本，判据必须红", () => {
     const mutated = premiersText + '"sceneId":"艾德里安的农场"';
     const hits = findReintroducedFabrications(mutated, "premiers-barn");
     expect(hits.map((h) => h.id)).toEqual(["premiers-barn-adrian-at-farm"]);

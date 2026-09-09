@@ -48,13 +48,15 @@ describe("步骤 5C：ModuleData 叙事 NPC 进入自由跑团", () => {
     expect(Reflect.get(session, "_moduleLoader")).toBeUndefined();
   });
 
-  it("legacy MythosModuleLoader 只在 Arkham/InnsMouth 分支按需创建", async () => {
-    const session = new GameSession("module-data-npc-legacy-lazy", "cosmic-horror", config, undefined, "调查员");
-    expect(Reflect.get(session, "_moduleLoader")).toBeUndefined();
-    const loaded = await session.act("加载模组 阿卡姆档案检查");
-    expect(Reflect.get(session, "_moduleLoader")).toBeDefined();
-    expect(loaded.events.map((event) => event.content).join("\n")).toContain("【剧本杀模组：密斯卡托尼克之秘】");
-  });
+  for (const [request, title] of [["阿卡姆档案检查", "密斯卡托尼克之秘"], ["印斯茅斯的阴影", "印斯茅斯的阴霾"]] as const) {
+    it(`${request} 继续走按需创建的 legacy MythosModuleLoader 分支`, async () => {
+      const session = new GameSession(`module-data-npc-legacy-${request}`, "cosmic-horror", config, undefined, "调查员");
+      expect(Reflect.get(session, "_moduleLoader")).toBeUndefined();
+      const loaded = await session.act(`加载模组 ${request}`);
+      expect(Reflect.get(session, "_moduleLoader")).toBeDefined();
+      expect(loaded.events.map((event) => event.content).join("\n")).toContain(`【剧本杀模组：${title}】`);
+    });
+  }
 
   it("14 个统一叙事 NPC 全部进入世界；其中 11 个用 runtime identity，3 个走非战斗路径", async () => {
     const session = await loadedSession("all-14");

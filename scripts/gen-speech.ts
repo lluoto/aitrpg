@@ -20,7 +20,6 @@ import {
   INNSMOUTH_MODULE,
   ARKHAM_LIBRARY_MODULE,
 } from "../src/rules/mythos-module";
-import { MODULE_PREMIERS_BARN } from "../src/rules/custom-modules/premiers_barn";
 import { runModule } from "../src/play-module";
 import { BARN_OF_PREMIER, BARN_SUPPORT } from "../src/module/barn-of-premier";
 
@@ -86,12 +85,17 @@ async function harvestScripted(): Promise<PrebakeEntry[]> {
   return [...byKey.values()];
 }
 
+function barnIntroEntry(): PrebakeEntry[] {
+  const text = BARN_OF_PREMIER.runtime?.introNarration?.trim();
+  return text ? [{ key: voiceKey(text), moduleId: BARN_OF_PREMIER.id, kind: "intro", speaker: "守秘人", text }] : [];
+}
+
 const collected = [
   ...collectPrebakeEntries([
     INNSMOUTH_MODULE,
     ARKHAM_LIBRARY_MODULE,
-    MODULE_PREMIERS_BARN, // 第三份已死表示已在步骤 4 删除
   ]),
+  ...barnIntroEntry(),
   ...(await harvestScripted()),
 ];
 // 两路来源可能撞上同一段文本 —— 键由内容决定，撞了本就是同一份音频，留一份

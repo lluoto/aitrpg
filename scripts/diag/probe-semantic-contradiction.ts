@@ -37,7 +37,6 @@ import { LLMClient } from "../../src/llm/client";
 import { writeReport } from "../../src/diagnostics/report";
 import { readOriginalCorpus } from "../../src/ingest/three-way-audit";
 import { BARN_OF_PREMIER, END_NARRATIONS, BARN_SUPPORT } from "../../src/module/barn-of-premier";
-import { MODULE_PREMIERS_BARN } from "../../src/rules/custom-modules/premiers_barn";
 
 interface Candidate {
   id: string;
@@ -83,7 +82,7 @@ const CALIBRATION_CASES: CalibrationCase[] = [
     id: "cal-negative-3",
     text: "生物学教授，妻难产濒死，使用一战遗迹笔记召唤米-戈，被欺骗后绑架10人。第11次时与警交火弹片击中头部导致瘫痪。",
     expectedContradiction: false,
-    note: "MODULE_PREMIERS_BARN.personality.background——忠于原文 section_01 全段",
+    note: "BARN_OF_PREMIER 内嵌 runtime NPC 的 personality.background——忠于原文 section_01 全段",
   },
   {
     id: "cal-negative-4",
@@ -107,8 +106,9 @@ function collectCandidates(): Candidate[] {
   const out: Candidate[] = [];
 
   function pushNpc(prefix: string, npc: any) {
-    const secrets: string[] = npc.personality?.secrets ?? npc.secrets ?? [];
-    const background: string = npc.personality?.background ?? npc.background ?? npc.description ?? "";
+    const personality = npc.runtime?.personality ?? npc.personality;
+    const secrets: string[] = personality?.secrets ?? npc.secrets ?? [];
+    const background: string = personality?.background ?? npc.background ?? npc.description ?? "";
     const name = npc.name ?? npc.id ?? "?";
     for (const s of secrets) {
       if (s && s.trim()) out.push({ id: `${prefix}:npc:${name}:secret`, text: s });
@@ -118,8 +118,7 @@ function collectCandidates(): Candidate[] {
     }
   }
 
-  for (const npc of BARN_OF_PREMIER.npcs) pushNpc("barn-of-premier.ts", npc as any);
-  for (const npc of MODULE_PREMIERS_BARN.npcs ?? []) pushNpc("premiers_barn.ts", npc as any);
+  for (const npc of BARN_OF_PREMIER.npcs) pushNpc("BARN_OF_PREMIER", npc as any);
 
   for (const en of END_NARRATIONS) {
     out.push({ id: `barn-of-premier.ts:ending:${en.id}`, text: en.lines.join("\n") });

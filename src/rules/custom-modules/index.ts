@@ -15,7 +15,7 @@
 
 import type { MythosModule } from "../mythos-module";
 import type { ModuleData } from "../../module/types";
-import { MODULE_REGISTRY as PREMIERS_BARN_REGISTRY } from "./premiers_barn";
+import { BARN_OF_PREMIER } from "../../module/barn-of-premier";
 
 // ── 模组注册表 ──
 // 所有已提取的社区模组在此注册
@@ -33,8 +33,8 @@ function register(entries: Array<{ id: string; name: string; module: CustomModul
   }
 }
 
-// 注册所有已提取的模组
-register(PREMIERS_BARN_REGISTRY);
+// 谷仓只有 ModuleData 一份维护数据；Arkham/InnsMouth 保留在 legacy 分支。
+register([{ id: "premiers_barn", name: "普瑞米尔的谷仓", module: BARN_OF_PREMIER }]);
 
 // ── 公开接口 ──
 

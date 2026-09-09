@@ -22,9 +22,9 @@
 // "0 是什么意思、不是什么意思"明确写下来，且是机器能核对的形式，
 // 不是只写在注释里指望人记得。
 //
-// 判据用法（`confirmed-fabrication-log.test.ts`）：对每一条，把它挂靠
-// 的模组数据（`source` 字段指明是 `barn-of-premier.ts` 的默认导出还是
-// `premiers_barn.ts` 的 `MODULE_PREMIERS_BARN`）序列化成文本，断言
+// 判据用法（`confirmed-fabrication-log.test.ts`）：对每一条，resolver 都从
+// `BARN_OF_PREMIER` 序列化当前维护的数据。`source:"premiers-barn"` 仅是
+// 历史错误出现位置的标签；它现在检查该标签迁入的 runtime NPC 数据，断言
 // `fabricatedText` 不再是这段文本的子串。名单外的模组数据没有这层
 // 保护——同 `FABRICATION_REGISTRY`/`KNOWN_UNREACHABLE` 一个模式：
 // 显式登记 + 判据对每一条断言，不是自动扫描发现新的。
@@ -40,10 +40,7 @@
 // 三方审计"看不见语义矛盾"这条根本限制——它只是把已经人工找到的
 // 几个具体实例钉住，不让它们静默地重新出现，仅此而已。
 //
-// ── 与 `module/representation-consistency.ts` 的 `KNOWN_INCONSISTENCIES`
-// 分工（开发·场景 id 收敛 N11，2026-09-04 补记，避免两份登记表之间
-// 出现单向链接——之前只有 representation-consistency.ts 提到这份存档，
-// 反过来没有，交接规则没写清楚）──
+// ── 与已退役的跨表示一致性判据的交接规则（开发·场景 id 收敛 N11）──
 //
 //   KNOWN_INCONSISTENCIES        已发现、**未修复**的跨表示不一致；
 //                                 判据对每一条只做"是不是还在名单里"的
@@ -69,13 +66,15 @@
 // 不是直接删除——这是本节新增的存在理由，防止真的到了那一步时，
 // 因为两份登记表之间没有写清楚交接规则而被漏掉。
 
+import { BARN_OF_PREMIER } from "../module/barn-of-premier";
+
 export interface ConfirmedFabricationEntry {
   /** 唯一 id，供测试按名索引，不依赖数组下标 */
   id: string;
   /** 臆造原文——逐字，变异检验会把它原样放回数据里验证判据变红 */
   fabricatedText: string;
-  /** 这段文本挂靠哪份模组数据——判据据此决定序列化谁 */
-  source: "barn-of-premier" | "premiers-barn"; // "mythos-module" 已随步骤4删除第三份表示一起清除
+  /** 历史错误来源；resolver 统一读取 BARN_OF_PREMIER。 */
+  source: "barn-of-premier" | "premiers-barn";
   /** 具体位置（文件 + 字段路径），供人复核 */
   location: string;
   /** 怎么被发现的——这几条无一例外都是人工通读原文才发现的 */
@@ -119,13 +118,13 @@ export const CONFIRMED_FABRICATION_LOG: ConfirmedFabricationEntry[] = [
     fixCommit: "80abf68",
   },
   // ── 步骤 3（开发·场景集合收敛 N12，2026-09-04）: 从 KNOWN_INCONSISTENCIES 迁移 ──
-  // B2 裁决的 4 条确认错误，在真正订正时按交接规则迁入此处（source: "premiers-barn"
-  // 指向 MODULE_PREMIERS_BARN，即 rules/custom-modules/premiers_barn.ts）。
+  // B2 裁决的 4 条确认错误保留历史 source 标签；5D 后 resolver 检查迁入
+  // BARN_OF_PREMIER 的 runtime NPC 数据，而不是重建已删除的旧表示。
   {
     id: "premiers-barn-adrian-at-farm",
     fabricatedText: '"sceneId":"艾德里安的农场"',
     source: "premiers-barn",
-    location: "MODULE_PREMIERS_BARN.npcs[艾德里安·埃斯特鲁姆].sceneId",
+    location: "历史 MODULE_PREMIERS_BARN.npcs[艾德里安·埃斯特鲁姆].sceneId；当前 BARN_OF_PREMIER.npcs[].runtime.sceneId",
     discoveredBy:
       "N10 任务②B2：findNpcSceneInconsistencies 报出两侧站位不一致，人工核对 section_11.txt" +
       "抓捕通报（「于霍姆斯医院接受治疗，处于意识不清状态」）确认他被捕枪伤后在医院，" +
@@ -141,7 +140,7 @@ export const CONFIRMED_FABRICATION_LOG: ConfirmedFabricationEntry[] = [
     // 需要带足够的 NPC 上下文才能唯一定位——使用 id/name/type/hp 组合，1 次出现。
     fabricatedText: '"id":"流浪汉","name":"流浪汉","type":"npc","hp":12,"maxHp":12,"ac":10,"faction":"人类","sceneId":"农场外围"',
     source: "premiers-barn",
-    location: "MODULE_PREMIERS_BARN.npcs[流浪汉].sceneId",
+    location: "历史 MODULE_PREMIERS_BARN.npcs[流浪汉].sceneId；当前 BARN_OF_PREMIER.npcs[].runtime.sceneId",
     discoveredBy:
       "N10 任务②B2：findNpcSceneInconsistencies 报出两侧站位不一致，人工核对 section_06.txt:57-62" +
       "（「房子被周围的流浪汉所占据」）确认流浪汉占据的是艾德里安在镇内那栋荒废别墅，" +
@@ -155,7 +154,7 @@ export const CONFIRMED_FABRICATION_LOG: ConfirmedFabricationEntry[] = [
     id: "premiers-barn-migo-at-sewer",
     fabricatedText: '"sceneId":"下水道","mythosCreatureId":"mi_go"',
     source: "premiers-barn",
-    location: "MODULE_PREMIERS_BARN.npcs[mi-go].sceneId",
+    location: "历史 MODULE_PREMIERS_BARN.npcs[mi-go].sceneId；当前 BARN_OF_PREMIER.npcs[].runtime.sceneId",
     discoveredBy:
       "N10 任务②B2：findNpcSceneInconsistencies 报出两侧站位不一致，人工核对 section_12.txt:25-35" +
       "（▶比较大的奇怪管道在「维修间：」节下）确认米戈出现在维修间内，下水道只是必经前一跳路径。" +
@@ -171,7 +170,7 @@ export const CONFIRMED_FABRICATION_LOG: ConfirmedFabricationEntry[] = [
     // "已绑架11人"特指错误的受害人数断言，修正后变为"已绑架10人"，此串消失。
     fabricatedText: "已绑架11人",
     source: "premiers-barn",
-    location: "MODULE_PREMIERS_BARN.npcs[艾德里安·埃斯特鲁姆].personality.background",
+    location: "历史 MODULE_PREMIERS_BARN.npcs[艾德里安·埃斯特鲁姆].personality.background；当前 BARN_OF_PREMIER.npcs[].runtime.personality.background",
     discoveredBy:
       "N10 任务②B2：findNumericFactInconsistencies 报出绑架人数两侧不一致（10 vs 11），" +
       "人工核对原文受害者档案通报确认真实人数是 10 人；MythosModule 把「第 11 次行动被警方发现交火」" +
@@ -188,9 +187,7 @@ export const CONFIRMED_FABRICATION_LOG: ConfirmedFabricationEntry[] = [
  * 判据：给定一份序列化好的模组数据文本，返回其中仍然逐字出现的
  * 已知臆造条目——空数组表示这份数据里一条都不剩，是"绿"的意思。
  *
- * 不在这里做序列化（不 import BARN_OF_PREMIER/MODULE_PREMIERS_BARN）：
- * 让调用方决定怎么序列化、序列化谁，变异检验才能传一份构造出来的
- * 假文本进来，不用真的去改数据文件。
+ * 保持纯函数，变异检验可传构造文本而无需修改真实模组数据。
  */
 export function findReintroducedFabrications(
   serializedModuleText: string,
@@ -199,4 +196,15 @@ export function findReintroducedFabrications(
   return CONFIRMED_FABRICATION_LOG.filter(
     (entry) => entry.source === source && serializedModuleText.includes(entry.fabricatedText),
   );
+}
+
+/** Resolve both historical source labels against the single live ModuleData source. */
+export function resolveFabricationSourceText(source: ConfirmedFabricationEntry["source"]): string {
+  if (source === "premiers-barn") {
+    return JSON.stringify({
+      runtime: BARN_OF_PREMIER.runtime,
+      runtimeNpcs: BARN_OF_PREMIER.npcs.map((npc) => npc.runtime).filter(Boolean),
+    });
+  }
+  return JSON.stringify(BARN_OF_PREMIER);
 }

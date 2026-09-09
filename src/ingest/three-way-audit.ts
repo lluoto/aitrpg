@@ -265,27 +265,18 @@ export function classifyFieldOmission(fieldPath: string): ThreeWayVerdict | null
 }
 
 // ============================================================
-// 多文件覆盖 + 声明实体审计（开发·三档约束 阶段7 任务②）
+// 统一源覆盖 + 声明实体审计
 // ============================================================
 //
-// 背景：阶段3 的方括号术语审计只扫过 barn-of-premier.ts 一个文件。这一轮
-// 漏检的语义矛盾（mythos-module.ts:1061 的 secrets 写反）恰好就在别的
-// 文件里——不是这套审计"测不出语义矛盾"这条已知能力边界的问题（它确实
-// 测不出，见文件头注释），是它连"扫没扫到"这一步都没做全：同样是它能
-// 判定的"字面存在性"这类问题，如果发生在 mythos-module.ts/
-// premiers_barn.ts 里，之前的版本根本不会去看。
+// 谷仓曾有多份数据源，因此审计曾扫描多个文件。5D 后唯一维护入口是
+// barn-of-premier.ts，重复扫描旧投影只会把同一事实多计一次。
 
 /**
- * 审计覆盖的模组数据源文件——**谷仓这一个模组的默认值**，不是"审计能
- * 覆盖的文件就只有这三个"。同一个模组（普瑞米尔的谷仓）历史上有三份
- * 并行的数据实现，todo-19 统一之前各自独立维护，各自都可能出现字面
- * 臆造，这份名单因此列了三个——换一本模组，这份名单就该是那本模组
- * 自己的数据源文件，不是硬凑这三个路径。
+ * 审计覆盖的谷仓唯一维护文件。其它模组可以向 readAuditedModuleSources
+ * 传入自己的数据文件列表；默认值不再包含已删除的兼容投影。
  */
 export const AUDITED_MODULE_FILES = [
   "src/module/barn-of-premier.ts",
-  "src/rules/mythos-module.ts",
-  "src/rules/custom-modules/premiers_barn.ts",
 ] as const;
 
 export interface SourceTextRef {
@@ -369,8 +360,7 @@ export interface EntityFabricationEntry {
 
 /**
  * 已确证"原文查无此实体"的 NPC/场景名——目前是空的。阶段7 实测跑过
- * BARN_OF_PREMIER 与 MODULE_PREMIERS_BARN 的全部 npcs/scenes，归一化
- * 括号注解后一个
+ * BARN_OF_PREMIER 的全部 npcs/scenes，归一化括号注解后一个
  * 不剩地能在原文查到。判据用法与 FABRICATION_REGISTRY 相同：查无此名
  * 的集合必须与这份名单精确相等——空数组不是没有认真查，是真的一个
  * 无据的人名/地名都不剩。

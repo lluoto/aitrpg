@@ -35,7 +35,6 @@ import {
   type DeclaredEntityRef,
 } from "../ingest/three-way-audit";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
-import { MODULE_PREMIERS_BARN } from "../rules/custom-modules/premiers_barn";
 
 describe("normalizeForMatch：写法差异不能误判成臆造", () => {
   it("半角/全角连字符、破折号会被抹平——「米戈联络术」与「米-戈联络术」归一化后相等", () => {
@@ -178,11 +177,8 @@ describe("多文件覆盖：方括号术语审计不再只看 barn-of-premier.ts
   const sources = readAuditedModuleSources();
   const termMap = extractBracketTermsAcrossFiles(sources);
 
-  it("**回归**：AUDITED_MODULE_FILES 确实覆盖三个文件，不是名单写了但没人读", () => {
-    expect(AUDITED_MODULE_FILES.length).toBe(3);
-    expect(AUDITED_MODULE_FILES).toContain("src/module/barn-of-premier.ts");
-    expect(AUDITED_MODULE_FILES).toContain("src/rules/mythos-module.ts");
-    expect(AUDITED_MODULE_FILES).toContain("src/rules/custom-modules/premiers_barn.ts");
+  it("**回归**：AUDITED_MODULE_FILES 只审计唯一谷仓维护文件，不能重复扫描旧投影", () => {
+    expect(AUDITED_MODULE_FILES).toEqual(["src/module/barn-of-premier.ts"]);
   });
 
   it("跨文件收词会记下每个术语出现在哪些文件——同一个术语在两个文件里都出现时两个文件都在列", () => {
@@ -196,7 +192,7 @@ describe("多文件覆盖：方括号术语审计不再只看 barn-of-premier.ts
     expect(merged.get("共鸣特质")).toEqual(["c.ts"]);
   });
 
-  it.skipIf(!corpus.ok)("**主判据**：三个文件里查无此词的方括号术语集合必须与 FABRICATION_REGISTRY 精确相等", () => {
+  it.skipIf(!corpus.ok)("**主判据**：唯一谷仓维护文件里查无此词的方括号术语集合必须与 FABRICATION_REGISTRY 精确相等", () => {
     if (!corpus.ok) return;
     const notFound = [...termMap.keys()].filter((t) => !termAppearsInCorpus(t, corpus.text));
     expect(new Set(notFound)).toEqual(new Set(FABRICATION_REGISTRY.map((e) => e.term)));
@@ -232,20 +228,10 @@ describe("声明实体审计：NPC 名/场景名是否在原文里真实存在�
   const corpus = readOriginalCorpus();
 
   function collectEntities(): DeclaredEntityRef[] {
-    const entities: DeclaredEntityRef[] = [];
-    for (const npc of BARN_OF_PREMIER.npcs) {
-      entities.push({ name: npc.name, kind: "npc", source: "src/module/barn-of-premier.ts" });
-    }
-    for (const scene of BARN_OF_PREMIER.scenes) {
-      entities.push({ name: scene.name, kind: "scene", source: "src/module/barn-of-premier.ts" });
-    }
-    for (const npc of MODULE_PREMIERS_BARN.npcs ?? []) {
-      entities.push({ name: npc.name, kind: "npc", source: "src/rules/custom-modules/premiers_barn.ts" });
-    }
-    for (const name of Object.keys(MODULE_PREMIERS_BARN.sceneDescriptions ?? {})) {
-      entities.push({ name, kind: "scene", source: "src/rules/custom-modules/premiers_barn.ts" });
-    }
-    return entities;
+    return [
+      ...BARN_OF_PREMIER.npcs.map((npc) => ({ name: npc.name, kind: "npc" as const, source: "src/module/barn-of-premier.ts" })),
+      ...BARN_OF_PREMIER.scenes.map((scene) => ({ name: scene.name, kind: "scene" as const, source: "src/module/barn-of-premier.ts" })),
+    ];
   }
 
   it("stripDisplayAnnotation：去掉尾部括号注解，不去掉正文里的括号", () => {
@@ -273,7 +259,7 @@ describe("声明实体审计：NPC 名/场景名是否在原文里真实存在�
     expect(notFound).toEqual([{ name: "凭空捏造的角色", kind: "npc", source: "test" }]);
   });
 
-  it.skipIf(!corpus.ok)("**主判据**：两个谷仓表示文件声明的 NPC/场景名，查无此名的集合必须与 ENTITY_FABRICATION_REGISTRY 精确相等", () => {
+  it.skipIf(!corpus.ok)("**主判据**：唯一谷仓数据声明的 NPC/场景名，查无此名的集合必须与 ENTITY_FABRICATION_REGISTRY 精确相等", () => {
     if (!corpus.ok) return;
     const notFound = auditDeclaredEntities(collectEntities(), corpus.text);
     const notFoundKeys = new Set(notFound.map((e) => `${e.kind}:${stripDisplayAnnotation(e.name)}`));
@@ -281,19 +267,17 @@ describe("声明实体审计：NPC 名/场景名是否在原文里真实存在�
     expect(notFoundKeys).toEqual(registryKeys);
   });
 
-  it.skipIf(!corpus.ok)("清单确实是空的——不是没查，是两个谷仓表示文件里的人名地名一个不剩地能在原文查到", () => {
+  it.skipIf(!corpus.ok)("清单确实是空的——不是没查，是统一谷仓数据里的人名地名一个不剩地能在原文查到", () => {
     if (!corpus.ok) return;
     expect(ENTITY_FABRICATION_REGISTRY).toEqual([]);
     const notFound = auditDeclaredEntities(collectEntities(), corpus.text);
     expect(notFound).toEqual([]);
   });
 
-  it("**回归**：两个谷仓表示文件确实各自贡献了实体（不是收集器悄悄漏掉了某个文件）", () => {
+  it("**回归**：统一谷仓源贡献 NPC 和 scene 两种实体", () => {
     const entities = collectEntities();
     const sources = new Set(entities.map((e) => e.source));
-    expect(sources.has("src/module/barn-of-premier.ts")).toBe(true);
-    expect(sources.has("src/rules/custom-modules/premiers_barn.ts")).toBe(true);
-    // 至少要有 npc 和 scene 两种 kind，否则可能是漏收了一整类
+    expect(sources).toEqual(new Set(["src/module/barn-of-premier.ts"]));
     expect(entities.some((e) => e.kind === "npc")).toBe(true);
     expect(entities.some((e) => e.kind === "scene")).toBe(true);
   });
