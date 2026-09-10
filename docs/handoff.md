@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-09 18:09  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-10 08:37  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：a592743 test: harden Barn single-source sentinel  ·  **测试**：2959 条 / 201 文件，全绿（基线 2959，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：6f92cf4 fix: rank inferred mechanics before engine policy  ·  **测试**：2973 条 / 204 文件，全绿（基线 2973，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -209,6 +209,11 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- 6f92cf4 fix: rank inferred mechanics before engine policy
+- b3ce389 fix: prefer module creature stats over generic lore
+- ae8ecee feat: resolve field candidates by scoped authority
+- 2bbfd31 feat: define compilation source authority and scope
+- 076e4d7 docs: close Barn convergence step 5E
 - a592743 test: harden Barn single-source sentinel
 - c24bfd9 docs: close Barn representation unification
 - bc098e6 refactor: retire Barn Mythos compatibility adapter
@@ -216,11 +221,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - 279e09f docs: define Cthulhu dataset integration boundary
 - 2aa8dea test: verify Cthulhu dataset evidence boundaries
 - 43a72c9 feat: add source-bound Cthulhu dataset adapter
-- 542c9c9 docs: close out direct loader retry and visibility fixes
-- b5f8041 test: retire legacy clue coexistence expectations (step 5C-B)
-- cb6a807 fix: expose narrative NPCs and create legacy loader lazily
-- a87b81d fix: make direct module loading retryable and retire legacy clues
-- ff8b8ec docs: close out direct ModuleData loading (step 5C)
 
 ## 代码地图
 

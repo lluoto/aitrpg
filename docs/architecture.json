@@ -128,6 +128,11 @@
               "CTHULHU_DATASET_MANIFEST, loadCthulhuDataset, queryLoreCandidates"
             ],
             [
+              "src/compiler/source-authority.ts / compilation-manifest.ts / candidate-resolution.ts",
+              "纯编译契约：候选来源、作用域、分域优先级与冲突解析；不读取 artifact 或接入运行时",
+              "ClaimCandidate, CompilationManifest, resolveCandidates"
+            ],
+            [
               "src/log.ts",
               "诊断日志；明确划界——面向玩家的正文不走本模块",
               "log, LogLevel"

@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-09 18:08
+> 生成于 2026-09-10 08:36
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,22 +13,20 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | a592743 test: harden Barn single-source sentinel |
-| 测试 | 2959 条 / 201 文件  全绿 |
-| 工作树 | **12 个文件未提交** |
+| HEAD | 6f92cf4 fix: rank inferred mechanics before engine policy |
+| 测试 | 2973 条 / 204 文件  全绿 |
+| 工作树 | **10 个文件未提交** |
 
 未提交：
 - `M docs/architecture.json`
 - `M docs/deploy.md`
-- `M docs/module-unification-matrix.md`
-- `M docs/notes/engine.md`
 - `M docs/notes/index.json`
 - `M docs/test-baseline.json`
-- `M docs/todo.json`
 - `M scripts/backup-critical.ts`
 - `M src/__tests__/cthulhu-dataset.test.ts`
 - `M src/dataset/cthulhu-manifest.ts`
 - `M src/world/world-model-loader.ts`
+- `?? docs/compilation-authority-contract.md`
 - `?? docs/notes/world-model.md`
 
 ## 开工前
@@ -134,14 +132,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 6f92cf4 fix: rank inferred mechanics before engine policy
+- b3ce389 fix: prefer module creature stats over generic lore
+- ae8ecee feat: resolve field candidates by scoped authority
+- 2bbfd31 feat: define compilation source authority and scope
+- 076e4d7 docs: close Barn convergence step 5E
 - a592743 test: harden Barn single-source sentinel
 - c24bfd9 docs: close Barn representation unification
 - bc098e6 refactor: retire Barn Mythos compatibility adapter
-- e1ed60d docs: refresh Cthulhu adapter handoff
-- 279e09f docs: define Cthulhu dataset integration boundary
-- 2aa8dea test: verify Cthulhu dataset evidence boundaries
-- 43a72c9 feat: add source-bound Cthulhu dataset adapter
-- 542c9c9 docs: close out direct loader retry and visibility fixes
 
 ## 找东西
 
