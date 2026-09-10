@@ -1,6 +1,6 @@
 {
-  "tests": 2988,
-  "files": 207,
+  "tests": 2995,
+  "files": 208,
   "unwiredMethods": 84,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。 86->84（开发·多人可见性 N6）：setPlayerScene 被整个删除少 1 处，getPlayersInScene 有了真调用方（player-scene-authority.test.ts）再少 1 处，两处一起解释这次的净减 2。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -694,6 +694,11 @@
       "tests": 2988,
       "files": 207,
       "when": "P1：新增 DocumentIR（PDF bytes hash、逐页pdf-parse字符半开区间）、trace-aware清洗/跨页拼接、分类前DocumentBlock与pipeline并行产物；保留SourceRef/sourceKey和既有摄取输出。普通pages入口显式synthetic_fixture。五项真实变异：压缩多span、闭区间rawEnd、清洗文本hash、序号block id、丢弃普通散文均红后恢复。typecheck 0；bun test 2973->2988（+15，204->207文件）。"
+    },
+    {
+      "tests": 2995,
+      "files": 208,
+      "when": "P2：新增 SourceFactGraph（source_exact statements、确定性结构关系、interpretation review workflow）和 pipeline.sourceFactGraph；builder 初始 interpretations 为空，review 需 statement evidence。真实变异：删 paragraph statement、放宽 interpretation evidence、数组 statement id、自动 accepted、删 item body evidence、压缩跨页 span 均红后恢复。typecheck 0；bun test 2988->2995（+7，207->208文件）。"
     }
   ]
 }

@@ -535,6 +535,13 @@
       "severity": "warn",
       "status": "open",
       "text": "`src/rules/mythos-expansion.ts` 的通用神话生物数据已经进入自由跑团路径，可能覆盖模组自身登记的生物属性；已知 Mi-Go 模组值 HP 11/AC 10 会被通用库 HP 12/AC 14 覆盖。Cthulhu lore candidates 不得参与这种数值覆盖；未来接线前需定义模组事实优先级并把冲突显式化。"
+    },
+    {
+      "id": "todo-63",
+      "category": "编译链后续",
+      "severity": "info",
+      "status": "open",
+      "text": "【P2 完成，2026-09-10】SourceFactGraph 已将 DocumentIR/DocumentBlock 编为 source_exact statement 和确定性结构关系，解释候选仍是 candidate，未产生玩法机制。下一步 P3 定义 MechanicsIR 的 Predicate/Effect DSL，P4 对引用、可达性与终局闭合做静态验证；两步都必须保留 legacy SourceRef/sourceKey 并禁止把自然语言散文自动升级为已确认机制。"
     }
   ]
 }

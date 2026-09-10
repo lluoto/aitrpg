@@ -133,6 +133,11 @@
               "ClaimCandidate, CompilationManifest, resolveCandidates"
             ],
             [
+              "src/compiler/source-fact-graph.ts",
+              "原文结构图：source-exact statements、确定性结构关系与待审 interpretation candidates；不产生玩法机制",
+              "SourceFactGraph, buildSourceFactGraph, applyFactInterpretationReviews"
+            ],
+            [
               "src/ingest/document-ir.ts / document-blocks.ts",
               "PDF 页文本的 source-exact 文档 IR、半开字符 evidence span 与分类前 prose blocks；保留 legacy SourceRef/sourceKey",
               "DocumentIR, EvidenceRef, DocumentBlock"
