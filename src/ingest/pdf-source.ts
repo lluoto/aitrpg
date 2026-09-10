@@ -11,6 +11,7 @@
 // 模组附件是 6 张图，将来用得上。
 
 import { PDFParse } from "pdf-parse";
+import { createPdfDocumentIR, type DocumentIR, type DocumentPage } from "./document-ir";
 
 /**
  * 抽出逐页原始文本。下游是 cleanPageText。
@@ -18,7 +19,7 @@ import { PDFParse } from "pdf-parse";
  * 坏输入一律抛，不返回空数组：空数组会让整条管线安静地产出零个场景，
  * 表现成「模型没干活」，而真正的原因在最上游。
  */
-export async function extractPages(data: Uint8Array): Promise<string[]> {
+export async function extractDocumentPages(data: Uint8Array): Promise<DocumentPage[]> {
   // 抢在 pdf-parse 之前拦空数据，是为了让错误带上 [ingest] 前缀落在本管线名下。
   // 少了这行也会抛（库自己报 InvalidPDFException），但那条消息指不回这里。
   if (data.length === 0) throw new Error("[ingest] PDF 数据为空");
@@ -44,10 +45,32 @@ export async function extractPages(data: Uint8Array): Promise<string[]> {
   //
   // 所以两道一起才成立：声明变了编译期拦，声明没变运行时拦。
   // 单靠类型不够，这也是为什么这里不能只写 res.pages.map((p) => p.text)。
-  return res.pages.map((p) => {
+  const pages = res.pages.map((p) => {
     if (typeof p.text !== "string") {
       throw new Error(`[ingest] pdf-parse 第 ${p.num} 页的 text 不是字符串`);
     }
-    return p.text;
+    if (!Number.isInteger(p.num) || p.num < 1) {
+      throw new Error(`[ingest] pdf-parse 页码无效: ${p.num}`);
+    }
+    return { pageNumber: p.num, rawText: p.text };
   });
+  return createPdfDocumentIR(data, pages).pages;
+}
+
+/** Build the complete source-exact representation from original PDF bytes. */
+export async function buildDocumentIR(data: Uint8Array): Promise<DocumentIR> {
+  const pages = await extractDocumentPages(data);
+  const documentHash = pages[0]?.documentHash;
+  if (!documentHash) throw new Error("[ingest] PDF 文档哈希缺失");
+  return {
+    schemaVersion: "1.0.0",
+    documentHash,
+    hashSource: "pdf_bytes_sha256",
+    pages,
+  };
+}
+
+/** Compatibility wrapper. New callers should retain DocumentPage metadata. */
+export async function extractPages(data: Uint8Array): Promise<string[]> {
+  return (await extractDocumentPages(data)).map((page) => page.rawText);
 }
