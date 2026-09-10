@@ -61,7 +61,7 @@ function markedItemTrace(line: TracedText): { text: TracedText; name?: TracedTex
 /**
  * Produce source-addressable prose, heading, and marked-item blocks before any
  * LLM classification. Existing Section/SourceRef output is deliberately left
- * unchanged for scoring-key compatibility.
+ * unchanged for legacy measurement-coordinate compatibility.
  */
 export function buildDocumentBlocks(document: DocumentIR, tracedPages: TracedText[]): DocumentBlock[] {
   if (tracedPages.length !== document.pages.length) {
