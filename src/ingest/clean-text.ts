@@ -14,6 +14,134 @@
 // 其中 4 处的上一行是 `▶` 条目（tools/_diag-absorb.ts 数的是这 4 处），
 // 第 5 处是附录里的普通正文。两个分母都记在这里，免得照小的那个去审就漏了。
 
+import { evidenceSpan, sha256, type DocumentPage, type EvidenceRef, type EvidenceSpan } from "./document-ir";
+
+export interface TraceFragment {
+  outputStart: number;
+  outputEnd: number;
+  evidence: EvidenceSpan;
+}
+
+/** Text plus only the output ranges that originate directly from raw page text. */
+export interface TracedText {
+  text: string;
+  fragments: TraceFragment[];
+}
+
+class TraceBuilder {
+  private text = "";
+  private fragments: TraceFragment[] = [];
+
+  appendSynthetic(value: string): void {
+    this.text += value;
+  }
+
+  appendExact(page: DocumentPage, rawStart: number, rawEnd: number): void {
+    if (rawStart === rawEnd) return;
+    const start = this.text.length;
+    const evidence = evidenceSpan(page, rawStart, rawEnd);
+    this.text += evidence.exactText;
+    this.fragments.push({ outputStart: start, outputEnd: this.text.length, evidence });
+  }
+
+  appendTrace(trace: TracedText): void {
+    const offset = this.text.length;
+    this.text += trace.text;
+    this.fragments.push(...trace.fragments.map((fragment) => ({
+      outputStart: offset + fragment.outputStart,
+      outputEnd: offset + fragment.outputEnd,
+      evidence: fragment.evidence,
+    })));
+  }
+
+  finish(): TracedText {
+    return { text: this.text, fragments: this.fragments };
+  }
+}
+
+function sliceTrace(trace: TracedText, start: number, end: number): TracedText {
+  const builder = new TraceBuilder();
+  builder.appendSynthetic(trace.text.slice(start, end));
+  const result = builder.finish();
+  result.fragments = trace.fragments.flatMap((fragment) => {
+    const outputStart = Math.max(fragment.outputStart, start);
+    const outputEnd = Math.min(fragment.outputEnd, end);
+    if (outputStart >= outputEnd) return [];
+    const offsetStart = outputStart - fragment.outputStart;
+    const offsetEnd = outputEnd - fragment.outputStart;
+    const exactText = fragment.evidence.exactText.slice(offsetStart, offsetEnd);
+    const evidence: EvidenceSpan = {
+      ...fragment.evidence,
+      rawStart: fragment.evidence.rawStart + offsetStart,
+      rawEnd: fragment.evidence.rawStart + offsetEnd,
+      exactText,
+      textHash: sha256(exactText),
+    };
+    return [{ outputStart: outputStart - start, outputEnd: outputEnd - start, evidence }];
+  });
+  return result;
+}
+
+function trimTrace(trace: TracedText): TracedText {
+  const start = trace.text.search(/\S/);
+  if (start < 0) return { text: "", fragments: [] };
+  let end = trace.text.length;
+  while (end > start && /\s/.test(trace.text[end - 1]!)) end--;
+  return sliceTrace(trace, start, end);
+}
+
+function rawLines(page: DocumentPage): Array<{ rawStart: number; rawEnd: number }> {
+  const lines: Array<{ rawStart: number; rawEnd: number }> = [];
+  let start = 0;
+  for (const match of page.rawText.matchAll(/\r?\n/g)) {
+    lines.push({ rawStart: start, rawEnd: match.index! });
+    start = match.index! + match[0].length;
+  }
+  lines.push({ rawStart: start, rawEnd: page.rawText.length });
+  return lines;
+}
+
+function normalizeLine(page: DocumentPage, rawStart: number, rawEnd: number): TracedText {
+  const raw = page.rawText.slice(rawStart, rawEnd);
+  const builder = new TraceBuilder();
+  let cursor = 0;
+  for (const match of raw.matchAll(/[ \t\u00a0\u3000]+/g)) {
+    const matchStart = match.index!;
+    builder.appendExact(page, rawStart + cursor, rawStart + matchStart);
+    // A normalized space has no one-to-one raw character span.
+    builder.appendSynthetic(" ");
+    cursor = matchStart + match[0].length;
+  }
+  builder.appendExact(page, rawStart + cursor, rawEnd);
+  return trimTrace(builder.finish());
+}
+
+function concatTraces(parts: TracedText[]): TracedText {
+  const builder = new TraceBuilder();
+  for (const part of parts) builder.appendTrace(part);
+  return builder.finish();
+}
+
+function splitTracedLines(trace: TracedText): TracedText[] {
+  const lines: TracedText[] = [];
+  let start = 0;
+  for (let index = 0; index <= trace.text.length; index++) {
+    if (index !== trace.text.length && trace.text[index] !== "\n") continue;
+    lines.push(sliceTrace(trace, start, index));
+    start = index + 1;
+  }
+  return lines;
+}
+
+/** Convert raw-page trace fragments to an EvidenceRef without inventing spans. */
+export function evidenceRefFromTrace(trace: TracedText): EvidenceRef {
+  const spans = trace.fragments.map((fragment) => fragment.evidence);
+  const precision = spans.length === 0
+    ? "page_text"
+    : spans.every((span) => span.documentHash === null) ? "synthetic_fixture" : "exact_text";
+  return { spans, precision };
+}
+
 /**
  * 句子终止标记。
  *
@@ -205,5 +333,78 @@ export function joinPages(pages: string[]): string[] {
     if ((out[i] as string).trim() !== "") tail = i;
   }
 
+  return out;
+}
+
+/**
+ * Trace-aware equivalent of cleanPageText. Its text output is intentionally
+ * byte-for-byte equal to cleanPageText(page.rawText); only fragments are new.
+ */
+export function cleanPageWithTrace(page: DocumentPage): TracedText {
+  if (!page.rawText) return { text: "", fragments: [] };
+
+  const lines = rawLines(page).map((line) => normalizeLine(page, line.rawStart, line.rawEnd));
+  const builder = new TraceBuilder();
+  let previous: string | null = null;
+  let sawBlank = false;
+
+  for (const lineTrace of lines) {
+    const line = lineTrace.text;
+    if (line === "") {
+      if (builder.finish().text.length > 0) sawBlank = true;
+      continue;
+    }
+    if (builder.finish().text.length === 0) {
+      builder.appendTrace(lineTrace);
+    } else if (sawBlank) {
+      builder.appendSynthetic("\n\n");
+      builder.appendTrace(lineTrace);
+    } else if (shouldJoin(previous as string, line)) {
+      builder.appendTrace(lineTrace);
+    } else {
+      builder.appendSynthetic("\n");
+      builder.appendTrace(lineTrace);
+    }
+    sawBlank = false;
+    previous = line;
+  }
+
+  return trimTrace(builder.finish());
+}
+
+/**
+ * Trace-aware equivalent of joinPages. A cross-page connection moves the
+ * next-page first-line fragments beside the prior page's final fragments;
+ * neither source span is merged or rewritten.
+ */
+export function joinPagesWithTrace(pages: TracedText[]): TracedText[] {
+  const out = pages.map((page) => ({ text: page.text, fragments: [...page.fragments] }));
+  let tail = -1;
+
+  for (let index = 0; index < out.length; index++) {
+    if (out[index]!.text.trim() === "") continue;
+    if (tail >= 0) {
+      const previous = out[tail]!;
+      const current = out[index]!;
+      const previousLines = splitTracedLines(previous);
+      const currentLines = splitTracedLines(current);
+      const previousLast = previousLines[previousLines.length - 1]!;
+      const currentFirst = currentLines[0]!;
+      const previousText = previousLast.text.trim();
+      const currentText = currentFirst.text.trim();
+
+      if (previousText !== "" && currentText !== "" && shouldJoinAcrossPages(previousText, currentText)) {
+        const lastStart = previous.text.lastIndexOf("\n") + 1;
+        out[tail] = concatTraces([
+          sliceTrace(previous, 0, lastStart),
+          trimTrace(previousLast),
+          trimTrace(currentFirst),
+        ]);
+        const firstEnd = current.text.indexOf("\n");
+        out[index] = firstEnd < 0 ? { text: "", fragments: [] } : sliceTrace(current, firstEnd + 1, current.text.length);
+      }
+    }
+    if (out[index]!.text.trim() !== "") tail = index;
+  }
   return out;
 }
