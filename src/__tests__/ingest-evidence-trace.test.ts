@@ -27,8 +27,9 @@ describe("trace-aware cleaning", () => {
     const document = createSyntheticDocumentIR(["防盗门可", "不多见。\n下一段。"], "cross-page");
     const joined = joinPagesWithTrace(document.pages.map(cleanPageWithTrace));
     expect(joined[0]?.text).toBe("防盗门可不多见。");
-    expect(new Set(joined[0]?.fragments.map((fragment) => fragment.evidence.pageNumber))).toEqual(new Set([1, 2]));
-    validateEvidenceRef(evidenceRefFromTrace(joined[0]!), document);
+    const evidence = evidenceRefFromTrace(joined[0]!);
+    expect(new Set(evidence.spans.map((span) => span.pageNumber))).toEqual(new Set([1, 2]));
+    validateEvidenceRef(evidence, document);
   });
 
   it("normalizes whitespace without assigning a raw span to the synthetic space", () => {
