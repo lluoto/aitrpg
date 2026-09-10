@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { readFileSync } from "fs";
 import { assertWorldModelQueryScope, canQueryWorldModel, type CompilationManifest } from "../compiler/compilation-manifest";
+import { importPointsTo, scanImports } from "../diagnostics/source-scan";
 import { latentEvidenceIssue, type ClaimCandidate } from "../compiler/source-authority";
 
 function manifest(overrides: Partial<CompilationManifest> = {}): CompilationManifest {
@@ -61,5 +63,13 @@ describe("FieldEvidence", () => {
     expect(latentEvidenceIssue(candidate)).toBeUndefined();
     expect(latentEvidenceIssue(latent({ sourceRef: "invented-source" }))).toContain("sourceRef");
     expect(latentEvidenceIssue(latent({ rightsStatus: "open_licensed" }))).toContain("rightsStatus");
+  });
+
+  it("compiler contracts do not import datasets or world-model runtime code", () => {
+    for (const file of ["src/compiler/source-authority.ts", "src/compiler/compilation-manifest.ts", "src/compiler/candidate-resolution.ts"]) {
+      const imports = scanImports(readFileSync(file, "utf8"));
+      expect(imports.some((entry) => importPointsTo(entry.path, "cthulhu-dataset"))).toBe(false);
+      expect(imports.some((entry) => importPointsTo(entry.path, "world-model-loader"))).toBe(false);
+    }
   });
 });

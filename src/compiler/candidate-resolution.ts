@@ -63,9 +63,9 @@ function priorityFor(candidate: ClaimCandidate<unknown>, domain: ClaimDomain): n
   const direct = PRIORITY[domain].findIndex((authorities) => authorities.includes(candidate.authority));
   if (direct >= 0) return direct;
   if (domain === "gameplay_mechanic") {
-    if (candidate.derivation === "inferred") return 3;
     if (candidate.authority === "engine_policy") return 4;
     if (candidate.authority === "latent_model") return 5;
+    if (candidate.derivation === "inferred") return 3;
   }
   return undefined;
 }

@@ -76,12 +76,47 @@ describe("resolveCandidates scoped authority", () => {
     expect(resolution.rejected[0]?.confidence).toBe(0.99);
   });
 
+  it("each domain applies its declared authority order", () => {
+    const plot = resolveCandidates("plot.secret", "plot_fact", [
+      candidate("module", "module_explicit", "plot_fact", { path: "plot.secret" }),
+      candidate("user", "user_document", "plot_fact", { path: "plot.secret" }),
+    ], manifest());
+    const behavior = resolveCandidates("npcs.mi_go.behavior", "behavior_prior", [
+      candidate("canon", "declared_canon_corpus", "behavior_prior", {
+        path: "npcs.mi_go.behavior", scope: { workId: "work-a", transferUse: "entity_general" },
+      }),
+      candidate("pattern", "worldview_pattern", "behavior_prior", { path: "npcs.mi_go.behavior" }),
+      candidate("policy", "engine_policy", "behavior_prior", { path: "npcs.mi_go.behavior" }),
+    ], manifest());
+    const mechanic = resolveCandidates("npcs.mi_go.attack", "gameplay_mechanic", [
+      candidate("inferred", "worldview_pattern", "gameplay_mechanic", { path: "npcs.mi_go.attack", derivation: "inferred" }),
+      candidate("policy", "engine_policy", "gameplay_mechanic", { path: "npcs.mi_go.attack" }),
+      candidate("latent", "latent_model", "gameplay_mechanic", {
+        path: "npcs.mi_go.attack", sourceRef: null, rightsStatus: "unknown", derivation: "unknown",
+      }),
+    ], manifest({ mode: "latent", transferPolicy: "mechanic_only" }));
+    expect(plot.value).toBe("module");
+    expect(behavior.value).toBe("canon");
+    expect(mechanic.value).toBe("inferred");
+  });
+
+  it("rejected sources cannot directly enter the accepted runtime result", () => {
+    const resolution = resolveCandidates("npcs.mi_go.hp", "rule_numeric", [
+      candidate(99, "module_explicit", "rule_numeric", { status: "rejected" }),
+      candidate(12, "project_original", "rule_numeric"),
+    ], manifest());
+    expect(resolution.value).toBe(12);
+    expect(resolution.rejected.find((entry) => entry.value === 99)?.reason).toContain("source status");
+  });
+
   it("mechanic_only cannot fill plot facts and analogy_only cannot auto accept", () => {
     const plot = resolveCandidates("plot.secret", "plot_fact", [
       candidate("secret", "declared_canon_corpus", "plot_fact", { path: "plot.secret", scope: { workId: "work-a", transferUse: "plot_fact" } }),
     ], manifest({ transferPolicy: "mechanic_only" }));
-    const analogy = resolveCandidates("npcs.mi_go.hp", "rule_numeric", [
-      candidate(12, "declared_canon_corpus", "rule_numeric"),
+    const analogy = resolveCandidates("npcs.mi_go.behavior", "behavior_prior", [
+      candidate("avoid fire", "declared_canon_corpus", "behavior_prior", {
+        path: "npcs.mi_go.behavior", scope: { workId: "work-a", transferUse: "entity_general" },
+      }),
     ], manifest({ transferPolicy: "analogy_only" }));
     expect(plot.status).toBe("unresolved");
     expect(plot.rejected[0]?.reason).toContain("mechanic_only");
