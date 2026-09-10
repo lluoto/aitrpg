@@ -59,7 +59,7 @@ class TraceBuilder {
   }
 }
 
-function sliceTrace(trace: TracedText, start: number, end: number): TracedText {
+export function sliceTracedText(trace: TracedText, start: number, end: number): TracedText {
   const builder = new TraceBuilder();
   builder.appendSynthetic(trace.text.slice(start, end));
   const result = builder.finish();
@@ -82,12 +82,12 @@ function sliceTrace(trace: TracedText, start: number, end: number): TracedText {
   return result;
 }
 
-function trimTrace(trace: TracedText): TracedText {
+export function trimTracedText(trace: TracedText): TracedText {
   const start = trace.text.search(/\S/);
   if (start < 0) return { text: "", fragments: [] };
   let end = trace.text.length;
   while (end > start && /\s/.test(trace.text[end - 1]!)) end--;
-  return sliceTrace(trace, start, end);
+  return sliceTracedText(trace, start, end);
 }
 
 function rawLines(page: DocumentPage): Array<{ rawStart: number; rawEnd: number }> {
@@ -113,7 +113,7 @@ function normalizeLine(page: DocumentPage, rawStart: number, rawEnd: number): Tr
     cursor = matchStart + match[0].length;
   }
   builder.appendExact(page, rawStart + cursor, rawEnd);
-  return trimTrace(builder.finish());
+  return trimTracedText(builder.finish());
 }
 
 function concatTraces(parts: TracedText[]): TracedText {
@@ -122,12 +122,12 @@ function concatTraces(parts: TracedText[]): TracedText {
   return builder.finish();
 }
 
-function splitTracedLines(trace: TracedText): TracedText[] {
+export function splitTracedLines(trace: TracedText): TracedText[] {
   const lines: TracedText[] = [];
   let start = 0;
   for (let index = 0; index <= trace.text.length; index++) {
     if (index !== trace.text.length && trace.text[index] !== "\n") continue;
-    lines.push(sliceTrace(trace, start, index));
+    lines.push(sliceTracedText(trace, start, index));
     start = index + 1;
   }
   return lines;
@@ -369,7 +369,7 @@ export function cleanPageWithTrace(page: DocumentPage): TracedText {
     previous = line;
   }
 
-  return trimTrace(builder.finish());
+  return trimTracedText(builder.finish());
 }
 
 /**
@@ -396,12 +396,12 @@ export function joinPagesWithTrace(pages: TracedText[]): TracedText[] {
       if (previousText !== "" && currentText !== "" && shouldJoinAcrossPages(previousText, currentText)) {
         const lastStart = previous.text.lastIndexOf("\n") + 1;
         out[tail] = concatTraces([
-          sliceTrace(previous, 0, lastStart),
-          trimTrace(previousLast),
-          trimTrace(currentFirst),
+          sliceTracedText(previous, 0, lastStart),
+          trimTracedText(previousLast),
+          trimTracedText(currentFirst),
         ]);
         const firstEnd = current.text.indexOf("\n");
-        out[index] = firstEnd < 0 ? { text: "", fragments: [] } : sliceTrace(current, firstEnd + 1, current.text.length);
+        out[index] = firstEnd < 0 ? { text: "", fragments: [] } : sliceTracedText(current, firstEnd + 1, current.text.length);
       }
     }
     if (out[index]!.text.trim() !== "") tail = index;

@@ -86,10 +86,19 @@ const TITLE_LINE = /^[▶►▷]?\s*(.{1,12}?)[：:]$/;
 const ITEM_LINE = /^[▶►▷]\s*(.*)$/;
 
 /** 把 ▶ 行拆成名字与正文。以第一个冒号为界，正文里的冒号不参与 */
-function parseItem(rest: string, source: SourceRef): SectionItem {
+export function parseSectionItemLine(line: string): { name: string; text: string } | undefined {
+  const itemMatch = line.match(ITEM_LINE);
+  if (!itemMatch) return undefined;
+  const rest = itemMatch[1] as string;
   const idx = rest.search(/[：:]/);
-  if (idx < 0) return { name: "", text: rest.trim(), source };
-  return { name: rest.slice(0, idx).trim(), text: rest.slice(idx + 1).trim(), source };
+  if (idx < 0) return { name: "", text: rest.trim() };
+  return { name: rest.slice(0, idx).trim(), text: rest.slice(idx + 1).trim() };
+}
+
+export function parseSectionTitleLine(line: string): string | undefined {
+  const titleMatch = line.match(TITLE_LINE);
+  if (!titleMatch || (titleMatch[1] as string).length > TITLE_MAX_LEN) return undefined;
+  return titleMatch[1] as string;
 }
 
 /**
@@ -117,18 +126,18 @@ export function sectionize(pages: string[]): Section[] {
       if (line === "") continue;
       const source: SourceRef = { page: p + 1, line: i + 1 };
 
-      const titleMatch = line.match(TITLE_LINE);
-      if (titleMatch && (titleMatch[1] as string).length <= TITLE_MAX_LEN) {
+      const title = parseSectionTitleLine(line);
+      if (title !== undefined) {
         flush();
-        cur = { title: titleMatch[1] as string, body: "", items: [], source };
+        cur = { title, body: "", items: [], source };
         continue;
       }
 
-      const itemMatch = line.match(ITEM_LINE);
-      if (itemMatch) {
+      const item = parseSectionItemLine(line);
+      if (item) {
         // 条目出现在任何标题之前也要有处安放
         if (!cur) cur = { title: "", body: "", items: [], source };
-        cur.items.push(parseItem(itemMatch[1] as string, source));
+        cur.items.push({ ...item, source });
         continue;
       }
 
