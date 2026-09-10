@@ -21,8 +21,10 @@
 // （本注释原先写了那个名字，红过一次。测试是道安全网，
 // 为了让自家注释过关去钝化它，方向就反了。）
 import type { LLMClient } from "../llm/client";
-import { extractPages } from "./pdf-source";
-import { cleanPageText, joinPages } from "./clean-text";
+import { buildDocumentIR } from "./pdf-source";
+import { cleanPageText, cleanPageWithTrace, joinPages, joinPagesWithTrace } from "./clean-text";
+import { buildDocumentBlocks } from "./document-blocks";
+import { createSyntheticDocumentIR, type DocumentBlock, type DocumentIR } from "./document-ir";
 import { sectionize, type Section } from "./sectionize";
 import { toClassifyInputs, classifySections, type SectionKind } from "./classify-sections";
 import { toItemInputs, classifyItems, type ItemInput, type ItemKind } from "./classify-items";
@@ -44,7 +46,11 @@ import type { Ending, ModuleItem, Provenance } from "../module/types";
  * 只交 scenes 和 items 的话，`_run-ingest.ts` 就只能把编排再抄一遍来拿中间量 ——
  * 那正是这次要消掉的东西。
  */
-interface IngestResult {
+export interface IngestResult {
+  /** Source-exact input representation; synthetic for runIngestFromPages. */
+  documentIR: DocumentIR;
+  /** Addressable prose/heading/item inputs, before classification. */
+  documentBlocks: DocumentBlock[];
   sections: Section[];
   /** 送去块分类的输入。度量那侧拿它算「送了却没回结果的标题」 */
   classifyInputs: ReturnType<typeof toClassifyInputs>;
@@ -102,7 +108,7 @@ export async function runIngest(
   client: LLMClient,
   hooks: IngestHooks = {},
 ): Promise<IngestResult> {
-  return runIngestFromPages(await extractPages(pdfBytes), client, hooks);
+  return runIngestFromDocumentIR(await buildDocumentIR(pdfBytes), client, hooks);
 }
 
 /**
@@ -118,7 +124,21 @@ export async function runIngestFromPages(
   client: LLMClient,
   hooks: IngestHooks = {},
 ): Promise<IngestResult> {
-  return classifyAndBuild(prepareSections(rawPages), client, hooks);
+  // Page-text callers have no PDF bytes. Mark the descriptor rather than
+  // inventing a documentHash that downstream code could mistake for a PDF hash.
+  return runIngestFromDocumentIR(createSyntheticDocumentIR(rawPages, "runIngestFromPages"), client, hooks);
+}
+
+async function runIngestFromDocumentIR(
+  documentIR: DocumentIR,
+  client: LLMClient,
+  hooks: IngestHooks,
+): Promise<IngestResult> {
+  const rawPages = documentIR.pages.map((page) => page.rawText);
+  const sections = prepareSections(rawPages);
+  const tracedPages = joinPagesWithTrace(documentIR.pages.map(cleanPageWithTrace));
+  const documentBlocks = buildDocumentBlocks(documentIR, tracedPages);
+  return classifyAndBuild(sections, client, hooks, documentIR, documentBlocks);
 }
 
 /**
@@ -150,6 +170,8 @@ export async function classifyAndBuild(
   sections: Section[],
   client: LLMClient,
   hooks: IngestHooks = {},
+  documentIR = createSyntheticDocumentIR([], "classifyAndBuild sections-only"),
+  documentBlocks: DocumentBlock[] = [],
 ): Promise<IngestResult> {
   const stage = (label: string) => hooks.onStage?.(label);
 
@@ -208,6 +230,8 @@ export async function classifyAndBuild(
   const endings = await extractEndings(structureBlocks, client);
 
   return {
+    documentIR,
+    documentBlocks,
     sections,
     classifyInputs,
     kinds,

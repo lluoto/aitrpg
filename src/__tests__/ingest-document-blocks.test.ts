@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { buildDocumentBlocks } from "../ingest/document-blocks";
 import { cleanPageWithTrace, joinPagesWithTrace } from "../ingest/clean-text";
-import { createSyntheticDocumentIR, validateEvidenceRef } from "../ingest/document-ir";
+import { createSyntheticDocumentIR, sha256, validateEvidenceRef } from "../ingest/document-ir";
 import { sectionize } from "../ingest/sectionize";
 
 function blocksFor(pages: string[]) {
@@ -46,7 +46,7 @@ describe("DocumentBlock evidence", () => {
     const second = blocks.find((block) => block.text === "乙正文。");
     const afterFiltering = blocks.filter((block) => block.text !== "甲正文。").find((block) => block.text === "乙正文。");
     expect(second?.id).toBe(afterFiltering?.id);
-    expect(second?.id).toMatch(/^block_[0-9a-f]{24}$/);
+    expect(second?.id).toBe(`block_${sha256("synthetic:document-block-test|paragraph|1:11:15").slice(0, 24)}`);
   });
 
   it("leaves legacy section body and sourceKey coordinates unchanged", () => {

@@ -46,6 +46,8 @@ describe("编排", () => {
     const r = await runIngestFromPages(PAGES, client);
     for (const k of [
       "sections",
+      "documentIR",
+      "documentBlocks",
       "kinds",
       "ids",
       "scenes",
@@ -60,6 +62,15 @@ describe("编排", () => {
     ]) {
       expect(r).toHaveProperty(k);
     }
+  });
+
+  test("runIngestFromPages 明确标记 synthetic fixture，并保留普通散文 block", async () => {
+    const { client } = scriptedClient([]);
+    const r = await runIngestFromPages(PAGES, client);
+    expect(r.documentIR.hashSource).toBe("synthetic_fixture");
+    expect(r.documentIR.documentHash).toBeNull();
+    expect(r.documentIR.sourceDescriptor).toBe("runIngestFromPages");
+    expect(r.documentBlocks.some((block) => block.kind === "paragraph" && block.text.includes("这里是非常危险"))).toBe(true);
   });
 
   // 追问**之前**的那份分类要单独留着。没有它就算不出「修好几条 / 弄坏几条」，
