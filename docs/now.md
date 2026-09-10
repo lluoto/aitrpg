@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-10 12:22
+> 生成于 2026-09-10 13:24
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,20 +13,17 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 0e41e41 fix: keep trace builder internal |
+| HEAD | 1d18280 docs: record development verification discipline |
 | 测试 | 2988 条 / 207 文件  全绿 |
-| 工作树 | **10 个文件未提交** |
+| 工作树 | **7 个文件未提交** |
 
 未提交：
-- `M docs/architecture.json`
 - `M docs/deploy.md`
 - `M docs/notes/index.json`
-- `M docs/test-baseline.json`
 - `M scripts/backup-critical.ts`
 - `M src/__tests__/cthulhu-dataset.test.ts`
 - `M src/dataset/cthulhu-manifest.ts`
 - `M src/world/world-model-loader.ts`
-- `?? docs/document-ir-evidence.md`
 - `?? docs/notes/world-model.md`
 
 ## 开工前
@@ -132,14 +129,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 1d18280 docs: record development verification discipline
+- 6603d55 docs: define autonomous RPG product direction
+- 4f8e3ba docs: record DocumentIR evidence boundaries
 - 0e41e41 fix: keep trace builder internal
 - bafc1e4 fix: preserve ingest measurement boundary
 - 22c5006 test: verify ingest evidence span integrity
 - be715ac feat: expose ingest document evidence outputs
 - 80f043f feat: attach evidence to sections and prose blocks
-- 5668145 feat: preserve evidence spans through text cleaning
-- 8813814 feat: add source-exact DocumentIR contracts
-- 2346c3f docs: record runtime compilation authority contract
 
 ## 找东西
 
