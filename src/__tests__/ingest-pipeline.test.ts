@@ -48,6 +48,7 @@ describe("编排", () => {
       "sections",
       "documentIR",
       "documentBlocks",
+      "sourceFactGraph",
       "kinds",
       "ids",
       "scenes",
@@ -71,6 +72,8 @@ describe("编排", () => {
     expect(r.documentIR.documentHash).toBeNull();
     expect(r.documentIR.sourceDescriptor).toBe("runIngestFromPages");
     expect(r.documentBlocks.some((block) => block.kind === "paragraph" && block.text.includes("这里是非常危险"))).toBe(true);
+    expect(r.sourceFactGraph.interpretations).toEqual([]);
+    expect(r.sourceFactGraph.statements.some((statement) => statement.kind === "paragraph")).toBe(true);
   });
 
   // 追问**之前**的那份分类要单独留着。没有它就算不出「修好几条 / 弄坏几条」，

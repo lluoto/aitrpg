@@ -25,6 +25,7 @@ import { buildDocumentIR } from "./pdf-source";
 import { cleanPageText, cleanPageWithTrace, joinPages, joinPagesWithTrace } from "./clean-text";
 import { buildDocumentBlocks } from "./document-blocks";
 import { createSyntheticDocumentIR, type DocumentBlock, type DocumentIR } from "./document-ir";
+import { buildSourceFactGraph, type SourceFactGraph } from "../compiler/source-fact-graph";
 import { sectionize, type Section } from "./sectionize";
 import { toClassifyInputs, classifySections, type SectionKind } from "./classify-sections";
 import { toItemInputs, classifyItems, type ItemInput, type ItemKind } from "./classify-items";
@@ -51,6 +52,8 @@ export interface IngestResult {
   documentIR: DocumentIR;
   /** Addressable prose/heading/item inputs, before classification. */
   documentBlocks: DocumentBlock[];
+  /** Deterministic source structure only; never supplied to existing prompts. */
+  sourceFactGraph: SourceFactGraph;
   sections: Section[];
   /** 送去块分类的输入。度量那侧拿它算「送了却没回结果的标题」 */
   classifyInputs: ReturnType<typeof toClassifyInputs>;
@@ -138,7 +141,8 @@ async function runIngestFromDocumentIR(
   const sections = prepareSections(rawPages);
   const tracedPages = joinPagesWithTrace(documentIR.pages.map(cleanPageWithTrace));
   const documentBlocks = buildDocumentBlocks(documentIR, tracedPages);
-  return classifyAndBuild(sections, client, hooks, documentIR, documentBlocks);
+  const sourceFactGraph = buildSourceFactGraph(documentIR, documentBlocks);
+  return classifyAndBuild(sections, client, hooks, documentIR, documentBlocks, sourceFactGraph);
 }
 
 /**
@@ -172,6 +176,7 @@ export async function classifyAndBuild(
   hooks: IngestHooks = {},
   documentIR = createSyntheticDocumentIR([], "classifyAndBuild sections-only"),
   documentBlocks: DocumentBlock[] = [],
+  sourceFactGraph = buildSourceFactGraph(documentIR, documentBlocks),
 ): Promise<IngestResult> {
   const stage = (label: string) => hooks.onStage?.(label);
 
@@ -232,6 +237,7 @@ export async function classifyAndBuild(
   return {
     documentIR,
     documentBlocks,
+    sourceFactGraph,
     sections,
     classifyInputs,
     kinds,
