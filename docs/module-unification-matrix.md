@@ -1,6 +1,6 @@
 # 谷仓模组统一类型迁移矩阵
 
-步骤 5A-5D 于 2026-09-08 完成。谷仓唯一维护入口是
+步骤 5A-5E 于 2026-09-09 完成。谷仓唯一维护入口是
 `src/module/barn-of-premier.ts` 的 `BARN_OF_PREMIER`；不再存在谷仓
 `MythosModule` 适配对象、投影函数或冻结旧 loader fixture。
 
@@ -44,5 +44,13 @@
 `INNSMOUTH_MODULE`。它们没有谷仓 adapter，也不共享谷仓运行数据；两条 legacy
 GameSession 路径由独立测试覆盖。
 
-步骤 5 没有定义额外的 5E 实施项。将 Arkham/InnsMouth 迁成 `ModuleData` 或扩展
-direct loader 是新的模组数据迁移决策，不能作为谷仓清理的附带改动。
+## 步骤 5E 单一数据源哨兵
+
+5E 不再删除数据或改变运行行为；它补强 `barn-unification-sentinel.test.ts` 的
+已知符号、对象身份、过渡字段和谷仓 legacy-loader 边界，并记录其能力边界。
+该哨兵能防止已知 wrapper/symbol/bridge 回流，不能识别改名后的语义重复、外部
+仓库数据或运行时动态生成的重复表示。历史 fabrication guard 继续从统一
+`BARN_OF_PREMIER.runtime` 核对四条已修复的 runtime NPC 事实。
+
+将 Arkham/InnsMouth 迁成 `ModuleData` 或收敛 CLI、ScriptedSession 与通用 loader
+是新的工作，不属于谷仓单一数据源完成条件。

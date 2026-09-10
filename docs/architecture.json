@@ -56,7 +56,7 @@
         "谷仓唯一维护数据是 `src/module/barn-of-premier.ts` 的 `BARN_OF_PREMIER`。GameSession 直接用 `ModuleDataRuntimeLoader` 加载它；旧谷仓 MythosModule 薄适配、投影和线索桥接已删除。",
         "模组摄取（`MythosModuleLoader.import()`，`src/rules/mythos-module.ts`）注册场景按**来源**判定白名单，不按字符特征：`sceneDescriptions` 声明 ∪ npc/item/tome/clue 的 sceneId 引用 ∪ `module.exits` 的 key 与 target。曾经额外把每条 hook 的 `condition` 也无条件当场景注册——hook 的 condition 只是触发条件，不是地点，谷仓模组因此把 22 个真场景灌成 39 个，混进「主要_npc」「结局」这类文档小标题，模糊移动的候选池直接受污染。已修（见 docs/notes/engine.md）。",
         "结局判定（`src/module/barn-of-premier.ts` 的 `EndNarration[]` / `evaluateEndNarration`）是本仓唯一可机器求值的结局表示；另两套（`ModuleEnding.conditionText`、`ModuleData.endings`）都是自由文本，只能展示不能求值。三套的关系与理由见 `buildEndings()` 之前的长注释；一致性由 id 集合判据钉住（不让展示文本悄悄跟判定分叉）。求值器按显式 `priority` 字段排序取第一条命中的，不依赖数组书写顺序——这是修过一次真实优先级 bug 之后才加的字段，见下方「测试」一节。",
-        "【步骤5A-5D，2026-09-08】`ModuleData.runtime` 与 `ModuleNPC.runtime` 承载谷仓运行数据；direct loader 注册 21 Scene/46 connections、14 NPC、32 rich Clue 与运行配置。5D 删除了谷仓 `MODULE_PREMIERS_BARN` 薄适配、旧投影/冻结 fixture、跨表示内容比较器和 `loaderSceneDescriptions`/`loaderExits`/`clueBindings` 过渡字段。`barn-unification-sentinel.test.ts` 防止第二份表示复生；Arkham/InnsMouth 保持按需 MythosModule legacy 分支。字段矩阵见 `docs/module-unification-matrix.md`。"
+        "【步骤5A-5E，2026-09-09】`ModuleData.runtime` 与 `ModuleNPC.runtime` 承载谷仓运行数据；direct loader 注册 21 Scene/46 connections、14 NPC、32 rich Clue 与运行配置。5D 删除了谷仓 `MODULE_PREMIERS_BARN` 薄适配、旧投影/冻结 fixture、跨表示内容比较器和 `loaderSceneDescriptions`/`loaderExits`/`clueBindings` 过渡字段。5E 强化单一数据源哨兵：已知 wrapper/symbol、对象身份、过渡字段和谷仓 legacy loader 均不可回流，但不声称能发现改名或外部动态重复。Arkham/InnsMouth 保持按需 MythosModule legacy 分支；通用加载器收敛仍待办。字段矩阵见 `docs/module-unification-matrix.md`。"
       ],
       "tables": [
         {

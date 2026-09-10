@@ -1,5 +1,5 @@
 {
-  "tests": 2957,
+  "tests": 2959,
   "files": 201,
   "unwiredMethods": 84,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。 86->84（开发·多人可见性 N6）：setPlayerScene 被整个删除少 1 处，getPlayersInScene 有了真调用方（player-scene-authority.test.ts）再少 1 处，两处一起解释这次的净减 2。",
@@ -679,6 +679,11 @@
       "tests": 2957,
       "files": 201,
       "when": "开发·场景集合收敛 N12 步骤5D：删除谷仓 MythosModule 薄适配、derive/projection/reverse、representation 内容比较器、legacy loader fixture，以及 runtime 的 loaderSceneDescriptions/loaderExits/clueBindings。旧测试删除：legacy adapter 6、unified projection 12、representation comparison 17；module endings 5→2、Mythos whitelist 6→2。新增 runtime attachment 3、复生哨兵 6，并为 Innsmouth legacy 分支补1条，净 2989→2957（-32）、202→201。四项真实变异：registry 重引 wrapper、runtime 恢复 loaderExits、删除 rich Clue 注册、fabrication resolver 指回已删文件均红后恢复。typecheck 0；bun test 2957/201。"
+    },
+    {
+      "tests": 2959,
+      "files": 201,
+      "when": "步骤5E：5D 已删除比较器，本轮不重复删除；补强单一数据源哨兵的已退役符号、对象身份、谷仓 legacy loader 与 bridge/id-map 回流检查，并将4条历史 runtime fabrication guard 改为克隆统一 ModuleData 后的实际字段变异。真实变异：重建 wrapper、registry 包装、加回 loaderExits、谷仓调用 legacy loader、统一数据写回已绑架11人均红后恢复。typecheck 0；bun test 2957->2959（+2，201文件不变）。"
     }
   ]
 }

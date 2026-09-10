@@ -1764,3 +1764,21 @@ loader fixture、跨表示比较器，以及 `loaderSceneDescriptions`、`loader
 `loaderExits` 使字段哨兵红；删 rich Clue 注册使 direct loader 与自然语言 True End
 回放红；fabrication resolver 指回已删除文件产生 ENOENT。还原后 typecheck 与全量测试
 均绿。步骤 5 没有已定义的 5E 工作；Arkham/InnsMouth 的 ModuleData 迁移属于独立决策。
+
+### 步骤 5E：单一数据源哨兵收尾（2026-09-09）
+
+5D 已删除比较器和旧表示，5E 不重复删除。`barn-unification-sentinel.test.ts` 现明确
+说明能力边界，并额外钉住 `PREMIERS_BARN_MODULE`、`deriveMythosModule` 等已退役符号、
+registry 对 `BARN_OF_PREMIER` 的对象身份、谷仓加载不得构造 legacy loader，以及
+`bridgeBarnOfPremierClues`/`barnSceneIdMap` 不得回流。通用 `MythosModuleLoader` import
+本身不被禁止，因为 Arkham/InnsMouth 仍需要它；运行时测试分别确认谷仓不创建 loader、
+两部 legacy 模组按需创建。
+
+哨兵只覆盖已知文件、符号和静态路径，不能发现改名后的语义重复、外部仓库内容或动态
+生成的第二份数据。四条历史 `source:"premiers-barn"` fabrication guard 仍保留来源标签，
+但现在将统一 `ModuleNPC.runtime` 序列化成 guard-only 历史字段形状；这不是 MythosModule
+投影，也不参与运行时。对艾德里安、流浪汉、Mi-Go 站位及绑架人数的统一数据变异均会红。
+
+本轮发现并订正一条过早关闭的记录：谷仓表示与谷仓加载路径已收敛，`todo-19` 维持 done；
+`todo-20` 仍必须 open，因为 Arkham/InnsMouth、CLI、ScriptedSession 的通用加载路径没有
+统一。摄取 id 继承（todo-48）也未由谷仓场景 id 收敛解决。
