@@ -133,6 +133,11 @@
               "ClaimCandidate, CompilationManifest, resolveCandidates"
             ],
             [
+              "src/ingest/document-ir.ts / document-blocks.ts",
+              "PDF 页文本的 source-exact 文档 IR、半开字符 evidence span 与分类前 prose blocks；保留 legacy SourceRef/sourceKey",
+              "DocumentIR, EvidenceRef, DocumentBlock"
+            ],
+            [
               "src/log.ts",
               "诊断日志；明确划界——面向玩家的正文不走本模块",
               "log, LogLevel"

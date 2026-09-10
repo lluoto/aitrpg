@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-10 08:36
+> 生成于 2026-09-10 12:22
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,8 +13,8 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 6f92cf4 fix: rank inferred mechanics before engine policy |
-| 测试 | 2973 条 / 204 文件  全绿 |
+| HEAD | 0e41e41 fix: keep trace builder internal |
+| 测试 | 2988 条 / 207 文件  全绿 |
 | 工作树 | **10 个文件未提交** |
 
 未提交：
@@ -26,7 +26,7 @@
 - `M src/__tests__/cthulhu-dataset.test.ts`
 - `M src/dataset/cthulhu-manifest.ts`
 - `M src/world/world-model-loader.ts`
-- `?? docs/compilation-authority-contract.md`
+- `?? docs/document-ir-evidence.md`
 - `?? docs/notes/world-model.md`
 
 ## 开工前
@@ -132,14 +132,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
-- 6f92cf4 fix: rank inferred mechanics before engine policy
-- b3ce389 fix: prefer module creature stats over generic lore
-- ae8ecee feat: resolve field candidates by scoped authority
-- 2bbfd31 feat: define compilation source authority and scope
-- 076e4d7 docs: close Barn convergence step 5E
-- a592743 test: harden Barn single-source sentinel
-- c24bfd9 docs: close Barn representation unification
-- bc098e6 refactor: retire Barn Mythos compatibility adapter
+- 0e41e41 fix: keep trace builder internal
+- bafc1e4 fix: preserve ingest measurement boundary
+- 22c5006 test: verify ingest evidence span integrity
+- be715ac feat: expose ingest document evidence outputs
+- 80f043f feat: attach evidence to sections and prose blocks
+- 5668145 feat: preserve evidence spans through text cleaning
+- 8813814 feat: add source-exact DocumentIR contracts
+- 2346c3f docs: record runtime compilation authority contract
 
 ## 找东西
 

@@ -1,6 +1,6 @@
 {
-  "tests": 2973,
-  "files": 204,
+  "tests": 2988,
+  "files": 207,
   "unwiredMethods": 84,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。 86->84（开发·多人可见性 N6）：setPlayerScene 被整个删除少 1 处，getPlayersInScene 有了真调用方（player-scene-authority.test.ts）再少 1 处，两处一起解释这次的净减 2。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -689,6 +689,11 @@
       "tests": 2973,
       "files": 204,
       "when": "P0：新增纯 compiler authority/manifest/candidate resolver（不读 artifact、不接 world runtime）及三组测试。authority 与 derivation 正交；空 work scope fail-closed；四域优先级、同层冲突、transfer policy、latent 形状和解释保留均有覆盖。修复 GameSession creature-first 覆盖：谷仓 Mi-Go 保持模组 HP11/maxHP11/AC10，通用库12/12/14不覆盖。真实变异：同层取首、移除mechanic_only、允许analogy_only、恢复creature-first均红后还原。typecheck 0；bun test 2959->2973（+14，201->204文件）。"
+    },
+    {
+      "tests": 2988,
+      "files": 207,
+      "when": "P1：新增 DocumentIR（PDF bytes hash、逐页pdf-parse字符半开区间）、trace-aware清洗/跨页拼接、分类前DocumentBlock与pipeline并行产物；保留SourceRef/sourceKey和既有摄取输出。普通pages入口显式synthetic_fixture。五项真实变异：压缩多span、闭区间rawEnd、清洗文本hash、序号block id、丢弃普通散文均红后恢复。typecheck 0；bun test 2973->2988（+15，204->207文件）。"
     }
   ]
 }

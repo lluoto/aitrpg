@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-10 08:37  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-10 12:22  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：6f92cf4 fix: rank inferred mechanics before engine policy  ·  **测试**：2973 条 / 204 文件，全绿（基线 2973，一致）
+跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：0e41e41 fix: keep trace builder internal  ·  **测试**：2988 条 / 207 文件，全绿（基线 2988，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -209,18 +209,18 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- 0e41e41 fix: keep trace builder internal
+- bafc1e4 fix: preserve ingest measurement boundary
+- 22c5006 test: verify ingest evidence span integrity
+- be715ac feat: expose ingest document evidence outputs
+- 80f043f feat: attach evidence to sections and prose blocks
+- 5668145 feat: preserve evidence spans through text cleaning
+- 8813814 feat: add source-exact DocumentIR contracts
+- 2346c3f docs: record runtime compilation authority contract
 - 6f92cf4 fix: rank inferred mechanics before engine policy
 - b3ce389 fix: prefer module creature stats over generic lore
 - ae8ecee feat: resolve field candidates by scoped authority
 - 2bbfd31 feat: define compilation source authority and scope
-- 076e4d7 docs: close Barn convergence step 5E
-- a592743 test: harden Barn single-source sentinel
-- c24bfd9 docs: close Barn representation unification
-- bc098e6 refactor: retire Barn Mythos compatibility adapter
-- e1ed60d docs: refresh Cthulhu adapter handoff
-- 279e09f docs: define Cthulhu dataset integration boundary
-- 2aa8dea test: verify Cthulhu dataset evidence boundaries
-- 43a72c9 feat: add source-bound Cthulhu dataset adapter
 
 ## 代码地图
 
