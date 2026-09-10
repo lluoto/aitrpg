@@ -28,39 +28,44 @@ export interface TracedText {
   fragments: TraceFragment[];
 }
 
-class TraceBuilder {
-  private text = "";
-  private fragments: TraceFragment[] = [];
+interface TraceBuilder {
+  appendSynthetic(value: string): void;
+  appendExact(page: DocumentPage, rawStart: number, rawEnd: number): void;
+  appendTrace(trace: TracedText): void;
+  finish(): TracedText;
+}
 
-  appendSynthetic(value: string): void {
-    this.text += value;
-  }
-
-  appendExact(page: DocumentPage, rawStart: number, rawEnd: number): void {
-    if (rawStart === rawEnd) return;
-    const start = this.text.length;
-    const evidence = evidenceSpan(page, rawStart, rawEnd);
-    this.text += evidence.exactText;
-    this.fragments.push({ outputStart: start, outputEnd: this.text.length, evidence });
-  }
-
-  appendTrace(trace: TracedText): void {
-    const offset = this.text.length;
-    this.text += trace.text;
-    this.fragments.push(...trace.fragments.map((fragment) => ({
-      outputStart: offset + fragment.outputStart,
-      outputEnd: offset + fragment.outputEnd,
-      evidence: fragment.evidence,
-    })));
-  }
-
-  finish(): TracedText {
-    return { text: this.text, fragments: this.fragments };
-  }
+function createTraceBuilder(): TraceBuilder {
+  let text = "";
+  const fragments: TraceFragment[] = [];
+  return {
+    appendSynthetic(value) {
+      text += value;
+    },
+    appendExact(page, rawStart, rawEnd) {
+      if (rawStart === rawEnd) return;
+      const start = text.length;
+      const evidence = evidenceSpan(page, rawStart, rawEnd);
+      text += evidence.exactText;
+      fragments.push({ outputStart: start, outputEnd: text.length, evidence });
+    },
+    appendTrace(trace) {
+      const offset = text.length;
+      text += trace.text;
+      fragments.push(...trace.fragments.map((fragment) => ({
+        outputStart: offset + fragment.outputStart,
+        outputEnd: offset + fragment.outputEnd,
+        evidence: fragment.evidence,
+      })));
+    },
+    finish() {
+      return { text, fragments };
+    },
+  };
 }
 
 export function sliceTracedText(trace: TracedText, start: number, end: number): TracedText {
-  const builder = new TraceBuilder();
+  const builder = createTraceBuilder();
   builder.appendSynthetic(trace.text.slice(start, end));
   const result = builder.finish();
   result.fragments = trace.fragments.flatMap((fragment) => {
@@ -103,7 +108,7 @@ function rawLines(page: DocumentPage): Array<{ rawStart: number; rawEnd: number 
 
 function normalizeLine(page: DocumentPage, rawStart: number, rawEnd: number): TracedText {
   const raw = page.rawText.slice(rawStart, rawEnd);
-  const builder = new TraceBuilder();
+  const builder = createTraceBuilder();
   let cursor = 0;
   for (const match of raw.matchAll(/[ \t\u00a0\u3000]+/g)) {
     const matchStart = match.index!;
@@ -117,7 +122,7 @@ function normalizeLine(page: DocumentPage, rawStart: number, rawEnd: number): Tr
 }
 
 function concatTraces(parts: TracedText[]): TracedText {
-  const builder = new TraceBuilder();
+  const builder = createTraceBuilder();
   for (const part of parts) builder.appendTrace(part);
   return builder.finish();
 }
@@ -344,7 +349,7 @@ export function cleanPageWithTrace(page: DocumentPage): TracedText {
   if (!page.rawText) return { text: "", fragments: [] };
 
   const lines = rawLines(page).map((line) => normalizeLine(page, line.rawStart, line.rawEnd));
-  const builder = new TraceBuilder();
+  const builder = createTraceBuilder();
   let previous: string | null = null;
   let sawBlank = false;
 
