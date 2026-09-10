@@ -41,7 +41,7 @@ import { CareerFileStore } from "../character/career-file";
 import { createGameTime, advanceTime, formatGameTime, periodAtmosphere, type GameTime } from "../rules/game-time";
 import { listTables, rollTable } from "../rules/random-tables";
 
-import { MYTHOS_CREATURE_BY_ID, MYTHOS_CREATURE_MAP, MythosModuleLoader, type MythosModule, type MythosModuleHost } from "../rules/mythos-module";
+import { MythosModuleLoader, type MythosModule, type MythosModuleHost } from "../rules/mythos-module";
 import { PoliticoEconomyEngine } from "../economy/politic-economy-engine";
 import { ARKHAM_LIBRARY_MODULE, INNSMOUTH_MODULE } from "../rules/mythos-module";
 import { getModule as getCustomModule } from "../rules/custom-modules/index";
@@ -4013,20 +4013,22 @@ export class GameSession {
         this.sceneAliases[scene.id] = [scene.name];
       },
       registerRuntimeNpc: (_npc, runtime) => {
-        const creature = runtime.mythosCreatureId
-          ? MYTHOS_CREATURE_BY_ID.get(runtime.mythosCreatureId) ?? MYTHOS_CREATURE_MAP.get(runtime.mythosCreatureId)
-          : undefined;
+        // ModuleData runtime values are the explicit encounter contract. The
+        // generic creature catalogue may inform other systems, but cannot
+        // overwrite this module's HP, AC, name, faction, or attributes.
+        // WorldEntity has no skills/abilities/tactics columns, so this loader
+        // neither persists nor substitutes those fields from generic lore.
         this.world.upsertEntity({
           id: runtime.sourceId,
           name: runtime.sourceName,
           type: runtime.type,
-          hp: creature?.hp ?? runtime.hp,
-          maxHp: creature?.maxHp ?? runtime.maxHp,
-          ac: creature?.ac ?? runtime.ac,
+          hp: runtime.hp,
+          maxHp: runtime.maxHp,
+          ac: runtime.ac,
           status: [],
           position: runtime.sceneId,
           scene_id: runtime.sceneId,
-          faction: creature && runtime.faction === "神话生物" ? creature.name : runtime.faction,
+          faction: runtime.faction,
           attributes: runtime.attributes ?? {},
         });
         this.registerModuleNPCPersonality(runtime.sourceName, runtime.personality, runtime.npcPersonalityId);
