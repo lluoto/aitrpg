@@ -34,6 +34,7 @@ export interface FactInterpretationCandidate<T = unknown> {
   sourceStatementIds: string[];
   claim: ClaimCandidate<T>;
   interpretationStatus: InterpretationStatus;
+  review?: FactInterpretationReview;
 }
 
 export interface SourceFactGraph {
@@ -49,6 +50,10 @@ export interface FactInterpretationReview {
   interpretationId: string;
   decision: "accept" | "reject" | "defer";
   reason: string;
+  reviewerKind?: "deterministic_rule" | "human" | "approved_policy";
+  reviewEvidenceStatementIds?: string[];
+  reviewerId?: string;
+  policyId?: string;
 }
 
 export function sourceStatementEvidenceRefId(statementId: string): string {
@@ -204,6 +209,33 @@ export function validateSourceFactGraph(graph: SourceFactGraph): void {
     if (interpretation.interpretationStatus === "accepted" && interpretation.claim.status !== "accepted") {
       throw new Error(`accepted interpretation has non-accepted claim: ${interpretation.id}`);
     }
+    if (interpretation.interpretationStatus === "accepted") {
+      if (!interpretation.review) throw new Error(`accepted interpretation lacks review audit: ${interpretation.id}`);
+      validateReviewAudit(interpretation, interpretation.review);
+      if (interpretation.review.decision !== "accept") throw new Error(`accepted interpretation has non-accept review: ${interpretation.id}`);
+    } else if (interpretation.review) {
+      validateReviewAudit(interpretation, interpretation.review);
+    }
+  }
+}
+
+function validateReviewAudit(
+  interpretation: FactInterpretationCandidate,
+  review: FactInterpretationReview,
+): void {
+  if (review.interpretationId !== interpretation.id) throw new Error(`review interpretation mismatch: ${review.interpretationId}`);
+  if (!review.reason.trim()) throw new Error(`review reason is required: ${review.interpretationId}`);
+  const evidenceIds = review.reviewEvidenceStatementIds;
+  if (!evidenceIds || evidenceIds.length === 0) throw new Error(`review evidence is required: ${review.interpretationId}`);
+  if (new Set(evidenceIds).size !== evidenceIds.length) throw new Error(`review evidence duplicates a statement: ${review.interpretationId}`);
+  for (const statementId of evidenceIds) {
+    if (!interpretation.sourceStatementIds.includes(statementId)) {
+      throw new Error(`review evidence is outside interpretation sources: ${review.interpretationId}`);
+    }
+  }
+  if (review.decision === "accept" && !review.reviewerKind) throw new Error(`accept review lacks reviewerKind: ${review.interpretationId}`);
+  if ((review.reviewerKind === "deterministic_rule" || review.reviewerKind === "approved_policy") && !review.policyId?.trim()) {
+    throw new Error(`review policyId is required: ${review.interpretationId}`);
   }
 }
 
@@ -223,6 +255,10 @@ export function applyFactInterpretationReviews(
   }
   const known = new Set(graph.interpretations.map((interpretation) => interpretation.id));
   for (const review of reviews) if (!known.has(review.interpretationId)) throw new Error(`review interpretation missing: ${review.interpretationId}`);
+  for (const review of reviews) {
+    const interpretation = graph.interpretations.find((candidate) => candidate.id === review.interpretationId)!;
+    validateReviewAudit(interpretation, review);
+  }
 
   const interpretations = graph.interpretations.map((interpretation) => {
     const review = decisions.get(interpretation.id);
@@ -233,6 +269,7 @@ export function applyFactInterpretationReviews(
       ...interpretation,
       sourceStatementIds: [...interpretation.sourceStatementIds],
       interpretationStatus,
+      review: { ...review, reviewEvidenceStatementIds: [...review.reviewEvidenceStatementIds!] },
       claim: { ...interpretation.claim, evidenceRefs: [...interpretation.claim.evidenceRefs], scope: { ...interpretation.claim.scope }, status: claimStatus, reason: `${interpretation.claim.reason}; review: ${review.reason}` },
     };
   });

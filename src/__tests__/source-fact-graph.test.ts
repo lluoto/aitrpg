@@ -101,12 +101,41 @@ describe("SourceFactGraph", () => {
     const { graph } = graphFor(["正文。"]);
     const statement = graph.statements[0]!;
     const candidateGraph = { ...graph, interpretations: [interpretation(statement.id)] };
-    const accepted = applyFactInterpretationReviews(candidateGraph, [{ interpretationId: "candidate:fixture", decision: "accept", reason: "reviewed" }]);
+    const accepted = applyFactInterpretationReviews(candidateGraph, [{
+      interpretationId: "candidate:fixture",
+      decision: "accept",
+      reason: "reviewed",
+      reviewerKind: "deterministic_rule",
+      policyId: "fixture-policy",
+      reviewEvidenceStatementIds: [statement.id],
+    }]);
     expect(accepted.interpretations[0]?.interpretationStatus).toBe("accepted");
     expect(accepted.interpretations[0]?.claim.status).toBe("accepted");
+    expect(accepted.interpretations[0]?.review?.policyId).toBe("fixture-policy");
     expect(() => applyFactInterpretationReviews(candidateGraph, [
-      { interpretationId: "candidate:fixture", decision: "accept", reason: "a" },
-      { interpretationId: "candidate:fixture", decision: "reject", reason: "b" },
+      { interpretationId: "candidate:fixture", decision: "accept", reason: "a", reviewerKind: "deterministic_rule", policyId: "fixture-policy", reviewEvidenceStatementIds: [statement.id] },
+      { interpretationId: "candidate:fixture", decision: "reject", reason: "b", reviewEvidenceStatementIds: [statement.id] },
     ])).toThrow("conflicting interpretation reviews");
+  });
+
+  it("fails closed when an accept review lacks audit policy or source evidence", () => {
+    const { graph } = graphFor(["正文。"]);
+    const statement = graph.statements[0]!;
+    const candidateGraph = { ...graph, interpretations: [interpretation(statement.id)] };
+    expect(() => applyFactInterpretationReviews(candidateGraph, [{
+      interpretationId: "candidate:fixture",
+      decision: "accept",
+      reason: "reviewed",
+      reviewerKind: "deterministic_rule",
+      reviewEvidenceStatementIds: [statement.id],
+    }])).toThrow("policyId");
+    expect(() => applyFactInterpretationReviews(candidateGraph, [{
+      interpretationId: "candidate:fixture",
+      decision: "accept",
+      reason: "reviewed",
+      reviewerKind: "approved_policy",
+      policyId: "fixture-policy",
+      reviewEvidenceStatementIds: [],
+    }])).toThrow("review evidence");
   });
 });
