@@ -541,7 +541,7 @@
       "category": "编译链后续",
       "severity": "info",
       "status": "open",
-      "text": "【P2/P3/P4/P5 完成，2026-09-11】SourceFactGraph、accepted MechanicsIR 与 closed_world reachability 已建立；P5 新增唯一 deterministic template：named marked_item 在 heading scope 下可经 approved `marked-item-observation-v1` 生成 engine_policy/default observe draft。严格模式拒绝 engine_policy，compatible 仍须显式 policy allowlist、审计 review 与 exact evidence。输出永远 draft_only，不补技能、重要度、核心线索、连接或终局。下一步 P6 才能增加显式确定性模板以补 entry、connection topology、core clue policy 与 ending；必须保留 legacy SourceRef/sourceKey，禁止改变既有运行行为。"
+      "text": "【P2-P6 完成，2026-09-11】SourceFactGraph、accepted MechanicsIR、closed_world reachability、marked-item observation draft 与 CompilerQuestionQueue 已建立。P6 将 scene role、entry、topology、core clue、ending、discovery 等未决语义变为 exact-evidence questions；ModuleCompileHints 只验证 identity/evidence/kind/authority/冲突，尚不消费为机制。输出仍 draft_only，不自动生成入口、连接、核心线索或终局。下一步 P7 才消费通过验证的 hints 为 accepted interpretations，P8 才在真实模组结构上调用 P4；必须保留 legacy SourceRef/sourceKey，禁止改变既有运行行为。"
     }
   ]
 }
