@@ -32,8 +32,8 @@ describe("compile hint resolution", () => {
   it("allows topology targets only from the question allowlist and core only from its subject", () => {
     const { queue } = fixture();
     const topology = queue.questions.find((question) => question.kind === "connection_topology")!;
-    expect(() => parseCompilerHintValue(topology, { fromSceneId: topology.subjectCandidateId, toSceneId: "invented", connectionId: "connection_x" })).toThrow("unallowed");
+    expect(() => parseCompilerHintValue(topology, { fromSceneCandidateId: topology.subjectCandidateId, toSceneCandidateId: "invented", connectionId: "connection_x" })).toThrow("unallowed");
     const core = queue.questions.find((question) => question.kind === "core_clue")!;
-    expect(() => parseCompilerHintValue(core, { clueId: "invented", required: true })).toThrow("subject");
+    expect(() => parseCompilerHintValue(core, { clueCandidateId: "invented", required: true })).toThrow("subject");
   });
 });

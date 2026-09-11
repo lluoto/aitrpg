@@ -37,7 +37,7 @@ function validHints(): { queue: ReturnType<typeof fixture>["queue"]; hints: Modu
       resolutions: [{
         questionId: question.id,
         kind: question.kind,
-        value: true,
+        value: { clueCandidateId: question.subjectCandidateId, required: true },
         sourceStatementIds: [...question.sourceStatementIds],
         evidenceRefs: [...question.evidenceRefs],
         authority: "user_document",
@@ -128,7 +128,7 @@ describe("CompilerQuestionQueue", () => {
     wrongHash.sourceGraphIdentity = "wrong";
     expect(() => validateModuleCompileHints(queue, wrongHash)).toThrow("identity");
     const unknownReference = structuredClone(hints);
-    unknownReference.resolutions[0]!.value = { clueId: "invented" };
+    unknownReference.resolutions[0]!.value = { clueCandidateId: "invented", required: true };
     expect(() => validateModuleCompileHints(queue, unknownReference)).toThrow("unknown reference");
   });
 

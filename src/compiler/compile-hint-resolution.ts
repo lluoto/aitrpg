@@ -37,19 +37,19 @@ export function parseCompilerHintValue(question: CompilerQuestion, value: unknow
       if (!(["playable_scene", "rules_section", "character_section", "ending_section", "other"] as string[]).includes(input.role as string)) throw new Error("invalid scene role");
       return { role: input.role };
     }
-    case "entry_scene": only(input, ["sceneId"], "entry_scene"); return { sceneId: candidate(question, input.sceneId, "entry scene") };
+    case "entry_scene": only(input, ["sceneCandidateId"], "entry_scene"); return { sceneId: candidate(question, input.sceneCandidateId, "entry scene") };
     case "core_clue": {
-      only(input, ["clueId", "required"], "core_clue");
+      only(input, ["clueCandidateId", "required"], "core_clue");
       if (typeof input.required !== "boolean") throw new Error("core clue required must be boolean");
-      if (input.clueId !== question.subjectCandidateId) throw new Error("core clue must match question subject");
-      return { clueId: candidate(question, input.clueId, "core clue"), required: input.required };
+      if (input.clueCandidateId !== question.subjectCandidateId) throw new Error("core clue must match question subject");
+      return { clueId: candidate(question, input.clueCandidateId, "core clue"), required: input.required };
     }
     case "connection_topology": {
-      only(input, ["fromSceneId", "toSceneId", "connectionId", "availability", "onTraverse"], "connection_topology");
-      if (input.fromSceneId !== question.subjectCandidateId) throw new Error("connection source must match question subject");
+      only(input, ["fromSceneCandidateId", "toSceneCandidateId", "connectionId", "availability", "onTraverse"], "connection_topology");
+      if (input.fromSceneCandidateId !== question.subjectCandidateId) throw new Error("connection source must match question subject");
       const spec = parseMechanicsCandidateSpec({ kind: "connection_gate", id: `hint_connection_${String(input.connectionId)}`, connectionId: input.connectionId, ...(input.availability === undefined ? {} : { availability: input.availability }), ...(input.onTraverse === undefined ? {} : { onTraverse: input.onTraverse }) });
       if (spec.kind !== "connection_gate") throw new Error("invalid connection hint");
-      return { fromSceneId: candidate(question, input.fromSceneId, "connection source"), toSceneId: candidate(question, input.toSceneId, "connection target"), connectionId: String(input.connectionId), spec };
+      return { fromSceneId: candidate(question, input.fromSceneCandidateId, "connection source"), toSceneId: candidate(question, input.toSceneCandidateId, "connection target"), connectionId: String(input.connectionId), spec };
     }
     case "ending_rule": {
       only(input, ["spec"], "ending_rule");
@@ -62,10 +62,10 @@ export function parseCompilerHintValue(question: CompilerQuestion, value: unknow
       return { discoveryMethodId: String(input.discoveryMethodId), check: input.check as CheckSpec };
     }
     case "discovery_method": {
-      only(input, ["spec"], "discovery_method");
+      only(input, ["spec", "locationSceneCandidateId"], "discovery_method");
       const spec = parseMechanicsCandidateSpec(input.spec);
       if (spec.kind !== "discovery_method") throw new Error("discovery hint requires DiscoveryMethodSpec");
-      return { spec };
+      return { spec, locationSceneId: candidate(question, input.locationSceneCandidateId, "discovery location") };
     }
     default: return input;
   }
@@ -104,6 +104,7 @@ export function resolveDraftModule(graph: SourceFactGraph, draft: DraftModuleStr
   const topology = answered.filter((item) => item.question.kind === "connection_topology").map((item) => item.value as { fromSceneId: string; toSceneId: string; connectionId: string; spec: ConnectionGateSpec });
   const core = answered.filter((item) => item.question.kind === "core_clue").map((item) => item.value as { clueId: string; required: boolean }).filter((item) => item.required).map((item) => item.clueId);
   const hintInterpretations = answered.filter((item) => item.question.kind === "connection_topology" || item.question.kind === "ending_rule" || item.question.kind === "discovery_method").map((item) => interpretation(item.question, item.resolution, (item.value as { spec: MechanicsCandidateSpec }).spec));
+  const hintedLocations = new Map(answered.filter((item) => item.question.kind === "discovery_method").map((item) => { const value = item.value as { spec: MechanicsCandidateSpec; locationSceneId: string }; return [value.spec.id, value.locationSceneId]; }));
   const blocking = [...resolvedQueue.questions.filter((question) => question.severity === "publish_blocking" && question.status !== "answered").map((question) => question.blockingCode)];
   if (!entry || !playable.has(entry.sceneId) || topology.some((item) => !playable.has(item.fromSceneId) || !playable.has(item.toSceneId))) blocking.push("invalid_scene_resolution");
   const endingIds: string[] = [];
@@ -112,11 +113,13 @@ export function resolveDraftModule(graph: SourceFactGraph, draft: DraftModuleStr
     if (spec.kind === "ending_rule") endingIds.push(...spec.effects.filter((effect) => effect.kind === "end_game").map((effect) => effect.endingId));
   }
   const symbols: MechanicsSymbols = { clueIds: draft.clueCandidates.map((clue) => clue.id), sceneIds: [...playable], itemIds: [], npcIds: [], connectionIds: topology.map((item) => item.connectionId), encounterIds: [], endingIds, rewardIds: [], declaredStateKeys: [] };
-  const acceptedInterpretations = [...draft.interpretations, ...hintInterpretations];
-  if (blocking.length || !entry || symbols.endingIds.length === 0) return { resolvedQueue, acceptedInterpretations, readiness: { ...draft.readiness, status: "draft_only", blockingCodes: [...new Set([...draft.readiness.blockingCodes, ...blocking, "missing_resolution"])] }, substitutedEnginePolicyInterpretationIds: [] };
+  const explicitDiscoveryClues = new Set(hintInterpretations.map((item) => item.claim.value as MechanicsCandidateSpec).filter((spec): spec is Extract<MechanicsCandidateSpec, { kind: "discovery_method" }> => spec.kind === "discovery_method").map((spec) => spec.clueId));
+  const substitutedEnginePolicyInterpretationIds = draft.interpretations.filter((item) => item.claim.authority === "engine_policy" && explicitDiscoveryClues.has((item.claim.value as MechanicsCandidateSpec).kind === "discovery_method" ? (item.claim.value as Extract<MechanicsCandidateSpec, { kind: "discovery_method" }>).clueId : "")).map((item) => item.id);
+  const acceptedInterpretations = [...draft.interpretations.filter((item) => !substitutedEnginePolicyInterpretationIds.includes(item.id)), ...hintInterpretations];
+  if (blocking.length || !entry || symbols.endingIds.length === 0) return { resolvedQueue, acceptedInterpretations, readiness: { ...draft.readiness, status: "draft_only", blockingCodes: [...new Set([...draft.readiness.blockingCodes, ...blocking, "missing_resolution"])] }, substitutedEnginePolicyInterpretationIds };
   const mechanicsIR = compileMechanics({ ...graph, interpretations: acceptedInterpretations }, { moduleId: draft.moduleId, documentHash: draft.documentHash, sourceGraphSchemaVersion: graph.schemaVersion, symbols, acceptedInterpretationIds: acceptedInterpretations.map((item) => item.id), compilationMode: "compatible", allowedEnginePolicyIds: ["marked-item-observation-v1"] });
-  const analysisInput: MechanicsAnalysisInput = { entrySceneId: entry.sceneId, initialState: { foundClueIds: [], visitedSceneIds: [], ownedItemIds: [], stateValues: {}, npcStates: {} }, coreClueIds: core, connections: topology.map((item) => ({ id: item.connectionId, fromSceneId: item.fromSceneId, toSceneId: item.toSceneId })), discoveryLocations: Object.fromEntries(mechanicsIR.discoveryMethods.map((method) => [method.id, method.targetId])), maxStates: 500 };
+  const analysisInput: MechanicsAnalysisInput = { entrySceneId: entry.sceneId, initialState: { foundClueIds: [], visitedSceneIds: [], ownedItemIds: [], stateValues: {}, npcStates: {} }, coreClueIds: core, connections: topology.map((item) => ({ id: item.connectionId, fromSceneId: item.fromSceneId, toSceneId: item.toSceneId })), discoveryLocations: Object.fromEntries(mechanicsIR.discoveryMethods.map((method) => [method.id, hintedLocations.get(method.id) ?? method.targetId])), maxStates: 500 };
   const reachabilityReport = analyzeMechanicsReachability(mechanicsIR, analysisInput);
   const clean = !reachabilityReport.unreachableCoreClueIds.length && !reachabilityReport.unreachableEndingIds.length && !reachabilityReport.deadlockWitnesses.length && !reachabilityReport.failureDeadlockMethodIds.length && reachabilityReport.selectedTerminalEndingIds.length > 0;
-  return { resolvedQueue, acceptedInterpretations, mechanicsIR, analysisInput, reachabilityReport, readiness: { ...draft.readiness, status: clean ? "mechanically_closed" : "draft_only", blockingCodes: clean ? [] : [...draft.readiness.blockingCodes, "reachability_incomplete"] }, substitutedEnginePolicyInterpretationIds: [] };
+  return { resolvedQueue, acceptedInterpretations, mechanicsIR, analysisInput, reachabilityReport, readiness: { ...draft.readiness, status: clean ? "mechanically_closed" : "draft_only", blockingCodes: clean ? [] : [...draft.readiness.blockingCodes, "reachability_incomplete"] }, substitutedEnginePolicyInterpretationIds };
 }

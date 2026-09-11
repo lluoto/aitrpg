@@ -191,18 +191,17 @@ export function validateCompilerQuestionQueue(graph: SourceFactGraph, queue: Com
   if (queue.queueHash !== expected) throw new CompilerQuestionError("hash_mismatch", "queueHash does not match canonical queue");
 }
 
-function valueReferences(value: unknown, key = ""): Array<{ key: string; id: string }> {
-  if (Array.isArray(value)) return value.flatMap((entry) => valueReferences(entry, key));
-  if (!value || typeof value !== "object") return typeof value === "string" ? [{ key, id: value }] : [];
-  return Object.entries(value as Record<string, unknown>).flatMap(([childKey, childValue]) => valueReferences(childValue, childKey));
-}
-
 function validateHintReferences(question: CompilerQuestion, value: unknown): void {
-  const candidates = new Set(question.candidateIds ?? []);
-  for (const reference of valueReferences(value)) {
-    if (!/(?:scene|clue|connection|state|ending)Ids?$/i.test(reference.key)) continue;
-    if (!candidates.has(reference.id)) throw new CompilerQuestionError("unknown_hint_reference", `hint introduces unknown reference: ${reference.id}`);
-  }
+  const record = value as Record<string, unknown>;
+  const allowed = new Set(question.allowedCandidateIds ?? question.candidateIds ?? []);
+  const reference = (key: string, subject = false) => {
+    const id = record[key];
+    if (typeof id !== "string" || !(subject ? id === question.subjectCandidateId : allowed.has(id))) throw new CompilerQuestionError("unknown_hint_reference", `hint introduces unknown reference: ${String(id)}`);
+  };
+  if (question.kind === "entry_scene") reference("sceneCandidateId");
+  if (question.kind === "core_clue") reference("clueCandidateId", true);
+  if (question.kind === "connection_topology") { reference("fromSceneCandidateId", true); reference("toSceneCandidateId"); if (typeof record.connectionId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9:_-]*$/.test(record.connectionId)) throw new CompilerQuestionError("invalid_declaration", "connectionId must be a declared symbol"); }
+  if (question.kind === "discovery_method") reference("locationSceneCandidateId");
 }
 
 export function validateModuleCompileHints(queue: CompilerQuestionQueue, hints: ModuleCompileHints): void {
