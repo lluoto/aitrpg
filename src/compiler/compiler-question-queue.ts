@@ -17,6 +17,8 @@ export interface CompilerQuestion {
   sourceStatementIds: string[];
   evidenceRefs: string[];
   candidateIds?: string[];
+  subjectCandidateId?: string;
+  allowedCandidateIds?: string[];
   status: CompilerQuestionStatus;
   resolution?: CompilerQuestionResolution;
   blockingCode: string;
@@ -98,7 +100,7 @@ function createQuestion(
   prompt: string,
   blockingCode: string,
   severity: CompilerQuestionSeverity,
-  candidateIds?: string[],
+  candidateIds?: string[], subjectCandidateId?: string, allowedCandidateIds?: string[],
 ): CompilerQuestion {
   const sources = uniqueSorted(sourceStatementIds);
   if (sources.length === 0) throw new CompilerQuestionError("missing_source", `question ${kind} has no source statements`);
@@ -109,6 +111,8 @@ function createQuestion(
     sourceStatementIds: sources,
     evidenceRefs: refs(graph, sources),
     ...(candidateIds?.length ? { candidateIds: uniqueSorted(candidateIds) } : {}),
+    ...(subjectCandidateId ? { subjectCandidateId } : {}),
+    ...(allowedCandidateIds?.length ? { allowedCandidateIds: uniqueSorted(allowedCandidateIds) } : {}),
     status: "open",
     blockingCode,
     severity,
@@ -128,14 +132,14 @@ export function buildCompilerQuestionQueue(graph: SourceFactGraph, draft: DraftM
   }
   const questions: CompilerQuestion[] = [];
   for (const scene of draft.sceneCandidates) {
-    questions.push(createQuestion(graph, "scene_role", [scene.headingStatementId], `scene:${scene.id}`, `Classify heading “${scene.displayName}” as a playable scene, rules section, character section, ending section, or other.`, "unresolved_scene_candidates", "publish_blocking", [scene.id]));
-    questions.push(createQuestion(graph, "connection_topology", [scene.headingStatementId], `topology:${scene.id}`, `Resolve declared connection topology involving heading “${scene.displayName}”; do not infer an edge from document order.`, "missing_connection_topology", "publish_blocking", [scene.id]));
+    questions.push(createQuestion(graph, "scene_role", [scene.headingStatementId], `scene:${scene.id}`, `Classify heading “${scene.displayName}” as a playable scene, rules section, character section, ending section, or other.`, "unresolved_scene_candidates", "publish_blocking", [scene.id], scene.id));
+    questions.push(createQuestion(graph, "connection_topology", [scene.headingStatementId], `topology:${scene.id}`, `Resolve declared connection topology involving heading “${scene.displayName}”; do not infer an edge from document order.`, "missing_connection_topology", "publish_blocking", [scene.id], scene.id, draft.sceneCandidates.map((candidate) => candidate.id)));
   }
   const entrySources = draft.sceneCandidates.map((scene) => scene.headingStatementId);
   const fallbackEntrySources = entrySources.length ? entrySources : graph.statements[0] ? [graph.statements[0].id] : [];
-  if (fallbackEntrySources.length > 0) questions.push(createQuestion(graph, "entry_scene", fallbackEntrySources, "entry", "Select an explicit entry scene from the candidate headings; no heading is the default entry.", "missing_entry_scene", "publish_blocking", draft.sceneCandidates.map((scene) => scene.id)));
+  if (fallbackEntrySources.length > 0) questions.push(createQuestion(graph, "entry_scene", fallbackEntrySources, "entry", "Select an explicit entry scene from the candidate headings; no heading is the default entry.", "missing_entry_scene", "publish_blocking", draft.sceneCandidates.map((scene) => scene.id), undefined, draft.sceneCandidates.map((scene) => scene.id)));
   for (const clue of draft.clueCandidates) {
-    questions.push(createQuestion(graph, "core_clue", [clue.markedItemStatementId, clue.bodyStatementId], `core:${clue.id}`, `Decide whether marked item “${clue.displayName}” is required for the main path.`, "core_clue_unresolved", "draft_warning", [clue.id]));
+    questions.push(createQuestion(graph, "core_clue", [clue.markedItemStatementId, clue.bodyStatementId], `core:${clue.id}`, `Decide whether marked item “${clue.displayName}” is required for the main path.`, "core_clue_unresolved", "draft_warning", [clue.id], clue.id));
     questions.push(createQuestion(graph, "item_binding", [clue.markedItemStatementId, clue.bodyStatementId], `item:${clue.id}`, `Decide whether marked item “${clue.displayName}” needs an explicit runtime item binding.`, "item_binding_unresolved", "draft_warning", [clue.id]));
   }
   for (const statementId of draft.readiness.unresolvedStatementIds) {
@@ -150,7 +154,7 @@ export function buildCompilerQuestionQueue(graph: SourceFactGraph, draft: DraftM
     const fallback = graph.statements[0];
     if (fallback) questions.push(createQuestion(graph, "ending_rule", [fallback.id], "ending", "Provide an explicit ending rule; no ending condition or effect is inferred.", "missing_ending_rules", "publish_blocking"));
   } else {
-    questions.push(createQuestion(graph, "ending_rule", endingHeadings(draft), "ending", "Provide an explicit ending rule using the cited heading scope; no ending condition or effect is inferred.", "missing_ending_rules", "publish_blocking", draft.sceneCandidates.filter((scene) => endingHeadings(draft).includes(scene.headingStatementId)).map((scene) => scene.id)));
+    questions.push(createQuestion(graph, "ending_rule", endingHeadings(draft), "ending", "Provide an explicit ending rule using the cited heading scope; no ending condition or effect is inferred.", "missing_ending_rules", "publish_blocking", draft.sceneCandidates.filter((scene) => endingHeadings(draft).includes(scene.headingStatementId)).map((scene) => scene.id), undefined, [...draft.sceneCandidates.map((scene) => scene.id), ...draft.clueCandidates.map((clue) => clue.id)]));
   }
   const sortedQuestions = [...questions].sort((left, right) => left.id.localeCompare(right.id));
   const queue: CompilerQuestionQueue = {
