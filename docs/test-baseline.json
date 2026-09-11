@@ -1,6 +1,6 @@
 {
-  "tests": 3003,
-  "files": 209,
+  "tests": 3010,
+  "files": 210,
   "unwiredMethods": 84,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。 86->84（开发·多人可见性 N6）：setPlayerScene 被整个删除少 1 处，getPlayersInScene 有了真调用方（player-scene-authority.test.ts）再少 1 处，两处一起解释这次的净减 2。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
@@ -704,6 +704,11 @@
       "tests": 3003,
       "files": 209,
       "when": "P3：新增受限 MechanicsIR（accepted-only 编译、白名单 Predicate/Effect、严格 spec/schema、符号与状态校验、审计 review、稳定 hash）及合成 fixture。availability 与 onSuccess 显式拆分，父线索只开放子线索不会自动发现。六项真实变异：改自动发现、移除 sourceInterpretationIds、accepted 改 deferred、写未声明 state、终局同 priority、review 移除 policyId 均红后恢复。typecheck 0；bun test 2995->3003（+8，208->209文件）。"
+    },
+    {
+      "tests": 3010,
+      "files": 210,
+      "when": "P4：新增 MechanicsIR closed_world 可达性分析（规范状态 hash、有限 BFS、优先级终局、failback、最短 witness、deadlock 与 state limit fail-closed）及合成两场景 fixture。六项真实变异：删 child availability、删 core failback、删通往 ending 的 gate、终局同 priority、移除 deadlock witness、禁用 state limit 均红后恢复。typecheck 0；bun test 3003->3010（+7，209->210文件）。"
     }
   ]
 }
