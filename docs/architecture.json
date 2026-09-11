@@ -138,6 +138,11 @@
               "SourceFactGraph, buildSourceFactGraph, applyFactInterpretationReviews"
             ],
             [
+              "src/compiler/mechanics-ir.ts",
+              "受限 MechanicsIR：只编译已审计 accepted gameplay_mechanic，静态校验符号、谓词、效果和稳定哈希；不接入运行时",
+              "compileMechanics, validateMechanicsIR, MechanicsCompilationError"
+            ],
+            [
               "src/ingest/document-ir.ts / document-blocks.ts",
               "PDF 页文本的 source-exact 文档 IR、半开字符 evidence span 与分类前 prose blocks；保留 legacy SourceRef/sourceKey",
               "DocumentIR, EvidenceRef, DocumentBlock"

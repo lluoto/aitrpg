@@ -541,7 +541,7 @@
       "category": "编译链后续",
       "severity": "info",
       "status": "open",
-      "text": "【P2 完成，2026-09-10】SourceFactGraph 已将 DocumentIR/DocumentBlock 编为 source_exact statement 和确定性结构关系，解释候选仍是 candidate，未产生玩法机制。下一步 P3 定义 MechanicsIR 的 Predicate/Effect DSL，P4 对引用、可达性与终局闭合做静态验证；两步都必须保留 legacy SourceRef/sourceKey 并禁止把自然语言散文自动升级为已确认机制。"
+      "text": "【P2/P3 完成，2026-09-11】SourceFactGraph 已保留 source_exact statement 与审计 accepted interpretation；MechanicsIR 只编译调用方显式列出的 accepted gameplay_mechanic，使用受限 Predicate/Effect DSL，严格校验 evidence、符号、状态写入、终局优先级和 canonical hash。availability 只开放尝试，只有显式 onSuccess.discover_clue 才自动发现。下一步 P4 做机制图引用、可达性和终局闭合静态验证；P5 才对真实模组输入应用确定性模板。两步都必须保留 legacy SourceRef/sourceKey，禁止把自然语言散文自动升级为已确认机制或改变既有运行行为。"
     }
   ]
 }
