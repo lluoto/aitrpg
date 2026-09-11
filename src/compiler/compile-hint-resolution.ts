@@ -117,8 +117,15 @@ export function resolveDraftModule(graph: SourceFactGraph, draft: DraftModuleStr
     if (spec.kind === "ending_rule") endingIds.push(...spec.effects.filter((effect) => effect.kind === "end_game").map((effect) => effect.endingId));
   }
   const symbols: MechanicsSymbols = { clueIds: draft.clueCandidates.map((clue) => clue.id), sceneIds: [...playable], itemIds: [], npcIds: [], connectionIds: topology.map((item) => item.connectionId), encounterIds: [], endingIds, rewardIds: [], declaredStateKeys: [] };
-  const explicitDiscoveryClues = new Set(hintInterpretations.map((item) => item.claim.value as MechanicsCandidateSpec).filter((spec): spec is Extract<MechanicsCandidateSpec, { kind: "discovery_method" }> => spec.kind === "discovery_method").map((spec) => spec.clueId));
-  const substitutedEnginePolicyInterpretationIds = draft.interpretations.filter((item) => item.claim.authority === "engine_policy" && explicitDiscoveryClues.has((item.claim.value as MechanicsCandidateSpec).kind === "discovery_method" ? (item.claim.value as Extract<MechanicsCandidateSpec, { kind: "discovery_method" }>).clueId : "")).map((item) => item.id);
+  const explicitDiscoveryBindings = new Set(hintInterpretations
+    .map((item) => item.claim.value as MechanicsCandidateSpec)
+    .filter((spec): spec is Extract<MechanicsCandidateSpec, { kind: "discovery_method" }> => spec.kind === "discovery_method")
+    .map((spec) => `${spec.clueId}:${hintedLocations.get(spec.id)}`));
+  const substitutedEnginePolicyInterpretationIds = draft.interpretations.filter((item) => {
+    if (item.claim.authority !== "engine_policy") return false;
+    const spec = item.claim.value as MechanicsCandidateSpec;
+    return spec.kind === "discovery_method" && explicitDiscoveryBindings.has(`${spec.clueId}:${spec.targetId}`);
+  }).map((item) => item.id);
   const acceptedInterpretations = [...draft.interpretations.filter((item) => !substitutedEnginePolicyInterpretationIds.includes(item.id)), ...hintInterpretations];
   if (blocking.length || !entry || symbols.endingIds.length === 0) return { resolvedQueue, acceptedInterpretations, readiness: { ...draft.readiness, status: "draft_only", blockingCodes: [...new Set([...draft.readiness.blockingCodes, ...blocking, "missing_resolution"])] }, substitutedEnginePolicyInterpretationIds };
   const mechanicsIR = compileMechanics({ ...graph, interpretations: acceptedInterpretations }, { moduleId: draft.moduleId, documentHash: draft.documentHash, sourceGraphSchemaVersion: graph.schemaVersion, symbols, acceptedInterpretationIds: acceptedInterpretations.map((item) => item.id), compilationMode: "compatible", allowedEnginePolicyIds: ["marked-item-observation-v1"] });
