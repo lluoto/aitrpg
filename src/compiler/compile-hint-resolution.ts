@@ -1,6 +1,6 @@
 import { sha256 } from "../ingest/document-ir";
 import { analyzeMechanicsReachability, type MechanicsAnalysisInput, type MechanicsReachabilityReport } from "./mechanics-reachability";
-import { compileMechanics, parseMechanicsCandidateSpec, type CheckSpec, type ConnectionGateSpec, type MechanicsCandidateSpec, type MechanicsIR, type MechanicsSymbols } from "./mechanics-ir";
+import { compileMechanics, parseMechanicsCandidateSpec, type ConnectionGateSpec, type MechanicsCandidateSpec, type MechanicsIR, type MechanicsSymbols } from "./mechanics-ir";
 import { validateCompilerQuestionQueue, validateModuleCompileHints, type CompilerQuestion, type CompilerQuestionQueue, type CompilerQuestionResolution, type ModuleCompileHints } from "./compiler-question-queue";
 import type { DraftModuleStructure } from "./deterministic-template-compiler";
 import { validateSourceFactGraph, type FactInterpretationCandidate, type SourceFactGraph } from "./source-fact-graph";
@@ -52,22 +52,25 @@ export function parseCompilerHintValue(question: CompilerQuestion, value: unknow
       return { fromSceneId: candidate(question, input.fromSceneCandidateId, "connection source"), toSceneId: candidate(question, input.toSceneCandidateId, "connection target"), connectionId: String(input.connectionId), spec };
     }
     case "ending_rule": {
-      only(input, ["spec"], "ending_rule");
+      only(input, ["endingId", "spec"], "ending_rule");
+      if (typeof input.endingId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9:_-]*$/.test(input.endingId)) throw new Error("invalid ending declaration");
       const spec = parseMechanicsCandidateSpec(input.spec);
       if (spec.kind !== "ending_rule") throw new Error("ending hint requires EndingRuleSpec");
-      return { spec };
+      const endings = spec.effects.filter((effect) => effect.kind === "end_game");
+      if (endings.length !== 1 || endings[0]!.endingId !== input.endingId) throw new Error("ending declaration must match exactly one end_game effect");
+      return { endingId: input.endingId, spec };
     }
-    case "check_spec": {
-      only(input, ["discoveryMethodId", "check"], "check_spec");
-      return { discoveryMethodId: String(input.discoveryMethodId), check: input.check as CheckSpec };
-    }
+    case "check_spec":
+    case "npc_binding":
+    case "item_binding":
+    case "state_key": throw new Error("unsupported_hint_kind");
     case "discovery_method": {
       only(input, ["spec", "locationSceneCandidateId"], "discovery_method");
       const spec = parseMechanicsCandidateSpec(input.spec);
       if (spec.kind !== "discovery_method") throw new Error("discovery hint requires DiscoveryMethodSpec");
       return { spec, locationSceneId: candidate(question, input.locationSceneCandidateId, "discovery location") };
     }
-    default: return input;
+    default: throw new Error("unsupported_hint_kind");
   }
 }
 
@@ -79,6 +82,7 @@ export function applyModuleCompileHints(graph: SourceFactGraph, queue: CompilerQ
   const questions = queue.questions.map((question) => {
     const resolution = byId.get(question.id);
     if (!resolution) return structuredClone(question);
+    parseCompilerHintValue(question, resolution.value);
     if (question.status === "answered" && JSON.stringify(question.resolution?.value) !== JSON.stringify(resolution.value)) throw new Error(`answered question conflict: ${question.id}`);
     return { ...structuredClone(question), status: "answered" as const, resolution: structuredClone(resolution) };
   });
