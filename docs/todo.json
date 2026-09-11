@@ -541,7 +541,7 @@
       "category": "编译链后续",
       "severity": "info",
       "status": "open",
-      "text": "【P2/P3/P4 完成，2026-09-11】SourceFactGraph 保留 source_exact statement 与审计 accepted interpretation；MechanicsIR 只编译显式 accepted gameplay_mechanic；P4 对显式闭合状态模型执行确定性 BFS，报告 core clue、failback、ending 与 deadlock 的最短 witness，并对地点、连接、符号和状态上限 fail-closed。availability 只开放尝试，只有显式 onSuccess.discover_clue 才自动发现。下一步 P5 才对真实模组输入应用确定性模板，生成 discovery location 与 connection endpoint；必须保留 legacy SourceRef/sourceKey，禁止把自然语言散文自动升级为已确认机制或改变既有运行行为。"
+      "text": "【P2/P3/P4/P5 完成，2026-09-11】SourceFactGraph、accepted MechanicsIR 与 closed_world reachability 已建立；P5 新增唯一 deterministic template：named marked_item 在 heading scope 下可经 approved `marked-item-observation-v1` 生成 engine_policy/default observe draft。严格模式拒绝 engine_policy，compatible 仍须显式 policy allowlist、审计 review 与 exact evidence。输出永远 draft_only，不补技能、重要度、核心线索、连接或终局。下一步 P6 才能增加显式确定性模板以补 entry、connection topology、core clue policy 与 ending；必须保留 legacy SourceRef/sourceKey，禁止改变既有运行行为。"
     }
   ]
 }
