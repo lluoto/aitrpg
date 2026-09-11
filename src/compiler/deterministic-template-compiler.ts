@@ -1,4 +1,5 @@
 import { sha256, type EvidenceRef } from "../ingest/document-ir";
+import { buildCompilerQuestionQueue } from "./compiler-question-queue";
 import { compileMechanics, sourceFactGraphIdentity, type MechanicsCandidateSpec, type MechanicsIR } from "./mechanics-ir";
 import { validateSourceFactGraph, type FactInterpretationCandidate, type SourceFactGraph, type SourceStatement } from "./source-fact-graph";
 
@@ -30,6 +31,9 @@ export interface DraftReadinessReport {
   blockingCodes: string[];
   unresolvedStatementIds: string[];
   generatedMechanicIds: string[];
+  questionQueueHash: string;
+  openQuestionIds: string[];
+  publishBlockingQuestionIds: string[];
 }
 
 export interface DraftModuleStructure {
@@ -201,7 +205,7 @@ export function compileDeterministicTemplates(
     },
   );
   const generatedMechanicIds = mechanicsIR?.discoveryMethods.map((method) => method.id).sort() ?? [];
-  return {
+  const draft: DraftModuleStructure = {
     schemaVersion: DRAFT_MODULE_STRUCTURE_SCHEMA_VERSION,
     moduleId: input.moduleId,
     documentHash: graph.documentIdentity.documentHash,
@@ -215,6 +219,19 @@ export function compileDeterministicTemplates(
       blockingCodes: ["unresolved_scene_candidates", "missing_entry_scene", "missing_ending_rules", "missing_connection_topology"],
       unresolvedStatementIds: [...unresolvedStatementIds].sort(),
       generatedMechanicIds,
+      questionQueueHash: "",
+      openQuestionIds: [],
+      publishBlockingQuestionIds: [],
+    },
+  };
+  const questionQueue = buildCompilerQuestionQueue(graph, draft);
+  return {
+    ...draft,
+    readiness: {
+      ...draft.readiness,
+      questionQueueHash: questionQueue.queueHash,
+      openQuestionIds: questionQueue.questions.filter((question) => question.status === "open").map((question) => question.id),
+      publishBlockingQuestionIds: questionQueue.questions.filter((question) => question.severity === "publish_blocking" && question.status === "open").map((question) => question.id),
     },
   };
 }
