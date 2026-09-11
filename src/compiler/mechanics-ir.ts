@@ -108,6 +108,9 @@ export interface MechanicsCompilationInput {
   symbols: MechanicsSymbols;
   acceptedInterpretationIds: string[];
   requiredMechanicIds?: string[];
+  /** Strict is the default; compatible mode requires an explicit policy allowlist. */
+  compilationMode?: "strict" | "compatible";
+  allowedEnginePolicyIds?: string[];
 }
 
 export class MechanicsCompilationError extends Error {
@@ -312,8 +315,14 @@ function normalizeSymbols(symbols: MechanicsSymbols): MechanicsSymbols {
   return normalized;
 }
 
-function sourceGraphIdentity(graph: SourceFactGraph): string {
-  return sha256(canonical(graph));
+/** Source graph identity is structural source evidence, independent of later interpretations. */
+export function sourceFactGraphIdentity(graph: SourceFactGraph): string {
+  return sha256(canonical({
+    schemaVersion: graph.schemaVersion,
+    documentIdentity: graph.documentIdentity,
+    statements: graph.statements,
+    relations: graph.relations,
+  }));
 }
 
 type CompiledNode =
@@ -334,7 +343,7 @@ function compileSpec(spec: MechanicsCandidateSpec, interpretationId: string): Co
 
 const ACCEPTED_AUTHORITIES = new Set(["module_errata", "module_explicit", "user_document", "open_licensed", "project_original"]);
 
-function eligibleInterpretation(graph: SourceFactGraph, interpretationId: string): FactInterpretationCandidate {
+function eligibleInterpretation(graph: SourceFactGraph, interpretationId: string, input: MechanicsCompilationInput): FactInterpretationCandidate {
   const interpretation = graph.interpretations.find((candidate) => candidate.id === interpretationId);
   if (!interpretation) throw new MechanicsCompilationError("missing_interpretation", `interpretation is missing: ${interpretationId}`, interpretationId);
   const claim = interpretation.claim;
@@ -343,6 +352,20 @@ function eligibleInterpretation(graph: SourceFactGraph, interpretationId: string
   }
   if (interpretation.sourceStatementIds.length === 0) throw new MechanicsCompilationError("missing_source", `interpretation has no source statements: ${interpretationId}`, interpretationId);
   if (claim.domain !== "gameplay_mechanic") throw new MechanicsCompilationError("invalid_domain", `interpretation is not a gameplay mechanic: ${interpretationId}`, interpretationId, claim.path, interpretation.sourceStatementIds);
+  if (claim.authority === "engine_policy") {
+    if ((input.compilationMode ?? "strict") !== "compatible") throw new MechanicsCompilationError("engine_policy_strict", `strict mode rejects engine policy: ${interpretationId}`, interpretationId, claim.path, interpretation.sourceStatementIds);
+    if (claim.derivation !== "default") throw new MechanicsCompilationError("engine_policy_derivation", `engine policy must be a default: ${interpretationId}`, interpretationId, claim.path, interpretation.sourceStatementIds);
+    if (interpretation.review?.decision !== "accept" || interpretation.review.reviewerKind !== "approved_policy") {
+      throw new MechanicsCompilationError("engine_policy_review", `engine policy lacks approved policy review: ${interpretationId}`, interpretationId, claim.path, interpretation.sourceStatementIds);
+    }
+    if (!interpretation.review.policyId || !input.allowedEnginePolicyIds?.includes(interpretation.review.policyId)) {
+      throw new MechanicsCompilationError("engine_policy_not_allowed", `engine policy is not allowed: ${interpretationId}`, interpretationId, claim.path, interpretation.sourceStatementIds);
+    }
+    if (graph.interpretations.some((candidate) => candidate.id !== interpretation.id && candidate.interpretationStatus === "accepted" && candidate.claim.status === "accepted" && candidate.claim.authority === "module_explicit" && candidate.claim.path === claim.path)) {
+      throw new MechanicsCompilationError("engine_policy_override", `engine policy cannot override module explicit mechanic: ${interpretationId}`, interpretationId, claim.path, interpretation.sourceStatementIds);
+    }
+    return interpretation;
+  }
   if (!ACCEPTED_AUTHORITIES.has(claim.authority)) throw new MechanicsCompilationError("invalid_authority", `interpretation authority is not allowed: ${interpretationId}`, interpretationId, claim.path, interpretation.sourceStatementIds);
   if (!claim.path.startsWith("mechanics.")) throw new MechanicsCompilationError("invalid_path", `mechanics claim path is required: ${interpretationId}`, interpretationId, claim.path, interpretation.sourceStatementIds);
   return interpretation;
@@ -353,11 +376,13 @@ export function compileMechanics(graph: SourceFactGraph, input: MechanicsCompila
   if (!input.moduleId.trim()) throw new MechanicsCompilationError("invalid_input", "moduleId is required");
   if (input.documentHash !== graph.documentIdentity.documentHash) throw new MechanicsCompilationError("document_mismatch", "documentHash does not match SourceFactGraph");
   if (input.sourceGraphSchemaVersion !== graph.schemaVersion) throw new MechanicsCompilationError("schema_mismatch", "sourceGraphSchemaVersion does not match SourceFactGraph");
+  if (input.compilationMode && input.compilationMode !== "strict" && input.compilationMode !== "compatible") throw new MechanicsCompilationError("invalid_input", "unknown compilationMode");
   assertUnique(input.acceptedInterpretationIds, "accepted interpretation id");
+  if (input.allowedEnginePolicyIds) assertUnique(input.allowedEnginePolicyIds, "allowed engine policy id");
   if (input.requiredMechanicIds) assertUnique(input.requiredMechanicIds, "required mechanic id");
   const symbols = normalizeSymbols(input.symbols);
   const nodes = input.acceptedInterpretationIds.map((interpretationId) => {
-    const interpretation = eligibleInterpretation(graph, interpretationId);
+    const interpretation = eligibleInterpretation(graph, interpretationId, input);
     try {
       return compileSpec(parseMechanicsCandidateSpec(interpretation.claim.value), interpretation.id);
     } catch (error) {
@@ -369,7 +394,7 @@ export function compileMechanics(graph: SourceFactGraph, input: MechanicsCompila
     schemaVersion: MECHANICS_IR_SCHEMA_VERSION,
     moduleId: input.moduleId,
     documentHash: input.documentHash,
-    sourceGraphIdentity: sourceGraphIdentity(graph),
+    sourceGraphIdentity: sourceFactGraphIdentity(graph),
     mechanicsHash: "",
     symbols,
     sourceInterpretationIds: [...input.acceptedInterpretationIds].sort(),
