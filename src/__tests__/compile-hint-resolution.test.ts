@@ -36,4 +36,14 @@ describe("compile hint resolution", () => {
     const core = queue.questions.find((question) => question.kind === "core_clue")!;
     expect(() => parseCompilerHintValue(core, { clueCandidateId: "invented", required: true })).toThrow("subject");
   });
+
+  it("rejects unsupported hint kinds before marking their questions answered", () => {
+    const { graph, queue } = fixture();
+    const item = queue.questions.find((question) => question.kind === "item_binding")!;
+    const bad: ModuleCompileHints = {
+      schemaVersion: "1.0.0", documentHash: queue.documentHash, sourceGraphIdentity: queue.sourceGraphIdentity,
+      resolutions: [{ questionId: item.id, kind: "item_binding", value: { itemCandidateId: item.subjectCandidateId }, sourceStatementIds: [...item.sourceStatementIds], evidenceRefs: [...item.evidenceRefs], authority: "user_document", derivation: "explicit", reviewerKind: "human", reason: "unsupported in P8" }],
+    };
+    expect(() => applyModuleCompileHints(graph, queue, bad)).toThrow("unsupported_hint_kind");
+  });
 });
