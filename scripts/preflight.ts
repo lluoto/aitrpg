@@ -307,7 +307,7 @@ if (!tscVerdict.ok) {
 const BASELINE_PATH = "docs/test-baseline.json";
 if (!quick) {
   const t = spawnSync("bun", ["test"], { encoding: "utf8", shell: true });
-  const text = (t.stdout ?? "") + (t.stderr ?? "");
+  const text = (t.stdout ?? "") + "\n" + (t.stderr ?? "");
   const verdict = judgeProcess("bun test", t);
   const counts = parseTestOutput(text);
 
@@ -348,9 +348,12 @@ if (!quick) {
 //   能守住的是：**别再新增**。哪天有人又写了一个没人调的 setter，这里会变红。
 {
   const p = spawnSync("bun", ["scripts/diag/probe-unwired.ts"], { encoding: "utf8", shell: true });
+  const verdict = judgeProcess("probe-unwired", p);
   const out = (p.stdout ?? "") + (p.stderr ?? "");
-  const m = /没调用方\s*(\d+)/.exec(out);
-  if (!m) {
+  const m = verdict.ok ? /没调用方\s*(\d+)/.exec(out) : null;
+  if (!verdict.ok) {
+    problems.push(verdict.reason);
+  } else if (!m) {
     problems.push("断线判据没跑起来（probe-unwired 的输出里解析不到条数）—— 判据自己坏了也要变红");
   } else {
     const now = Number(m[1]);
@@ -384,7 +387,12 @@ if (!quick) {
 {
   const hooksPath = spawnSync("git", ["config", "--get", "core.hooksPath"], { encoding: "utf8", shell: true });
   const configured = (hooksPath.stdout ?? "").trim();
-  if (configured !== ".githooks") {
+  const verdict = judgeProcess("git config core.hooksPath lookup", hooksPath);
+  const stderr = (hooksPath.stderr ?? "").trim();
+  const unset = hooksPath.status === 1 && !hooksPath.error && !hooksPath.signal && configured === "" && stderr === "";
+  if (!verdict.ok && !unset) {
+    problems.push(verdict.reason + (stderr ? `（stderr：${stderr}）` : ""));
+  } else if (configured !== ".githooks") {
     problems.push(
       `core.hooksPath 没有指向 .githooks（当前：「${configured || "(未设置)"}」）—— ` +
       `commit-msg 判据没有真的在跑。跑一次 \`git config core.hooksPath .githooks\`。`,

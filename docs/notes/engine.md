@@ -1782,3 +1782,66 @@ registry 对 `BARN_OF_PREMIER` 的对象身份、谷仓加载不得构造 legacy
 本轮发现并订正一条过早关闭的记录：谷仓表示与谷仓加载路径已收敛，`todo-19` 维持 done；
 `todo-20` 仍必须 open，因为 Arkham/InnsMouth、CLI、ScriptedSession 的通用加载路径没有
 统一。摄取 id 继承（todo-48）也未由谷仓场景 id 收敛解决。
+
+### 编译闭环检查点 I：状态图必须采用执行语义，而不是边数启发式（2026-09-12）
+
+本轮在纯 compiler 边界完成 hints → accepted interpretations → MechanicsIR →
+closed-world 分析。旧 P4 的一些结论需要纠正：`unlockedConnectionIds` 以前只被写入，
+并不构成门禁；ending rule 的机制 ID 被错误地覆盖到 `end_game.endingId`；而“有一条
+changed edge”不能证明状态有终局恢复路径。修复不接 GameSession，也不把闭环结论扩写成
+运行时已经使用的机制。
+
+执行顺序现明确为：先按 priority 选择终局；若没有终局，执行所有相容的 automatic
+transitions 至不再改变状态；最后才枚举一个可选玩家 discovery/traverse 动作。自动状态写
+相互矛盾、或自动步骤回到同一闭包状态，均 fail-closed，绝不按数组或 ID 顺序选赢家。
+因此 witness 与分析器共享一套顺序，不再分别描述“分析的状态”和“回放的状态”。
+
+`connection_unlocked` 是显式受限谓词；没有该谓词的连接仍是普通连接。测试把 unlock
+前、只有 `unlock_connection` 的变化、unlock 后三段分开，避免用 `set_state` 同时开门制造
+假绿。发现某条 clue 后，所有同 clue 的 discovery method 都跳过成功、失败计数和副作用；
+这补的是状态机语义，不是运行时 UI 的重复点击策略。
+
+`maxFailures: N` 的现有口径保留为“先记录 N 次失败，第 N+1 次尝试执行 failback”。没有
+failback 的 checked core method 现在叫 **policy risk**，而不是声称已构造了不可恢复状态。
+只有可达状态图中没有任何终局路径才产生 deadlock witness；一个图上不可达的替代方法不能
+掩盖可达 checked method 的无界失败风险，而有出口的玩家选择循环不会误报。产品模组不被
+强制要求含 core clue。
+
+本轮的变异红线实际改坏并还原了 ending ID 覆盖、unlock 门禁、发现后重试、空 topology
+声明和异地点 engine-policy 替代。它们验证的是 compiler 的真实执行路径；不代表后续
+artifact 保存或运行时接线已经完成。
+
+### 编译闭环检查点 I 返工：恢复必须从失败态、证据必须从 heading scope（2026-09-12）
+
+上条记录的“不可达替代不消除风险”还不够精确。实现曾把**全图任一曾可用**的同 clue
+保底方法汇总为替代能力；于是入口的观察保底、或另一条互斥分支的保底，会错误替仍在单向
+新地点的 checked core method 消除无界失败风险。正确问题不是“这个图上有没有成功路径”，
+而是“该机制在这个状态失败后，能否不依赖另一条无界检定到达确定或有 failback 的发现方法”。
+因此 policy risk 仍只是有界恢复的发布风险；检定成功后能终局并不能把失败分支叫作已证明的
+deadlock。反过来，失败效果若实际开启了保底 availability，或失败态能走回保底，风险应消失。
+
+另一处过早的简化是把 default observation 的 `targetId` 当作 location。target、clue 和
+location 是不同语义域：默认位置必须由 marked item 到 heading 的 SourceFactGraph relation、
+draft clue/scene 绑定、该 interpretation 的 source/evidence 与 module scope 共同验证。篡改
+target 不会迁移位置；若 target 或来源无法与这一绑定相符，直接留在 `draft_only`。这也修正了
+此前用克隆 interpretation 改 target 来证明“异地点默认政策”的弱测试：现在异地点正例来自
+真实不同 heading 下的 marked item 及其自身证据。
+
+witness 的“最短”也必须说明量纲：报告的每个 player action、兼容 automatic batch 和 ending
+都算一步。普通 FIFO 的首次到达不是这个量纲的最短路径，尤其在先到分支带有自动链时。搜索按
+报告步数传播更短 route；自动 batch 保存真实 IR mechanism IDs，回放从原始输入使用同一执行
+语义逐步校验 mechanism、outcome 与状态 hash。将恢复逻辑重新退回全图汇总、将 witness 固定
+在首次记录、或将 location 退回 target，定向反例都会变红；这才是检查点 I 仍待最终验收的证据。
+
+### 编译闭环检查点 I：源码级闭合验证完成，等待交付（2026-09-12）
+
+本条不改写前两条在当时的返工记录，只记录后续闭合结果。P4 closure trace、规范状态预算、
+最短 witness、failure 因果与结果安全恢复固定点均已验证；default policy 在替代前完成
+完整 audit，canonical graph subtree、heading/marked-item/name/body relation、review evidence 和
+location provenance 均受证据约束；foreign/domain override 被隔离；脚本对 process/summary
+不完整或失败结果 fail-closed。
+
+上述防线都做过实际生产实现变异并精确恢复。最终八文件定向为 261 pass / 789 expect /
+0 fail；全量为 3117 pass / 32 intentional skip / 0 fail，3149 tests / 215 files；typecheck
+和 preflight 均退出 0。检查点 I 已完成源码级验证但仍未提交。artifact persistence、公开
+compile entry、GameSession/runtime 和 world-model 接线仍为 deferred 里程碑。

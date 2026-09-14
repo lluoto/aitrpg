@@ -139,8 +139,18 @@
             ],
             [
               "src/compiler/mechanics-ir.ts",
-              "受限 MechanicsIR：只编译已审计 accepted gameplay_mechanic，静态校验符号、谓词、效果和稳定哈希；不接入运行时",
+              "受限 MechanicsIR：只编译已审计 accepted gameplay_mechanic，静态校验符号、谓词（含显式 unlock 门禁）、效果和稳定哈希；不接入运行时",
               "compileMechanics, validateMechanicsIR, MechanicsCompilationError"
+            ],
+            [
+              "src/compiler/deterministic-template-compiler.ts / compiler-question-queue.ts / compile-hint-resolution.ts",
+              "文档级 draft、exact-evidence queue 与显式 hints 解析：拓扑多边/零边、多个 ending declaration、分域 discovery binding，解析为 module-scoped accepted interpretations；不读 artifact 或接入运行时",
+              "compileDeterministicTemplates, buildCompilerQuestionQueue, resolveDraftModule"
+            ],
+            [
+              "src/compiler/mechanics-reachability.ts",
+              "closed-world 状态图：终局优先、自动转换稳定、可选动作、unlock/discovery/failback、失败态相对恢复、终局恢复路径与可回放最短 witness；自动冲突/循环 fail-closed",
+              "analyzeMechanicsReachability, replayMechanicsWitness, validateMechanicsAnalysisInput, mechanicsStateHash"
             ],
             [
               "src/ingest/document-ir.ts / document-blocks.ts",

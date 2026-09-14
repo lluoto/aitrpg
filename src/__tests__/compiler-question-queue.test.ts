@@ -31,7 +31,8 @@ function validHints(): { queue: ReturnType<typeof fixture>["queue"]; hints: Modu
   return {
     queue,
     hints: {
-      schemaVersion: "1.0.0",
+      schemaVersion: "1.1.0",
+      moduleId: queue.moduleId,
       documentHash: queue.documentHash,
       sourceGraphIdentity: queue.sourceGraphIdentity,
       resolutions: [{
@@ -43,6 +44,7 @@ function validHints(): { queue: ReturnType<typeof fixture>["queue"]; hints: Modu
         authority: "user_document",
         derivation: "explicit",
         reviewerKind: "human",
+        rightsStatus: "user_provided",
         reason: "synthetic explicit answer",
       }],
     },
@@ -138,8 +140,25 @@ describe("CompilerQuestionQueue", () => {
     conflict.resolutions.push({ ...conflict.resolutions[0]!, value: false });
     expect(() => validateModuleCompileHints(queue, conflict)).toThrow("multiple resolutions");
     const defaulted = structuredClone(hints);
-    defaulted.resolutions[0]!.derivation = "default";
+    defaulted.resolutions[0]!.derivation = "default" as never;
     expect(() => validateModuleCompileHints(queue, defaulted)).toThrow("cannot be defaulted");
+  });
+
+  it("validates answered status, stored resolution, and the recomputed queue hash together", () => {
+    const { queue, hints } = validHints();
+    const { graph } = fixture();
+    const missingResolution = structuredClone(queue);
+    missingResolution.questions[0]!.status = "answered";
+    expect(() => validateCompilerQuestionQueue(graph, missingResolution)).toThrow("lacks resolution");
+    const staleResolution = structuredClone(queue);
+    staleResolution.questions[0]!.resolution = structuredClone(hints.resolutions[0]!);
+    expect(() => validateCompilerQuestionQueue(graph, staleResolution)).toThrow("non-answered");
+    const answered = structuredClone(queue);
+    const target = answered.questions.find((question) => question.id === hints.resolutions[0]!.questionId)!;
+    target.status = "answered";
+    target.resolution = structuredClone(hints.resolutions[0]!);
+    // The answer is otherwise valid, so a stale hash is the only rejected part.
+    expect(() => validateCompilerQuestionQueue(graph, answered)).toThrow("queueHash");
   });
 
   it("does not import world-model, runtime, dataset, or ModuleData loaders", () => {

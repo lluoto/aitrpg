@@ -9,25 +9,32 @@
 
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { spawnSync } from "child_process";
+import { judgeProcess, parseTestOutput, judgeTestCount } from "../src/diagnostics/source-scan";
 
 const noTest = process.argv.includes("--no-test");
-const sh = (cmd: string, args: string[]) =>
-  spawnSync(cmd, args, { encoding: "utf8", shell: true }).stdout?.trim() ?? "";
+function sh(label: string, cmd: string, args: string[]): string {
+  const result = spawnSync(cmd, args, { encoding: "utf8" });
+  const verdict = judgeProcess(label, result);
+  if (!verdict.ok) throw new Error(verdict.reason);
+  return (result.stdout ?? "").trim();
+}
 
-const branch = sh("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
-const head = sh("git", ["log", "--oneline", "-1"]);
-const dirty = sh("git", ["status", "--short"]).split("\n").filter(Boolean);
-const recent = sh("git", ["log", "--oneline", "-8"]).split("\n").filter(Boolean);
+const branch = sh("git branch", "git", ["rev-parse", "--abbrev-ref", "HEAD"]);
+const head = sh("git head", "git", ["log", "--oneline", "-1"]);
+const dirty = sh("git status", "git", ["status", "--short"]).split("\n").filter(Boolean);
+const recent = sh("git history", "git", ["log", "--oneline", "-8"]).split("\n").filter(Boolean);
 
 let testLine = "（本次未跑）";
 if (!noTest) {
-  const t = spawnSync("bun", ["test"], { encoding: "utf8", shell: true });
-  const all = t.stdout + t.stderr;
-  const ran = all.match(/Ran (\d+) tests across (\d+) files/);
-  const fail = all.match(/(\d+) fail/);
-  testLine = ran
-    ? `${ran[1]} 条 / ${ran[2]} 文件` + (fail && fail[1] !== "0" ? `  ⚠ ${fail[1]} 失败` : "  全绿")
-    : "（没解析到）";
+  const t = spawnSync("bun", ["test"], { encoding: "utf8" });
+  const verdict = judgeProcess("bun test", t);
+  const count = parseTestOutput((t.stdout ?? "") + "\n" + (t.stderr ?? ""));
+  const summary = judgeTestCount(count, { tests: count.tests ?? 0, files: count.files ?? 0 });
+  testLine = !verdict.ok
+    ? `（测试未通过：${verdict.reason}）`
+    : summary.problems.length
+      ? `（测试未通过：${summary.problems.join("；")}）`
+      : `${count.tests} 条 / ${count.files} 文件  全绿`;
 }
 
 // 待办：从 todo.json 取 warn 级
@@ -97,5 +104,6 @@ ${recent.map((r) => "- " + r).join("\n")}
 PowerShell 会退回 ANSI 码页，中文全成乱码。用 Read/Grep 工具或 \`fs.readFileSync\`。
 `;
 
+// Exit success means the snapshot was written, not that its test child passed.
 writeFileSync("docs/now.md", md, "utf8");
 console.log(`docs/now.md 已刷新 —— ${branch} / ${testLine} / 未修 ${open.length} 项`);

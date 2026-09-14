@@ -124,6 +124,30 @@ function fixture() {
 }
 
 describe("MechanicsIR", () => {
+  for (const unrelated of ["foreign", "domain", "local"] as const) {
+    it(`scopes policy overrides: ${unrelated}`, () => {
+      const { graph } = fixture();
+      const policy = structuredClone(graph.interpretations[0]!);
+      policy.id = "policy:parent";
+      policy.claim.authority = "engine_policy";
+      policy.claim.derivation = "default";
+      policy.review!.interpretationId = policy.id;
+      policy.review!.reviewerKind = "approved_policy";
+      policy.review!.policyId = "allowed";
+      const explicit = graph.interpretations[0]!;
+      if (unrelated === "foreign") explicit.claim.scope.moduleId = "foreign";
+      if (unrelated === "domain") explicit.claim.domain = "plot_fact";
+      graph.interpretations.push(policy);
+      expect(() => compileMechanics(graph, input([policy.id]))).toThrow("strict mode rejects engine policy");
+      const compile = () => compileMechanics(graph, input([policy.id], { compilationMode: "compatible", allowedEnginePolicyIds: ["allowed"] }));
+      if (unrelated === "local") {
+        expect(compile).toThrow("cannot override module explicit");
+        expect(compileMechanics(graph, input([explicit.id])).discoveryMethods[0]!.sourceInterpretationIds).toEqual([explicit.id]);
+      }
+      else expect(compile().discoveryMethods).toHaveLength(1);
+    });
+  }
+
   it("compiles accepted interpretations to evidence-bound mechanics", () => {
     const { graph, acceptedIds, crossPage } = fixture();
     const ir = compileMechanics(graph, input(acceptedIds));

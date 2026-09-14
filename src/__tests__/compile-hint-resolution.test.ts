@@ -17,7 +17,7 @@ function fixture() {
 
 function hints(queue: ReturnType<typeof fixture>["queue"]): ModuleCompileHints {
   const role = queue.questions.find((question) => question.kind === "scene_role")!;
-  return { schemaVersion: "1.0.0", documentHash: queue.documentHash, sourceGraphIdentity: queue.sourceGraphIdentity, resolutions: [{ questionId: role.id, kind: "scene_role", value: { role: "playable_scene" }, sourceStatementIds: [...role.sourceStatementIds], evidenceRefs: [...role.evidenceRefs], authority: "user_document", derivation: "explicit", reviewerKind: "human", reason: "synthetic explicit scene role" }] };
+  return { schemaVersion: "1.1.0", moduleId: queue.moduleId, documentHash: queue.documentHash, sourceGraphIdentity: queue.sourceGraphIdentity, resolutions: [{ questionId: role.id, kind: "scene_role", value: { role: "playable_scene" }, sourceStatementIds: [...role.sourceStatementIds], evidenceRefs: [...role.evidenceRefs], authority: "user_document", derivation: "explicit", reviewerKind: "human", rightsStatus: "user_provided", reason: "synthetic explicit scene role" }] };
 }
 
 describe("compile hint resolution", () => {
@@ -32,7 +32,7 @@ describe("compile hint resolution", () => {
   it("allows topology targets only from the question allowlist and core only from its subject", () => {
     const { queue } = fixture();
     const topology = queue.questions.find((question) => question.kind === "connection_topology")!;
-    expect(() => parseCompilerHintValue(topology, { fromSceneCandidateId: topology.subjectCandidateId, toSceneCandidateId: "invented", connectionId: "connection_x" })).toThrow("unallowed");
+    expect(() => parseCompilerHintValue(topology, { connections: [{ toSceneCandidateId: "invented", connectionId: "connection_x" }] })).toThrow("unallowed");
     const core = queue.questions.find((question) => question.kind === "core_clue")!;
     expect(() => parseCompilerHintValue(core, { clueCandidateId: "invented", required: true })).toThrow("subject");
   });
@@ -41,8 +41,8 @@ describe("compile hint resolution", () => {
     const { graph, queue } = fixture();
     const item = queue.questions.find((question) => question.kind === "item_binding")!;
     const bad: ModuleCompileHints = {
-      schemaVersion: "1.0.0", documentHash: queue.documentHash, sourceGraphIdentity: queue.sourceGraphIdentity,
-      resolutions: [{ questionId: item.id, kind: "item_binding", value: { itemCandidateId: item.subjectCandidateId }, sourceStatementIds: [...item.sourceStatementIds], evidenceRefs: [...item.evidenceRefs], authority: "user_document", derivation: "explicit", reviewerKind: "human", reason: "unsupported in P8" }],
+      schemaVersion: "1.1.0", moduleId: queue.moduleId, documentHash: queue.documentHash, sourceGraphIdentity: queue.sourceGraphIdentity,
+      resolutions: [{ questionId: item.id, kind: "item_binding", value: { itemCandidateId: item.subjectCandidateId }, sourceStatementIds: [...item.sourceStatementIds], evidenceRefs: [...item.evidenceRefs], authority: "user_document", derivation: "explicit", reviewerKind: "human", rightsStatus: "user_provided", reason: "unsupported in P8" }],
     };
     expect(() => applyModuleCompileHints(graph, queue, bad)).toThrow("unsupported_hint_kind");
   });

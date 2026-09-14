@@ -8,12 +8,17 @@
 
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { spawnSync } from "child_process";
+import { judgeProcess, parseTestOutput, judgeTestCount } from "../src/diagnostics/source-scan";
 
-const sh = (c: string, a: string[]) =>
-  spawnSync(c, a, { encoding: "utf8", shell: true }).stdout?.trim() ?? "";
+function sh(label: string, command: string, args: string[]): string {
+  const result = spawnSync(command, args, { encoding: "utf8" });
+  const verdict = judgeProcess(label, result);
+  if (!verdict.ok) throw new Error(verdict.reason);
+  return (result.stdout ?? "").trim();
+}
 
-const head = sh("git", ["log", "--oneline", "-1"]);
-const recent = sh("git", ["log", "--oneline", "-12"]).split("\n").filter(Boolean);
+const head = sh("git head", "git", ["log", "--oneline", "-1"]);
+const recent = sh("git history", "git", ["log", "--oneline", "-12"]).split("\n").filter(Boolean);
 
 // 基线在 docs/test-baseline.json，preflight 拿它做回归判据。
 // 这里一并打出来 —— 「当前条数」单看没有意义，得有个比较对象。
@@ -23,18 +28,17 @@ const baseline = existsSync("docs/test-baseline.json")
 
 let tests = "（未跑）";
 if (!process.argv.includes("--no-test")) {
-  const t = spawnSync("bun", ["test"], { encoding: "utf8", shell: true });
-  const text = (t.stdout ?? "") + (t.stderr ?? "");
-  const m = text.match(/Ran (\d+) tests across (\d+) files/);
-  const f = text.match(/(\d+) fail/);
-  // 退出状态也要看：只 grep 输出的话，进程没起来时输出是空串，会被当成「跑过了」
-  const died = t.error ? `启动失败：${t.error.message}` : t.signal ? `被信号 ${t.signal} 终止` : "";
-  const vs = baseline && m ? `（基线 ${baseline.tests}${Number(m[1]) < baseline.tests ? " —— **回退了**" : Number(m[1]) > baseline.tests ? " —— 记得上调" : "，一致"}）` : "";
-  tests = died
-    ? `（${died}）`
-    : m
-      ? `${m[1]} 条 / ${m[2]} 文件${f && f[1] !== "0" ? `（${f[1]} 失败）` : "，全绿"}${vs}`
-      : `（没解析到条数 —— 不等于通过，退出码 ${t.status}）`;
+  const t = spawnSync("bun", ["test"], { encoding: "utf8" });
+  const text = (t.stdout ?? "") + "\n" + (t.stderr ?? "");
+  const verdict = judgeProcess("bun test", t);
+  const count = parseTestOutput(text);
+  const summary = judgeTestCount(count, baseline ?? { tests: count.tests ?? 0, files: count.files ?? 0 });
+  const vs = baseline && count.tests !== null ? `（基线 ${baseline.tests}${count.tests < baseline.tests ? " —— **回退了**" : count.tests > baseline.tests ? " —— 记得上调" : "，一致"}）` : "";
+  tests = !verdict.ok
+    ? `（测试未通过：${verdict.reason}）`
+    : summary.problems.length
+      ? `（测试未通过：${summary.problems.join("；")}）`
+      : `${count.tests} 条 / ${count.files} 文件，全绿${vs}`;
 }
 
 const rules = existsSync("docs/todo.json")
@@ -47,6 +51,11 @@ const openItems = existsSync("docs/notes/index.json")
       .filter((r: any) => r.status === "open" || r.status === "warn")
   : [];
 
+// Keep the active, handwritten acceptance record verbatim, including subheadings.
+const checkpoint = existsSync("docs/handoff.md")
+  ? readFileSync("docs/handoff.md", "utf8").match(/^## 编译闭环检查点 I 交接\r?\n[\s\S]*?(?=^## |$(?![\s\S]))/m)?.[0] ?? ""
+  : "";
+
 const md = `# 接手说明
 
 > 生成于 ${new Date().toISOString().slice(0, 16).replace("T", " ")}  ·  刷新：\`bun scripts/handoff.ts\`
@@ -54,13 +63,13 @@ const md = `# 接手说明
 
 ## 这是什么
 
-\`C:\\aitrpg\\poc\` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：${head}  ·  **测试**：${tests}
+\`C:\\aitrpg\\poc\` —— 自主 AI RPG 引擎：模组机制编译为确定性、可验证的执行结构，
+规则与状态由代码管理，LLM 只提出候选与叙事。**当前 HEAD**：${head}  ·  **测试**：${tests}
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（\`play-module.ts\`）／自由跑团（\`api/game-session.ts\`）／命令行（\`index.ts\`）。
 
-## 第一件事：读这三份
+${checkpoint}${checkpoint ? "\n\n" : ""}## 第一件事：读这三份
 
 \`\`\`
 docs/now.md                          现在在哪（30 秒）
@@ -205,5 +214,6 @@ ${recent.map((r) => "- " + r).join("\n")}
 preflight 会报（tsc 不报）。
 `;
 
+// Exit success means the snapshot was written, not that its test child passed.
 writeFileSync("docs/handoff.md", md, "utf8");
 console.log(`docs/handoff.md 已生成 —— ${md.split("\n").length} 行 / ${(md.length / 1024).toFixed(1)} KB`);

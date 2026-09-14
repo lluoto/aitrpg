@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-10 15:17
+> 状态按本轮实际验证补正；检查点 I 的约定 policy/provenance/process 审计已验证完成，尚未提交，见 handoff。
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,22 +13,9 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | e0cf33d feat: build evidence-bound source fact graphs |
-| 测试 | 2995 条 / 208 文件  全绿 |
-| 工作树 | **11 个文件未提交** |
-
-未提交：
-- `M docs/architecture.json`
-- `M docs/deploy.md`
-- `M docs/notes/index.json`
-- `M docs/test-baseline.json`
-- `M docs/todo.json`
-- `M scripts/backup-critical.ts`
-- `M src/__tests__/cthulhu-dataset.test.ts`
-- `M src/dataset/cthulhu-manifest.ts`
-- `M src/world/world-model-loader.ts`
-- `?? docs/notes/world-model.md`
-- `?? docs/source-fact-graph.md`
+| HEAD | 9cf3b7f docs: retire ignored legacy tool reference |
+| 测试 | 八文件 261 pass / 789 expect；候选全量退出 0：3110 pass / 39 skip / 0 fail，3149 条 / 215 文件；typecheck 退出 0 |
+| 工作树 | **38 个文件未提交** |
 
 ## 开工前
 
@@ -133,14 +120,7 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
-- e0cf33d feat: build evidence-bound source fact graphs
-- 2e5359a docs: refresh product direction handoff
-- 1d18280 docs: record development verification discipline
-- 6603d55 docs: define autonomous RPG product direction
-- 4f8e3ba docs: record DocumentIR evidence boundaries
-- 0e41e41 fix: keep trace builder internal
-- bafc1e4 fix: preserve ingest measurement boundary
-- 22c5006 test: verify ingest evidence span integrity
+
 
 ## 找东西
 

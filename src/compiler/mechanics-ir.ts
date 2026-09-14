@@ -15,6 +15,8 @@ export type Predicate =
   | { kind: "clue_found"; clueId: string }
   | { kind: "scene_visited"; sceneId: string }
   | { kind: "item_owned"; itemId: string }
+  /** An ordinary connection is traversable unless a gate explicitly uses this predicate. */
+  | { kind: "connection_unlocked"; connectionId: string }
   | { kind: "state_eq"; stateKey: string; value: Scalar }
   | { kind: "npc_state"; npcId: string; state: string };
 
@@ -207,6 +209,9 @@ function parsePredicate(value: unknown, path: string): Predicate {
     case "item_owned":
       assertKeys(value, ["kind", "itemId"], path);
       return { kind, itemId: requiredString(value.itemId, `${path}.itemId`) };
+    case "connection_unlocked":
+      assertKeys(value, ["kind", "connectionId"], path);
+      return { kind, connectionId: requiredString(value.connectionId, `${path}.connectionId`) };
     case "state_eq":
       assertKeys(value, ["kind", "stateKey", "value"], path);
       return { kind, stateKey: requiredString(value.stateKey, `${path}.stateKey`), value: scalar(value.value, `${path}.value`) };
@@ -343,10 +348,11 @@ function compileSpec(spec: MechanicsCandidateSpec, interpretationId: string): Co
 
 const ACCEPTED_AUTHORITIES = new Set(["module_errata", "module_explicit", "user_document", "open_licensed", "project_original"]);
 
-function eligibleInterpretation(graph: SourceFactGraph, interpretationId: string, input: MechanicsCompilationInput): FactInterpretationCandidate {
+function eligibleInterpretation(graph: SourceFactGraph, interpretationId: string, input: Pick<MechanicsCompilationInput, "moduleId" | "compilationMode" | "allowedEnginePolicyIds">): FactInterpretationCandidate {
   const interpretation = graph.interpretations.find((candidate) => candidate.id === interpretationId);
   if (!interpretation) throw new MechanicsCompilationError("missing_interpretation", `interpretation is missing: ${interpretationId}`, interpretationId);
   const claim = interpretation.claim;
+  if (!claim.scope.moduleId || claim.scope.moduleId !== input.moduleId) throw new MechanicsCompilationError("scope_mismatch", `interpretation scope is outside module: ${interpretationId}`, interpretationId, claim.path, interpretation.sourceStatementIds);
   if (interpretation.interpretationStatus !== "accepted" || claim.status !== "accepted") {
     throw new MechanicsCompilationError("interpretation_not_accepted", `interpretation is not accepted: ${interpretationId}`, interpretationId, claim.path, interpretation.sourceStatementIds);
   }
@@ -361,14 +367,26 @@ function eligibleInterpretation(graph: SourceFactGraph, interpretationId: string
     if (!interpretation.review.policyId || !input.allowedEnginePolicyIds?.includes(interpretation.review.policyId)) {
       throw new MechanicsCompilationError("engine_policy_not_allowed", `engine policy is not allowed: ${interpretationId}`, interpretationId, claim.path, interpretation.sourceStatementIds);
     }
-    if (graph.interpretations.some((candidate) => candidate.id !== interpretation.id && candidate.interpretationStatus === "accepted" && candidate.claim.status === "accepted" && candidate.claim.authority === "module_explicit" && candidate.claim.path === claim.path)) {
+    if (graph.interpretations.some((candidate) => candidate.id !== interpretation.id && candidate.interpretationStatus === "accepted" && candidate.claim.status === "accepted" && candidate.claim.authority === "module_explicit" && candidate.claim.scope.moduleId === input.moduleId && candidate.claim.domain === "gameplay_mechanic" && candidate.claim.path === claim.path)) {
       throw new MechanicsCompilationError("engine_policy_override", `engine policy cannot override module explicit mechanic: ${interpretationId}`, interpretationId, claim.path, interpretation.sourceStatementIds);
     }
+    if (!claim.path.startsWith("mechanics.")) throw new MechanicsCompilationError("invalid_path", `mechanics claim path is required: ${interpretationId}`, interpretationId, claim.path, interpretation.sourceStatementIds);
     return interpretation;
   }
   if (!ACCEPTED_AUTHORITIES.has(claim.authority)) throw new MechanicsCompilationError("invalid_authority", `interpretation authority is not allowed: ${interpretationId}`, interpretationId, claim.path, interpretation.sourceStatementIds);
   if (!claim.path.startsWith("mechanics.")) throw new MechanicsCompilationError("invalid_path", `mechanics claim path is required: ${interpretationId}`, interpretationId, claim.path, interpretation.sourceStatementIds);
   return interpretation;
+}
+
+/** Audit a candidate without validating references against the final runtime symbols. */
+export function validateMechanicsCandidate(graph: SourceFactGraph, interpretationId: string, input: Pick<MechanicsCompilationInput, "moduleId" | "compilationMode" | "allowedEnginePolicyIds">): MechanicsCandidateSpec {
+  const interpretation = eligibleInterpretation(graph, interpretationId, input);
+  try {
+    return parseMechanicsCandidateSpec(interpretation.claim.value);
+  } catch (error) {
+    if (error instanceof MechanicsCompilationError) throw new MechanicsCompilationError(error.code, error.reason, interpretation.id, error.path ?? interpretation.claim.path, interpretation.sourceStatementIds);
+    throw error;
+  }
 }
 
 export function compileMechanics(graph: SourceFactGraph, input: MechanicsCompilationInput): MechanicsIR {
@@ -382,13 +400,7 @@ export function compileMechanics(graph: SourceFactGraph, input: MechanicsCompila
   if (input.requiredMechanicIds) assertUnique(input.requiredMechanicIds, "required mechanic id");
   const symbols = normalizeSymbols(input.symbols);
   const nodes = input.acceptedInterpretationIds.map((interpretationId) => {
-    const interpretation = eligibleInterpretation(graph, interpretationId, input);
-    try {
-      return compileSpec(parseMechanicsCandidateSpec(interpretation.claim.value), interpretation.id);
-    } catch (error) {
-      if (error instanceof MechanicsCompilationError) throw new MechanicsCompilationError(error.code, error.reason, interpretation.id, error.path ?? interpretation.claim.path, interpretation.sourceStatementIds);
-      throw error;
-    }
+    return compileSpec(validateMechanicsCandidate(graph, interpretationId, input), interpretationId);
   });
   const ir: MechanicsIR = {
     schemaVersion: MECHANICS_IR_SCHEMA_VERSION,
@@ -429,6 +441,7 @@ function validatePredicate(predicate: Predicate, symbols: MechanicsSymbols): voi
     case "clue_found": assertKnown(predicate.clueId, symbols.clueIds, "clue"); return;
     case "scene_visited": assertKnown(predicate.sceneId, symbols.sceneIds, "scene"); return;
     case "item_owned": assertKnown(predicate.itemId, symbols.itemIds, "item"); return;
+    case "connection_unlocked": assertKnown(predicate.connectionId, symbols.connectionIds, "connection"); return;
     case "state_eq": assertKnown(predicate.stateKey, symbols.declaredStateKeys, "state key"); return;
     case "npc_state": assertKnown(predicate.npcId, symbols.npcIds, "npc"); return;
   }
@@ -490,6 +503,7 @@ function validateMechanicsStructure(ir: MechanicsIR): void {
     if (connection.onTraverse) validateEffects(connection.onTraverse, symbols, false);
     validateSourceIds(connection.sourceInterpretationIds, sourceIds);
   }
+  assertUnique(ir.connections.map((connection) => connection.connectionId), "connection gate");
   for (const transition of ir.transitions) {
     validatePredicate(transition.when, symbols);
     validateEffects(transition.effects, symbols, true);
@@ -501,6 +515,8 @@ function validateMechanicsStructure(ir: MechanicsIR): void {
     priorities.add(ending.priority);
     validatePredicate(ending.when, symbols);
     validateEffects(ending.effects, symbols, true);
+    const endGames = ending.effects.filter((effect) => effect.kind === "end_game");
+    if (endGames.length !== 1) throw new MechanicsCompilationError("invalid_ending_rule", `ending rule must declare exactly one end_game effect: ${ending.id}`);
     validateSourceIds(ending.sourceInterpretationIds, sourceIds);
   }
 }

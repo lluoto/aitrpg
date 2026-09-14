@@ -1,15 +1,64 @@
 # 接手说明
 
-> 生成于 2026-09-10 15:17  ·  刷新：`bun scripts/handoff.ts`
+> 本轮按实际验证补正；刷新：`bun scripts/handoff.ts`（刷新前审查模板，保留编译验收记录）
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
-`C:\aitrpg\poc` —— CoC 7e 跑团引擎。核心是「模组数据 + 规则引擎 + LLM 叙事」
-跑完一局《普瑞米尔的谷仓》。**当前 HEAD**：e0cf33d feat: build evidence-bound source fact graphs  ·  **测试**：2995 条 / 208 文件，全绿（基线 2995，一致）
+`C:\aitrpg\poc` —— 自主 AI RPG 引擎；当前正在验证有来源证据约束的模组编译链。
+产品边界见 `docs/product-direction.md`。**当前 HEAD**：9cf3b7f docs: retire ignored legacy tool reference  ·  **测试**：候选为 3149 条 / 215 文件，3110 pass / 39 skip / 0 fail（退出 0，基线 3149）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
+
+## 编译闭环检查点 I 交接
+
+`docs/compiler-master-plan.md` 是编译链的唯一主控计划。检查点 I 是 hints → accepted
+interpretations → MechanicsIR → closed_world 与 P4 执行语义，当前为**约定审计范围已验证、未提交**：P4、
+default audit/schema substitution、图关系/location provenance、foreign policy override 和
+脚本摘要/进程分类均有反例、真实生产变异和独立复核。没有
+实现 artifact 保存/恢复、公开编译入口、GameSession/世界模型/模型记忆接线或外部模型探测。
+
+定向命令：`bun test ./src/__tests__/compiler-closure.test.ts ./src/__tests__/mechanics-ir.test.ts ./src/__tests__/deterministic-template-compiler.test.ts ./src/__tests__/compiler-question-queue.test.ts ./src/__tests__/compile-hint-resolution.test.ts ./src/__tests__/mechanics-reachability.test.ts ./src/__tests__/diag-script-process.test.ts ./src/__tests__/diag-preflight-checks.test.ts`。
+结果为 261 pass / 0 fail / 789 expect / 8 files；`bun run typecheck` 退出 0。
+新 HEAD 候选的全量 `bun test` 直接 argv 子进程退出 0：3110 pass / 39 skip / 0 fail，3149 条 / 215 文件。候选未含 ignored 的本地 `tools/` fixtures，故比真实工作树多 7 条已有 intentional skip。
+改动前 preflight 退出 0，基线从 3056/214 按成功全量结果上调到 3149/215；未降基线、加 skip 或减弱断言。
+
+本轮 compiler 修复：默认项先用原始 source symbols 做完整 schema/结构/audit 校验再替代，
+绑定核对 canonical clue/scene/mechanic/interpretation 身份、实际子关系及 review evidence。
+只从 retained provenance 取得默认位置，显式位置必须 playable；外模块和非 gameplay-domain
+不能压掉本模块 policy，合法本地 explicit 优先级保留。返回 accepted provenance 做深拷贝快照。
+
+脚本修复：只解析完整的独立 Bun 摘要行；decoy、缺失或多份确切摘要不能报绿。
+unwired/hooks 先看进程结果，stderr 错误不冒充真正 unset；生成失败快照仍沿用生成器退出契约。
+handoff 刷新保留手写 checkpoint 及子标题，EOF 无换行也不会与后续标题粘连。
+新测试执行实际脚本体但只替换局部 IO/process 绑定，负例不写真实 docs、不开子进程、不泄漏全局 mock。
+
+新增真实变异（分别变红并还原）：替代前 audit/结构旁路、图关系和 canonical 身份旁路、
+已移除 default 的 ID-only 位置回流、外模块 override filter 移除、返回 snapshot clone 移除、
+摘要 guard/非锚定 decoy parser 回流、unwired/hooks 进程 guard 移除、EOF separator 移除、stderr filter 移除。
+compiler 过滤用例包括 `audits substituted defaults: schema`、`genuine but unrelated`、`lend removed`、
+`scopes policy overrides: foreign`、`structurally audits`、`complete subtree.*review=true`、`snapshots returned`。
+script 过滤用例包括 `missing failed|positive failed`、`unwired nonzero|hooks nonzero.*githooks`、
+`decoy failures|decoy failure and count`、`checkpoint EOF separator`、`empty stdout with stderr`。
+所有变异失败原因对应目标断言；独立第一轮发现的残余路径已补反例和修复，第二轮复核未发现约定范围问题。
+最终 typecheck 曾指出可选值/联合类型未收窄，已补正常类型守卫后重新通过；未削弱验证或断言。
+
+此前 P4 局部验收证据保留：action→automatic→ending 的四状态在预算 3 拒绝、4 成功，
+core 前缀在预算 2 成功；合法两状态循环重复重放只计两个 hash，预算 1 拒绝、2 成功，
+重复调用各自重置预算。另补显式 `__proto__` discovery 的真实 resolver-location 集成，
+强化 own counter=2、failback witness JSON round-trip 后重放。输入特殊键使用 own data property。
+
+真实生产变异与恢复命令：
+- `bun test ./src/__tests__/mechanics-reachability.test.ts -t "charges the player-action state"`：仅删除 action replay observation 时退出 1（预算 3 错误放行）；恢复后 1 pass / 6 expect。
+- `bun test ./src/__tests__/mechanics-reachability.test.ts -t "deduplicates revisited replay states"`：按观察次数而非不同 hash 收费时退出 1（在 replay 的预算 2 错误超限）；恢复后 1 pass / 5 expect。
+- `bun test ./src/__tests__/mechanics-reachability.test.ts -t "prototype-named method IDs"`：恢复不安全 counter 赋值时退出 1（own `__proto__` failback witness 消失）；恢复后通过，随后增加 JSON-restored witness 重放并纳入最终全量。
+
+生产文件 `git hash-object` 在变异前后均为 `00b4dddbcc3fc8f01b9068ccf471d5d5ed54728d`。
+未保留生产变异，未覆盖并行改动，未暂存、提交或推送。preflight 子进程当前正常；旧 PDF/EPERM
+报告不是本轮阻塞，不能据此变更依赖或 Git 配置。`docs/notes/index.json` 有并行改动，故未重建；
+新增的 engine note 尚未进入索引，
+依赖索引的 open/warn 列表可能滞后，留待拥有该并行改动的一方刷新。
 
 ## 第一件事：读这三份
 
@@ -209,18 +258,7 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
-- e0cf33d feat: build evidence-bound source fact graphs
-- 2e5359a docs: refresh product direction handoff
-- 1d18280 docs: record development verification discipline
-- 6603d55 docs: define autonomous RPG product direction
-- 4f8e3ba docs: record DocumentIR evidence boundaries
-- 0e41e41 fix: keep trace builder internal
-- bafc1e4 fix: preserve ingest measurement boundary
-- 22c5006 test: verify ingest evidence span integrity
-- be715ac feat: expose ingest document evidence outputs
-- 80f043f feat: attach evidence to sections and prose blocks
-- 5668145 feat: preserve evidence spans through text cleaning
-- 8813814 feat: add source-exact DocumentIR contracts
+
 
 ## 代码地图
 
