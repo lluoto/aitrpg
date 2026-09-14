@@ -78,7 +78,7 @@ describe("Cthulhu dataset manifest 与真实数据", () => {
     expect(arrayCandidate).toBeDefined();
     expect(Array.isArray(arrayCandidate?.payload.properties)).toBe(true);
 
-    const record = readJsonlArtifact(DATASET_PATH, "extracted/cthulhu_extracted/mountains_of_madness.jsonl")[1]!;
+    const record = readJsonlArtifact(DATASET_PATH, "extracted/mountains_of_madness.jsonl")[1]!;
     const mutated = structuredClone(record);
     mutated.value.properties = { anatomy: ["star head", "gills"], count: 5 };
     const candidate = normalizeLoreRecord(mutated, CTHULHU_DATASET_MANIFEST, chapterMap);
@@ -90,19 +90,19 @@ describe("Cthulhu dataset manifest 与真实数据", () => {
     expect(borellus).toBeDefined();
     expect(borellus?.payload.extras).not.toHaveProperty("source");
 
-    const record = structuredClone(readJsonlArtifact(DATASET_PATH, "extracted/cthulhu_extracted/dexter_ward.jsonl")[0]!);
+    const record = structuredClone(readJsonlArtifact(DATASET_PATH, "extracted/dexter_ward.jsonl")[0]!);
     record.value.future_field = { untouched: [1, "two"] };
     expect(normalizeLoreRecord(record, CTHULHU_DATASET_MANIFEST, chapterMap).payload.extras.future_field).toEqual({ untouched: [1, "two"] });
   });
 
   it("cthulhu_all 为空时明确 ignored，不报告 loaded artifact", () => {
     expect(loaded.ignoredArtifacts).toEqual([{
-      path: "extracted/cthulhu_extracted/cthulhu_all.jsonl",
+      path: "extracted/cthulhu_all.jsonl",
       status: "ignored_empty_legacy_artifact",
       loaded: false,
     }]);
     expect(loaded.analysisArtifacts).toEqual([{
-      path: "extracted/cthulhu_extracted/cthulhu_world_model.jsonl",
+      path: "extracted/cthulhu_world_model.jsonl",
       status: "migration_analysis_only",
       loaded: false,
     }]);

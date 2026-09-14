@@ -78,13 +78,13 @@ export const CTHULHU_DATASET_MANIFEST: CthulhuDatasetManifest = {
     allowedWorkIds: ["at_the_mountains_of_madness", "cool_air", "the_call_of_cthulhu", "the_case_of_charles_dexter_ward", "the_colour_out_of_space", "the_curse_of_yig", "the_dunwich_horror"],
   }],
   aggregateArtifact: {
-    path: "extracted/cthulhu_extracted/cthulhu_world_model.jsonl",
+    path: "extracted/cthulhu_world_model.jsonl",
     sha256: "6de4ec192c9460e8a3e742fc148084bce6e1ec3676459921c6921be32b6e7f8d",
     expectedRows: 145,
     status: "migration_analysis_only",
   },
   ignoredArtifacts: [{
-    path: "extracted/cthulhu_extracted/cthulhu_all.jsonl",
+    path: "extracted/cthulhu_all.jsonl",
     sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     status: "ignored_empty_legacy_artifact",
   }],
@@ -95,7 +95,7 @@ function work(input: {
   publication: string; publicationEvidence: string; source: string; sourceHash: string; chapterHash: string;
   artifact: string; artifactHash: string; chapters: number; rows: number; covered: number;
 }): CthulhuWorkManifest {
-  const sourcePath = `source/cthulhu_raw/${input.source}`;
+  const sourcePath = `source/${input.source}`;
   return {
     workId: input.id,
     title: input.title,
@@ -105,11 +105,11 @@ function work(input: {
     language: "English",
     originalPublication: { statement: input.publication, evidenceLocation: input.publicationEvidence },
     sourceText: { path: sourcePath, sha256: input.sourceHash },
-    chapterDirectory: `chapters/chapters_cthulhu/${input.id}`,
+    chapterDirectory: `chapters/${input.id}`,
     expectedChapters: input.chapters,
     chapterInventorySha256: input.chapterHash,
     extractedArtifact: {
-      path: `extracted/cthulhu_extracted/${input.artifact}`,
+      path: `extracted/${input.artifact}`,
       sha256: input.artifactHash,
       expectedRows: input.rows,
       expectedCoveredChapters: input.covered,
