@@ -92,12 +92,10 @@ interface：`ModuleData`/`Scene`/`Clue`/`ModuleItem`/`TrapMechanics`/`Provenance
 `poc/tools/modules/raw/`（PDF 按章节切分的 19 个 txt，与源 PDF 逐字一致，已核对
 17/17，见 `docs/archive-world-model-2026-08.md`「原文与 raw/ 的血缘已确认（2026-08-19）」）与
 `poc/tools/modules/structured/`（从旧 `.ts` **反向拆出**的 15 个字段 txt，是派生物
-不是来源）都在 `.gitignore` 排除的 `poc/tools/` 下。**注意方向**：
-`tools/split-modules.mjs` 的输入是 `premiers_barn_raw.txt` 和已经写好的 `.ts`，
-`structured/*.txt` 是从 TS 反向拆出来的，不是生成 TS 的来源；
-`premiers_barn_raw.txt` 目前已不存在，摄取需从 PDF 重跑。这批 `tools/*.mjs`
-遗留脚本详情已归档，见 `docs/archive-world-model-2026-08.md`「摄取相关脚本（poc/tools/ 遗留脚本，2026-08-19 状态）」；
-当前活跃摄取管线见 `docs/notes/ingest.md`。
+不是来源）都在 `.gitignore` 排除的 `poc/tools/` 下。它们属于不可复现的历史工具链：
+其原始输入 `premiers_barn_raw.txt` 已不存在，摄取必须从 PDF 重跑。历史脚本及其
+输入缺失事实见 `docs/archive-world-model-2026-08.md`「摄取相关脚本（poc/tools/ 遗留脚本，2026-08-19 状态）」。
+当前受支持的摄取入口是 `scripts/ingest/run.ts`；它产出可对比候选，不自动写最终 ModuleData。
 
 ## D 盘小说语料与新版提取
 
