@@ -3,6 +3,11 @@
 这里放的是**代码注释点名引用过**的原文——不只是跑局原文，还有摄取管线
 的产物（见下）。
 
+`barn-source-v1.03/` 是一个更窄的例外：它不是日志或生成快照，而是
+`src/ingest/three-way-audit.ts` 在 clean clone 中执行生产来源审计所需的
+受控文本语料。其 manifest 绑定用户提供 PDF 的哈希、页到 section 映射和
+逐段哈希；详情见目录内 README。不得用 ignored `tools/` 副本替代它。
+
 ## 为什么要单独存一份
 
 `play-logs/` 在 `.gitignore` 里 —— 它是本机跑局的产物，一天能攒几十个。

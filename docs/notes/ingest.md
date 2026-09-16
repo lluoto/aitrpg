@@ -26,6 +26,7 @@ const res = await new PDFParse({ data: buffer }).getText();
 
 | 阶段 | 文件 | 状态 |
 |---|---|---|
+| 谷仓原文审计输入 | `docs/evidence/barn-source-v1.03/` + `src/ingest/three-way-audit.ts` | **已完成（2026-09-15）**：clean-clone 审计读取受控语料，不再依赖 ignored `tools/modules/raw/` 或 `tools/ingest-out/scenes.json`。manifest 记录用户提供 `普瑞米尔的谷仓 ver1.03.pdf` 的 SHA-256、p1→header / p2–18→section 映射及每段规范化哈希；缺失、篡改或 provenance/inventory 错误 fail closed。语料仅证明生产 source claim；旧生成快照不再充当 atmosphere 的可变真相。 |
 | PDF → 逐页文本 | `src/ingest/pdf-source.ts` | **已完成**，2 测试（只测形态）；内容保真**已验证**：与既有 `tools/modules/raw/` 切片逐字一致 **17/17**（空白归一化后，见
 `docs/archive-world-model-2026-08.md`「原文与 raw/ 的血缘已确认（2026-08-19）」） |
 | 文本清洗 | `src/ingest/clean-text.ts` | **已完成**，41 测试。`cleanPageText` 管页内、`joinPages` 管跨页（实测接 **5 处**页边界，其中 4 处的上一行是 `▶`——两个分母见下）。内核是同一个 `shouldJoin`，但页边界上另加两条否决（首行冒号收尾一律不接、上一页末行 ASCII 连续句点算句末），因为 `cleanPageText` 逐页调用时把空行吃掉了，段落分隔到 `joinPages` 手上已经看不见 |

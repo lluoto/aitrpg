@@ -46,13 +46,13 @@
 // 修过的臆造又用同一个措辞悄悄写回来。它同样解决不了"看不见语义矛盾"
 // 这条根本限制——见该文件自己的能力边界说明，只是把已知实例钉死。
 //
-// ⚠ 原文切片（tools/modules/raw/*.txt）是派生物，不进版本库
-// （module/types.ts:76「切片是派生物且不进版本库，PDF 才是权威源」）。本地有、
-// CI 可能没有——所有依赖切片的判据都要能在切片缺失时优雅降级：明确报
-// "跳过"并告警，不能静默通过（那等于什么都没测，却显示成绿的）。
+// 生产来源审计读取 docs/evidence/barn-source-v1.03/ 的受控语料，而不是
+// gitignored 的 tools/modules/raw/。manifest 绑定用户提供的权威 PDF 字节哈希、
+// 页到 section 的映射和每段规范化文本哈希；缺失或篡改一律失败，不能跳过。
 
 import { existsSync, readFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
+import { sha256 } from "./document-ir";
 
 export type ThreeWayVerdict = "fabrication" | "missing-extraction" | "creative-layer";
 
@@ -65,30 +65,137 @@ export type ThreeWayVerdict = "fabrication" | "missing-extraction" | "creative-l
  * （0 字节空壳，旧切分器 off-by-one 留下的，见血缘核对
  * docs/archive-world-model-2026-08.md:9-21）。
  */
-const RAW_SECTION_FILES = [
+export const BARN_SOURCE_SECTION_FILES = [
   "00_header.txt",
   ...Array.from({ length: 17 }, (_, i) => `section_${String(i + 1).padStart(2, "0")}.txt`),
 ];
+
+export const BARN_SOURCE_EVIDENCE_MANIFEST_PATH = "docs/evidence/barn-source-v1.03/manifest.json";
+export const BARN_SOURCE_PDF_SHA256 = "7af2924849cdca9ade940fa28f730a44e9bce6148b1e67280b627b5e5afbb549";
+export const BARN_SOURCE_EVIDENCE_MANIFEST_SHA256 = "6e73a96a1ccdfd2fb0afaf306d4878a517554c30e7da95d8e40b8295371a0230";
+
+export interface SourceEvidenceSection {
+  file: string;
+  pdfPage: number;
+  canonicalTextSha256: string;
+}
+
+export interface SourceEvidenceManifest {
+  schemaVersion: 1;
+  source: {
+    title: string;
+    version: string;
+    originalPdfSha256: string;
+    provenance: string;
+  };
+  derivation: {
+    method: string;
+    canonicalization: string;
+  };
+  corpusDirectory: "corpus";
+  sections: SourceEvidenceSection[];
+}
 
 export type OriginalCorpusResult =
   | { ok: true; text: string }
   | { ok: false; reason: string };
 
-/**
- * 读取全部原文切片并拼成一份语料。任何一个文件缺失都整体判定不可用——
- * 不拼一份"缺了几页"的语料悄悄用，那样"原文没有"和"原文那几页刚好不在"
- * 会分不清，静默产出错误结论比明确报"没跑"更糟。
- */
-export function readOriginalCorpus(rawDir: string = "tools/modules/raw"): OriginalCorpusResult {
-  const parts: string[] = [];
-  for (const name of RAW_SECTION_FILES) {
-    const p = join(rawDir, name);
-    if (!existsSync(p)) {
-      return { ok: false, reason: `缺少切片文件：${p}（tools/ 不进版本库，本地/CI 环境可能没有）` };
+const SHA256_HEX = /^[a-f0-9]{64}$/;
+
+/** Normalize line endings and a final editor-added newline without altering source content. */
+export function canonicalizeSourceEvidenceText(value: string): string {
+  return value.replace(/\r\n?/g, "\n").replace(/\n$/, "");
+}
+
+/** Manifest integrity keeps its final newline but is independent of Git checkout line endings. */
+export function canonicalizeSourceEvidenceManifestText(value: string): string {
+  return value.replace(/\r\n?/g, "\n");
+}
+
+function sourceEvidenceFailure(reason: string): OriginalCorpusResult {
+  return { ok: false, reason: `[source-evidence] ${reason}` };
+}
+
+function parseSourceEvidenceManifest(manifestPath: string): SourceEvidenceManifest | OriginalCorpusResult {
+  if (!existsSync(manifestPath)) return sourceEvidenceFailure(`input missing: ${manifestPath}`);
+
+  const manifestText = readFileSync(manifestPath, "utf8");
+  if (manifestPath === BARN_SOURCE_EVIDENCE_MANIFEST_PATH && sha256(canonicalizeSourceEvidenceManifestText(manifestText)) !== BARN_SOURCE_EVIDENCE_MANIFEST_SHA256) {
+    return sourceEvidenceFailure(`manifest integrity mismatch: ${manifestPath}`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(manifestText);
+  } catch (error) {
+    return sourceEvidenceFailure(`manifest parse failed: ${manifestPath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!parsed || typeof parsed !== "object") return sourceEvidenceFailure(`manifest invalid: ${manifestPath}`);
+
+  const candidate = parsed as Partial<SourceEvidenceManifest>;
+  const source = candidate.source;
+  const derivation = candidate.derivation;
+  if (candidate.schemaVersion !== 1 || !source || typeof source.title !== "string" || typeof source.version !== "string" ||
+    typeof source.provenance !== "string" || !SHA256_HEX.test(source.originalPdfSha256 ?? "")) {
+    return sourceEvidenceFailure(`manifest provenance invalid: ${manifestPath}`);
+  }
+  if (manifestPath === BARN_SOURCE_EVIDENCE_MANIFEST_PATH && source.originalPdfSha256 !== BARN_SOURCE_PDF_SHA256) {
+    return sourceEvidenceFailure(`PDF binding mismatch: ${manifestPath}`);
+  }
+  if (!derivation || typeof derivation.method !== "string" || typeof derivation.canonicalization !== "string" || candidate.corpusDirectory !== "corpus") {
+    return sourceEvidenceFailure(`manifest derivation invalid: ${manifestPath}`);
+  }
+  if (!Array.isArray(candidate.sections) || candidate.sections.length !== BARN_SOURCE_SECTION_FILES.length) {
+    return sourceEvidenceFailure(`manifest inventory invalid: ${manifestPath}`);
+  }
+  for (const [index, section] of candidate.sections.entries()) {
+    const expectedFile = BARN_SOURCE_SECTION_FILES[index];
+    if (!section || section.file !== expectedFile || section.pdfPage !== index + 1 || !SHA256_HEX.test(section.canonicalTextSha256 ?? "")) {
+      return sourceEvidenceFailure(`manifest inventory invalid: ${manifestPath}`);
     }
-    parts.push(readFileSync(p, "utf8"));
+  }
+  return candidate as SourceEvidenceManifest;
+}
+
+export function readSourceEvidenceManifest(manifestPath: string = BARN_SOURCE_EVIDENCE_MANIFEST_PATH): SourceEvidenceManifest | OriginalCorpusResult {
+  return parseSourceEvidenceManifest(manifestPath);
+}
+
+function readCorpusSections(rawDir: string, sections: readonly SourceEvidenceSection[]): OriginalCorpusResult {
+  const parts: string[] = [];
+  for (const section of sections) {
+    const path = join(rawDir, section.file);
+    if (!existsSync(path)) return sourceEvidenceFailure(`input missing: ${path}`);
+    const text = canonicalizeSourceEvidenceText(readFileSync(path, "utf8"));
+    const actualHash = sha256(text);
+    if (section.canonicalTextSha256 && actualHash !== section.canonicalTextSha256) {
+      return sourceEvidenceFailure(`section hash mismatch: p${section.pdfPage} ${path}`);
+    }
+    parts.push(text);
   }
   return { ok: true, text: parts.join("\n") };
+}
+
+/** Read and integrity-check the tracked corpus declared by a source-evidence manifest. */
+export function readSourceBoundCorpus(manifestPath: string = BARN_SOURCE_EVIDENCE_MANIFEST_PATH): OriginalCorpusResult {
+  const manifest = parseSourceEvidenceManifest(manifestPath);
+  if ("ok" in manifest) return manifest;
+  return readCorpusSections(join(dirname(manifestPath), manifest.corpusDirectory), manifest.sections);
+}
+
+/**
+ * 读取默认的 source-bound corpus。任何一个文件缺失或哈希不符都整体判定不可用——
+ * 不拼一份"缺了几页"的语料悄悄用，那样"原文没有"和"原文那几页刚好不在"
+ * 会分不清，静默产出错误结论比明确报错更糟。传目录仅供合成输入测试；它不带
+ * PDF binding，不能作为生产来源证据。
+ */
+export function readOriginalCorpus(rawDir?: string): OriginalCorpusResult {
+  if (!rawDir) return readSourceBoundCorpus();
+  return readCorpusSections(rawDir, BARN_SOURCE_SECTION_FILES.map((file, index) => ({
+    file,
+    pdfPage: index + 1,
+    canonicalTextSha256: "",
+  })));
 }
 
 // ============================================================
@@ -112,19 +219,25 @@ export function termAppearsInCorpus(term: string, corpusText: string): boolean {
   return normalizeForMatch(corpusText).includes(normalizeForMatch(term));
 }
 
+/** Field evidence is source-backed only when the complete corpus attests the declared value. */
+export function fieldValueAppearsInCorpus(value: string, corpusText: string): boolean {
+  return termAppearsInCorpus(value, corpusText);
+}
+
 // ============================================================
 // 语料来源——开发·无基准模式 任务②
 // ============================================================
 //
-// `readOriginalCorpus()` 读的是仓库里预先切好、经过人工核对的谷仓切片
-// （`tools/modules/raw/`）——这份语料只对这一本模组存在，摄取一本新
-// PDF 时用不上它。三方审计真正需要的只是"这次摄取的原文全文"，而
+// `readOriginalCorpus()` 读的是仓库里受控、经 manifest 绑定的谷仓语料
+// （`docs/evidence/barn-source-v1.03/`）——这份语料只对这一本模组存在，
+// 摄取一本新 PDF 时用不上它。三方审计真正需要的只是"这次摄取的原文全文"，而
 // `scripts/ingest/run.ts` 在切分之前就已经从 PDF 里解码出了逐页文本
 // （`extractPages` 的产物）——那份数据本来就是"这次到底摄取的是什么"
 // 的第一手来源，不需要额外读一份仓库里的切片才能拿到语料。
 //
-// `pdf-source.ts` 的内容保真已经实跑验证过（与 `tools/modules/raw/`
-// 切片逐字一致 17/17，空白归一化后），所以理论上两种来源对同一份 PDF
+// `pdf-source.ts` 的内容保真曾经实跑验证过（与历史 `tools/modules/raw/`
+// 切片逐字一致 17/17，空白归一化后）。当前生产测试改用受控 corpus，
+// 所以理论上两种来源对同一份 PDF
 // 应该产出等价的语料——但"理论上应该"与"这次真的量过"是两回事，
 // `compareCorpusSources` 就是为了把这次的量测结果如实记下来，不是
 // 假设新路径一定等价就跳过验证。
@@ -244,9 +357,9 @@ export interface FieldOmissionRule {
  * 全文（70 字，见 barn-of-premier.ts:169）——管线确实抽到了这段内容，
  * 只是没有拆分成独立字段，不是无中生有。这与臆造的差异**形状相同**
  * （基准有、生成物没有）但**含义相反**，是这份判据要区分的关键测例。
- * 这次摄取产出本身是派生物（tools/ 不进版本库），可复核性靠
- * ingest-three-way-audit.test.ts 那份"缺失时跳过+告警"的判据，不靠
- * 这条注释指名道姓某个具体文件。
+ * 历史生成快照是未跟踪的派生物，不能再当测试输入。当前断言只证明
+ * atmosphere 本文有受控原文依据；此登记表只裁决差异的语义，不把一份
+ * 历史输出当成可变的生产真相。
  */
 export const FIELD_OMISSION_REGISTRY: FieldOmissionRule[] = [
   {

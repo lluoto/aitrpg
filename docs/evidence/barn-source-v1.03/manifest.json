@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "title": "普瑞米尔的谷仓",
+    "version": "ver1.03",
+    "originalPdfSha256": "7af2924849cdca9ade940fa28f730a44e9bce6148b1e67280b627b5e5afbb549",
+    "provenance": "User-provided local PDF; retention as tracked test evidence authorized on 2026-09-15."
+  },
+  "derivation": {
+    "method": "pdf-parse page text; page 1 maps to 00_header.txt and pages 2-18 map to section_01.txt through section_17.txt.",
+    "canonicalization": "UTF-8 text with CRLF or CR normalized to LF and one final editor-added LF ignored before SHA-256 validation."
+  },
+  "corpusDirectory": "corpus",
+  "sections": [
+    {
+      "file": "00_header.txt",
+      "pdfPage": 1,
+      "canonicalTextSha256": "c1974c5eed5814ff5124f015f6219bc886d4b836b4a6eed0d55232c049833cf8"
+    },
+    {
+      "file": "section_01.txt",
+      "pdfPage": 2,
+      "canonicalTextSha256": "cdfc21cf454471bfe53dd2aad2f578826ae469aa90f6d63e9f325f15cb4372c3"
+    },
+    {
+      "file": "section_02.txt",
+      "pdfPage": 3,
+      "canonicalTextSha256": "68c30656e04a20166c464ed08d9b99dc79e3c3208e5ae7453c9562ae74e459e8"
+    },
+    {
+      "file": "section_03.txt",
+      "pdfPage": 4,
+      "canonicalTextSha256": "7189ca0a5163323b2ef55b40ff9b6b287c89e275342e264e2a60704258b6679c"
+    },
+    {
+      "file": "section_04.txt",
+      "pdfPage": 5,
+      "canonicalTextSha256": "572bed756da03ce97528f0e4c2ba8efa96f15afe1b0ab0d4959774e2a043195b"
+    },
+    {
+      "file": "section_05.txt",
+      "pdfPage": 6,
+      "canonicalTextSha256": "cd88a33ac2d1f87eb32a691b8d203e9041fd1b298e9a4cb99e027e50412d9053"
+    },
+    {
+      "file": "section_06.txt",
+      "pdfPage": 7,
+      "canonicalTextSha256": "0dc30cb307f30311a2bff57677824ff9d6829392c53ec9313a440e7cfcd207cf"
+    },
+    {
+      "file": "section_07.txt",
+      "pdfPage": 8,
+      "canonicalTextSha256": "89cdb99660b92324bcc117ca7706917d8b8105cdf9dcbdbc38792d60124b3fd6"
+    },
+    {
+      "file": "section_08.txt",
+      "pdfPage": 9,
+      "canonicalTextSha256": "f28ae731fb1de0eb528f46ba6b1ec2d71cf5f564aa80043958dc37fefbf5b6eb"
+    },
+    {
+      "file": "section_09.txt",
+      "pdfPage": 10,
+      "canonicalTextSha256": "a492fa998c39606e3727645374bf41e582720c5483e3d03ca2934eecebfb73e9"
+    },
+    {
+      "file": "section_10.txt",
+      "pdfPage": 11,
+      "canonicalTextSha256": "29f30a40848ab4f7333652d0b4dfdbca768aa6a342d163f5d7e0904652483b8f"
+    },
+    {
+      "file": "section_11.txt",
+      "pdfPage": 12,
+      "canonicalTextSha256": "46bb2372176c62ac0d4697774e6db95a7798a708e067fb20b658342a77e793c9"
+    },
+    {
+      "file": "section_12.txt",
+      "pdfPage": 13,
+      "canonicalTextSha256": "18c92eedc25f158921233067cb2963f1a9c3e8f9880715134309fe7e2f295826"
+    },
+    {
+      "file": "section_13.txt",
+      "pdfPage": 14,
+      "canonicalTextSha256": "16aa4aa9766af1d37860abc8fe14cf6ceb75e0c181f29785a1eec0684cc19fbb"
+    },
+    {
+      "file": "section_14.txt",
+      "pdfPage": 15,
+      "canonicalTextSha256": "6e5518cefcf78e83e12314f0c7bdc735ea17665524bf8cd1a35296706876c774"
+    },
+    {
+      "file": "section_15.txt",
+      "pdfPage": 16,
+      "canonicalTextSha256": "f81c6e89c4b2584c0bd4d4df6999acd95cedde09215b46b8379f365dc2aa7248"
+    },
+    {
+      "file": "section_16.txt",
+      "pdfPage": 17,
+      "canonicalTextSha256": "19eb0b046922446eac22d4bfa7d724dd16e9e4405fdc29dd52e43ec16c5a8f9f"
+    },
+    {
+      "file": "section_17.txt",
+      "pdfPage": 18,
+      "canonicalTextSha256": "87ea7959b98ab8bd1d31c521965e9b94f006dd3e186414b087638eee550fc183"
+    }
+  ]
+}

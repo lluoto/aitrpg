@@ -70,3 +70,16 @@ deleted from this repository:
 
 Rules detail beyond the mechanics implemented here is expected to come from the
 loaded module or from a rulebook supplied by the user.
+
+---
+
+## User-provided Barn source evidence
+
+`docs/evidence/barn-source-v1.03/` retains a text corpus derived from the
+user-provided `普瑞米尔的谷仓 ver1.03.pdf` only for clean-clone source-evidence
+tests. The user authorized that repository retention on 2026-09-15. The source
+PDF byte hash, page-to-section derivation, and section hashes are recorded in
+that directory's `manifest.json`.
+
+This retention record is not a copyright license, publication grant, or claim
+that unrelated third-party source material may be added to the repository.

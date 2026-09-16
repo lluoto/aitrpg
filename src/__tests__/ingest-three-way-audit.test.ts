@@ -7,18 +7,18 @@
 // 靠显式登记名单（FABRICATION_REGISTRY / FIELD_OMISSION_REGISTRY），同
 // end-narration-clue-reachability.test.ts 的 KNOWN_UNREACHABLE 模式。
 //
-// ⚠ tools/modules/raw/*.txt、tools/ingest-out/scenes.json 都是派生物，
-// 不进版本库（module/types.ts:76）。依赖它们的判据必须能在缺失时优雅
-// 降级——明确报"跳过"并告警，不能静默通过。
+// 生产来源断言读取 docs/evidence/barn-source-v1.03/ 的受控语料。它绑定原始
+// PDF 的字节哈希和逐段哈希；输入缺失或损坏必须明确失败，不能跳过或改读 tools/。
 //
 // bun test src/__tests__/ingest-three-way-audit.test.ts
 
 import { describe, it, expect, afterAll } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
-import { join } from "path";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { dirname, join } from "path";
 import {
   normalizeForMatch,
   termAppearsInCorpus,
+  fieldValueAppearsInCorpus,
   readOriginalCorpus,
   extractBracketTerms,
   classifyFieldOmission,
@@ -32,9 +32,25 @@ import {
   buildCorpusFromPages,
   compareCorpusSources,
   readAuditedModuleSources,
+  BARN_SOURCE_EVIDENCE_MANIFEST_PATH,
+  BARN_SOURCE_EVIDENCE_MANIFEST_SHA256,
+  BARN_SOURCE_PDF_SHA256,
+  BARN_SOURCE_SECTION_FILES,
+  canonicalizeSourceEvidenceText,
+  canonicalizeSourceEvidenceManifestText,
+  readSourceBoundCorpus,
+  readSourceEvidenceManifest,
   type DeclaredEntityRef,
+  type SourceEvidenceManifest,
 } from "../ingest/three-way-audit";
 import { BARN_OF_PREMIER } from "../module/barn-of-premier";
+import { sha256 } from "../ingest/document-ir";
+
+function requireSourceCorpus(): string {
+  const result = readOriginalCorpus();
+  if (!result.ok) throw new Error(result.reason);
+  return result.text;
+}
 
 describe("normalizeForMatch：写法差异不能误判成臆造", () => {
   it("半角/全角连字符、破折号会被抹平——「米戈联络术」与「米-戈联络术」归一化后相等", () => {
@@ -104,35 +120,28 @@ describe("字段级「漏抽 vs 臆造」分类（FIELD_OMISSION_REGISTRY）", (
   });
 });
 
-describe("Scene.atmosphere 漏抽的具体证据——对照真实生成物快照，缺失时跳过+告警", () => {
-  const scenesJsonPath = "tools/ingest-out/scenes.json";
-  const hasSnapshot = existsSync(scenesJsonPath);
+describe("Scene.atmosphere 漏抽的具体证据——由受控原文语料约束", () => {
   const tricamHouse = BARN_OF_PREMIER.scenes.find((s) => s.id === "特里坎家");
 
-  it.skipIf(!hasSnapshot)(
-    "基准 atmosphere 全文（barn-of-premier.ts:169）是生成物 description 的子串——管线抽到了内容，只是塞进了错的字段",
-    () => {
-      expect(tricamHouse?.atmosphere).toBeTruthy();
-      const generated = JSON.parse(readFileSync(scenesJsonPath, "utf8")) as { name: string; description: string }[];
-      const scene = generated.find((s) => s.name === "特里坎家");
-      expect(scene).toBeDefined();
-      expect(scene!.description.includes(tricamHouse!.atmosphere!)).toBe(true);
-    },
-  );
+  it("基准 atmosphere 全文有受控原文依据；字段注册仅声明它是漏抽，不把旧快照当生产真相", () => {
+    expect(tricamHouse?.atmosphere).toBeTruthy();
+    expect(fieldValueAppearsInCorpus(tricamHouse!.atmosphere!, requireSourceCorpus())).toBe(true);
+    expect(classifyFieldOmission("scenes[特里坎家].atmosphere")).toBe("missing-extraction");
+  });
 
-  if (!hasSnapshot) {
-    console.warn(`[ingest-three-way-audit] 跳过：${scenesJsonPath} 不存在（tools/ 不进版本库，本地/CI 环境可能没有），这不是"测过了没问题"`);
-  }
+  it("atmosphere 文本被篡改或不再可由原文支撑时必须失败", () => {
+    expect(tricamHouse?.atmosphere).toBeTruthy();
+    const mutatedCorpus = normalizeForMatch(requireSourceCorpus()).replaceAll(normalizeForMatch(tricamHouse!.atmosphere!), "");
+    expect(fieldValueAppearsInCorpus(tricamHouse!.atmosphere!, mutatedCorpus)).toBe(false);
+  });
 });
 
 describe("方括号术语审计：原文查无此词的集合与 FABRICATION_REGISTRY 精确相等", () => {
-  const corpus = readOriginalCorpus();
   const barnSource = readFileSync("src/module/barn-of-premier.ts", "utf8");
   const terms = extractBracketTerms(barnSource);
 
-  it.skipIf(!corpus.ok)("**主判据**：查无此词的方括号术语必须一个不多一个不少地出现在登记名单里", () => {
-    if (!corpus.ok) return;
-    const notFound = terms.filter((t) => !termAppearsInCorpus(t, corpus.text));
+  it("**主判据**：查无此词的方括号术语必须一个不多一个不少地出现在登记名单里", () => {
+    const notFound = terms.filter((t) => !termAppearsInCorpus(t, requireSourceCorpus()));
     expect(new Set(notFound)).toEqual(new Set(FABRICATION_REGISTRY.map((e) => e.term)));
   });
 
@@ -143,19 +152,18 @@ describe("方括号术语审计：原文查无此词的集合与 FABRICATION_REG
   // 无据的方括号术语都不剩（notFound 为空），名单也确实清空且不多不少
   // （上面的主判据已经在验证这个精确相等关系，这里只是从"清单该有什么"
   // 的角度再钉一遍，防止未来有人往空名单里加一条却忘了这本该是无据的）。
-  it.skipIf(!corpus.ok)("清单已按阶段3的修正清空——不是没查，是真的不再有无据的方括号术语", () => {
-    if (!corpus.ok) return;
+  it("清单已按阶段3的修正清空——不是没查，是真的不再有无据的方括号术语", () => {
     expect(FABRICATION_REGISTRY).toEqual([]);
-    const notFound = terms.filter((t) => !termAppearsInCorpus(t, corpus.text));
+    const notFound = terms.filter((t) => !termAppearsInCorpus(t, requireSourceCorpus()));
     expect(notFound).toEqual([]);
   });
 
-  it.skipIf(!corpus.ok)("**对照**：能在原文查到的术语依旧不在名单里——写法差异不该被当成臆造", () => {
-    if (!corpus.ok) return;
+  it("**对照**：能在原文查到的术语依旧不在名单里——写法差异不该被当成臆造", () => {
+    const corpus = requireSourceCorpus();
     const registryTerms = new Set(FABRICATION_REGISTRY.map((e) => e.term));
     for (const attested of ["救出", "伎俩"]) {
       expect(terms.includes(attested)).toBe(true); // 前提：这个术语确实在数据里
-      expect(termAppearsInCorpus(attested, corpus.text)).toBe(true);
+      expect(termAppearsInCorpus(attested, corpus)).toBe(true);
       expect(registryTerms.has(attested)).toBe(false);
     }
     // "米戈联络术"曾经是这份对照组的第三个成员——它此前只在被删掉的那句
@@ -167,13 +175,15 @@ describe("方括号术语审计：原文查无此词的集合与 FABRICATION_REG
     expect(terms.includes("米戈联络术")).toBe(false);
   });
 
-  if (!corpus.ok) {
-    console.warn(`[ingest-three-way-audit] 跳过方括号术语审计：${(corpus as { ok: false; reason: string }).reason}`);
-  }
+  it("语料中被移除的方括号术语必须让生产审计失败", () => {
+    const mutatedCorpus = normalizeForMatch(requireSourceCorpus()).replaceAll(normalizeForMatch("救出"), "");
+    const notFound = terms.filter((term) => !termAppearsInCorpus(term, mutatedCorpus));
+    expect(notFound).toContain("救出");
+    expect(new Set(notFound)).not.toEqual(new Set(FABRICATION_REGISTRY.map((entry) => entry.term)));
+  });
 });
 
 describe("多文件覆盖：方括号术语审计不再只看 barn-of-premier.ts（阶段7 任务②）", () => {
-  const corpus = readOriginalCorpus();
   const sources = readAuditedModuleSources();
   const termMap = extractBracketTermsAcrossFiles(sources);
 
@@ -192,15 +202,10 @@ describe("多文件覆盖：方括号术语审计不再只看 barn-of-premier.ts
     expect(merged.get("共鸣特质")).toEqual(["c.ts"]);
   });
 
-  it.skipIf(!corpus.ok)("**主判据**：唯一谷仓维护文件里查无此词的方括号术语集合必须与 FABRICATION_REGISTRY 精确相等", () => {
-    if (!corpus.ok) return;
-    const notFound = [...termMap.keys()].filter((t) => !termAppearsInCorpus(t, corpus.text));
+  it("**主判据**：唯一谷仓维护文件里查无此词的方括号术语集合必须与 FABRICATION_REGISTRY 精确相等", () => {
+    const notFound = [...termMap.keys()].filter((t) => !termAppearsInCorpus(t, requireSourceCorpus()));
     expect(new Set(notFound)).toEqual(new Set(FABRICATION_REGISTRY.map((e) => e.term)));
   });
-
-  if (!corpus.ok) {
-    console.warn(`[ingest-three-way-audit] 跳过多文件方括号术语审计：${(corpus as { ok: false; reason: string }).reason}`);
-  }
 });
 
 describe("readAuditedModuleSources 参数化——开发·无基准模式 任务③：常量只是谷仓的默认值", () => {
@@ -225,8 +230,6 @@ describe("readAuditedModuleSources 参数化——开发·无基准模式 任务
 });
 
 describe("声明实体审计：NPC 名/场景名是否在原文里真实存在（阶段7 任务②）", () => {
-  const corpus = readOriginalCorpus();
-
   function collectEntities(): DeclaredEntityRef[] {
     return [
       ...BARN_OF_PREMIER.npcs.map((npc) => ({ name: npc.name, kind: "npc" as const, source: "src/module/barn-of-premier.ts" })),
@@ -259,18 +262,16 @@ describe("声明实体审计：NPC 名/场景名是否在原文里真实存在�
     expect(notFound).toEqual([{ name: "凭空捏造的角色", kind: "npc", source: "test" }]);
   });
 
-  it.skipIf(!corpus.ok)("**主判据**：唯一谷仓数据声明的 NPC/场景名，查无此名的集合必须与 ENTITY_FABRICATION_REGISTRY 精确相等", () => {
-    if (!corpus.ok) return;
-    const notFound = auditDeclaredEntities(collectEntities(), corpus.text);
+  it("**主判据**：唯一谷仓数据声明的 NPC/场景名，查无此名的集合必须与 ENTITY_FABRICATION_REGISTRY 精确相等", () => {
+    const notFound = auditDeclaredEntities(collectEntities(), requireSourceCorpus());
     const notFoundKeys = new Set(notFound.map((e) => `${e.kind}:${stripDisplayAnnotation(e.name)}`));
     const registryKeys = new Set(ENTITY_FABRICATION_REGISTRY.map((e) => `${e.kind}:${e.name}`));
     expect(notFoundKeys).toEqual(registryKeys);
   });
 
-  it.skipIf(!corpus.ok)("清单确实是空的——不是没查，是统一谷仓数据里的人名地名一个不剩地能在原文查到", () => {
-    if (!corpus.ok) return;
+  it("清单确实是空的——不是没查，是统一谷仓数据里的人名地名一个不剩地能在原文查到", () => {
     expect(ENTITY_FABRICATION_REGISTRY).toEqual([]);
-    const notFound = auditDeclaredEntities(collectEntities(), corpus.text);
+    const notFound = auditDeclaredEntities(collectEntities(), requireSourceCorpus());
     expect(notFound).toEqual([]);
   });
 
@@ -282,12 +283,101 @@ describe("声明实体审计：NPC 名/场景名是否在原文里真实存在�
     expect(entities.some((e) => e.kind === "scene")).toBe(true);
   });
 
-  if (!corpus.ok) {
-    console.warn(`[ingest-three-way-audit] 跳过声明实体审计：${(corpus as { ok: false; reason: string }).reason}`);
-  }
+  it("语料中被移除的声明实体必须让生产审计失败", () => {
+    const target = "米尔·特里坎";
+    const notFound = auditDeclaredEntities(collectEntities(), requireSourceCorpus().replaceAll(target, ""));
+    expect(notFound).toContainEqual(expect.objectContaining({ name: target, kind: "npc" }));
+  });
 });
 
-describe("切片缺失时优雅降级——判据要能在切片不存在时明确报「跳过」，不能静默通过", () => {
+describe("受控来源语料：PDF binding、清单和段落哈希", () => {
+  const scratchDir = join(".opencode", "tmp-source-evidence-scratch");
+
+  function writeBoundFixture(directory: string): { manifestPath: string; corpusDirectory: string } {
+    const corpusDirectory = join(directory, "corpus");
+    mkdirSync(corpusDirectory, { recursive: true });
+    const sections = BARN_SOURCE_SECTION_FILES.map((file, index) => {
+      const text = `第 ${index + 1} 页`;
+      writeFileSync(join(corpusDirectory, file), text);
+      return { file, pdfPage: index + 1, canonicalTextSha256: sha256(text) };
+    });
+    const manifest: SourceEvidenceManifest = {
+      schemaVersion: 1,
+      source: {
+        title: "synthetic test source",
+        version: "test",
+        originalPdfSha256: "a".repeat(64),
+        provenance: "Synthetic fixture; never production source evidence.",
+      },
+      derivation: {
+        method: "test fixture",
+        canonicalization: "CRLF/CR to LF",
+      },
+      corpusDirectory: "corpus",
+      sections,
+    };
+    const manifestPath = join(directory, "manifest.json");
+    writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`);
+    return { manifestPath, corpusDirectory };
+  }
+
+  afterAll(() => {
+    rmSync(scratchDir, { recursive: true, force: true });
+  });
+
+  it("默认生产输入具有非 synthetic 的 PDF 字节绑定、18 段 inventory 和可追溯说明", () => {
+    const manifest = readSourceEvidenceManifest();
+    if ("ok" in manifest) {
+      if (!manifest.ok) throw new Error(manifest.reason);
+      throw new Error("source-evidence manifest reader returned a corpus result");
+    }
+    expect(BARN_SOURCE_EVIDENCE_MANIFEST_PATH).toBe("docs/evidence/barn-source-v1.03/manifest.json");
+    expect(manifest.source.originalPdfSha256).toBe(BARN_SOURCE_PDF_SHA256);
+    const manifestText = readFileSync(BARN_SOURCE_EVIDENCE_MANIFEST_PATH, "utf8");
+    const canonical = canonicalizeSourceEvidenceManifestText(manifestText);
+    expect(sha256(canonical)).toBe(BARN_SOURCE_EVIDENCE_MANIFEST_SHA256);
+    expect(sha256(canonicalizeSourceEvidenceManifestText(canonical.replace(/\n/g, "\r\n")))).toBe(BARN_SOURCE_EVIDENCE_MANIFEST_SHA256);
+    expect(manifest.source.provenance).toContain("authorized");
+    expect(manifest.sections.map((section) => section.pdfPage)).toEqual(Array.from({ length: 18 }, (_, index) => index + 1));
+  });
+
+  it("缺失 manifest 是显式 source-evidence input 错误，不是绿 skip", () => {
+    const result = readSourceBoundCorpus(join(scratchDir, "missing", "manifest.json"));
+    expect(result).toMatchObject({ ok: false });
+    if (!result.ok) expect(result.reason).toContain("[source-evidence] input missing");
+  });
+
+  it("一个缺失或篡改的受控段落分别触发 input 和 hash 错误", () => {
+    const missing = writeBoundFixture(join(scratchDir, "missing-section"));
+    rmSync(join(missing.corpusDirectory, "section_02.txt"));
+    const missingResult = readSourceBoundCorpus(missing.manifestPath);
+    expect(missingResult).toMatchObject({ ok: false });
+    if (!missingResult.ok) expect(missingResult.reason).toContain("section_02.txt");
+
+    const altered = writeBoundFixture(join(scratchDir, "altered-section"));
+    writeFileSync(join(altered.corpusDirectory, "section_02.txt"), "被篡改的页面");
+    const alteredResult = readSourceBoundCorpus(altered.manifestPath);
+    expect(alteredResult).toMatchObject({ ok: false });
+    if (!alteredResult.ok) expect(alteredResult.reason).toContain("section hash mismatch: p3");
+  });
+
+  it("无效 PDF provenance hash 不能作为 source-bound corpus 通过", () => {
+    const fixture = writeBoundFixture(join(scratchDir, "invalid-provenance"));
+    const manifest = JSON.parse(readFileSync(fixture.manifestPath, "utf8")) as SourceEvidenceManifest;
+    manifest.source.originalPdfSha256 = "not-a-sha256";
+    writeFileSync(fixture.manifestPath, `${JSON.stringify(manifest)}\n`);
+    const result = readSourceBoundCorpus(fixture.manifestPath);
+    expect(result).toMatchObject({ ok: false });
+    if (!result.ok) expect(result.reason).toContain("manifest provenance invalid");
+  });
+
+  it("生产来源断言不得用 it.skipIf 条件跳过", () => {
+    const testSource = readFileSync(import.meta.path, "utf8");
+    expect(testSource).not.toMatch(/\bit\.skipIf\(/);
+  });
+});
+
+describe("合成语料缺段时 fail closed——仅验证解析路径，不构成生产来源证据", () => {
   const scratchDir = join(".opencode", "tmp-three-way-audit-scratch");
 
   afterAll(() => {
@@ -345,19 +435,15 @@ describe("语料来源——开发·无基准模式 任务②：语料来自这�
     expect(r.sliceCorpusLength).toBeGreaterThan(r.pageCorpusLength);
   });
 
-  it("**真实回归**：本次摄取的页语料与仓库切片语料对同一份谷仓 PDF 应该等价（若切片不可用则优雅跳过）", () => {
-    const corpus = readOriginalCorpus();
-    if (!corpus.ok) {
-      console.warn(`[ingest-three-way-audit] 跳过语料来源比较：${corpus.reason}`);
-      return;
+  it("**真实回归**：受控语料按 manifest 的 PDF 页序重建后与生产审计语料完全相同", () => {
+    const manifest = readSourceEvidenceManifest();
+    if ("ok" in manifest) {
+      if (!manifest.ok) throw new Error(manifest.reason);
+      throw new Error("source-evidence manifest reader returned a corpus result");
     }
-    // 这里没有真实 PDF（PDF 在仓库之外），只能验证"同一份切片语料自己
-    // 拼出来的页语料"与"切片语料本身"经过归一化之后确实相等——这是
-    // buildCorpusFromPages 与 readOriginalCorpus 的拼接方式一致性检查，
-    // 不是端到端的 PDF 验证（那部分见 scripts/ingest/run.ts 实跑记录，
-    // docs/notes/ingest.md 有记录）。
-    const rebuilt = buildCorpusFromPages(corpus.text.split("\n"));
-    const cmp = compareCorpusSources(rebuilt, corpus.text);
+    const corpusDirectory = join(dirname(BARN_SOURCE_EVIDENCE_MANIFEST_PATH), manifest.corpusDirectory);
+    const pages = manifest.sections.map((section) => canonicalizeSourceEvidenceText(readFileSync(join(corpusDirectory, section.file), "utf8")));
+    const cmp = compareCorpusSources(buildCorpusFromPages(pages), requireSourceCorpus());
     expect(cmp.identical).toBe(true);
   });
 });
