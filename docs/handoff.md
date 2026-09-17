@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-17 01:23  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-17 02:11  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— 自主 AI RPG 引擎：模组机制编译为确定性、可验证的执行结构，
-规则与状态由代码管理，LLM 只提出候选与叙事。**当前 HEAD**：5095efe feat: add deterministic compiler process simulation  ·  **测试**：3185 条 / 217 文件，全绿（基线 3185，一致）
+规则与状态由代码管理，LLM 只提出候选与叙事。**当前 HEAD**：4c1f08d feat: persist validated compiler artifacts  ·  **测试**：3191 条 / 218 文件，全绿（基线 3191，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -14,12 +14,12 @@
 ## 编译闭环检查点 I 交接
 
 `docs/compiler-master-plan.md` 是编译链的唯一主控计划。检查点 I 是 hints → accepted
-interpretations → MechanicsIR → closed_world 与 P4 执行语义，当前为**A/B/C 交付栈已推送至 `origin/master`（`5095efe`）；Checkpoint II 的 durable artifact validation 已验证但尚未提交**；P4、
+interpretations → MechanicsIR → closed_world 与 P4 执行语义，当前为**A/B/C 与 Checkpoint II 均已推送至 `origin/master`（`4c1f08d`）；Checkpoint III 的 source-to-artifact public facade 已验证但尚未提交**；P4、
 default audit/schema substitution、图关系/location provenance、foreign policy override 和
 脚本摘要/进程分类均有反例、真实生产变异和独立复核。没有
 实现 artifact 保存/恢复、公开编译入口、GameSession/世界模型/模型记忆接线或外部模型探测。
 
-本轮 Checkpoint II：prepared/resolved artifact envelopes 使用独立 canonical artifact hash，恢复时重建 queue 和完整 resolve 结果并逐项比较，存储采用 flushed sibling temp 后 replace；diagnostics 的 private `WeakMap` lineage 未放宽。plain 全量结果为 3185 条 / 217 文件，3153 pass / 32 intentional skip / 0 fail；真实世界模型加载仍有意未验证。公开 compiler API、ModuleData projection 和 GameSession 集成仍 deferred，必须另开 scoped task。
+Checkpoint II 的 prepared/resolved envelope 仍使用独立 canonical artifact hash，恢复时重建 queue 和完整 resolve 结果并逐项比较，存储采用 flushed sibling temp 后 replace；diagnostics 的 private `WeakMap` lineage 未放宽。本轮 Checkpoint III 只公开 synthetic-pages/PDF-bytes 到 durable artifact 的两阶段 facade：resolve 先还原 prepared artifact，再绑定 caller hints 的 module/document/graph/queue identity，只有 mechanically closed 才返回 resolved artifact。plain 全量结果为 3191 条 / 218 文件，3159 pass / 32 intentional skip / 0 fail；真实世界模型加载仍有意未验证。ModuleData projection 和 GameSession 集成仍 deferred，必须另开 scoped task。
 
 定向命令：`bun test ./src/__tests__/compiler-closure.test.ts ./src/__tests__/mechanics-ir.test.ts ./src/__tests__/deterministic-template-compiler.test.ts ./src/__tests__/compiler-question-queue.test.ts ./src/__tests__/compile-hint-resolution.test.ts ./src/__tests__/mechanics-reachability.test.ts ./src/__tests__/diag-script-process.test.ts ./src/__tests__/diag-preflight-checks.test.ts`。
 结果为 261 pass / 0 fail / 789 expect / 8 files；`bun run typecheck` 退出 0。
@@ -64,6 +64,8 @@ core 前缀在预算 2 成功；合法两状态循环重复重放只计两个 ha
 报告不是本轮阻塞，不能据此变更依赖或 Git 配置。`docs/notes/index.json` 有并行改动，故未重建；
 新增的 engine note 尚未进入索引，
 依赖索引的 open/warn 列表可能滞后，留待拥有该并行改动的一方刷新。
+
+
 
 
 
@@ -271,6 +273,7 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- 4c1f08d feat: persist validated compiler artifacts
 - 5095efe feat: add deterministic compiler process simulation
 - 1fea0b4 fix: harden compiler delivery verification
 - 906ef06 test: make Barn source audit reproducible
@@ -282,7 +285,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - 90024ec fix: validate hint declarations before resolution
 - 5e2b721 feat: separate hint declarations from candidates
 - 41d688f feat: apply validated compiler hints
-- 53e6a0a docs: define compiler question queue boundaries
 
 ## 代码地图
 

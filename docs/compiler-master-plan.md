@@ -10,8 +10,8 @@ the current implementation boundary, not a new public compile entry point.
 | Source structure through draft and question queue | complete | DocumentIR evidence, SourceFactGraph, deterministic marked-item draft, and evidence-bound questions remain separate from runtime module loading. |
 | Checkpoint I: hints through closed-world analysis and P4 execution semantics | committed and pushed | The A/B/C delivery stack ending at `5095efe` is on `origin/master`. |
 | Diagnostics process simulation | complete | Diagnostics retain private `WeakMap` lineage; detached process bundles still fail closed. |
-| Checkpoint II: local artifact persistence | implemented, uncommitted | Versioned JSON-safe prepared/resolved envelopes regenerate and compare compiler state on restore, use a distinct canonical artifact identity, and save atomically. No public API or runtime consumer. |
-| Checkpoint III: public compiler entry end-to-end validation | deferred dependency | A future public compile entry will validate the same chain for in-memory pages/fixtures and real PDFs. It is not implemented in this checkpoint. |
+| Checkpoint II: local artifact persistence | committed and pushed | Versioned JSON-safe prepared/resolved envelopes regenerate and compare compiler state on restore, use a distinct canonical artifact identity, and save atomically. |
+| Checkpoint III: public compiler entry end-to-end validation | implemented, uncommitted | Typed synthetic-pages and PDF-bytes preparation share the DocumentIR-to-artifact chain; resolve validates a restored prepared artifact before returning durable mechanically closed output. |
 | Later milestone: runtime consumption | out of scope | GameSession, world-model/model-memory integration, and runtime consumers come after compiler artifacts and public-entry validation. |
 
 ## Checkpoint I contract
@@ -115,8 +115,9 @@ automatic conflict/cycle handling, terminal-recovery loops, state-relative
 failure-policy risks, and replayable shortest witnesses. The agreed
 policy/provenance and process-summary audit is now verified. `bb42ef4` is
 pushed; Group A (`906ef06`) and Group B (`1fea0b4`) are committed locally.
-The delivery stack is pushed. Checkpoint II now accepts durable artifact
-validation only; it is not public-entry/runtime acceptance.
+The delivery stack is pushed. Checkpoint II accepts durable artifact validation.
+Checkpoint III accepts source-to-artifact compilation only; neither is
+public-entry/runtime acceptance.
 Repository regression evidence is recorded in the active handoff.
 
 Local P4 verification now includes action-specific replay charging, real
@@ -155,4 +156,10 @@ resolution, and requires a mechanically closed terminal report. File storage
 writes a flushed sibling temporary file before replacing the target. Diagnostics
 lineage remains private and unchanged.
 
-Next action: commit the verified Checkpoint II implementation after explicit authorization, then begin the separately scoped Checkpoint III public compiler API task. Real world-model loading remains intentionally unverified; ModuleData projection and GameSession integration remain deferred.
+Checkpoint III API evidence: synthetic pages and original PDF bytes share one
+DocumentIR-to-artifact preparation core. Resolve restores the prepared envelope
+before binding caller hints to module, document, graph and queue identities; only
+a mechanically closed result publishes a resolved artifact. It adds no HTTP,
+CLI, filesystem-path, ModuleData, or runtime entry point.
+
+Next action: commit the verified Checkpoint III implementation after explicit authorization, then begin the separately scoped ModuleData projection task. Real world-model loading remains intentionally unverified; GameSession integration remains deferred.
