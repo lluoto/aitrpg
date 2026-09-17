@@ -11,7 +11,8 @@ the current implementation boundary, not a new public compile entry point.
 | Checkpoint I: hints through closed-world analysis and P4 execution semantics | committed and pushed | The A/B/C delivery stack ending at `5095efe` is on `origin/master`. |
 | Diagnostics process simulation | complete | Diagnostics retain private `WeakMap` lineage; detached process bundles still fail closed. |
 | Checkpoint II: local artifact persistence | committed and pushed | Versioned JSON-safe prepared/resolved envelopes regenerate and compare compiler state on restore, use a distinct canonical artifact identity, and save atomically. |
-| Checkpoint III: public compiler entry end-to-end validation | implemented, uncommitted | Typed synthetic-pages and PDF-bytes preparation share the DocumentIR-to-artifact chain; resolve validates a restored prepared artifact before returning durable mechanically closed output. |
+| Checkpoint III: public compiler entry end-to-end validation | committed and pushed | Typed synthetic-pages and PDF-bytes preparation share the DocumentIR-to-artifact chain; resolve validates a restored prepared artifact before returning durable mechanically closed output. |
+| ModuleData presentation projection | implemented, uncommitted | Complete resolved artifacts project source-backed presentation data with explicit caller metadata, artifact/mechanics identities, and a separate evidence map. It is not runtime loading. |
 | Later milestone: runtime consumption | out of scope | GameSession, world-model/model-memory integration, and runtime consumers come after compiler artifacts and public-entry validation. |
 
 ## Checkpoint I contract
@@ -116,8 +117,8 @@ failure-policy risks, and replayable shortest witnesses. The agreed
 policy/provenance and process-summary audit is now verified. `bb42ef4` is
 pushed; Group A (`906ef06`) and Group B (`1fea0b4`) are committed locally.
 The delivery stack is pushed. Checkpoint II accepts durable artifact validation.
-Checkpoint III accepts source-to-artifact compilation only; neither is
-public-entry/runtime acceptance.
+Checkpoint III accepts source-to-artifact compilation only. ModuleData projection
+now accepts presentation-only output; neither is runtime acceptance.
 Repository regression evidence is recorded in the active handoff.
 
 Local P4 verification now includes action-specific replay charging, real
@@ -162,4 +163,10 @@ before binding caller hints to module, document, graph and queue identities; onl
 a mechanically closed result publishes a resolved artifact. It adds no HTTP,
 CLI, filesystem-path, ModuleData, or runtime entry point.
 
-Next action: commit the verified Checkpoint III implementation after explicit authorization, then begin the separately scoped ModuleData projection task. Real world-model loading remains intentionally unverified; GameSession integration remains deferred.
+ModuleData projection evidence: the adapter validates the complete resolved
+artifact before projecting graph-verified playable scenes, source-exact clue
+name/body fields, declared topology and ending IDs. Required legacy presentation
+fields come only from exact caller metadata and the wrapper keeps artifact,
+mechanics and evidence mappings separate from `ModuleData.provenance`.
+
+Next action: commit the verified ModuleData projection after explicit authorization, then begin the separately scoped GameSession integration task. Real world-model loading remains intentionally unverified.
