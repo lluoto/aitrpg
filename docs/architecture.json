@@ -544,14 +544,14 @@
               "（入口，无导出）"
             ],
             [
-              "src/api/compiled-module-http.ts / compiled-module-bundle.ts / src/compiler/compiler-artifact-catalog.ts",
-              "编译模组 HTTP 编排、canonical bundle 边界与不可变本地 catalog：流式限制 PDF/JSON 请求，投影由其 owner 重新投影并 canonical 比较；创建会话先校验、构造、加载、持久化再登记。prepare/resolve 保留对象响应并返回 ID，resolve/session 接受互斥对象或 ID 输入；catalog 在 data/compiler-catalog（可配置）用配额、无覆盖发布和读时完整 artifact/projection 重验保存 prepared 与 resolved bundle，不解释 MechanicsIR",
-              "handleCompiledModuleHttpRequest, validateCompiledModuleBundle, validateCanonicalCompilerModuleProjection, CompilerArtifactCatalog, COMPILER_HTTP_BODY_LIMIT_BYTES"
+              "src/api/compiled-module-http.ts / src/api/compiled-module-bundle.ts / src/api/compiled-session-snapshot.ts / src/compiler/compiler-artifact-catalog.ts",
+              "编译模组 HTTP 编排、canonical bundle 边界、不可变本地 catalog 与可重启 session snapshot：流式限制 PDF/JSON 请求，投影由其 owner 重新投影并 canonical 比较；创建会话只接 catalog 已验证 bundle，先持久化 generation-0 snapshot 再登记，acknowledge/registration 失败时只删除同一 store 实例尚未确认的那一个 generation-0 header/body。snapshot 在 data/compiled-sessions（可配置）用有界 .header.json 指向不可变 hash body，保存 catalog bundle ID/hash、p1/history/state/trace 和连续 idempotency ledger，不复制 artifact；持久响应只保留可由 trace/character/history 前缀重建的字段，含 checked action 的实际 d100 与检查行（不在恢复时重掷）。启动先读 header/load catalog，再读 body/replay shared mechanics core。坏快照只进 unavailable diagnostics。durable action 以 actionId/expectedGeneration 走 derive -> monotonic snapshot -> fail-stop old object -> fresh restore/registry replacement，direct act 拒绝。catalog 在 data/compiler-catalog（可配置）用配额、无覆盖发布和读时完整 artifact/projection 重验保存 prepared 与 resolved bundle，不解释 MechanicsIR",
+              "handleCompiledModuleHttpRequest, validateCompiledModuleBundle, CompiledSessionSnapshotStore, replayCompiledSessionTrace, CompilerArtifactCatalog, COMPILER_HTTP_BODY_LIMIT_BYTES"
             ],
             [
               "src/api/game-session.ts",
-              "自由跑团单局总装配（3729 行，2026-08-29 复核，仍在涨——见 docs/todo.json todo-27）：串起 LLM、律书、CoC 引擎、Agent、世界状态、战斗/调查/法术/经济。多 PC 支持：`PartyMember`/`createPartyMember`（单一入口，同时诞生 SAN 引擎/世界实体/会话槽位/职业履历「八件事」）、`addPartyMember`（web 端点与「创建队友」文本命令共用）、`act(input, pcId?)` 按 pcId 路由行动而非活动玩家显示名。`loadCompiledModule` 使用共享 bundle 验证后，将唯一执行核心的 MechanicsState 单向镜像给世界状态。线索揭示走 `discoverer_only` 可见性（只进发现者的 `PlayerSession` 历史，live 的 WS 广播已按玩家过滤，见 server.ts 的 `broadcastActionResult`/docs/todo.json todo-25）",
-              "GameSession, ActionResponse, PartyMember"
+              "自由跑团单局总装配：串起 LLM、律书、CoC 引擎、Agent、世界状态、战斗/调查/法术/经济。多 PC 支持：`PartyMember`/`createPartyMember`（单一入口，同时诞生 SAN 引擎/世界实体/会话槽位/职业履历「八件事」）、`addPartyMember`（web 端点与「创建队友」文本命令共用）、`act(input, pcId?)` 按 pcId 路由行动而非活动玩家显示名。遗留无 catalog bundle 的显式 compiled fixture 可走 isolated direct path；durable compiled sessions only use `commitCompiledAction`, then server replaces the fail-stopped old object with `restoreCompiledSession` after catalog/hash/trace replay validation。线索揭示走 `discoverer_only` 可见性（只进发现者的 `PlayerSession` 历史，live 的 WS 广播已按玩家过滤，见 server.ts 的 `broadcastActionResult`/docs/todo.json todo-25）",
+              "GameSession, ActionResponse, PartyMember, restoreCompiledSession, commitCompiledAction"
             ],
             [
               "src/api/scripted-session.ts",

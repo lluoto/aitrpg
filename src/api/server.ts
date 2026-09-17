@@ -16,7 +16,8 @@ import { CharacterFactory } from "../character/character-factory";
 import { createScriptedSession, getScriptedSession } from "./scripted-session";
 import { worldModelStatus } from "./world-model-status";
 import { handleCompiledModuleHttpRequest } from "./compiled-module-http";
-import type { CompilerArtifactCatalog } from "../compiler/compiler-artifact-catalog";
+import { CompilerArtifactCatalog } from "../compiler/compiler-artifact-catalog";
+import { CompiledSessionSnapshotStore, type CompiledSessionSnapshot } from "./compiled-session-snapshot";
 import { log } from "../log";
 
 // ============================================================
@@ -24,6 +25,9 @@ import { log } from "../log";
 // ============================================================
 
 const sessions = new Map<string, GameSession>();
+const compiledSessionDiagnostics = new Map<string, { id: string; code: string; message: string }>();
+const defaultCompiledSessionSnapshots = new CompiledSessionSnapshotStore();
+const defaultCompilerCatalog = new CompilerArtifactCatalog();
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 分钟无操作自动清理
 function generateId(): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -32,10 +36,10 @@ function generateId(): string {
   return id;
 }
 
-/** Delete durable metadata before removing memory so failed cleanup cannot create a listed orphan. */
+/** Expiry evicts durable compiled sessions from memory only; their restart snapshot is retained. */
 export function cleanupExpiredSessions(
   sessionMap: Map<string, Pick<GameSession, "lastActiveAt">>,
-  options: { now?: number; timeoutMs?: number; deleteMetadata: (id: string) => void; logError?: (error: unknown) => void },
+  options: { now?: number; timeoutMs?: number; deleteMetadata: (id: string) => void; isDurableCompiled?: (session: Pick<GameSession, "lastActiveAt">) => boolean; logError?: (error: unknown) => void },
 ): string[] {
   const now = options.now ?? Date.now();
   const timeoutMs = options.timeoutMs ?? SESSION_TIMEOUT_MS;
@@ -43,6 +47,11 @@ export function cleanupExpiredSessions(
   for (const [id, session] of sessionMap) {
     if (now - session.lastActiveAt <= timeoutMs) continue;
     try {
+      if (options.isDurableCompiled?.(session)) {
+        sessionMap.delete(id);
+        removed.push(id);
+        continue;
+      }
       options.deleteMetadata(id);
       sessionMap.delete(id);
       removed.push(id);
@@ -51,6 +60,100 @@ export function cleanupExpiredSessions(
     }
   }
   return removed;
+}
+
+export interface CompiledSessionHydrationOptions {
+  sessions?: Map<string, GameSession>;
+  diagnostics?: Map<string, { id: string; code: string; message: string }>;
+  catalog?: CompilerArtifactCatalog;
+  snapshots?: CompiledSessionSnapshotStore;
+  createSession?: (id: string) => GameSession;
+}
+
+/** Injectable startup loader. It catalog-validates before decoding state and never constructs invalid sessions. */
+export function hydrateCompiledSessions(options: CompiledSessionHydrationOptions = {}): { hydrated: string[]; unavailable: Array<{ id: string; code: string; message: string }> } {
+  const registry = options.sessions ?? sessions;
+  const diagnostics = options.diagnostics ?? compiledSessionDiagnostics;
+  const catalog = options.catalog ?? defaultCompilerCatalog;
+  const snapshots = options.snapshots ?? defaultCompiledSessionSnapshots;
+  const createSession = options.createSession ?? ((id: string) => new GameSession(id, "cosmic-horror", { apiKey: "sk-placeholder", baseUrl: "http://offline.invalid", model: "offline", maxTokens: 1, temperature: 0 }));
+  const hydrated: string[] = [];
+  const unavailable: Array<{ id: string; code: string; message: string }> = [];
+  const reject = (id: string, code: string, message: string) => {
+    const entry = { id, code, message };
+    diagnostics.set(id, entry);
+    unavailable.push(entry);
+  };
+
+  for (const [index, header] of snapshots.listHeaders().entries()) {
+    if (header.status === "refused") {
+      reject(header.sessionId ?? `unavailable-${index}`, header.code, header.message);
+      continue;
+    }
+    try {
+      const bundle = catalog.loadBundle(header.value.bundleId);
+      if (bundle.status === "refused") {
+        reject(header.value.sessionId, bundle.code, bundle.message);
+        continue;
+      }
+      const raw = snapshots.read(header.value.sessionId);
+      if (raw.status === "refused") {
+        reject(header.value.sessionId, raw.code, raw.message);
+        continue;
+      }
+      const checked = GameSession.validateCompiledSessionRestore(raw.value, bundle.value, header.value.sessionId);
+      if (checked.status === "refused" || checked.snapshot.bundle.id !== header.value.bundleId || checked.snapshot.snapshotHash !== header.value.snapshotHash || checked.snapshot.generation !== header.value.generation) {
+        reject(header.value.sessionId, checked.status === "refused" ? checked.code : "SNAPSHOT_CORRUPT", checked.status === "refused" ? checked.message : "snapshot header and body identities do not agree");
+        continue;
+      }
+      if (registry.has(checked.snapshot.sessionId)) {
+        reject(checked.snapshot.sessionId, "SNAPSHOT_CORRUPT", "duplicate compiled session ID during hydration");
+        continue;
+      }
+      const session = createSession(checked.snapshot.sessionId);
+      const restored = session.restoreCompiledSession(checked.snapshot, bundle.value);
+      if (restored.status === "refused") {
+        reject(checked.snapshot.sessionId, restored.code, restored.message);
+        continue;
+      }
+      registry.set(checked.snapshot.sessionId, session);
+      diagnostics.delete(checked.snapshot.sessionId);
+      hydrated.push(checked.snapshot.sessionId);
+    } catch (error) {
+      reject(header.value.sessionId, "SNAPSHOT_STORAGE_FAILED", error instanceof Error ? error.message : "compiled session hydration failed");
+    }
+  }
+  return { hydrated, unavailable };
+}
+
+type StoredSessionSummary = { id: string; createdAt: number; ruleset: string; playerName: string; scene: string; bundleId?: string };
+type CompiledSessionDiagnostic = { id: string; code: string; message: string };
+
+/** Normal listings contain executable sessions only; durable failures are diagnostics, never resumable rows. */
+export function partitionSessionListings(
+  liveSessions: Iterable<GameSession>,
+  storedSessions: Iterable<StoredSessionSummary>,
+  diagnostics: Iterable<CompiledSessionDiagnostic>,
+): { sessions: Array<SessionSummary & { resumable?: boolean }>; unavailable: CompiledSessionDiagnostic[] } {
+  const sessions: Array<SessionSummary & { resumable?: boolean }> = [];
+  const unavailable: CompiledSessionDiagnostic[] = [];
+  for (const session of liveSessions) sessions.push({ ...session.getSummary(), ...(session.getCompiledGeneration() !== null ? { resumable: true } : {}) });
+  for (const stored of storedSessions) {
+    if (sessions.some((session) => session.id === stored.id)) continue;
+    if (stored.bundleId) {
+      unavailable.push({ id: stored.id, code: "compiled_metadata_only", message: "compiled session has metadata but no validated snapshot" });
+      continue;
+    }
+    sessions.push({ id: stored.id, round: 0, ruleset: stored.ruleset, scene: stored.scene, playerName: stored.playerName, archetype: null, messageCount: 0, npcCount: 0, createdAt: stored.createdAt });
+  }
+  for (const diagnostic of diagnostics) {
+    if (!sessions.some((session) => session.id === diagnostic.id)) {
+      const index = unavailable.findIndex((entry) => entry.id === diagnostic.id);
+      if (index >= 0) unavailable[index] = diagnostic;
+      else unavailable.push(diagnostic);
+    }
+  }
+  return { sessions, unavailable };
 }
 
 // ============================================================
@@ -86,7 +189,12 @@ function parseUrl(pathname: string): { segments: string[]; query: URLSearchParam
 
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 
-export async function handleRequest(req: Request, compilerCatalog?: CompilerArtifactCatalog): Promise<Response> {
+export async function handleRequest(
+  req: Request,
+  compilerCatalog?: CompilerArtifactCatalog,
+  compiledSnapshots: CompiledSessionSnapshotStore = defaultCompiledSessionSnapshots,
+  storage: { careerRoot?: string } = {},
+): Promise<Response> {
   const url = new URL(req.url);
   const { segments, query } = parseUrl(url.pathname + url.search);
   const method = req.method;
@@ -96,25 +204,27 @@ export async function handleRequest(req: Request, compilerCatalog?: CompilerArti
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
+  const catalog = compilerCatalog ?? defaultCompilerCatalog;
   const compiledResponse = await handleCompiledModuleHttpRequest(req, {
-    createSession: (id, archetype, characterName, persona) => new GameSession(id, "cosmic-horror", undefined, archetype, characterName, persona),
+    createSession: (id, archetype, characterName, persona) => new GameSession(id, "cosmic-horror", undefined, archetype, characterName, persona, storage),
     hasSession: (id) => sessions.has(id),
     unregisterSession: (id) => sessions.delete(id),
     registerSession: (id, session) => sessions.set(id, session as GameSession),
-    persistSession: (id, session, bundleId) => {
-      const summary = session.getSummary();
-      const compiled = session.getCompiledMechanicsState();
-      saveSessionMeta(id, { createdAt: Date.now(), lastActiveAt: Date.now(), ruleset: "cosmic-horror", playerName: summary.playerName, scene: summary.scene, round: summary.round, bundleId, compiledArtifactHash: compiled?.artifactHash, compiledMechanicsHash: compiled?.mechanicsHash });
+    persistSession: (_id, _session, _bundleId, snapshot) => {
+      const saved = compiledSnapshots.save(snapshot);
+      if (saved.status === "refused") throw new Error(saved.message);
     },
-    hasDurableSession: (id) => sessionMetaExists(id) || existsSync(join(process.cwd(), "data", "careers", id)),
+    rollbackPersistedSnapshot: (snapshot) => compiledSnapshots.rollbackCreated(snapshot),
+    confirmPersistedSnapshot: (snapshot) => compiledSnapshots.confirmCreated(snapshot),
+    hasDurableSession: (id) => compiledSnapshots.isOccupied(id) || sessionMetaExists(id) || existsSync(join(storage.careerRoot ?? join(process.cwd(), "data", "careers"), id)),
     rollbackSessionStorage: (id) => {
       deleteSessionFile(id);
-      const careerDir = join(process.cwd(), "data", "careers", id);
+      const careerDir = join(storage.careerRoot ?? join(process.cwd(), "data", "careers"), id);
       if (existsSync(careerDir)) rmSync(careerDir, { recursive: true });
     },
     generateId,
     logError: (error) => log.error("compiler-http", "compiled module lifecycle failed", error),
-    catalog: compilerCatalog,
+    catalog,
   });
   if (compiledResponse) return withCors(compiledResponse);
 
@@ -298,23 +408,7 @@ export async function handleRequest(req: Request, compilerCatalog?: CompilerArti
 
   // GET /api/sessions — 列表
   if (method === "GET" && segments[0] === "api" && segments[1] === "sessions" && segments.length === 2) {
-    const list: SessionSummary[] = [];
-    for (const s of sessions.values()) {
-      list.push(s.getSummary());
-    }
-    // 合并已持久化但未在内存中的 session
-    const storedMeta = listStoredSessions();
-    for (const sm of storedMeta) {
-      if (!list.find(l => l.id === sm.id)) {
-        list.push({
-          id: sm.id, round: 0, ruleset: sm.ruleset,
-          scene: sm.scene, playerName: sm.playerName,
-          archetype: null, messageCount: 0,
-          npcCount: 0, createdAt: sm.createdAt,
-        });
-      }
-    }
-    return respondJson({ sessions: list });
+    return respondJson(partitionSessionListings(sessions.values(), listStoredSessions(), compiledSessionDiagnostics.values()));
   }
 
   // 需要 :id 的路由
@@ -323,9 +417,14 @@ export async function handleRequest(req: Request, compilerCatalog?: CompilerArti
     const session = sessions.get(sessionId);
 
     if (!session) {
+      const unavailable = compiledSessionDiagnostics.get(sessionId);
+      if (unavailable) return respondJson({ code: unavailable.code, message: unavailable.message }, 409);
       return respondError("会话不存在或已过期", 404);
     }
-    session.lastActiveAt = Date.now();
+    if (session.getCompiledGeneration() !== null && method !== "GET" && ["kp", "character", "party", "npc-chat", "luck-spend"].includes(segments[3] ?? "")) {
+      return respondJson({ code: "compiled_mutation_unsupported", generation: session.getCompiledGeneration() }, 409);
+    }
+    if (session.getCompiledGeneration() === null) session.lastActiveAt = Date.now();
 
     // GET /api/sessions/:id
     if (method === "GET" && segments.length === 3) {
@@ -334,6 +433,7 @@ export async function handleRequest(req: Request, compilerCatalog?: CompilerArti
         state: session.getState(),
         sanity: session.getSanity(),
         history: session.getHistory().messages.slice(-10),
+        ...(session.getCompiledGeneration() !== null ? { generation: session.getCompiledGeneration() } : {}),
       });
     }
 
@@ -367,6 +467,7 @@ export async function handleRequest(req: Request, compilerCatalog?: CompilerArti
         state: session.getState(),
         sanity: session.getSanity(),
         summary: session.getSummary(),
+        ...(session.getCompiledGeneration() !== null ? { generation: session.getCompiledGeneration() } : {}),
       });
     }
 
@@ -499,19 +600,48 @@ export async function handleRequest(req: Request, compilerCatalog?: CompilerArti
       for (const pid of listSessionPlayerIds(sessionId)) {
         if (session.session.get(pid)) priorCounts.set(pid, session.getPlayerHistory(pid).total);
       }
-      const result = await runAction(session, body);
+      const result = await runAction(session, body, (snapshot) => {
+        const saved = compiledSnapshots.save(snapshot);
+        if (saved.status === "refused") throw new Error(saved.message);
+      }, (snapshot) => {
+        const restore = () => {
+          const bundle = catalog.loadBundle(snapshot.bundle.id);
+          if (bundle.status === "refused") throw new Error(bundle.message);
+          const replacement = new GameSession(snapshot.sessionId, "cosmic-horror", session.config);
+          const restored = replacement.restoreCompiledSession(snapshot, bundle.value);
+          if (restored.status === "refused") throw new Error(restored.message);
+          sessions.set(snapshot.sessionId, replacement);
+          compiledSessionDiagnostics.delete(snapshot.sessionId);
+          return replacement;
+        };
+        try {
+          return restore();
+        } catch (firstError) {
+          // The persisted generation is authoritative. Remove the fail-stopped old object,
+          // then make one clean-object recovery attempt before reporting unavailability.
+          sessions.delete(snapshot.sessionId);
+          try {
+            return restore();
+          } catch (recoveryError) {
+            const message = recoveryError instanceof Error ? recoveryError.message : "compiled session could not be rehydrated";
+            compiledSessionDiagnostics.set(snapshot.sessionId, { id: snapshot.sessionId, code: "compiled_unavailable", message });
+            throw firstError;
+          }
+        }
+      });
       if (result.status !== 200) return respondJson(result.body, result.status);
       const ar = result.body as unknown as ActionResponse;
-      saveSessionMeta(sessionId, {
-        lastActiveAt: Date.now(),
-        round: ar.state?.round,
-        scene: ar.state?.scene,
-      });
-      broadcastActionResult(sessionId, session, priorCounts, ar);
-      return respondJson({
-        ...ar,
-        summary: session.getSummary(),
-      });
+      const liveSession = result.session ?? session;
+      if (liveSession.getCompiledGeneration() === null) {
+        saveSessionMeta(sessionId, {
+          lastActiveAt: Date.now(),
+          round: ar.state?.round,
+          scene: ar.state?.scene,
+        });
+      }
+      broadcastActionResult(sessionId, liveSession, priorCounts, ar);
+      if (liveSession.getCompiledGeneration() !== null) return respondJson(result.body);
+      return respondJson({ ...ar, summary: liveSession.getSummary() });
     }
 
     // POST /api/sessions/:id/party — 为队伍新增一个 PC
@@ -848,10 +978,41 @@ function respondError(message: string, status = 400): Response {
 export async function runAction(
   session: GameSession,
   body: JsonRecord,
-): Promise<{ status: number; body: Record<string, unknown> }> {
+  persistCompiledSnapshot?: (snapshot: CompiledSessionSnapshot) => void,
+  installCompiledSnapshot?: (snapshot: CompiledSessionSnapshot) => GameSession,
+): Promise<{ status: number; body: Record<string, unknown>; session?: GameSession }> {
   const input = (bodyString(body, "input") ?? "").trim();
-  if (!input) return { status: 400, body: { error: "请输入行动" } };
+  const generation = session.getCompiledGeneration();
+  if (!input) return { status: 400, body: generation === null ? { error: "请输入行动" } : { code: "compiled_action_contract_required", generation } };
   const actingPcId = (bodyString(body, "pcId") ?? "").trim() || undefined;
+  if (generation !== null) {
+    if (!Object.keys(body).every((key) => ["input", "pcId", "actionId", "expectedGeneration"].includes(key))) {
+      return { status: 400, body: { code: "compiled_action_contract_required", generation } };
+    }
+    const actionId = (bodyString(body, "actionId") ?? "").trim();
+    const expectedGeneration = body.expectedGeneration;
+    if (!actionId || !Number.isSafeInteger(expectedGeneration) || (expectedGeneration as number) < 0) {
+      return { status: 400, body: { code: "compiled_action_contract_required", generation } };
+    }
+    if (actingPcId !== "p1") return { status: 400, body: { code: "compiled_single_pc_required", generation } };
+    const committed = session.commitCompiledAction(input, actionId, expectedGeneration as number, persistCompiledSnapshot ?? (() => { throw new Error("compiled snapshot persistence is unavailable"); }));
+    if (committed.status === "refused") {
+      const status = committed.code === "compiled_persistence_failed" ? 500
+        : committed.code === "compiled_generation_conflict" || committed.code === "compiled_idempotency_conflict" ? 409
+          : 409;
+      return { status, body: { code: committed.code, generation: committed.generation } };
+    }
+    if (committed.status === "committed") {
+      if (!committed.snapshot || !installCompiledSnapshot) return { status: 503, body: { code: "compiled_unavailable", generation: committed.generation } };
+      try {
+        const replacement = installCompiledSnapshot(committed.snapshot);
+        return { status: 200, body: { ...committed.response.action, summary: committed.response.summary, generation: committed.response.generation }, session: replacement };
+      } catch {
+        return { status: 503, body: { code: "compiled_unavailable", generation: committed.generation } };
+      }
+    }
+    return { status: 200, body: { ...committed.response.action, summary: committed.response.summary, generation: committed.response.generation }, session };
+  }
   let result: ActionResponse;
   try {
     result = await session.act(input, actingPcId);
@@ -1144,9 +1305,15 @@ const PORT = parseInt(process.env.PORT || "3099");
 // 扫持久化的 session 文件。
 if (import.meta.main) {
 
+const hydration = hydrateCompiledSessions();
+if (hydration.hydrated.length || hydration.unavailable.length) {
+  console.log(`  Hydrated ${hydration.hydrated.length} compiled session(s); ${hydration.unavailable.length} unavailable`);
+}
+
 setInterval(() => {
-  const cleaned = cleanupExpiredSessions(sessions, {
+const cleaned = cleanupExpiredSessions(sessions, {
     deleteMetadata: deleteSessionFile,
+    isDurableCompiled: (session) => session instanceof GameSession && session.isDurableCompiledSession(),
     logError: (error) => log.error("cleanup", "failed to remove expired session metadata", error),
   });
   if (cleaned.length > 0) log.info("cleanup", `清理了 ${cleaned.length} 个过期会话`);

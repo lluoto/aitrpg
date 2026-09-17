@@ -1,12 +1,17 @@
 {
-  "tests": 3220,
-  "files": 223,
-  "passed": 3188,
+  "tests": 3232,
+  "files": 224,
+  "passed": 3200,
   "skipped": 32,
   "unwiredMethods": 84,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。 86->84（开发·多人可见性 N6）：setPlayerScene 被整个删除少 1 处，getPlayersInScene 有了真调用方（player-scene-authority.test.ts）再少 1 处，两处一起解释这次的净减 2。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
+    {
+      "tests": 3232,
+      "files": 224,
+      "when": "Restart-safe compiled sessions: bounded sidecar headers point to immutable chained snapshot bodies bound to catalog bundle ID/hash; only a pending generation-zero body created by this process can roll back after acknowledgement/registration failure. Closed persisted responses retain deterministic action/history fields, including checked d100 and exact check narration; restore binds them to the declared check, persisted p1 target, roll domain, and replay outcome without rolling. Durable actions require actionId/expectedGeneration, persist then fail-stop and rehydrate into a replacement object; unavailable sessions are diagnostics, timeout only evicts memory. Fresh-process restart reads header, then catalog, then body. Full result: 3200 pass / 32 intentional skip / 0 fail."
+    },
     {
       "tests": 3220,
       "files": 223,

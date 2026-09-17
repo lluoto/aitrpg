@@ -56,7 +56,7 @@ export function deleteSessionFile(id: string): void {
 }
 
 /** 列出所有持久化 session 的基本信息（不含完整状态） */
-export function listStoredSessions(): { id: string; createdAt: number; ruleset: string; playerName: string; scene: string }[] {
+export function listStoredSessions(): { id: string; createdAt: number; ruleset: string; playerName: string; scene: string; bundleId?: string }[] {
   return loadSessionIds().map(id => {
     const meta = loadSessionMeta(id);
     return {
@@ -65,6 +65,7 @@ export function listStoredSessions(): { id: string; createdAt: number; ruleset: 
       ruleset: (meta?.ruleset as string) ?? "unknown",
       playerName: (meta?.playerName as string) ?? "unknown",
       scene: (meta?.scene as string) ?? "unknown",
+      ...(typeof meta?.bundleId === "string" ? { bundleId: meta.bundleId } : {}),
     };
   }).sort((a, b) => b.createdAt - a.createdAt);
 }

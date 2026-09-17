@@ -1,4 +1,5 @@
 import { readFileSync } from "fs";
+import { join } from "path";
 import { parse as parseYaml } from "yaml";
 import { loadConfig, type LLMConfig } from "../config";
 import { LLMClient, type LLMLike } from "../llm/client";
@@ -49,6 +50,7 @@ import { ModuleDataRuntimeLoader, type ModuleDataRuntimeHost } from "../module/m
 import type { Clue, ModuleData } from "../module/types";
 import type { RuntimeModuleReward, RuntimeNpcPersonality } from "../module/runtime-types";
 import type { ResolvedCompilerArtifactPayload } from "../compiler/compiler-artifact";
+import type { LoadedBundleCatalogEntry } from "../compiler/compiler-artifact-catalog";
 import type { CompilerModuleDataProjection } from "../compiler/compiler-module-data-projection";
 import { validateCompiledModuleBundle } from "./compiled-module-bundle";
 import {
@@ -64,6 +66,22 @@ import {
   type MechanicsStateBudget,
 } from "../compiler/mechanics-execution";
 import type { CheckSpec, MechanicsIR } from "../compiler/mechanics-ir";
+import {
+  canonicalJson,
+  cloneJson,
+  COMPILED_SESSION_COMPONENT_VERSIONS,
+  COMPILED_SESSION_SNAPSHOT_SCHEMA_VERSION,
+  compiledSessionSnapshotHash,
+  replayCompiledSessionTrace,
+  validateCompiledSessionSnapshot,
+  validatePersistedCompiledActionResponse,
+  type CompiledSessionIdempotencyRecord,
+  type CompiledSessionSnapshot,
+  type JsonRecord,
+  type JsonValue,
+  type PersistedCompiledActionResponse,
+} from "./compiled-session-snapshot";
+import { sha256 } from "../ingest/document-ir";
 import { resolveSceneTarget, mentionedSceneNames, hasMovementSignalNearMention, type SceneRow } from "../play/scene-resolve";
 import { buildSceneGraph, shortestHops } from "../play/move-graph";
 import { isExplicitLeaveIntent, isConfirmReply, MODULE_ENDING_SUPPORT, GENERIC_DEPARTURE_LINES } from "../play/module-departure";
@@ -101,6 +119,8 @@ interface LoadedCompiledModule {
   state: MechanicsState;
   trace: MechanicsReachabilityEdge[];
   budget: MechanicsStateBudget;
+  durableBundle?: Pick<LoadedBundleCatalogEntry, "id" | "bundleHash">;
+  snapshotHash?: string;
 }
 
 export interface CompiledMechanicsSessionState {
@@ -111,6 +131,7 @@ export interface CompiledMechanicsSessionState {
   stateHash: string;
   trace: MechanicsReachabilityEdge[];
   terminalEnding?: { id: string; name: string; narration: string };
+  generation: number;
 }
 
 export type CompiledModuleLoadResult =
@@ -188,7 +209,24 @@ export interface ActionResponse {
 export interface SessionSummary {
   id: string; round: number; ruleset: string; scene: string; playerName: string;
   archetype: string | null; messageCount: number; npcCount: number; createdAt: number;
+  generation?: number;
 }
+
+interface PreparedCompiledAction {
+  state: MechanicsState;
+  trace: MechanicsReachabilityEdge[];
+  budget: MechanicsStateBudget;
+  round: number;
+  lastActiveAt: number;
+  messages: AgentMessage[];
+  narrative: string;
+  dice?: { expr: string; total: number; detail?: string; bonus?: number };
+  roll?: { skill: string; roll: number; target: number; success: boolean };
+}
+
+export type CompiledActionCommitResult =
+  | { status: "committed" | "duplicate"; response: PersistedCompiledActionResponse; generation: number; snapshot?: CompiledSessionSnapshot }
+  | { status: "refused"; code: string; generation: number };
 
 /**
  * 复合句回问的待确认状态。触发回问时的原始输入与解析出的意图——回答的
@@ -285,6 +323,27 @@ const COC_SKILL_ALIASES: Record<string, string> = {
   fight: "fighting",
 };
 
+const COMPILED_ATTRIBUTE_NAMES: Record<Extract<CheckSpec, { kind: "attribute" }> ["attribute"], string> = {
+  str: "力量", dex: "敏捷", pow: "意志", con: "体质", app: "外貌", edu: "教育", int: "智力", siz: "体型",
+};
+
+/** Pure companion to evaluateCompiledCheck: restoration derives a target but never rolls. */
+function compiledCheckDescriptor(check: Exclude<CheckSpec, { kind: "none" }>, character: any): { label: string; target: number } {
+  const label = check.kind === "skill" ? check.skill : COMPILED_ATTRIBUTE_NAMES[check.attribute];
+  if (check.kind !== "skill") return { label, target: resolveCheckValue(character ?? { attributes: {}, luck: 0, skillValues: {} }, label) };
+  const values = character?.skillValues as Record<string, unknown> | undefined;
+  const cocKey = COC_SKILL_ALIASES[check.skill] ?? SKILL_NAME_MAP[SKILL_DISPLAY_NAMES[check.skill] ?? check.skill];
+  const value = values?.[check.skill] ?? (cocKey ? values?.[cocKey] : undefined);
+  return { label, target: typeof value === "number" ? value : character?.skills?.[check.skill] ?? 50 };
+}
+
+function compiledCheckSucceeded(roll: number, target: number, difficulty: "regular" | "hard" | "extreme"): boolean {
+  if (roll === 1) return true;
+  if (roll === 100 || target < 50 && roll >= 96) return false;
+  const rank = roll <= Math.floor(target / 5) ? 3 : roll <= Math.floor(target / 2) ? 2 : roll <= target ? 1 : 0;
+  return rank >= (difficulty === "extreme" ? 3 : difficulty === "hard" ? 2 : 1);
+}
+
 /** 克苏鲁神话世界模型路径。共享 loader 按路径分桶，因此这里必须是同一个常量。 */
 const CTHULHU_MODEL_PATH = DEFAULT_CTHULHU_PATH;
 
@@ -326,7 +385,7 @@ function buildCharacterForRuleset(name: string, archetypeId: string, ruleset: st
 
 export class GameSession {
   readonly id: string;
-  readonly createdAt: number;
+  createdAt: number;
   lastActiveAt: number;
   readonly config: LLMConfig;
   // 无可用 API key 时装配 MockLLMClient，两者调用面一致但没有共同基类，
@@ -442,6 +501,11 @@ export class GameSession {
   private _loadedModules: Map<string, boolean> = new Map();
   /** One per session; MechanicsState is authoritative and WorldStateManager is its mirror. */
   private compiledModule?: LoadedCompiledModule;
+  private compiledGeneration: number | null = null;
+  private compiledIdempotency = new Map<string, CompiledSessionIdempotencyRecord>();
+  /** A persisted durable generation must never be served from the old in-memory object. */
+  private compiledFailStopped = false;
+  private installingCompiledState = false;
   /**
    * 建会话时 HTTP 传的 p1 扮演字段（personality/backstory/currentGoal）。
    *
@@ -451,6 +515,7 @@ export class GameSession {
    * 报错，调用方毫无察觉）。
    */
   private p1Persona?: PlayerMeta;
+  private readonly careerRoot?: string;
 
   constructor(
     id: string,
@@ -459,12 +524,14 @@ export class GameSession {
     archetypeId?: string,
     characterName?: string,
     persona?: PlayerMeta,
+    storage?: { careerRoot?: string },
   ) {
     this.id = id;
     this.createdAt = Date.now();
     this.lastActiveAt = Date.now();
     this.activeRuleset = ruleset;
     this.p1Persona = persona;
+    this.careerRoot = storage?.careerRoot;
 
     const config = llmConfig ?? loadConfig();
     this.config = config;
@@ -602,6 +669,32 @@ export class GameSession {
     payload: ResolvedCompilerArtifactPayload,
     projection: CompilerModuleDataProjection,
   ): CompiledModuleLoadResult {
+    if (this.session.count > 1 || this.party.size > 1) {
+      return { status: "refused", code: "COMPILED_SESSION_CONFLICT", message: "compiled modules require exactly one p1 player" };
+    }
+    return this.loadCompiledModuleInternal(payload, projection);
+  }
+
+  /** Durable creation accepts one catalog-validated immutable bundle, never loose payload/projection values. */
+  loadDurableCompiledModule(bundle: LoadedBundleCatalogEntry): CompiledModuleLoadResult {
+    if (!this.isPristineDurableCompiledSession()) {
+      return { status: "refused", code: "COMPILED_SESSION_CONFLICT", message: "durable compiled modules require a pristine single-p1 session" };
+    }
+    const validated = validateCompiledModuleBundle(bundle.artifact, bundle.projection);
+    if (validated.status === "refused") return validated;
+    if (!/^[a-z2-7]{24}$/.test(bundle.id) || !/^[a-f0-9]{64}$/.test(bundle.bundleHash)
+      || bundle.artifactHash !== validated.artifactHash || bundle.mechanicsHash !== validated.payload.identity.mechanicsHash
+      || bundle.identity.moduleId !== validated.payload.identity.moduleId) {
+      return { status: "refused", code: "COMPILED_PROJECTION_INVALID", message: "durable compiled sessions require a catalog-validated bundle identity" };
+    }
+    return this.loadCompiledModuleInternal(bundle.artifact.payload as ResolvedCompilerArtifactPayload, bundle.projection, { id: bundle.id, bundleHash: bundle.bundleHash });
+  }
+
+  private loadCompiledModuleInternal(
+    payload: ResolvedCompilerArtifactPayload,
+    projection: CompilerModuleDataProjection,
+    durableBundle?: Pick<LoadedBundleCatalogEntry, "id" | "bundleHash">,
+  ): CompiledModuleLoadResult {
     if (this.compiledModule || this.registeredModules.length > 0) {
       return { status: "refused", code: "COMPILED_SESSION_CONFLICT", message: "compiled modules require a session without another loaded module" };
     }
@@ -612,7 +705,7 @@ export class GameSession {
     try {
       const budget = createMechanicsStateBudget(bundle.payload.analysisInput.maxStates);
       const settled = settleAutomaticMechanics(bundle.payload.mechanicsIR, initialMechanicsState(bundle.payload.analysisInput), budget);
-      compiled = { payload: bundle.payload, projection: bundle.projection, state: settled.state, trace: [...settled.steps], budget };
+      compiled = { payload: bundle.payload, projection: bundle.projection, state: settled.state, trace: [...settled.steps], budget, durableBundle };
     } catch (error) {
       return { status: "refused", code: "COMPILED_PROJECTION_INVALID", message: error instanceof Error ? error.message : String(error) };
     }
@@ -621,6 +714,9 @@ export class GameSession {
       this.installCompiledProjection(compiled.projection);
       this.synchronizeCompiledMechanicsState(compiled.state);
       this.compiledModule = compiled;
+      this.compiledGeneration = 0;
+      this.compiledIdempotency.clear();
+      this.compiledFailStopped = false;
       return { status: "loaded", compiled: this.getCompiledMechanicsState()! };
     } catch (error) {
       return { status: "refused", code: "COMPILED_SESSION_CONFLICT", message: error instanceof Error ? error.message : String(error) };
@@ -630,17 +726,278 @@ export class GameSession {
   getCompiledMechanicsState(): CompiledMechanicsSessionState | null {
     const compiled = this.compiledModule;
     if (!compiled) return null;
-    const endingId = compiled.state.terminalEndingId;
-    const ending = endingId ? compiled.projection.module.endings.find((candidate) => candidate.id === endingId) : undefined;
+    return this.compiledState(compiled.payload, compiled.projection, compiled.state, compiled.trace, this.compiledGeneration ?? 0);
+  }
+
+  getCompiledGeneration(): number | null {
+    return this.compiledModule ? this.compiledGeneration ?? 0 : null;
+  }
+
+  isDurableCompiledSession(): boolean {
+    return !!this.compiledModule?.durableBundle;
+  }
+
+  private compiledMutationBlocked(): boolean {
+    return this.isDurableCompiledSession() && !this.installingCompiledState;
+  }
+
+  private isPristineDurableCompiledSession(): boolean {
+    return !this.compiledModule && this.registeredModules.length === 0 && this.round === 0 && !this.dead && !this.combatActive
+      && this.session.count === 1 && this.session.getAllNames().length === 1 && this.session.get("p1") !== undefined
+      && this.party.size === 1 && this.party.has("p1") && this.characters.size === 1 && this.characters.has("p1")
+      && this.sanityEngines.size === 1 && this.sanityEngines.has("p1") && this.session.getPlayerHistory("p1").length === 0
+      && this.lastNarrative === "" && this.lastDiceRoll === null && this.lastRolls.length === 0;
+  }
+
+  private isPristineCompiledRestoreTarget(): boolean {
+    return !this.compiledModule && this.registeredModules.length === 0 && this.round === 0 && !this.dead && !this.combatActive
+      && this.session.count === 1 && this.session.get("p1") !== undefined && this.session.getPlayerHistory("p1").length === 0
+      && this.lastNarrative === "" && this.lastDiceRoll === null && this.lastRolls.length === 0;
+  }
+
+  private persistedCompiledCharacterSheet(): JsonRecord {
+    const sheet = this.activeCharacter;
+    if (!sheet) throw new Error("durable compiled sessions require p1 character data");
+    const keys = ["name", "archetypeId", "attributes", "luck", "hp", "maxHp", "ac", "damageBonus", "build", "move", "creditRating", "startingItems", "occupationSkillPoints", "interestSkillPoints", "occupationSkills", "availableSkills", "age", "valid", "warnings", "cthulhuMythos", "skillValues"] as const;
+    return cloneJson(Object.fromEntries(keys.map((key) => [key, sheet[key]])) as JsonRecord);
+  }
+
+  private compiledState(
+    payload: ResolvedCompilerArtifactPayload,
+    projection: CompilerModuleDataProjection,
+    state: MechanicsState,
+    trace: MechanicsReachabilityEdge[],
+    generation: number,
+  ): CompiledMechanicsSessionState {
+    const endingId = state.terminalEndingId;
+    const ending = endingId ? projection.module.endings.find((candidate) => candidate.id === endingId) : undefined;
     return {
-      moduleId: compiled.payload.identity.moduleId,
-      artifactHash: compiled.projection.artifact.artifactHash,
-      mechanicsHash: compiled.payload.mechanicsIR.mechanicsHash,
-      state: structuredClone(compiled.state),
-      stateHash: mechanicsStateHash(compiled.state),
-      trace: structuredClone(compiled.trace),
+      moduleId: payload.identity.moduleId,
+      artifactHash: projection.artifact.artifactHash,
+      mechanicsHash: payload.mechanicsIR.mechanicsHash,
+      state: structuredClone(state),
+      stateHash: mechanicsStateHash(state),
+      trace: structuredClone(trace),
       ...(ending ? { terminalEnding: { id: ending.id, name: ending.name, narration: ending.description } } : {}),
+      generation,
     };
+  }
+
+  /** Builds the complete durable form; only catalog identity is retained, never bundle content. */
+  createCompiledSessionSnapshot(): CompiledSessionSnapshot {
+    const compiled = this.compiledModule;
+    if (!compiled?.durableBundle || this.compiledGeneration === null) throw new Error("compiled session has no durable catalog bundle identity");
+    return this.makeCompiledSnapshot({
+      state: compiled.state,
+      trace: compiled.trace,
+      round: this.round,
+      lastActiveAt: this.lastActiveAt,
+      history: this.session.getPlayerHistory("p1"),
+      generation: this.compiledGeneration,
+      idempotency: [...this.compiledIdempotency.values()],
+    });
+  }
+
+  /** Records the current durable pointer only after the snapshot store atomically publishes its header. */
+  acknowledgeCompiledSnapshot(snapshot: CompiledSessionSnapshot): void {
+    const compiled = this.compiledModule;
+    if (!compiled?.durableBundle || this.compiledGeneration === null || snapshot.sessionId !== this.id || snapshot.generation !== this.compiledGeneration || snapshot.bundle.id !== compiled.durableBundle.id) {
+      throw new Error("published snapshot does not match the live durable session");
+    }
+    compiled.snapshotHash = snapshot.snapshotHash;
+  }
+
+  private makeCompiledSnapshot(input: {
+    state: MechanicsState;
+    trace: MechanicsReachabilityEdge[];
+    round: number;
+    lastActiveAt: number;
+    history: AgentMessage[];
+    generation: number;
+    idempotency: CompiledSessionIdempotencyRecord[];
+  }): CompiledSessionSnapshot {
+    const compiled = this.compiledModule;
+    if (!compiled?.durableBundle) throw new Error("compiled snapshot requires a catalog bundle ID");
+    const previousSnapshotHash: string | null = input.generation === 0 ? null : compiled.snapshotHash ?? null;
+    if (input.generation > 0 && !previousSnapshotHash) throw new Error("compiled snapshot is missing its durable predecessor");
+    const terminal = this.compiledState(compiled.payload, compiled.projection, input.state, input.trace, input.generation).terminalEnding ?? null;
+    const snapshot = {
+      schemaVersion: COMPILED_SESSION_SNAPSHOT_SCHEMA_VERSION,
+      components: COMPILED_SESSION_COMPONENT_VERSIONS,
+      sessionId: this.id,
+      bundle: {
+        id: compiled.durableBundle.id,
+        moduleId: compiled.payload.identity.moduleId,
+        artifactHash: compiled.projection.artifact.artifactHash,
+        mechanicsHash: compiled.payload.mechanicsIR.mechanicsHash,
+        bundleHash: compiled.durableBundle.bundleHash,
+      },
+      previousSnapshotHash,
+      generation: input.generation,
+      timestamps: { createdAt: this.createdAt, lastActiveAt: input.lastActiveAt },
+      round: input.round,
+      character: {
+        pcId: "p1" as const,
+        sheet: this.persistedCompiledCharacterSheet(),
+        sanity: cloneJson(JSON.parse(JSON.stringify(this.sanity.state)) as JsonRecord),
+      },
+      history: cloneJson(JSON.parse(JSON.stringify(input.history)) as JsonValue[]),
+      state: structuredClone(input.state),
+      stateHash: mechanicsStateHash(input.state),
+      trace: structuredClone(input.trace),
+      terminal,
+      idempotency: cloneJson(JSON.parse(JSON.stringify(input.idempotency)) as JsonValue[]) as unknown as CompiledSessionIdempotencyRecord[],
+      snapshotHash: "",
+    } satisfies Omit<CompiledSessionSnapshot, "snapshotHash"> & { snapshotHash: string };
+    snapshot.snapshotHash = compiledSessionSnapshotHash(snapshot);
+    const validated = validateCompiledSessionSnapshot(snapshot);
+    if (validated.status === "refused") throw new Error(validated.message);
+    return validated.value;
+  }
+
+  /** Validation-only boundary used by startup before a GameSession is constructed or any world is touched. */
+  static validateCompiledSessionRestore(
+    snapshotValue: unknown,
+    catalogBundle: LoadedBundleCatalogEntry,
+    expectedSessionId?: string,
+  ): { status: "validated"; snapshot: CompiledSessionSnapshot; state: MechanicsState; budget: MechanicsStateBudget }
+    | { status: "refused"; code: "COMPILED_ARTIFACT_INVALID" | "COMPILED_PROJECTION_INVALID"; message: string } {
+    const bundle = validateCompiledModuleBundle(catalogBundle.artifact, catalogBundle.projection);
+    if (bundle.status === "refused") return bundle;
+    const snapshot = validateCompiledSessionSnapshot(snapshotValue);
+    if (snapshot.status === "refused") return { status: "refused", code: "COMPILED_PROJECTION_INVALID", message: snapshot.message };
+    const value = snapshot.value;
+    if ((expectedSessionId !== undefined && value.sessionId !== expectedSessionId)
+      || value.bundle.id !== catalogBundle.id || value.bundle.bundleHash !== catalogBundle.bundleHash
+      || value.bundle.moduleId !== bundle.payload.identity.moduleId
+      || value.bundle.artifactHash !== bundle.artifactHash
+      || value.bundle.mechanicsHash !== bundle.payload.identity.mechanicsHash) {
+      return { status: "refused", code: "COMPILED_PROJECTION_INVALID", message: "snapshot bundle identity does not match the revalidated catalog bundle" };
+    }
+    const replay = replayCompiledSessionTrace(bundle.payload, value.trace);
+    if (replay.status === "refused" || mechanicsStateHash(replay.value.state) !== value.stateHash || canonicalJson(replay.value.state) !== canonicalJson(value.state)) {
+      return { status: "refused", code: "COMPILED_PROJECTION_INVALID", message: replay.status === "refused" ? replay.message : "snapshot final mechanics state does not match its replay" };
+    }
+    const endingId = replay.value.state.terminalEndingId;
+    const ending = endingId ? bundle.projection.module.endings.find((candidate) => candidate.id === endingId) : undefined;
+    if ((endingId && (!ending || canonicalJson(value.terminal) !== canonicalJson({ id: ending.id, name: ending.name, narration: ending.description })))
+      || (!endingId && value.terminal !== null)) {
+      return { status: "refused", code: "COMPILED_PROJECTION_INVALID", message: "snapshot terminal narration identity does not match the catalog projection" };
+    }
+    if (value.generation !== replay.value.playerActions.length || value.round !== value.generation || value.idempotency.length !== value.generation) {
+      return { status: "refused", code: "COMPILED_PROJECTION_INVALID", message: "snapshot generation, round, or idempotency ledger does not match replayed player actions" };
+    }
+    let historyOffset = 0;
+    for (const [index, record] of value.idempotency.entries()) {
+      const action = replay.value.playerActions[index]!;
+      const generation = index + 1;
+      const expectedHash = sha256(canonicalJson({ domain: "compiled-action-v1", input: record.input, pcId: "p1", actionId: record.actionId, expectedGeneration: record.expectedGeneration }));
+      if (record.generation !== generation || record.expectedGeneration !== generation - 1 || record.requestHash !== expectedHash || !validatePersistedCompiledActionResponse(record.response)
+        || parseCompiledMechanicsAction(record.input) !== action.edge.mechanismId) {
+        return { status: "refused", code: "COMPILED_PROJECTION_INVALID", message: "snapshot idempotency ledger is incomplete or does not bind its player-action edge" };
+      }
+      const responseAction = record.response.action as Record<string, unknown>;
+      const responseCompiled = responseAction.compiled as Record<string, unknown>;
+      const responseState = responseAction.state as Record<string, unknown>;
+      const responseSummary = record.response.summary;
+      const responsePlayer = responseState.player as Record<string, unknown>;
+      const responseSanity = responseAction.sanity as Record<string, unknown>;
+      const responseParty = responseState.party as Array<Record<string, unknown>>;
+      const expectedTerminal = action.state.terminalEndingId ? bundle.projection.module.endings.find((candidate) => candidate.id === action.state.terminalEndingId) : undefined;
+      const discovery = bundle.payload.mechanicsIR.discoveryMethods.find((candidate) => candidate.id === action.edge.mechanismId);
+      const checkedAction = discovery?.check && discovery.check.kind !== "none" && (action.edge.outcome === "success" || action.edge.outcome === "failure")
+        ? discovery.check as Exclude<CheckSpec, { kind: "none" }>
+        : undefined;
+      const responseDice = responseAction.dice as Array<Record<string, unknown>> | undefined;
+      const diceTotal = responseDice?.[0]?.total;
+      const checkDescriptor = checkedAction ? compiledCheckDescriptor(checkedAction, value.character.sheet) : undefined;
+      const checkSucceeded = checkedAction && typeof diceTotal === "number"
+        ? compiledCheckSucceeded(diceTotal, checkDescriptor!.target, checkedAction.difficulty)
+        : undefined;
+      const checkBindingValid = checkedAction
+        ? responseDice?.length === 1 && responseDice[0]?.expr === "d100" && responseDice[0]?.total === diceTotal && responseDice[0]?.detail === `${checkDescriptor!.label}/${checkedAction.difficulty}`
+          && (checkSucceeded ? action.edge.outcome === "success" : action.edge.outcome === "failure")
+        : responseDice === undefined;
+      const expectedEvents = [
+        { speaker: value.character.sheet.name, content: record.input, type: "action" },
+        ...(checkedAction && typeof diceTotal === "number" ? [{ speaker: "系统", content: `🎲 ${checkDescriptor!.label} ${checkedAction.difficulty} 检定 d100=${diceTotal} (目标=${checkDescriptor!.target}%) → ${checkSucceeded ? "成功" : "失败"}`, type: "system" }] : []),
+        { speaker: "系统", content: `编译机制 ${action.edge.mechanismId}:${action.edge.outcome}`, type: "system" },
+        ...(expectedTerminal ? [{ speaker: "系统", content: `编译结局 ${expectedTerminal.id}: ${expectedTerminal.name}`, type: "system" }] : []),
+      ];
+      const persistedEvents = responseAction.events as Array<Record<string, unknown>>;
+      const historyEvents = value.history.slice(historyOffset, historyOffset + expectedEvents.length).map((message) => {
+        const entry = message as Record<string, unknown>;
+        return { speaker: entry.speaker, content: entry.content, type: entry.type };
+      });
+      const expectedScene = bundle.projection.module.scenes.find((scene) => scene.id === action.state.currentSceneId)?.name ?? action.state.currentSceneId;
+      const initialGameTime = createGameTime();
+      const responseGameTime = responseState.gameTime as Record<string, unknown>;
+      if (record.response.generation !== generation || responseCompiled.generation !== generation || responseCompiled.moduleId !== bundle.payload.identity.moduleId
+        || responseCompiled.artifactHash !== bundle.artifactHash || responseCompiled.mechanicsHash !== bundle.payload.identity.mechanicsHash
+        || responseCompiled.stateHash !== mechanicsStateHash(action.state) || canonicalJson(responseCompiled.state) !== canonicalJson(action.state)
+        || canonicalJson(responseCompiled.trace) !== canonicalJson(value.trace.slice(0, action.traceLength))
+        || canonicalJson(responseCompiled.terminalEnding ?? null) !== canonicalJson(expectedTerminal ? { id: expectedTerminal.id, name: expectedTerminal.name, narration: expectedTerminal.description } : null)
+        || responseState.scene !== action.state.currentSceneId || responseState.round !== generation
+        || responseSummary.id !== value.sessionId || responseSummary.ruleset !== "cosmic-horror" || responseSummary.scene !== expectedScene || responseSummary.playerName !== value.character.sheet.name || responseSummary.archetype !== value.character.sheet.archetypeId || responseSummary.createdAt !== value.timestamps.createdAt || responseSummary.generation !== generation || responseSummary.round !== generation || responseSummary.messageCount !== historyOffset + expectedEvents.length || responseSummary.npcCount !== 0
+        || responsePlayer.name !== value.character.sheet.name || responsePlayer.hp !== value.character.sheet.hp || responsePlayer.maxHp !== value.character.sheet.maxHp || responsePlayer.ac !== 0 || canonicalJson(responsePlayer.status) !== canonicalJson([])
+        || responseSanity.currentSAN !== value.character.sanity.currentSAN || responseSanity.maxSAN !== value.character.sanity.maxSAN || responseSanity.temporaryInsanity !== value.character.sanity.temporaryInsanity || responseSanity.indefiniteInsanity !== value.character.sanity.indefiniteInsanity || canonicalJson(responseSanity.phobias) !== canonicalJson(value.character.sanity.phobias)
+        || responseAction.dead !== false || responseState.bgm !== undefined || canonicalJson(responseState.npcs) !== canonicalJson([]) || canonicalJson(responseState.monsters) !== canonicalJson([]) || canonicalJson(responseState.companions) !== canonicalJson([])
+        || responseGameTime.day !== initialGameTime.day || responseGameTime.period !== initialGameTime.period || responseGameTime.label !== formatGameTime(initialGameTime)
+        || responseParty.length !== 1 || responseParty[0]?.pcId !== "p1" || responseParty[0]?.name !== value.character.sheet.name || responseParty[0]?.hp !== value.character.sheet.hp || responseParty[0]?.maxHp !== value.character.sheet.maxHp || responseParty[0]?.san !== value.character.sanity.currentSAN || responseParty[0]?.maxSan !== value.character.sanity.maxSAN || canonicalJson(responseParty[0]?.status) !== canonicalJson([])
+        || responseAction.narrative !== (expectedTerminal ? expectedTerminal.description : `已执行编译机制 ${action.edge.mechanismId}。`)
+        || !checkBindingValid || canonicalJson(persistedEvents) !== canonicalJson(expectedEvents) || canonicalJson(historyEvents) !== canonicalJson(expectedEvents)) {
+        return { status: "refused", code: "COMPILED_PROJECTION_INVALID", message: "persisted action response does not match its replayed generation" };
+      }
+      historyOffset += expectedEvents.length;
+    }
+    if (historyOffset !== value.history.length) return { status: "refused", code: "COMPILED_PROJECTION_INVALID", message: "snapshot history is not the exact concatenation of persisted action responses" };
+    return { status: "validated", snapshot: value, state: replay.value.state, budget: replay.value.budget };
+  }
+
+  /** Installs a fully replay-validated compiled snapshot; invalid inputs make no session or world writes. */
+  restoreCompiledSession(
+    snapshotValue: unknown,
+    catalogBundle: LoadedBundleCatalogEntry,
+  ): CompiledModuleLoadResult {
+    if (!this.isPristineCompiledRestoreTarget() || this.id !== (snapshotValue as { sessionId?: unknown })?.sessionId) {
+      return { status: "refused", code: "COMPILED_SESSION_CONFLICT", message: "compiled modules require a session without another loaded module" };
+    }
+    const checked = GameSession.validateCompiledSessionRestore(snapshotValue, catalogBundle, this.id);
+    if (checked.status === "refused") return checked;
+    this.installingCompiledState = true;
+    try {
+      const sheet = cloneJson(checked.snapshot.character.sheet) as any;
+      const sanity = new SanityEngine(sheet?.attributes?.power ?? 50);
+      sanity.state = cloneJson(checked.snapshot.character.sanity) as any;
+      this.createdAt = checked.snapshot.timestamps.createdAt;
+      this.lastActiveAt = checked.snapshot.timestamps.lastActiveAt;
+      this.round = checked.snapshot.round;
+      this.activeRuleset = "cosmic-horror";
+      this.activePlayerId = "p1";
+      this.activeCharacter = sheet;
+      this.sanity = sanity;
+      this.characters.clear();
+      this.sanityEngines.clear();
+      this.party.clear();
+      this.characters.set("p1", sheet);
+      this.sanityEngines.set("p1", sanity);
+      this.party.set("p1", { pcId: "p1", sheet, san: sanity, control: "auto" });
+      this.session.restoreSinglePlayer("p1", sheet?.name ?? "调查员", checked.snapshot.history as unknown as AgentMessage[]);
+      this.world.registerPlayer("p1");
+      this.world.setPlayerSanity("p1", sanity.state);
+      this.installCompiledProjection(catalogBundle.projection);
+      this.compiledModule = { payload: structuredClone(catalogBundle.artifact.payload as ResolvedCompilerArtifactPayload), projection: structuredClone(catalogBundle.projection), state: checked.state, trace: structuredClone(checked.snapshot.trace), budget: checked.budget, durableBundle: { id: catalogBundle.id, bundleHash: catalogBundle.bundleHash }, snapshotHash: checked.snapshot.snapshotHash };
+      this.compiledGeneration = checked.snapshot.generation;
+      this.compiledIdempotency = new Map(checked.snapshot.idempotency.map((record) => [record.actionId, structuredClone(record)]));
+      this.compiledFailStopped = false;
+      this.lastNarrative = checked.snapshot.terminal?.narration ?? "";
+      this.synchronizeCompiledMechanicsState(checked.state);
+      return { status: "loaded", compiled: this.getCompiledMechanicsState()! };
+    } catch (error) {
+      return { status: "refused", code: "COMPILED_SESSION_CONFLICT", message: error instanceof Error ? error.message : "compiled snapshot could not be installed" };
+    } finally {
+      this.installingCompiledState = false;
+    }
   }
 
   private installCompiledProjection(projection: CompilerModuleDataProjection): void {
@@ -683,20 +1040,16 @@ export class GameSession {
     };
   }
 
-  private executeCompiledCheck(check: Exclude<CheckSpec, { kind: "none" }>): { success: boolean; line: string } {
-    const attributeNames: Record<Extract<CheckSpec, { kind: "attribute" }> ["attribute"], string> = {
-      str: "力量", dex: "敏捷", pow: "意志", con: "体质", app: "外貌", edu: "教育", int: "智力", siz: "体型",
-    };
-    const label = check.kind === "skill" ? check.skill : attributeNames[check.attribute];
-    const skillValue = check.kind === "skill"
-      ? this.resolveSkillValue(check.skill, SKILL_DISPLAY_NAMES[check.skill] ?? check.skill)
-      : resolveCheckValue(this.activeCharacter ?? { attributes: {}, luck: 0, skillValues: {} }, label);
-    const result = CoCEngine.skillCheck(skillValue, check.difficulty);
-    this.lastDiceRoll = { expr: "d100", total: result.roll, detail: `${label}/${check.difficulty}` };
-    this.lastRolls.push({ skill: label, roll: result.roll, target: skillValue, success: result.isSuccess });
+  private evaluateCompiledCheck(check: Exclude<CheckSpec, { kind: "none" }>): { success: boolean; line: string; dice: { expr: string; total: number; detail?: string }; roll: { skill: string; roll: number; target: number; success: boolean } } {
+    const { label, target } = compiledCheckDescriptor(check, this.activeCharacter);
+    const result = CoCEngine.skillCheck(target, check.difficulty);
+    const dice = { expr: "d100", total: result.roll, detail: `${label}/${check.difficulty}` };
+    const roll = { skill: label, roll: result.roll, target, success: result.isSuccess };
     return {
       success: result.isSuccess,
-      line: `🎲 ${label} ${check.difficulty} 检定 d100=${result.roll} (目标=${skillValue}%) → ${result.isSuccess ? "成功" : "失败"}`,
+      line: `🎲 ${label} ${check.difficulty} 检定 d100=${result.roll} (目标=${target}%) → ${result.isSuccess ? "成功" : "失败"}`,
+      dice,
+      roll,
     };
   }
 
@@ -705,7 +1058,7 @@ export class GameSession {
     input: MechanicsAnalysisInput,
     state: MechanicsState,
     mechanismId: string,
-  ): { mechanismId: string; outcome: "success" | "failure" | "failback" | "traverse"; checkLine?: string } | null {
+  ): { mechanismId: string; outcome: "success" | "failure" | "failback" | "traverse"; checkLine?: string; dice?: { expr: string; total: number; detail?: string }; roll?: { skill: string; roll: number; target: number; success: boolean } } | null {
     const available = availableMechanicsPlayerActions(ir, input, state).filter((action) => action.mechanismId === mechanismId);
     if (available.length === 0) return null;
     const discovery = ir.discoveryMethods.find((candidate) => candidate.id === mechanismId);
@@ -714,51 +1067,143 @@ export class GameSession {
     }
     if (!discovery.check || discovery.check.kind === "none") return available.some((action) => action.outcome === "success") ? { mechanismId, outcome: "success" } : null;
     if (available.some((action) => action.outcome === "failback")) return { mechanismId, outcome: "failback" };
-    const check = this.executeCompiledCheck(discovery.check);
-    return { mechanismId, outcome: check.success ? "success" : "failure", checkLine: check.line };
+    const check = this.evaluateCompiledCheck(discovery.check);
+    return { mechanismId, outcome: check.success ? "success" : "failure", checkLine: check.line, dice: check.dice, roll: check.roll };
+  }
+
+  private prepareCompiledAction(input: string): { status: "prepared"; value: PreparedCompiledAction } | { status: "refused"; code: string } {
+    const compiled = this.compiledModule!;
+    const replay = replayCompiledSessionTrace(compiled.payload, compiled.trace);
+    if (replay.status === "refused" || mechanicsStateHash(replay.value.state) !== mechanicsStateHash(compiled.state)) return { status: "refused", code: "compiled_execution_failed" };
+    if (replay.value.state.terminalEndingId) return { status: "refused", code: "compiled_terminal" };
+
+    const mechanismId = parseCompiledMechanicsAction(input);
+    if (!mechanismId) return { status: "refused", code: "compiled_action_required" };
+    const selected = this.selectCompiledAction(compiled.payload.mechanicsIR, compiled.payload.analysisInput, replay.value.state, mechanismId);
+    if (!selected) return { status: "refused", code: "compiled_action_unavailable" };
+    try {
+      const executed = executeMechanicsAction(compiled.payload.mechanicsIR, compiled.payload.analysisInput, replay.value.state, selected);
+      replay.value.budget.observe(executed.state);
+      const after = settleAutomaticMechanics(compiled.payload.mechanicsIR, executed.state, replay.value.budget);
+      const trace = [...compiled.trace, executed.edge, ...after.steps];
+      const ending = this.compiledState(compiled.payload, compiled.projection, after.state, trace, (this.compiledGeneration ?? 0) + 1).terminalEnding;
+      const now = Date.now();
+      const messages: AgentMessage[] = [{ speaker: this.activeCharacter?.name ?? "调查员", content: input, type: "action", timestamp: now }];
+      if (selected.checkLine) messages.push({ speaker: "系统", content: selected.checkLine, type: "system", timestamp: now });
+      messages.push({ speaker: "系统", content: `编译机制 ${executed.edge.mechanismId}:${executed.edge.outcome}`, type: "system", timestamp: now });
+      let narrative: string;
+      if (ending) {
+        narrative = ending.narration;
+        messages.push({ speaker: "系统", content: `编译结局 ${ending.id}: ${ending.name}`, type: "system", timestamp: now });
+      } else {
+        narrative = `已执行编译机制 ${executed.edge.mechanismId}。`;
+      }
+      return { status: "prepared", value: { state: after.state, trace, budget: replay.value.budget, round: this.round + 1, lastActiveAt: now, messages, narrative, dice: selected.dice, roll: selected.roll } };
+    } catch {
+      return { status: "refused", code: "compiled_execution_failed" };
+    }
+  }
+
+  private preparedCompiledActionResponse(prepared: PreparedCompiledAction, generation: number): ActionResponse {
+    const state = structuredClone(this.getState());
+    state.scene = prepared.state.currentSceneId;
+    state.bgm = this.sceneBgm[prepared.state.currentSceneId];
+    state.round = prepared.round;
+    const compiled = this.compiledModule!;
+    return {
+      narrative: prepared.narrative,
+      events: prepared.messages.map((message) => ({ speaker: message.speaker, content: message.content, type: message.type, ...(message.verbatim ? { verbatim: true as const } : {}) })),
+      state,
+      dead: this.dead,
+      sanity: this.getSanity(),
+      ...(prepared.dice ? { dice: [prepared.dice] } : {}),
+      compiled: this.compiledState(compiled.payload, compiled.projection, prepared.state, prepared.trace, generation),
+    };
+  }
+
+  private preparedCompiledSummary(prepared: PreparedCompiledAction): SessionSummary {
+    const summary = this.getSummary();
+    return {
+      ...summary,
+      round: prepared.round,
+      scene: this.sceneDisplayNames[prepared.state.currentSceneId] ?? prepared.state.currentSceneId,
+      messageCount: this.session.getPlayerHistory("p1").length + prepared.messages.length,
+      generation: (this.compiledGeneration ?? 0) + 1,
+    };
+  }
+
+  private applyPreparedCompiledAction(prepared: PreparedCompiledAction): void {
+    const compiled = this.compiledModule!;
+    compiled.state = prepared.state;
+    compiled.trace = prepared.trace;
+    compiled.budget = prepared.budget;
+    this.round = prepared.round;
+    this.lastActiveAt = prepared.lastActiveAt;
+    this.lastNarrative = prepared.narrative;
+    this.lastDiceRoll = prepared.dice ?? null;
+    if (prepared.roll) this.lastRolls.push(prepared.roll);
+    this.synchronizeCompiledMechanicsState(prepared.state);
+    this.persistSanity("p1");
+    for (const message of prepared.messages) this.session.push(message, message.visibility ?? "public", message.discoverer);
+  }
+
+  /** Durable action boundary: derive -> persist -> fail-stop the stale object for server-side rehydration. */
+  commitCompiledAction(
+    input: string,
+    actionId: string,
+    expectedGeneration: number,
+    persist: (snapshot: CompiledSessionSnapshot) => void,
+  ): CompiledActionCommitResult {
+    const compiled = this.compiledModule;
+    const generation = this.compiledGeneration;
+    if (!compiled || generation === null) return { status: "refused", code: "compiled_not_loaded", generation: 0 };
+    if (!compiled.durableBundle) return { status: "refused", code: "compiled_action_contract_required", generation };
+    if (this.compiledFailStopped) return { status: "refused", code: "compiled_unavailable", generation };
+    const normalizedInput = input.trim();
+    if (!normalizedInput || normalizedInput !== input) return { status: "refused", code: "compiled_action_contract_required", generation };
+    const requestHash = sha256(canonicalJson({ domain: "compiled-action-v1", input: normalizedInput, pcId: "p1", actionId, expectedGeneration }));
+    const prior = this.compiledIdempotency.get(actionId);
+    if (prior) {
+      if (prior.requestHash !== requestHash) return { status: "refused", code: "compiled_idempotency_conflict", generation };
+      return { status: "duplicate", response: cloneJson(prior.response), generation };
+    }
+    if (expectedGeneration !== generation) return { status: "refused", code: "compiled_generation_conflict", generation };
+    const prepared = this.prepareCompiledAction(normalizedInput);
+    if (prepared.status === "refused") return { status: "refused", code: prepared.code, generation };
+    const nextGeneration = generation + 1;
+    const action = this.preparedCompiledActionResponse(prepared.value, nextGeneration);
+    const response: PersistedCompiledActionResponse = {
+      schemaVersion: "1.0.0",
+      action: cloneJson(JSON.parse(JSON.stringify(action)) as JsonRecord),
+      summary: cloneJson(JSON.parse(JSON.stringify(this.preparedCompiledSummary(prepared.value))) as JsonRecord),
+      generation: nextGeneration,
+    };
+    const record: CompiledSessionIdempotencyRecord = {
+      actionId,
+      input: normalizedInput,
+      requestHash,
+      expectedGeneration,
+      generation: nextGeneration,
+      response,
+    };
+    const history = [...this.session.getPlayerHistory("p1"), ...prepared.value.messages];
+    let snapshot: CompiledSessionSnapshot;
+    try {
+      snapshot = this.makeCompiledSnapshot({ state: prepared.value.state, trace: prepared.value.trace, round: prepared.value.round, lastActiveAt: prepared.value.lastActiveAt, history, generation: nextGeneration, idempotency: [...this.compiledIdempotency.values(), record] });
+      persist(snapshot);
+    } catch {
+      return { status: "refused", code: "compiled_persistence_failed", generation };
+    }
+    this.compiledFailStopped = true;
+    return { status: "committed", response, generation: nextGeneration, snapshot };
   }
 
   private actCompiled(input: string): ActionResponse {
-    const compiled = this.compiledModule!;
-    const settled = settleAutomaticMechanics(compiled.payload.mechanicsIR, compiled.state, compiled.budget);
-    if (settled.steps.length > 0) {
-      compiled.state = settled.state;
-      compiled.trace.push(...settled.steps);
-      this.synchronizeCompiledMechanicsState(compiled.state);
-    }
-    if (compiled.state.terminalEndingId) return this.compiledFailure("compiled_terminal");
-
-    const mechanismId = parseCompiledMechanicsAction(input);
-    if (!mechanismId) return this.compiledFailure("compiled_action_required");
-    const selected = this.selectCompiledAction(compiled.payload.mechanicsIR, compiled.payload.analysisInput, compiled.state, mechanismId);
-    if (!selected) return this.compiledFailure("compiled_action_unavailable");
-
-    this.round++;
-    const messages: AgentMessage[] = [{ speaker: this.activeCharacter?.name ?? "调查员", content: input, type: "action" }];
-    this._turnMessages = messages;
-    try {
-      const executed = executeMechanicsAction(compiled.payload.mechanicsIR, compiled.payload.analysisInput, compiled.state, selected);
-      compiled.trace.push(executed.edge);
-      compiled.budget.observe(executed.state);
-      const after = settleAutomaticMechanics(compiled.payload.mechanicsIR, executed.state, compiled.budget);
-      compiled.state = after.state;
-      compiled.trace.push(...after.steps);
-      this.synchronizeCompiledMechanicsState(compiled.state);
-      if (selected.checkLine) messages.push({ speaker: "系统", content: selected.checkLine, type: "system" });
-      messages.push({ speaker: "系统", content: `编译机制 ${executed.edge.mechanismId}:${executed.edge.outcome}`, type: "system" });
-      const ending = this.getCompiledMechanicsState()?.terminalEnding;
-      if (ending) {
-        this.lastNarrative = ending.narration;
-        messages.push({ speaker: "系统", content: `编译结局 ${ending.id}: ${ending.name}`, type: "system" });
-      } else {
-        this.lastNarrative = `已执行编译机制 ${executed.edge.mechanismId}。`;
-      }
-      this.lastActiveAt = Date.now();
-      return { ...this.buildActionResponse(messages), compiled: this.getCompiledMechanicsState()! };
-    } catch {
-      this._turnMessages = null;
-      return this.compiledFailure("compiled_execution_failed");
-    }
+    const prepared = this.prepareCompiledAction(input);
+    if (prepared.status === "refused") return this.compiledFailure(prepared.code);
+    this.applyPreparedCompiledAction(prepared.value);
+    this.compiledGeneration = (this.compiledGeneration ?? 0) + 1;
+    return this.preparedCompiledActionResponse(prepared.value, this.compiledGeneration);
   }
 
   // ============================================================
@@ -880,6 +1325,7 @@ export class GameSession {
     archetypeId: string,
     meta?: PlayerMeta,
   ): { member: PartyMember; warning?: string } | { rejected: string } {
+    if (this.compiledMutationBlocked()) return { rejected: "compiled_mutation_unsupported" };
     const resolvedArchetypeId = this.resolveOccupationId(archetypeId);
     let ch: any;
     try {
@@ -939,7 +1385,7 @@ export class GameSession {
     });
 
     if (!this.careerStore) {
-      const careerDir = `data/careers/${this.id}`;
+      const careerDir = join(this.careerRoot ?? join("data", "careers"), this.id);
       this.careerStore = new CareerFileStore(careerDir);
     }
     this.careerStore.saveSnapshot({
@@ -995,6 +1441,7 @@ export class GameSession {
       // 因此这个字段一直恒为 null。
       archetype: this.activeCharacter?.archetypeId ?? this.activeCharacter?.archetype ?? null,
       messageCount: msgs.length, npcCount, createdAt: this.createdAt,
+      ...(this.compiledModule ? { generation: this.compiledGeneration ?? 0 } : {}),
     };
   }
 
@@ -1143,6 +1590,7 @@ export class GameSession {
       mood?: NPCMood;
     } = {}
   ) {
+    if (this.compiledMutationBlocked()) return;
     this.session.push(
       {
         speaker,
@@ -1607,8 +2055,10 @@ export class GameSession {
     };
   }
 
-  sendMessage(speaker: string, content: string, type: MessageType = "system") {
+  sendMessage(speaker: string, content: string, type: MessageType = "system"): boolean {
+    if (this.compiledMutationBlocked()) return false;
     this.addMessage(speaker, content, type);
+    return true;
   }
   /**
    * KP 设置指定玩家的当前 SAN。
@@ -1624,6 +2074,7 @@ export class GameSession {
    * 越界现在是结构化拒绝，缓存与真相源都不动。
    */
   setPlayerSan(pid: string, value: number): Result<StateDelta, RejectReason> {
+    if (this.compiledMutationBlocked()) return { ok: false, error: { code: "unknown_action", actionId: "compiled_mutation_unsupported" } };
     const eng = this.sanityEngines.get(pid);
     if (!eng) return { ok: false, error: { code: "unknown_target", targetId: pid } };
 
@@ -1646,6 +2097,7 @@ export class GameSession {
     return result;
   }
   setPlayerHp(pid: string, value: number): Result<StateDelta, RejectReason> {
+    if (this.compiledMutationBlocked()) return { ok: false, error: { code: "unknown_action", actionId: "compiled_mutation_unsupported" } };
     const ch = this.characters.get(pid);
     if (!ch) return { ok: false, error: { code: "unknown_target", targetId: pid } };
 
@@ -1675,16 +2127,22 @@ export class GameSession {
     return result;
   }
   /** 覆盖指定玩家的背包内容（HTTP 角色卡编辑用）。 */
-  setPlayerInventory(pid: string, items: string[]) {
+  setPlayerInventory(pid: string, items: string[]): boolean {
+    if (this.compiledMutationBlocked()) return false;
     this.world.setPlayerInventory(pid, items);
+    return true;
   }
   /** 覆盖指定玩家已装备的武器（HTTP 角色卡编辑用）。 */
-  setPlayerWeapons(pid: string, weapons: string[]) {
+  setPlayerWeapons(pid: string, weapons: string[]): boolean {
+    if (this.compiledMutationBlocked()) return false;
     this.world.setPlayerWeapons(pid, weapons);
+    return true;
   }
   /** 覆盖指定玩家已装备的护甲。 */
-  setPlayerArmor(pid: string, armor: string[]) {
+  setPlayerArmor(pid: string, armor: string[]): boolean {
+    if (this.compiledMutationBlocked()) return false;
     this.world.setPlayerArmor(pid, armor);
+    return true;
   }
   /**
    * 把 SAN 引擎的当前 state 写回真相源。
@@ -1717,6 +2175,7 @@ export class GameSession {
    * 过量伤害落到 0 保留原样：那是正确的战斗语义，不是把非法输入伪装成成功。
    */
   applyDamage(entityId: string, damage: number): Result<StateDelta, RejectReason> {
+    if (this.compiledMutationBlocked()) return { ok: false, error: { code: "unknown_action", actionId: "compiled_mutation_unsupported" } };
     const variable = `hp:${entityId}`;
     if (!Number.isInteger(damage) || damage < 0) {
       return { ok: false, error: { code: "invalid_amount", variable, amount: damage } };
@@ -1750,6 +2209,7 @@ export class GameSession {
    * 由调用方决定如何报错。
    */
   setScene(sceneId: string): boolean {
+    if (this.compiledMutationBlocked()) return false;
     if (!this.world.getScene(sceneId)) return false;
     // 转发 setActiveScene 的**回读结果**，不是「我调用过了」。
     // 那两句 UPDATE 会先清空全部 is_active，目标不存在时world 里
@@ -1762,6 +2222,7 @@ export class GameSession {
   }
 
   setDifficulty(diff: string): Result<StateDelta, RejectReason> {
+    if (this.compiledMutationBlocked()) return { ok: false, error: { code: "unknown_action", actionId: "compiled_mutation_unsupported" } };
     const result = applyAction(COC_SESSION_SCENARIO, this.getGateState(), {
       kind: "freeform",
       actor: "kp",
@@ -1910,6 +2371,9 @@ export class GameSession {
    * 多端并发了。
    */
   async act(input: string, actingPcId?: string): Promise<ActionResponse> {
+    // Durable compiled sessions have no in-memory execution path. Their action
+    // transaction must persist and then replace this object through server rehydration.
+    if (this.isDurableCompiledSession()) return this.compiledFailure(this.compiledFailStopped ? "compiled_unavailable" : "compiled_action_contract_required");
     // 未知 pcId 必须在任何状态改动前拒绝——activePlayerId 绝不能"先切过去
     // 再发现切不了"。存活过一个真 bug：切换在改动之后才判，返回给前端的是
     // "已切换"的假象。这里不折成系统消息、不兜底回 p1（那正是本仓反复修的

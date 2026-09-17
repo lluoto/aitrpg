@@ -7,8 +7,10 @@ import { prepareCompiler, resolveCompiler, type PreparedCompilerApiResult } from
 import { projectResolvedCompilerArtifact, type ModuleDataPresentationMetadata } from "../compiler/compiler-module-data-projection";
 import type { CompilerQuestion, CompilerQuestionResolution, ModuleCompileHints } from "../compiler/compiler-question-queue";
 import { CompilerArtifactCatalog } from "../compiler/compiler-artifact-catalog";
+import { CompiledSessionSnapshotStore } from "../api/compiled-session-snapshot";
 import { mechanicsStateHash } from "../compiler/mechanics-execution";
-import { handleRequest } from "../api/server";
+import { GameSession } from "../api/game-session";
+import { handleRequest, hydrateCompiledSessions } from "../api/server";
 
 const PAGES = ["入口：\n▶父线索：一把档案室钥匙。\n档案室：\n▶子线索：一份必须读懂的档案。\n出口：\n▶出口说明：离开这里的旧车票。"];
 
@@ -112,7 +114,7 @@ function stream(...chunks: Uint8Array[]): ReadableStream<Uint8Array> {
 }
 
 function dependencies(calls = { factory: 0, registered: 0, persisted: 0 }, catalog = new CompilerArtifactCatalog({ root: join(tmpdir(), `compiled-http-${crypto.randomUUID()}`) })): CompiledModuleHttpDependencies {
-  return { generateId: () => "compiled1", hasSession: () => false, createSession: () => { calls.factory++; return { loadCompiledModule: (_payload: any, _projection: any) => ({ status: "loaded", compiled: { moduleId: "http-fixture", artifactHash: "artifact", mechanicsHash: "mechanics", state: {}, stateHash: "state", trace: [] } }), getCharacterSummary: () => ({ id: "p1" }), getSummary: () => ({ id: "compiled1", scene: "entry" }), getCompiledMechanicsState: () => null } as any; }, registerSession: () => { calls.registered++; }, persistSession: () => { calls.persisted++; }, catalog };
+  return { generateId: () => "compiled1", hasSession: () => false, createSession: () => { calls.factory++; return { loadDurableCompiledModule: (_bundle: any) => ({ status: "loaded", compiled: { moduleId: "http-fixture", artifactHash: "artifact", mechanicsHash: "mechanics", state: {}, stateHash: "state", trace: [], generation: 0 } }), acknowledgeCompiledSnapshot: () => undefined, getCharacterSummary: () => ({ id: "p1" }), getSummary: () => ({ id: "compiled1", scene: "entry" }), getCompiledMechanicsState: () => null, getCompiledGeneration: () => 0, createCompiledSessionSnapshot: () => ({}) } as any; }, registerSession: () => { calls.registered++; }, persistSession: () => { calls.persisted++; }, rollbackPersistedSnapshot: () => ({ status: "ok", value: undefined }), confirmPersistedSnapshot: () => undefined, catalog };
 }
 
 describe("compiled module HTTP lifecycle", () => {
@@ -193,6 +195,56 @@ describe("compiled module HTTP lifecycle", () => {
     expect(calls).toMatchObject({ registered: 1, rolledBack: 2, unregistered: 2 });
   });
 
+  it("rolls back only the pending generation-zero snapshot when acknowledgement or registration fails", async () => {
+    const root = mkdtempSync(join(tmpdir(), "compiled-http-creation-rollback-"));
+    try {
+      const fixture = await compiledModuleHttpFixture();
+      for (const phase of ["acknowledge", "register"] as const) {
+        const catalog = new CompilerArtifactCatalog({ root: join(root, phase, "catalog") });
+        const savedBundle = catalog.saveBundle(fixture.resolved.artifact, fixture.projection);
+        if (savedBundle.status === "refused") throw new Error(savedBundle.message);
+        const snapshots = new CompiledSessionSnapshotStore({ root: join(root, phase, "snapshots") });
+        const sessions = new Map<string, GameSession>();
+        const id = `rollback-${phase}`;
+        let rollbackCalls = 0;
+        let storageCleanupCalls = 0;
+        const response = await handleCompiledModuleHttpRequest(new Request("http://test/api/sessions/compiled", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bundleId: savedBundle.value.id, archetype: "investigator", characterName: "Ada" }),
+        }), {
+          generateId: () => id,
+          hasSession: (candidate) => sessions.has(candidate),
+          hasDurableSession: (candidate) => snapshots.isOccupied(candidate),
+          createSession: (sessionId, archetype, characterName, persona) => {
+            const session = new GameSession(sessionId, "cosmic-horror", { apiKey: "sk-placeholder", baseUrl: "http://offline.invalid", model: "offline", maxTokens: 1, temperature: 0 }, archetype, characterName, persona, { careerRoot: join(root, phase, "careers") });
+            if (phase === "acknowledge") (session as any).acknowledgeCompiledSnapshot = () => { throw new Error("acknowledgement failure"); };
+            return session;
+          },
+          persistSession: (_id, _session, _bundleId, snapshot) => {
+            const saved = snapshots.save(snapshot);
+            if (saved.status === "refused") throw new Error(saved.message);
+          },
+          rollbackPersistedSnapshot: (snapshot) => { rollbackCalls++; return snapshots.rollbackCreated(snapshot); },
+          confirmPersistedSnapshot: (snapshot) => snapshots.confirmCreated(snapshot),
+          registerSession: (sessionId, session) => {
+            sessions.set(sessionId, session as GameSession);
+            if (phase === "register") throw new Error("registration failure");
+          },
+          unregisterSession: (sessionId) => sessions.delete(sessionId),
+          rollbackSessionStorage: () => { storageCleanupCalls++; },
+          catalog,
+        });
+        expect(response?.status).toBe(500);
+        expect(rollbackCalls).toBe(1);
+        expect(storageCleanupCalls).toBe(1);
+        expect(sessions.has(id)).toBe(false);
+        expect(snapshots.listHeaders()).toEqual([]);
+        expect(hydrateCompiledSessions({ sessions: new Map(), catalog, snapshots }).hydrated).toEqual([]);
+      }
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("applies production CORS to compiled refusals over an ephemeral Bun server", async () => {
     const root = mkdtempSync(join(tmpdir(), "compiled-http-server-"));
     const catalog = new CompilerArtifactCatalog({ root });
@@ -216,8 +268,8 @@ describe("compiled module HTTP lifecycle", () => {
   it("runs the real HTTP PDF-to-terminal-compiled-session chain", async () => {
     const root = mkdtempSync(join(tmpdir(), "compiled-http-chain-"));
     const catalog = new CompilerArtifactCatalog({ root });
-    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: (request) => handleRequest(request, catalog) });
-    let sessionId: string | undefined;
+    const snapshots = new CompiledSessionSnapshotStore({ root: join(root, "snapshots") });
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: (request) => handleRequest(request, catalog, snapshots, { careerRoot: join(root, "careers") }) });
     try {
       const base = `http://127.0.0.1:${server.port}`;
       const preparedResponse = await fetch(`${base}/api/compiler/prepare?moduleId=real-http-fixture`, { method: "POST", headers: { "Content-Type": "application/pdf" }, body: pdf(PAGES[0]!) });
@@ -242,12 +294,15 @@ describe("compiled module HTTP lifecycle", () => {
       const sessionResponse = await fetch(`${base}/api/sessions/compiled`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bundleId: resolved.bundleId, archetype: "investigator", characterName: "Ada" }) });
       expect(sessionResponse.status).toBe(201);
       const session = await sessionResponse.json() as { sessionId: string; compiled: { artifactHash: string; mechanicsHash: string } };
-      sessionId = session.sessionId;
       expect(session.compiled).toMatchObject({ artifactHash: resolved.artifact.artifactHash, mechanicsHash: resolved.identity.mechanicsHash });
+      let generation = 0;
+      let actionNumber = 0;
       const action = async (input: string) => {
-        const response = await fetch(`${base}/api/sessions/${session.sessionId}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ input }) });
+        const response = await fetch(`${base}/api/sessions/${session.sessionId}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ input, pcId: "p1", actionId: `action-${++actionNumber}`, expectedGeneration: generation }) });
         expect(response.status).toBe(200);
-        return response.json() as Promise<{ compiled: { terminalEnding?: { id: string }; state: any; stateHash: string } }>;
+        const result = await response.json() as { generation: number; dice?: Array<{ expr: string; total: number; detail?: string }>; events: Array<{ speaker: string; content: string; type: string }>; compiled: { terminalEnding?: { id: string }; state: any; stateHash: string } };
+        generation = result.generation;
+        return result;
       };
       const methods = payload.mechanicsIR.discoveryMethods;
       const parent = methods.find((method: any) => method.id === "find_parent")!;
@@ -256,14 +311,22 @@ describe("compiled module HTTP lifecycle", () => {
       const exit = payload.mechanicsIR.connections.find((connection: any) => connection.connectionId === "archive_exit")!;
       await action(`@compiled ${parent.id}`);
       await action(`@compiled ${entry.id}`);
+      const originalRandom = Math.random;
+      Math.random = () => 0.99;
       const firstChild = await action(`@compiled ${child.id}`);
-      if (!firstChild.compiled.state.foundClueIds.includes(child.clueId)) await action(`@compiled ${child.id}`);
+      Math.random = originalRandom;
+      expect(firstChild).toMatchObject({ dice: [{ expr: "d100", total: 100, detail: "library_use/hard" }] });
+      expect(firstChild.events).toContainEqual(expect.objectContaining({ speaker: "系统", type: "system", content: expect.stringMatching(/^🎲 library_use hard 检定 d100=100 \(目标=\d+%\) → 失败$/) }));
+      if (!firstChild.compiled.state.foundClueIds.includes(child.clueId)) {
+        Math.random = () => 0;
+        await action(`@compiled ${child.id}`);
+        Math.random = originalRandom;
+      }
       const ending = await action(`@compiled ${exit.id}`);
       expect(ending.compiled.terminalEnding).toBeDefined();
       expect(ending.compiled.stateHash).toBe(mechanicsStateHash(ending.compiled.state));
     } finally {
       server.stop(true);
-      if (sessionId) rmSync(join("data", "careers", sessionId), { recursive: true, force: true });
       rmSync(root, { recursive: true, force: true });
     }
   });

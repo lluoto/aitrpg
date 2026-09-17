@@ -112,6 +112,20 @@ export class PlayerSession {
     return [...this.players.keys()];
   }
 
+  /** Internal restore primitive for the single-PC compiled snapshot boundary. */
+  restoreSinglePlayer(name: string, characterName: string, history: AgentMessage[]): void {
+    this.players = new Map([[name, {
+      name,
+      characterName,
+      characterId: name,
+      joinedAt: Date.now(),
+      messageHistory: structuredClone(history),
+      knownSecrets: new Set(),
+    }]]);
+    this.activePlayerName = name;
+    this.globalMessages = structuredClone(history);
+  }
+
   /** 玩家数量 */
   get count(): number { return this.players.size; }
 

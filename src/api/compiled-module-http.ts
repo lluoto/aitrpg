@@ -6,20 +6,23 @@ import type { GameSession } from "./game-session";
 import { validateCompiledModuleBundle } from "./compiled-module-bundle";
 import { CompilerArtifactCatalog, type CatalogRefusalCode } from "../compiler/compiler-artifact-catalog";
 import { CharacterFactory } from "../character/character-factory";
+import type { CompiledSessionSnapshot, CompiledSessionSnapshotResult } from "./compiled-session-snapshot";
 
 /** One mebibyte for compiler PDFs and JSON, enforced before and after body decoding. */
 export const COMPILER_HTTP_BODY_LIMIT_BYTES = 1024 * 1024;
 
 type JsonRecord = Record<string, unknown>;
 type ErrorStage = "prepare" | "resolve" | "project" | "session";
-type SessionLike = Pick<GameSession, "loadCompiledModule" | "getCharacterSummary" | "getSummary" | "getCompiledMechanicsState">;
+type SessionLike = Pick<GameSession, "loadDurableCompiledModule" | "acknowledgeCompiledSnapshot" | "getCharacterSummary" | "getSummary" | "getCompiledMechanicsState" | "getCompiledGeneration" | "createCompiledSessionSnapshot">;
 
 export interface CompiledModuleHttpDependencies {
   createSession(id: string, archetype: string, characterName: string, persona: { personality?: string; backstory?: string; currentGoal?: string }): SessionLike;
   hasSession(id: string): boolean;
   registerSession(id: string, session: SessionLike): void;
   unregisterSession?(id: string): void;
-  persistSession(id: string, session: SessionLike, bundleId: string): void;
+  persistSession(id: string, session: SessionLike, bundleId: string, snapshot: CompiledSessionSnapshot): void;
+  rollbackPersistedSnapshot(snapshot: CompiledSessionSnapshot): CompiledSessionSnapshotResult<void>;
+  confirmPersistedSnapshot(snapshot: CompiledSessionSnapshot): void;
   hasDurableSession?(id: string): boolean;
   rollbackSessionStorage?(id: string): void;
   generateId(): string;
@@ -168,27 +171,44 @@ async function createSession(req: Request, dependencies: CompiledModuleHttpDepen
       return saved.status === "ok" ? catalog.loadBundle(saved.value.id) : saved;
     })();
   if (stored.status === "refused") return catalogFailure("session", stored);
-  const bundle = supplied?.status === "validated" ? supplied : validateCompiledModuleBundle(stored.value.artifact, stored.value.projection);
-  if (bundle.status === "refused") return downstream("session", bundle);
+    const validatedStoredBundle = validateCompiledModuleBundle(stored.value.artifact, stored.value.projection);
+    if (validatedStoredBundle.status === "refused") return downstream("session", validatedStoredBundle);
   let id = "";
   for (let attempt = 0; attempt < 4; attempt++) {
     const candidate = dependencies.generateId();
     if (!dependencies.hasSession(candidate) && !dependencies.hasDurableSession?.(candidate)) { id = candidate; break; }
   }
   if (!id) return refusal("session", "SESSION_ID_COLLISION", "could not allocate a session ID", 409);
+  let snapshotAttempt: CompiledSessionSnapshot | undefined;
   try {
     const session = dependencies.createSession(id, archetype, characterName, { personality: body.personality as string | undefined, backstory: body.backstory as string | undefined, currentGoal: body.currentGoal as string | undefined });
-    const loaded = session.loadCompiledModule(bundle.payload, bundle.projection);
+    const loaded = session.loadDurableCompiledModule(stored.value);
     if (loaded.status === "refused") {
       dependencies.rollbackSessionStorage?.(id);
       return refusal("session", loaded.code, loaded.message, loaded.code === "COMPILED_SESSION_CONFLICT" ? 409 : 422);
     }
-    dependencies.persistSession(id, session, stored.value.id);
+    // Durable snapshot publication precedes registration and the 201 acknowledgement.
+    const snapshot = session.createCompiledSessionSnapshot();
+    snapshotAttempt = snapshot;
+    dependencies.persistSession(id, session, stored.value.id, snapshot);
+    session.acknowledgeCompiledSnapshot(snapshot);
     dependencies.registerSession(id, session);
-    return json({ sessionId: id, bundleId: stored.value.id, character: session.getCharacterSummary(), summary: session.getSummary(), compiled: loaded.compiled }, 201);
+    dependencies.confirmPersistedSnapshot(snapshot);
+    return json({ sessionId: id, bundleId: stored.value.id, generation: session.getCompiledGeneration(), character: session.getCharacterSummary(), summary: session.getSummary(), compiled: loaded.compiled }, 201);
   } catch (error) {
     dependencies.unregisterSession?.(id);
-    try { dependencies.rollbackSessionStorage?.(id); } catch (rollbackError) { dependencies.logError?.(rollbackError); }
+    let rollback: CompiledSessionSnapshotResult<void> = { status: "ok", value: undefined };
+    if (snapshotAttempt) {
+      try { rollback = dependencies.rollbackPersistedSnapshot(snapshotAttempt); }
+      catch (rollbackError) { rollback = { status: "refused", code: "SNAPSHOT_STORAGE_FAILED" as const, message: rollbackError instanceof Error ? rollbackError.message : "snapshot creation rollback failed" }; }
+    }
+    if (rollback.status === "ok") {
+      try { dependencies.rollbackSessionStorage?.(id); } catch (rollbackError) { dependencies.logError?.(rollbackError); }
+    } else {
+      dependencies.logError?.(rollback);
+      dependencies.logError?.(error);
+      return refusal("session", "SESSION_CREATION_UNCERTAIN", "compiled session creation did not complete and its durable snapshot could not be safely removed", 409, rollback.code);
+    }
     dependencies.logError?.(error);
     return refusal("session", "SESSION_INTERNAL", "compiled session could not be created", 500);
   }
