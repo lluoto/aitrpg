@@ -1,10 +1,15 @@
 {
-  "tests": 3195,
-  "files": 219,
+  "tests": 3201,
+  "files": 220,
   "unwiredMethods": 84,
   "unwiredNote": "没有任何调用方的类公开方法。判法是「不许增长」而非「必须为 0」——当前 90 处绝大多数是整套没接线的子系统（经济/派系/金融/法术/职业档案），清零是另一个决定。见 scripts/diag/probe-unwired.ts 与 preflight 第 11 项。88→87：GameSession.getPlayerHistory 新增后调用了 PlayerSession.getPlayerHistory（任务5），后者从此不再是零调用方。87→86：开发·线索闸门 任务4之后 preflight 自己报出少了 1 处——核对过 probe-unwired.ts 最新产物，本轮新增的方法（incrementClueFail/getClueFailCount/resetClueFails/isCoreClue 等）全部有真实调用方，没有一个在名单里，净减 1 处不是它们贡献的；具体是哪个既有方法从此有了调用方未逐一排查，如实记录为净改善，按 preflight 提示把基线数字调下来。 86->84（开发·多人可见性 N6）：setPlayerScene 被整个删除少 1 处，getPlayersInScene 有了真调用方（player-scene-authority.test.ts）再少 1 处，两处一起解释这次的净减 2。",
   "note": "preflight 的回归基线。只打印当前条数不构成检查——少于基线就是有测试被删或被跳过，必须变红。新增测试后手动上调这个数，并在 commit message 里说明加了什么。",
   "history": [
+    {
+      "tests": 3201,
+      "files": 220,
+      "when": "Compiled GameSession integration: explicit dynamic load validates complete resolved artifacts and projections before world writes, starts at the compiled entry, mirrors settled MechanicsState one-way to world-backed investigation facts, and routes @compiled mechanism IDs through the shared execution core. Focused compiler/runtime/Barn regression: 91 pass / 9 files; full result: 3169 pass / 32 intentional skip / 0 fail."
+    },
     {
       "tests": 3195,
       "files": 219,
@@ -791,6 +796,6 @@
       "when": "P4 local verification: final full run exits 0 with 3024 pass, 32 intentional skip and 0 fail. Reconciles the existing unrecorded growth from 3038 to 3053, then adds three cases: action-specific replay charging, repeated-state replay deduplication/fresh budgets, and an explicit __proto__ resolver-location integration. Strengthens own counter=2 and JSON-restored witness replay. Four-file suite: 46 pass / 192 assertions; typecheck exits 0. Real production mutations for action-only undercharging, per-observation overcharging and unsafe counter writes each turn the intended regression red; restored production hash 00b4dddbcc3fc8f01b9068ccf471d5d5ed54728d. This count baseline does not certify whole Checkpoint-I acceptance."
     }
   ],
-  "passed": 3163,
+  "passed": 3169,
   "skipped": 32
 }

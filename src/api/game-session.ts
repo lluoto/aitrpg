@@ -15,7 +15,7 @@ import { RuleEngine } from "../engine/rule-engine";
 // 状态定义库 + 时限口径。存储仍是 `status: string[]`，这里只提供定义与推进规则。
 import { newStatus, tickStatuses } from "../rules/status-effects";
 import { RulesEngine, type RulesetId } from "../rules/rules-engine";
-import { SanityEngine, calcDamageBonus, checkMajorWound, sanOutcomeLabel } from "../rules/coc-engine";
+import { CoCEngine, SanityEngine, calcDamageBonus, checkMajorWound, sanOutcomeLabel } from "../rules/coc-engine";
 
 import { KPAgent } from "../agent/kp-agent";
 import { AgentRegistry } from "../agent/agent-registry";
@@ -48,6 +48,21 @@ import { getModule as getCustomModule } from "../rules/custom-modules/index";
 import { ModuleDataRuntimeLoader, type ModuleDataRuntimeHost } from "../module/module-data-runtime-loader";
 import type { Clue, ModuleData } from "../module/types";
 import type { RuntimeModuleReward, RuntimeNpcPersonality } from "../module/runtime-types";
+import { createResolvedCompilerArtifact, type ResolvedCompilerArtifactPayload } from "../compiler/compiler-artifact";
+import type { CompilerModuleDataProjection } from "../compiler/compiler-module-data-projection";
+import {
+  availableMechanicsPlayerActions,
+  createMechanicsStateBudget,
+  executeMechanicsAction,
+  initialMechanicsState,
+  mechanicsStateHash,
+  settleAutomaticMechanics,
+  type MechanicsAnalysisInput,
+  type MechanicsReachabilityEdge,
+  type MechanicsState,
+  type MechanicsStateBudget,
+} from "../compiler/mechanics-execution";
+import type { CheckSpec, MechanicsIR } from "../compiler/mechanics-ir";
 import { resolveSceneTarget, mentionedSceneNames, hasMovementSignalNearMention, type SceneRow } from "../play/scene-resolve";
 import { buildSceneGraph, shortestHops } from "../play/move-graph";
 import { isExplicitLeaveIntent, isConfirmReply, MODULE_ENDING_SUPPORT, GENERIC_DEPARTURE_LINES } from "../play/module-departure";
@@ -63,6 +78,108 @@ type LoadedModule = MythosModule | ModuleData;
 function isModuleData(module: LoadedModule): module is ModuleData {
   return "title" in module && Array.isArray(module.scenes);
 }
+
+/** The only compiled action syntax accepted by GameSession: `@compiled <exact mechanism ID>`. */
+export function compiledMechanicsAction(mechanismId: string): string {
+  if (!mechanismId || mechanismId.trim() !== mechanismId || /[\r\n]/.test(mechanismId)) {
+    throw new Error("compiled mechanism ID must be non-empty, trimmed, and single-line");
+  }
+  return `@compiled ${mechanismId}`;
+}
+
+function parseCompiledMechanicsAction(input: string): string | null {
+  const prefix = "@compiled ";
+  if (!input.startsWith(prefix)) return null;
+  const mechanismId = input.slice(prefix.length);
+  return mechanismId && mechanismId.trim() === mechanismId && !/[\r\n]/.test(mechanismId) ? mechanismId : null;
+}
+
+function sameIds(actual: readonly string[], expected: readonly string[]): boolean {
+  return actual.length === expected.length && [...actual].sort().every((id, index) => id === [...expected].sort()[index]);
+}
+
+function requireProjection(value: unknown, message: string): asserts value {
+  if (!value) throw new Error(message);
+}
+
+function requireText(value: unknown, message: string): asserts value is string {
+  if (typeof value !== "string" || !value.trim()) throw new Error(message);
+}
+
+function validateCompiledProjection(payload: ResolvedCompilerArtifactPayload, projection: CompilerModuleDataProjection, artifactHash: string): void {
+  requireProjection(projection && typeof projection === "object", "compiled projection is required");
+  if (projection.status !== "projected") throw new Error("compiled projection is not projected");
+  if (projection.artifact.artifactHash !== artifactHash || projection.artifact.identity.moduleId !== payload.identity.moduleId || projection.artifact.identity.documentHash !== payload.identity.documentHash || projection.artifact.identity.sourceGraphIdentity !== payload.identity.sourceGraphIdentity || projection.artifact.identity.preparedQueueHash !== payload.identity.preparedQueueHash || projection.artifact.identity.resolvedQueueHash !== payload.identity.resolvedQueueHash || projection.artifact.identity.mechanicsHash !== payload.identity.mechanicsHash) {
+    throw new Error("compiled projection artifact identity does not match resolved artifact");
+  }
+  if (projection.mechanics.moduleId !== payload.mechanicsIR.moduleId || projection.mechanics.documentHash !== payload.mechanicsIR.documentHash || projection.mechanics.sourceGraphIdentity !== payload.mechanicsIR.sourceGraphIdentity || projection.mechanics.mechanicsHash !== payload.mechanicsIR.mechanicsHash) {
+    throw new Error("compiled projection mechanics identity does not match resolved artifact");
+  }
+  if (projection.entrySceneId !== payload.analysisInput.entrySceneId || projection.module.id !== payload.identity.moduleId) {
+    throw new Error("compiled projection entry or module identity does not match resolved artifact");
+  }
+  const sceneIds = payload.mechanicsIR.symbols.sceneIds;
+  const clueIds = payload.mechanicsIR.symbols.clueIds;
+  const endingIds = payload.mechanicsIR.endings.map((ending) => ending.effects.find((effect) => effect.kind === "end_game")?.endingId ?? "");
+  if (!sameIds(projection.module.scenes.map((scene) => scene.id), sceneIds) || !sameIds(projection.module.scenes.flatMap((scene) => scene.clues.map((clue) => clue.id)), clueIds) || !sameIds(projection.module.endings.map((ending) => ending.id), endingIds)) {
+    throw new Error("compiled projection IDs do not exactly match resolved mechanics");
+  }
+  requireText(projection.module.title, "compiled projection module title is required");
+  requireText(projection.module.version, "compiled projection module version is required");
+  requireText(projection.module.era, "compiled projection module era is required");
+  requireText(projection.module.summary, "compiled projection module summary is required");
+  requireText(projection.module.meta.playerCount, "compiled projection player count is required");
+  requireText(projection.module.meta.expectedDuration, "compiled projection expected duration is required");
+  if (projection.module.meta.triggerWarnings.some((warning) => !warning.trim())) throw new Error("compiled projection trigger warnings contain blank text");
+  if (!sameIds(Object.keys(projection.sourceMap.scenes), sceneIds) || !sameIds(Object.keys(projection.sourceMap.endings), endingIds)) {
+    throw new Error("compiled projection source map does not exactly match resolved mechanics");
+  }
+  for (const scene of projection.module.scenes) {
+    requireText(scene.name, `compiled projection scene name is required: ${scene.id}`);
+    requireText(scene.description, `compiled projection scene description is required: ${scene.id}`);
+    const expected = payload.analysisInput.connections.filter((connection) => connection.fromSceneId === scene.id);
+    const actual = scene.connections.map((connection) => connection.targetSceneId).sort();
+    if (!sameIds(actual, expected.map((connection) => connection.toSceneId)) || scene.connections.some((connection) => !connection.condition.trim())) {
+      throw new Error(`compiled projection topology does not match resolved mechanics: ${scene.id}`);
+    }
+    const map = projection.sourceMap.scenes[scene.id];
+    if (!map || !sameIds(Object.keys(map.clues), scene.clues.map((clue) => clue.id)) || !sameIds(Object.keys(map.connections), expected.map((connection) => connection.id))) {
+      throw new Error(`compiled projection source map is incomplete: ${scene.id}`);
+    }
+    for (const clue of scene.clues) {
+      requireText(clue.name, `compiled projection clue name is required: ${clue.id}`);
+      requireText(clue.description, `compiled projection clue description is required: ${clue.id}`);
+      requireText(clue.revelation, `compiled projection clue revelation is required: ${clue.id}`);
+    }
+  }
+  for (const ending of projection.module.endings) {
+    requireText(ending.name, `compiled projection ending name is required: ${ending.id}`);
+    requireText(ending.description, `compiled projection ending description is required: ${ending.id}`);
+    if (ending.conditions.some((condition) => !condition.trim()) || !projection.sourceMap.endings[ending.id]) throw new Error(`compiled projection ending metadata is incomplete: ${ending.id}`);
+  }
+}
+
+interface LoadedCompiledModule {
+  payload: ResolvedCompilerArtifactPayload;
+  projection: CompilerModuleDataProjection;
+  state: MechanicsState;
+  trace: MechanicsReachabilityEdge[];
+  budget: MechanicsStateBudget;
+}
+
+export interface CompiledMechanicsSessionState {
+  moduleId: string;
+  artifactHash: string;
+  mechanicsHash: string;
+  state: MechanicsState;
+  stateHash: string;
+  trace: MechanicsReachabilityEdge[];
+  terminalEnding?: { id: string; name: string; narration: string };
+}
+
+export type CompiledModuleLoadResult =
+  | { status: "loaded"; compiled: CompiledMechanicsSessionState }
+  | { status: "refused"; code: "COMPILED_ARTIFACT_INVALID" | "COMPILED_PROJECTION_INVALID" | "COMPILED_SESSION_CONFLICT"; message: string };
 
 export interface ActionResponse {
   narrative: string;
@@ -128,6 +245,8 @@ export interface ActionResponse {
    * 该字段恒 undefined，既有调用方无需感知。
    */
   error?: { code: string; targetId?: string };
+  /** Present only on the explicit compiled-module path. */
+  compiled?: CompiledMechanicsSessionState;
 }
 
 export interface SessionSummary {
@@ -385,6 +504,8 @@ export class GameSession {
   private _moduleLoader?: MythosModuleLoader;
   private _moduleDataLoader?: ModuleDataRuntimeLoader;
   private _loadedModules: Map<string, boolean> = new Map();
+  /** One per session; MechanicsState is authoritative and WorldStateManager is its mirror. */
+  private compiledModule?: LoadedCompiledModule;
   /**
    * 建会话时 HTTP 传的 p1 扮演字段（personality/backstory/currentGoal）。
    *
@@ -528,6 +649,188 @@ export class GameSession {
       } else {
         this.session.switchActive("p1");
       }
+    }
+  }
+
+  /**
+   * Explicit dynamic compiler injection. It accepts no static module registry key
+   * and deliberately does not use ModuleDataRuntimeLoader.
+   *
+   * Validation, initial MechanicsState creation, and automatic settlement finish
+   * before the first WorldStateManager write. Thereafter MechanicsState is the
+   * mechanics authority: this method mirrors scene/visit/clue facts into the
+   * world store, and InvestigationEngine reads those world-backed clue facts
+   * without receiving a separate compiled interpreter or mutable copy.
+   */
+  loadCompiledModule(
+    payload: ResolvedCompilerArtifactPayload,
+    projection: CompilerModuleDataProjection,
+  ): CompiledModuleLoadResult {
+    if (this.compiledModule || this.registeredModules.length > 0) {
+      return { status: "refused", code: "COMPILED_SESSION_CONFLICT", message: "compiled modules require a session without another loaded module" };
+    }
+
+    let resolved: ResolvedCompilerArtifactPayload;
+    let artifactHash: string;
+    try {
+      const artifact = createResolvedCompilerArtifact(payload);
+      resolved = artifact.payload as ResolvedCompilerArtifactPayload;
+      artifactHash = artifact.artifactHash;
+    } catch (error) {
+      return { status: "refused", code: "COMPILED_ARTIFACT_INVALID", message: error instanceof Error ? error.message : String(error) };
+    }
+
+    let compiled: LoadedCompiledModule;
+    try {
+      const projectionCopy = structuredClone(projection);
+      validateCompiledProjection(resolved, projectionCopy, artifactHash);
+      const budget = createMechanicsStateBudget(resolved.analysisInput.maxStates);
+      const settled = settleAutomaticMechanics(resolved.mechanicsIR, initialMechanicsState(resolved.analysisInput), budget);
+      compiled = { payload: resolved, projection: projectionCopy, state: settled.state, trace: [...settled.steps], budget };
+    } catch (error) {
+      return { status: "refused", code: "COMPILED_PROJECTION_INVALID", message: error instanceof Error ? error.message : String(error) };
+    }
+
+    try {
+      this.installCompiledProjection(compiled.projection);
+      this.synchronizeCompiledMechanicsState(compiled.state);
+      this.compiledModule = compiled;
+      return { status: "loaded", compiled: this.getCompiledMechanicsState()! };
+    } catch (error) {
+      return { status: "refused", code: "COMPILED_SESSION_CONFLICT", message: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  getCompiledMechanicsState(): CompiledMechanicsSessionState | null {
+    const compiled = this.compiledModule;
+    if (!compiled) return null;
+    const endingId = compiled.state.terminalEndingId;
+    const ending = endingId ? compiled.projection.module.endings.find((candidate) => candidate.id === endingId) : undefined;
+    return {
+      moduleId: compiled.payload.identity.moduleId,
+      artifactHash: compiled.projection.artifact.artifactHash,
+      mechanicsHash: compiled.payload.mechanicsIR.mechanicsHash,
+      state: structuredClone(compiled.state),
+      stateHash: mechanicsStateHash(compiled.state),
+      trace: structuredClone(compiled.trace),
+      ...(ending ? { terminalEnding: { id: ending.id, name: ending.name, narration: ending.description } } : {}),
+    };
+  }
+
+  private installCompiledProjection(projection: CompilerModuleDataProjection): void {
+    for (const scene of projection.module.scenes) {
+      this.world.registerScene(scene.id, scene.name, scene.description);
+      this.world.setSceneExits(scene.id, scene.connections.map((connection) => ({ target: connection.targetSceneId, desc: connection.condition })));
+      this.sceneDisplayNames[scene.id] = scene.name;
+      this.sceneAliases[scene.id] = [scene.name];
+    }
+  }
+
+  /** Mirrors only compiler-owned facts after a settled shared-core boundary. */
+  private synchronizeCompiledMechanicsState(state: MechanicsState): void {
+    if (!this.setScene(state.currentSceneId)) throw new Error(`compiled scene could not be activated: ${state.currentSceneId}`);
+    const current = this.world.getEntity(this.activePlayerId);
+    this.world.upsertEntity(current
+      ? { ...current, position: state.currentSceneId, scene_id: state.currentSceneId }
+      : {
+        id: this.activePlayerId,
+        name: this.activeCharacter?.name ?? "调查员",
+        type: "pc",
+        hp: this.activeCharacter?.hp ?? 12,
+        maxHp: this.activeCharacter?.maxHp ?? 12,
+        ac: this.activeCharacter?.ac ?? 10,
+        status: [],
+        position: state.currentSceneId,
+        scene_id: state.currentSceneId,
+      });
+    for (const sceneId of state.visitedSceneIds) this.world.recordSceneVisit(this.activePlayerId, sceneId);
+    for (const clueId of state.foundClueIds) this.world.recordClueDiscovery(this.activePlayerId, clueId);
+  }
+
+  private compiledFailure(code: string): ActionResponse {
+    return {
+      narrative: "",
+      events: [],
+      state: this.getState(),
+      error: { code },
+      compiled: this.getCompiledMechanicsState() ?? undefined,
+    };
+  }
+
+  private executeCompiledCheck(check: Exclude<CheckSpec, { kind: "none" }>): { success: boolean; line: string } {
+    const attributeNames: Record<Extract<CheckSpec, { kind: "attribute" }> ["attribute"], string> = {
+      str: "力量", dex: "敏捷", pow: "意志", con: "体质", app: "外貌", edu: "教育", int: "智力", siz: "体型",
+    };
+    const label = check.kind === "skill" ? check.skill : attributeNames[check.attribute];
+    const skillValue = check.kind === "skill"
+      ? this.resolveSkillValue(check.skill, SKILL_DISPLAY_NAMES[check.skill] ?? check.skill)
+      : resolveCheckValue(this.activeCharacter ?? { attributes: {}, luck: 0, skillValues: {} }, label);
+    const result = CoCEngine.skillCheck(skillValue, check.difficulty);
+    this.lastDiceRoll = { expr: "d100", total: result.roll, detail: `${label}/${check.difficulty}` };
+    this.lastRolls.push({ skill: label, roll: result.roll, target: skillValue, success: result.isSuccess });
+    return {
+      success: result.isSuccess,
+      line: `🎲 ${label} ${check.difficulty} 检定 d100=${result.roll} (目标=${skillValue}%) → ${result.isSuccess ? "成功" : "失败"}`,
+    };
+  }
+
+  private selectCompiledAction(
+    ir: MechanicsIR,
+    input: MechanicsAnalysisInput,
+    state: MechanicsState,
+    mechanismId: string,
+  ): { mechanismId: string; outcome: "success" | "failure" | "failback" | "traverse"; checkLine?: string } | null {
+    const available = availableMechanicsPlayerActions(ir, input, state).filter((action) => action.mechanismId === mechanismId);
+    if (available.length === 0) return null;
+    const discovery = ir.discoveryMethods.find((candidate) => candidate.id === mechanismId);
+    if (!discovery) {
+      return available.some((action) => action.outcome === "traverse") ? { mechanismId, outcome: "traverse" } : null;
+    }
+    if (!discovery.check || discovery.check.kind === "none") return available.some((action) => action.outcome === "success") ? { mechanismId, outcome: "success" } : null;
+    if (available.some((action) => action.outcome === "failback")) return { mechanismId, outcome: "failback" };
+    const check = this.executeCompiledCheck(discovery.check);
+    return { mechanismId, outcome: check.success ? "success" : "failure", checkLine: check.line };
+  }
+
+  private actCompiled(input: string): ActionResponse {
+    const compiled = this.compiledModule!;
+    const settled = settleAutomaticMechanics(compiled.payload.mechanicsIR, compiled.state, compiled.budget);
+    if (settled.steps.length > 0) {
+      compiled.state = settled.state;
+      compiled.trace.push(...settled.steps);
+      this.synchronizeCompiledMechanicsState(compiled.state);
+    }
+    if (compiled.state.terminalEndingId) return this.compiledFailure("compiled_terminal");
+
+    const mechanismId = parseCompiledMechanicsAction(input);
+    if (!mechanismId) return this.compiledFailure("compiled_action_required");
+    const selected = this.selectCompiledAction(compiled.payload.mechanicsIR, compiled.payload.analysisInput, compiled.state, mechanismId);
+    if (!selected) return this.compiledFailure("compiled_action_unavailable");
+
+    this.round++;
+    const messages: AgentMessage[] = [{ speaker: this.activeCharacter?.name ?? "调查员", content: input, type: "action" }];
+    this._turnMessages = messages;
+    try {
+      const executed = executeMechanicsAction(compiled.payload.mechanicsIR, compiled.payload.analysisInput, compiled.state, selected);
+      compiled.trace.push(executed.edge);
+      compiled.budget.observe(executed.state);
+      const after = settleAutomaticMechanics(compiled.payload.mechanicsIR, executed.state, compiled.budget);
+      compiled.state = after.state;
+      compiled.trace.push(...after.steps);
+      this.synchronizeCompiledMechanicsState(compiled.state);
+      if (selected.checkLine) messages.push({ speaker: "系统", content: selected.checkLine, type: "system" });
+      messages.push({ speaker: "系统", content: `编译机制 ${executed.edge.mechanismId}:${executed.edge.outcome}`, type: "system" });
+      const ending = this.getCompiledMechanicsState()?.terminalEnding;
+      if (ending) {
+        this.lastNarrative = ending.narration;
+        messages.push({ speaker: "系统", content: `编译结局 ${ending.id}: ${ending.name}`, type: "system" });
+      } else {
+        this.lastNarrative = `已执行编译机制 ${executed.edge.mechanismId}。`;
+      }
+      return { ...this.buildActionResponse(messages), compiled: this.getCompiledMechanicsState()! };
+    } catch {
+      this._turnMessages = null;
+      return this.compiledFailure("compiled_execution_failed");
     }
   }
 
@@ -1693,6 +1996,10 @@ export class GameSession {
         error: { code: "unknown_target", targetId: actingPcId },
       };
     }
+    // Compiled sessions accept only their explicit codec. This interception is
+    // before legacy turn/tick/intent routing, so no hand-authored mechanic can
+    // become a second authority for a compiler-owned session.
+    if (this.compiledModule) return this.actCompiled(input);
     this.lastActiveAt = Date.now();
     if (this.dead) {
       return this.buildActionResponse([{ speaker: "系统", content: "你已经死了。请重新开始", type: "system" }]);
