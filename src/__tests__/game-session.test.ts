@@ -628,9 +628,18 @@ describe("CoC 传承系统", () => {
   });
 
   it("传承列表（空时提示）", async () => {
-    const res = await session.act("传承列表");
-    const event = res.events.find(e => e.content.includes("暂无已保存的角色"));
-    expect(event).toBeDefined();
+    const id = `empty-career-${crypto.randomUUID()}`;
+    try {
+      const emptySession = new GameSession(id, "cosmic-horror", {
+        apiKey: "sk-placeholder", baseUrl: "http://localhost:9999",
+        model: "mock", maxTokens: 1024, temperature: 0.7,
+      }, undefined, "调查员");
+      const res = await emptySession.act("传承列表");
+      const event = res.events.find(e => e.content.includes("暂无已保存的角色"));
+      expect(event).toBeDefined();
+    } finally {
+      fs.rmSync(path.join("data", "careers", id), { recursive: true, force: true });
+    }
   });
 
   it("读档（指定不存在的角色）提示未找到", async () => {

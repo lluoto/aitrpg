@@ -1,4 +1,4 @@
-import { readFileSync, rmSync } from "fs";
+import { readFileSync } from "fs";
 import { parse as parseYaml } from "yaml";
 import { loadConfig, type LLMConfig } from "../config";
 import { LLMClient, type LLMLike } from "../llm/client";
@@ -753,6 +753,7 @@ export class GameSession {
       } else {
         this.lastNarrative = `已执行编译机制 ${executed.edge.mechanismId}。`;
       }
+      this.lastActiveAt = Date.now();
       return { ...this.buildActionResponse(messages), compiled: this.getCompiledMechanicsState()! };
     } catch {
       this._turnMessages = null;
@@ -939,7 +940,6 @@ export class GameSession {
 
     if (!this.careerStore) {
       const careerDir = `data/careers/${this.id}`;
-      try { rmSync(careerDir, { recursive: true }); } catch { /* 清理临时目录：不存在或被占用都无所谓 */ }
       this.careerStore = new CareerFileStore(careerDir);
     }
     this.careerStore.saveSnapshot({
@@ -4084,7 +4084,6 @@ export class GameSession {
       }
       if (!this.careerStore) {
         const careerDir = `data/careers/${this.id}`;
-        try { rmSync(careerDir, { recursive: true }); } catch { /* 清理临时目录：不存在或被占用都无所谓，失败不影响正确性 */ }
         this.careerStore = new CareerFileStore(careerDir);
       }
       const c = this.activeCharacter;
@@ -4104,7 +4103,6 @@ export class GameSession {
     if (input.includes("传承列表") || input.includes("读档")) {
       if (!this.careerStore) {
         const dir = `data/careers/${this.id}`;
-        try { rmSync(dir, { recursive: true }); } catch { /* 清理临时目录：不存在或被占用都无所谓，失败不影响正确性 */ }
         this.careerStore = new CareerFileStore(dir);
       }
       if (input.includes("读档")) {

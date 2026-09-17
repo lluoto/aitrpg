@@ -3,9 +3,11 @@
 // 运行: bun run src/api/server.ts
 
 import { GameSession, type ActionResponse, type SessionSummary } from "./game-session";
+import { existsSync, rmSync } from "fs";
+import { join } from "path";
 import type { RulesetId } from "../rules/rules-engine";
 import { loadConfig } from "../config";
-import { saveSessionMeta, deleteSessionFile, listStoredSessions } from "./session-store";
+import { saveSessionMeta, deleteSessionFile, listStoredSessions, sessionMetaExists } from "./session-store";
 import { saveCharacter, listCharacters, type StoredCharacter } from "./character-store";
 import type { MessageType } from "../agent/types";
 import { createWsClient, removeWsClient, broadcastToSession, broadcastPerConnection, listSessionPlayerIds, wsStats, isWsRole, type WsRole, type WsConnectionData } from "./ws-handler";
@@ -14,6 +16,7 @@ import { CharacterFactory } from "../character/character-factory";
 import { createScriptedSession, getScriptedSession } from "./scripted-session";
 import { worldModelStatus } from "./world-model-status";
 import { handleCompiledModuleHttpRequest } from "./compiled-module-http";
+import type { CompilerArtifactCatalog } from "../compiler/compiler-artifact-catalog";
 import { log } from "../log";
 
 // ============================================================
@@ -29,17 +32,26 @@ function generateId(): string {
   return id;
 }
 
-function cleanupStaleSessions() {
-  const now = Date.now();
-  for (const [id, session] of sessions) {
-    if (now - session.createdAt > SESSION_TIMEOUT_MS && session.round === 0) {
-      sessions.delete(id);
+/** Delete durable metadata before removing memory so failed cleanup cannot create a listed orphan. */
+export function cleanupExpiredSessions(
+  sessionMap: Map<string, Pick<GameSession, "lastActiveAt">>,
+  options: { now?: number; timeoutMs?: number; deleteMetadata: (id: string) => void; logError?: (error: unknown) => void },
+): string[] {
+  const now = options.now ?? Date.now();
+  const timeoutMs = options.timeoutMs ?? SESSION_TIMEOUT_MS;
+  const removed: string[] = [];
+  for (const [id, session] of sessionMap) {
+    if (now - session.lastActiveAt <= timeoutMs) continue;
+    try {
+      options.deleteMetadata(id);
+      sessionMap.delete(id);
+      removed.push(id);
+    } catch (error) {
+      options.logError?.(error);
     }
   }
+  return removed;
 }
-
-// 每 5 分钟清理
-setInterval(cleanupStaleSessions, 5 * 60 * 1000);
 
 // ============================================================
 // CORS 头 // ============================================================
@@ -54,6 +66,12 @@ function corsHeaders(): Record<string, string> {
   return { ...CORS_HEADERS, "Content-Type": "application/json; charset=utf-8" };
 }
 
+function withCors(response: Response): Response {
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(CORS_HEADERS)) headers.set(name, value);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 // ============================================================
 // 路由处理
 // ============================================================
@@ -66,24 +84,9 @@ function parseUrl(pathname: string): { segments: string[]; query: URLSearchParam
   };
 }
 
-// ── Session Cleanup ──────────────────────────────────────
-// 每 5 分钟清理一次超过 30 分钟未活跃的 session
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 
-setInterval(() => {
-  const now = Date.now();
-  let cleaned = 0;
-  for (const [id, session] of sessions) {
-    if (now - session.lastActiveAt > SESSION_TIMEOUT_MS) {
-      sessions.delete(id);
-      deleteSessionFile(id);
-      cleaned++;
-    }
-  }
-  if (cleaned > 0) log.info("cleanup", `清理了 ${cleaned} 个过期会话`);
-}, CLEANUP_INTERVAL_MS);
-
-async function handleRequest(req: Request): Promise<Response> {
+export async function handleRequest(req: Request, compilerCatalog?: CompilerArtifactCatalog): Promise<Response> {
   const url = new URL(req.url);
   const { segments, query } = parseUrl(url.pathname + url.search);
   const method = req.method;
@@ -96,15 +99,24 @@ async function handleRequest(req: Request): Promise<Response> {
   const compiledResponse = await handleCompiledModuleHttpRequest(req, {
     createSession: (id, archetype, characterName, persona) => new GameSession(id, "cosmic-horror", undefined, archetype, characterName, persona),
     hasSession: (id) => sessions.has(id),
+    unregisterSession: (id) => sessions.delete(id),
     registerSession: (id, session) => sessions.set(id, session as GameSession),
-    persistSession: (id, session) => {
+    persistSession: (id, session, bundleId) => {
       const summary = session.getSummary();
-      saveSessionMeta(id, { createdAt: Date.now(), lastActiveAt: Date.now(), ruleset: "cosmic-horror", playerName: summary.playerName, scene: summary.scene, round: summary.round });
+      const compiled = session.getCompiledMechanicsState();
+      saveSessionMeta(id, { createdAt: Date.now(), lastActiveAt: Date.now(), ruleset: "cosmic-horror", playerName: summary.playerName, scene: summary.scene, round: summary.round, bundleId, compiledArtifactHash: compiled?.artifactHash, compiledMechanicsHash: compiled?.mechanicsHash });
+    },
+    hasDurableSession: (id) => sessionMetaExists(id) || existsSync(join(process.cwd(), "data", "careers", id)),
+    rollbackSessionStorage: (id) => {
+      deleteSessionFile(id);
+      const careerDir = join(process.cwd(), "data", "careers", id);
+      if (existsSync(careerDir)) rmSync(careerDir, { recursive: true });
     },
     generateId,
     logError: (error) => log.error("compiler-http", "compiled module lifecycle failed", error),
+    catalog: compilerCatalog,
   });
-  if (compiledResponse) return compiledResponse;
+  if (compiledResponse) return withCors(compiledResponse);
 
   // GET / → 前端构建产物；没有构建产物时回落到内置测试页
   if (method === "GET" && segments.length === 0) {
@@ -1131,6 +1143,14 @@ const PORT = parseInt(process.env.PORT || "3099");
 // 进来取 runAction 等纯逻辑时，绝不能在这里把 3099 端口绑起来、也不该去
 // 扫持久化的 session 文件。
 if (import.meta.main) {
+
+setInterval(() => {
+  const cleaned = cleanupExpiredSessions(sessions, {
+    deleteMetadata: deleteSessionFile,
+    logError: (error) => log.error("cleanup", "failed to remove expired session metadata", error),
+  });
+  if (cleaned.length > 0) log.info("cleanup", `清理了 ${cleaned.length} 个过期会话`);
+}, CLEANUP_INTERVAL_MS);
 
 Bun.serve<WsConnectionData, never>({
   port: PORT,

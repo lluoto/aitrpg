@@ -253,6 +253,35 @@ describe("compiled GameSession integration", () => {
     }
   });
 
+  it("rejects forged source text, fixed fields, and source-map origins before constructing runtime state", async () => {
+    const { payload, projection } = await fixture();
+    const sceneId = projection.module.scenes[0]!.id;
+    const clue = projection.module.scenes[0]!.clues[0]!;
+    const forged = [
+      (() => { const value = structuredClone(projection); value.module.scenes[0]!.name = "forged scene"; return value; })(),
+      (() => { const value = structuredClone(projection); value.module.scenes[0]!.clues[0]!.description = "forged clue"; return value; })(),
+      (() => { const value = structuredClone(projection); value.sourceMap.scenes[sceneId]!.fields.name = { kind: "artifact", artifactPath: "forged" }; return value; })(),
+      (() => { const value = structuredClone(projection); value.sourceMap.scenes[sceneId]!.clues[clue.id]!.fields.revelation = { kind: "caller_metadata", metadataPath: "forged" }; return value; })(),
+      (() => { const value = structuredClone(projection); (value.module as any).ruleset = "dnd5e"; return value; })(),
+      (() => { const value = structuredClone(projection); (value.module as any).npcs = [{ id: "forged" }]; return value; })(),
+    ];
+    for (const value of forged) {
+      const target = session(`compiled-forged-${crypto.randomUUID()}`);
+      expect(target.loadCompiledModule(payload, value).status).toBe("refused");
+    }
+  });
+
+  it("refreshes activity only after an accepted compiled action", async () => {
+    const { payload, projection } = await fixture();
+    const target = session(`compiled-activity-${crypto.randomUUID()}`);
+    expect(target.loadCompiledModule(payload, projection).status).toBe("loaded");
+    target.lastActiveAt = 1;
+    expect((await target.act(compiledMechanicsAction("not-available"))).error?.code).toBe("compiled_action_unavailable");
+    expect(target.lastActiveAt).toBe(1);
+    expect((await target.act(compiledMechanicsAction(ids(payload).parent))).error).toBeUndefined();
+    expect(target.lastActiveAt).toBeGreaterThan(1);
+  });
+
   it("keeps the shared-core call as a static mutation sentinel", () => {
     const source = readFileSync("src/api/game-session.ts", "utf8");
     const requiresSharedCore = (value: string) => value.includes("executeMechanicsAction(compiled.payload.mechanicsIR") && value.includes("settleAutomaticMechanics(compiled.payload.mechanicsIR");

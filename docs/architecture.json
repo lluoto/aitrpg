@@ -544,9 +544,9 @@
               "（入口，无导出）"
             ],
             [
-              "src/api/compiled-module-http.ts / compiled-module-bundle.ts",
-              "编译模组 HTTP 编排与共享运行时 bundle 边界：限制 PDF/JSON 请求体，调用公共 compiler facade 与 projection，恢复 resolved artifact 并验证投影后才创建、加载、登记和持久化 GameSession；不解释 MechanicsIR",
-              "handleCompiledModuleHttpRequest, validateCompiledModuleBundle, COMPILER_HTTP_BODY_LIMIT_BYTES"
+              "src/api/compiled-module-http.ts / compiled-module-bundle.ts / src/compiler/compiler-artifact-catalog.ts",
+              "编译模组 HTTP 编排、canonical bundle 边界与不可变本地 catalog：流式限制 PDF/JSON 请求，投影由其 owner 重新投影并 canonical 比较；创建会话先校验、构造、加载、持久化再登记。prepare/resolve 保留对象响应并返回 ID，resolve/session 接受互斥对象或 ID 输入；catalog 在 data/compiler-catalog（可配置）用配额、无覆盖发布和读时完整 artifact/projection 重验保存 prepared 与 resolved bundle，不解释 MechanicsIR",
+              "handleCompiledModuleHttpRequest, validateCompiledModuleBundle, validateCanonicalCompilerModuleProjection, CompilerArtifactCatalog, COMPILER_HTTP_BODY_LIMIT_BYTES"
             ],
             [
               "src/api/game-session.ts",

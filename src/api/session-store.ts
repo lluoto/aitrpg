@@ -2,7 +2,7 @@
 // Session 持久化存储
 // ============================================================
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync, unlinkSync } from "fs";
 import { join } from "path";
 
 const BASE_DIR = join(process.cwd(), "data", "sessions");
@@ -11,10 +11,27 @@ function ensureDir() {
   if (!existsSync(BASE_DIR)) mkdirSync(BASE_DIR, { recursive: true });
 }
 
+export function mergeSessionMetadata(existing: unknown, patch: Record<string, unknown>): Record<string, unknown> {
+  return { ...(existing && typeof existing === "object" && !Array.isArray(existing) ? existing as Record<string, unknown> : {}), ...patch };
+}
+
 /** 写回磁盘：game-session的路由/元数据快照足以在重启时重建摘要 */
 export function saveSessionMeta(id: string, meta: Record<string, unknown>): void {
   ensureDir();
-  writeFileSync(join(BASE_DIR, `${id}.json`), JSON.stringify(meta, null, 2), "utf-8");
+  const file = join(BASE_DIR, `${id}.json`);
+  const merged = mergeSessionMetadata(loadSessionMeta(id), meta);
+  const temp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    writeFileSync(temp, JSON.stringify(merged, null, 2), "utf-8");
+    renameSync(temp, file);
+  } finally {
+    if (existsSync(temp)) unlinkSync(temp);
+  }
+}
+
+/** Durable-ID collision check used before constructors that may create session files. */
+export function sessionMetaExists(id: string): boolean {
+  return existsSync(join(BASE_DIR, `${id}.json`));
 }
 
 /** 读取已持久化的 session 列表 */
