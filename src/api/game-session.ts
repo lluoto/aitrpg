@@ -48,8 +48,9 @@ import { getModule as getCustomModule } from "../rules/custom-modules/index";
 import { ModuleDataRuntimeLoader, type ModuleDataRuntimeHost } from "../module/module-data-runtime-loader";
 import type { Clue, ModuleData } from "../module/types";
 import type { RuntimeModuleReward, RuntimeNpcPersonality } from "../module/runtime-types";
-import { createResolvedCompilerArtifact, type ResolvedCompilerArtifactPayload } from "../compiler/compiler-artifact";
+import type { ResolvedCompilerArtifactPayload } from "../compiler/compiler-artifact";
 import type { CompilerModuleDataProjection } from "../compiler/compiler-module-data-projection";
+import { validateCompiledModuleBundle } from "./compiled-module-bundle";
 import {
   availableMechanicsPlayerActions,
   createMechanicsStateBudget,
@@ -92,71 +93,6 @@ function parseCompiledMechanicsAction(input: string): string | null {
   if (!input.startsWith(prefix)) return null;
   const mechanismId = input.slice(prefix.length);
   return mechanismId && mechanismId.trim() === mechanismId && !/[\r\n]/.test(mechanismId) ? mechanismId : null;
-}
-
-function sameIds(actual: readonly string[], expected: readonly string[]): boolean {
-  return actual.length === expected.length && [...actual].sort().every((id, index) => id === [...expected].sort()[index]);
-}
-
-function requireProjection(value: unknown, message: string): asserts value {
-  if (!value) throw new Error(message);
-}
-
-function requireText(value: unknown, message: string): asserts value is string {
-  if (typeof value !== "string" || !value.trim()) throw new Error(message);
-}
-
-function validateCompiledProjection(payload: ResolvedCompilerArtifactPayload, projection: CompilerModuleDataProjection, artifactHash: string): void {
-  requireProjection(projection && typeof projection === "object", "compiled projection is required");
-  if (projection.status !== "projected") throw new Error("compiled projection is not projected");
-  if (projection.artifact.artifactHash !== artifactHash || projection.artifact.identity.moduleId !== payload.identity.moduleId || projection.artifact.identity.documentHash !== payload.identity.documentHash || projection.artifact.identity.sourceGraphIdentity !== payload.identity.sourceGraphIdentity || projection.artifact.identity.preparedQueueHash !== payload.identity.preparedQueueHash || projection.artifact.identity.resolvedQueueHash !== payload.identity.resolvedQueueHash || projection.artifact.identity.mechanicsHash !== payload.identity.mechanicsHash) {
-    throw new Error("compiled projection artifact identity does not match resolved artifact");
-  }
-  if (projection.mechanics.moduleId !== payload.mechanicsIR.moduleId || projection.mechanics.documentHash !== payload.mechanicsIR.documentHash || projection.mechanics.sourceGraphIdentity !== payload.mechanicsIR.sourceGraphIdentity || projection.mechanics.mechanicsHash !== payload.mechanicsIR.mechanicsHash) {
-    throw new Error("compiled projection mechanics identity does not match resolved artifact");
-  }
-  if (projection.entrySceneId !== payload.analysisInput.entrySceneId || projection.module.id !== payload.identity.moduleId) {
-    throw new Error("compiled projection entry or module identity does not match resolved artifact");
-  }
-  const sceneIds = payload.mechanicsIR.symbols.sceneIds;
-  const clueIds = payload.mechanicsIR.symbols.clueIds;
-  const endingIds = payload.mechanicsIR.endings.map((ending) => ending.effects.find((effect) => effect.kind === "end_game")?.endingId ?? "");
-  if (!sameIds(projection.module.scenes.map((scene) => scene.id), sceneIds) || !sameIds(projection.module.scenes.flatMap((scene) => scene.clues.map((clue) => clue.id)), clueIds) || !sameIds(projection.module.endings.map((ending) => ending.id), endingIds)) {
-    throw new Error("compiled projection IDs do not exactly match resolved mechanics");
-  }
-  requireText(projection.module.title, "compiled projection module title is required");
-  requireText(projection.module.version, "compiled projection module version is required");
-  requireText(projection.module.era, "compiled projection module era is required");
-  requireText(projection.module.summary, "compiled projection module summary is required");
-  requireText(projection.module.meta.playerCount, "compiled projection player count is required");
-  requireText(projection.module.meta.expectedDuration, "compiled projection expected duration is required");
-  if (projection.module.meta.triggerWarnings.some((warning) => !warning.trim())) throw new Error("compiled projection trigger warnings contain blank text");
-  if (!sameIds(Object.keys(projection.sourceMap.scenes), sceneIds) || !sameIds(Object.keys(projection.sourceMap.endings), endingIds)) {
-    throw new Error("compiled projection source map does not exactly match resolved mechanics");
-  }
-  for (const scene of projection.module.scenes) {
-    requireText(scene.name, `compiled projection scene name is required: ${scene.id}`);
-    requireText(scene.description, `compiled projection scene description is required: ${scene.id}`);
-    const expected = payload.analysisInput.connections.filter((connection) => connection.fromSceneId === scene.id);
-    const actual = scene.connections.map((connection) => connection.targetSceneId).sort();
-    if (!sameIds(actual, expected.map((connection) => connection.toSceneId)) || scene.connections.some((connection) => !connection.condition.trim())) {
-      throw new Error(`compiled projection topology does not match resolved mechanics: ${scene.id}`);
-    }
-    const map = projection.sourceMap.scenes[scene.id];
-    if (!map || !sameIds(Object.keys(map.clues), scene.clues.map((clue) => clue.id)) || !sameIds(Object.keys(map.connections), expected.map((connection) => connection.id))) {
-      throw new Error(`compiled projection source map is incomplete: ${scene.id}`);
-    }
-    for (const clue of scene.clues) {
-      requireText(clue.name, `compiled projection clue name is required: ${clue.id}`);
-      requireText(clue.description, `compiled projection clue description is required: ${clue.id}`);
-      requireText(clue.revelation, `compiled projection clue revelation is required: ${clue.id}`);
-    }
-  }
-  for (const ending of projection.module.endings) {
-    requireText(ending.name, `compiled projection ending name is required: ${ending.id}`);
-    requireText(ending.description, `compiled projection ending description is required: ${ending.id}`);
-    if (ending.conditions.some((condition) => !condition.trim()) || !projection.sourceMap.endings[ending.id]) throw new Error(`compiled projection ending metadata is incomplete: ${ending.id}`);
-  }
 }
 
 interface LoadedCompiledModule {
@@ -670,23 +606,13 @@ export class GameSession {
       return { status: "refused", code: "COMPILED_SESSION_CONFLICT", message: "compiled modules require a session without another loaded module" };
     }
 
-    let resolved: ResolvedCompilerArtifactPayload;
-    let artifactHash: string;
-    try {
-      const artifact = createResolvedCompilerArtifact(payload);
-      resolved = artifact.payload as ResolvedCompilerArtifactPayload;
-      artifactHash = artifact.artifactHash;
-    } catch (error) {
-      return { status: "refused", code: "COMPILED_ARTIFACT_INVALID", message: error instanceof Error ? error.message : String(error) };
-    }
-
+    const bundle = validateCompiledModuleBundle(payload, projection);
+    if (bundle.status === "refused") return bundle;
     let compiled: LoadedCompiledModule;
     try {
-      const projectionCopy = structuredClone(projection);
-      validateCompiledProjection(resolved, projectionCopy, artifactHash);
-      const budget = createMechanicsStateBudget(resolved.analysisInput.maxStates);
-      const settled = settleAutomaticMechanics(resolved.mechanicsIR, initialMechanicsState(resolved.analysisInput), budget);
-      compiled = { payload: resolved, projection: projectionCopy, state: settled.state, trace: [...settled.steps], budget };
+      const budget = createMechanicsStateBudget(bundle.payload.analysisInput.maxStates);
+      const settled = settleAutomaticMechanics(bundle.payload.mechanicsIR, initialMechanicsState(bundle.payload.analysisInput), budget);
+      compiled = { payload: bundle.payload, projection: bundle.projection, state: settled.state, trace: [...settled.steps], budget };
     } catch (error) {
       return { status: "refused", code: "COMPILED_PROJECTION_INVALID", message: error instanceof Error ? error.message : String(error) };
     }

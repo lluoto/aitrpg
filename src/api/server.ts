@@ -13,6 +13,7 @@ import { listSavedModules, loadModuleFile, saveModuleFile, deleteModuleFile, par
 import { CharacterFactory } from "../character/character-factory";
 import { createScriptedSession, getScriptedSession } from "./scripted-session";
 import { worldModelStatus } from "./world-model-status";
+import { handleCompiledModuleHttpRequest } from "./compiled-module-http";
 import { log } from "../log";
 
 // ============================================================
@@ -92,6 +93,19 @@ async function handleRequest(req: Request): Promise<Response> {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
+  const compiledResponse = await handleCompiledModuleHttpRequest(req, {
+    createSession: (id, archetype, characterName, persona) => new GameSession(id, "cosmic-horror", undefined, archetype, characterName, persona),
+    hasSession: (id) => sessions.has(id),
+    registerSession: (id, session) => sessions.set(id, session as GameSession),
+    persistSession: (id, session) => {
+      const summary = session.getSummary();
+      saveSessionMeta(id, { createdAt: Date.now(), lastActiveAt: Date.now(), ruleset: "cosmic-horror", playerName: summary.playerName, scene: summary.scene, round: summary.round });
+    },
+    generateId,
+    logError: (error) => log.error("compiler-http", "compiled module lifecycle failed", error),
+  });
+  if (compiledResponse) return compiledResponse;
+
   // GET / → 前端构建产物；没有构建产物时回落到内置测试页
   if (method === "GET" && segments.length === 0) {
     const index = await serveStatic("/index.html");
@@ -106,6 +120,9 @@ async function handleRequest(req: Request): Promise<Response> {
       version: "0.1.0",
       endpoints: [
         "POST /api/sessions — 创建游戏会话",
+        "POST /api/compiler/prepare?moduleId=:id — 准备 PDF 编译产物",
+        "POST /api/compiler/resolve — 解析并投影编译产物",
+        "POST /api/sessions/compiled — 创建编译模组会话",
         "GET /api/sessions — 列出会话",
         "GET /api/sessions/:id — 会话摘要",
         "POST /api/sessions/:id/action — 执行玩家行动",
