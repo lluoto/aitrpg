@@ -8,12 +8,12 @@ the current implementation boundary, not a new public compile entry point.
 | Milestone | Status | Verified result |
 | --- | --- | --- |
 | Source structure through draft and question queue | complete | DocumentIR evidence, SourceFactGraph, deterministic marked-item draft, and evidence-bound questions remain separate from runtime module loading. |
-| Checkpoint I: hints through closed-world analysis and P4 execution semantics | committed and pushed | The A/B/C delivery stack ending at `5095efe` is on `origin/master`. |
+| Checkpoint I: hints through closed-world analysis and P4 execution semantics | committed and pushed | The full compiler delivery through `9354054` is on `master` and `origin/master`. |
 | Diagnostics process simulation | complete | Diagnostics retain private `WeakMap` lineage; detached process bundles still fail closed. |
 | Checkpoint II: local artifact persistence | committed and pushed | Versioned JSON-safe prepared/resolved envelopes regenerate and compare compiler state on restore, use a distinct canonical artifact identity, and save atomically. |
 | Checkpoint III: public compiler entry end-to-end validation | committed and pushed | Typed synthetic-pages and PDF-bytes preparation share the DocumentIR-to-artifact chain; resolve validates a restored prepared artifact before returning durable mechanically closed output. |
-| ModuleData presentation projection | implemented, uncommitted | Complete resolved artifacts project source-backed presentation data with explicit caller metadata, artifact/mechanics identities, and a separate evidence map. It is not runtime loading. |
-| GameSession compiled runtime consumption | implemented, uncommitted | Explicit dynamic injection validates the complete resolved artifact and projection before host writes, starts at the compiled entry, and routes `@compiled <mechanismId>` through the shared core. Legacy loaders and drivers remain separate. |
+| ModuleData presentation projection | committed and pushed | `107c99f` projects complete resolved artifacts into source-backed presentation data with explicit caller metadata, artifact/mechanics identities, and a separate evidence map. It is not runtime loading. |
+| GameSession compiled runtime consumption | committed and pushed | `9354054` adds explicit dynamic loading that validates the complete resolved artifact and projection before host writes, starts at the compiled entry, and routes `@compiled <mechanismId>` through the shared core. Legacy loaders and drivers remain separate. |
 | Later milestone: broader runtime consumption | out of scope | HTTP/CLI wiring, world-model/model-memory integration, content breadth, and migration of hand-authored modules remain after this isolated GameSession proof. |
 
 ## Checkpoint I contract
@@ -116,10 +116,10 @@ unlock gating, ending-ID separation, heading-bound default-policy substitution,
 automatic conflict/cycle handling, terminal-recovery loops, state-relative
 failure-policy risks, and replayable shortest witnesses. The agreed
 policy/provenance and process-summary audit is now verified. `bb42ef4` is
-pushed; Group A (`906ef06`) and Group B (`1fea0b4`) are committed locally.
-The delivery stack is pushed. Checkpoint II accepts durable artifact validation.
-Checkpoint III accepts source-to-artifact compilation only. ModuleData projection
-now accepts presentation-only output; neither is runtime acceptance.
+pushed; the full A/B/C, persistence, public API, projection and isolated
+GameSession chain ends at `9354054` on `master` and `origin/master`. The accepted
+boundary reaches the explicit isolated GameSession proof; it is not broader
+runtime/content migration acceptance.
 Repository regression evidence is recorded in the active handoff.
 
 Local P4 verification now includes action-specific replay charging, real
@@ -171,3 +171,12 @@ fields come only from exact caller metadata and the wrapper keeps artifact,
 mechanics and evidence mappings separate from `ModuleData.provenance`.
 
 GameSession runtime evidence: `GameSession.loadCompiledModule(payload, projection)` recreates and validates the complete resolved artifact, validates projection identities/topology/source-map coverage, settles initial mechanics, then makes the first world write. `MechanicsState` is the mechanics authority; settled scene, visit, and clue facts are mirrored to `WorldStateManager`, which is also the only discovery store read by `InvestigationEngine`. The strict action codec is `@compiled <exact mechanismId>`; checked discoveries use `CoCEngine.skillCheck` at their declared difficulty, then map that result to the shared-core action outcome. Ending IDs come from MechanicsIR and narration from validated projection metadata. Terminal sessions reject later actions. The direct core replay trace matches mechanism IDs and state hashes. Focused regression: 91 pass / 9 files; plain full result: 3169 pass / 32 intentional skip / 0 fail, 3201 tests across 220 files. A temporary mutation that bypassed `executeMechanicsAction` made the terminal integration test fail with `compiled_execution_failed`, then was restored. Real world-model loading remains intentionally unverified.
+
+Current boundary: artifacts retain their distinct canonical identity and complete
+regeneration contract; the public API accepts synthetic pages/PDF bytes and
+resolves only validated prepared artifacts; projection remains presentation-only;
+and GameSession dynamically validates before world writes and routes exact
+`@compiled <mechanismId>` actions through the shared core. Broader HTTP/CLI
+wiring, world-model/model-memory integration, content breadth, hand-authored
+module migration, legacy loader/ScriptedSession/CLI consumption, and real
+world-model loading remain outside this delivery.

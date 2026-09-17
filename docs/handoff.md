@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-17 02:47  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-17 04:44  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— 自主 AI RPG 引擎：模组机制编译为确定性、可验证的执行结构，
-规则与状态由代码管理，LLM 只提出候选与叙事。**当前 HEAD**：c0d3cb4 feat: add public compiler artifact API  ·  **测试**：3195 条 / 219 文件，全绿（基线 3195，一致）
+规则与状态由代码管理，LLM 只提出候选与叙事。**当前 HEAD**：9354054 feat: integrate compiled artifacts with GameSession  ·  **测试**：3201 条 / 220 文件，全绿（基线 3201，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -14,12 +14,12 @@
 ## 编译闭环检查点 I 交接
 
 `docs/compiler-master-plan.md` 是编译链的唯一主控计划。检查点 I 是 hints → accepted
-interpretations → MechanicsIR → closed_world 与 P4 执行语义，当前为**A/B/C、Checkpoint II 与 Checkpoint III 均已推送至 `origin/master`（`c0d3cb4`）；ModuleData projection 已验证但尚未提交，且没有接入运行时**；P4、
+interpretations → MechanicsIR → closed_world 与 P4 执行语义，当前为**A/B/C、Checkpoint II、Checkpoint III、ModuleData projection 与隔离的 compiled GameSession proof 均已通过 `9354054` 推送至 `origin/master`**；P4、
 default audit/schema substitution、图关系/location provenance、foreign policy override 和
 脚本摘要/进程分类均有反例、真实生产变异和独立复核。没有
 实现 artifact 保存/恢复、公开编译入口、GameSession/世界模型/模型记忆接线或外部模型探测。
 
-Checkpoint II 的 prepared/resolved envelope 仍使用独立 canonical artifact hash，恢复时重建 queue 和完整 resolve 结果并逐项比较，存储采用 flushed sibling temp 后 replace；diagnostics 的 private `WeakMap` lineage 未放宽。Checkpoint III 只公开 synthetic-pages/PDF-bytes 到 durable artifact 的两阶段 facade。ModuleData projection 只接收完整 resolved artifact，投影 source-backed presentation fields，要求 caller metadata 并在 wrapper 保留 artifact/mechanics identity 和 evidence map；没有加载进 ModuleDataRuntimeLoader 或 GameSession。plain 全量结果为 3195 条 / 219 文件，3163 pass / 32 intentional skip / 0 fail；真实世界模型加载仍有意未验证。GameSession 集成仍 deferred，必须另开 scoped task。
+正式证据为 3201 条 / 220 文件，3169 pass / 32 intentional skip / 0 fail。Checkpoint II 的 prepared/resolved envelope 使用独立 canonical artifact hash，恢复时重建 queue 和完整 resolve 结果并逐项比较；Checkpoint III 的 facade 接收 synthetic-pages/PDF bytes 并只解析验证后的 prepared artifact；projection 仅投影 presentation fields，保留 artifact/mechanics/evidence identities；GameSession 以显式动态 compiled load 在世界写入前验证，并以 `@compiled <mechanismId>` 经共享核心执行。diagnostics 的 private `WeakMap` lineage 未放宽。真实世界模型加载仍有意未验证；更广泛的 HTTP/CLI、world-model/model-memory、内容迁移、legacy loader/ScriptedSession/CLI 消费仍在本交付范围外。
 
 定向命令：`bun test ./src/__tests__/compiler-closure.test.ts ./src/__tests__/mechanics-ir.test.ts ./src/__tests__/deterministic-template-compiler.test.ts ./src/__tests__/compiler-question-queue.test.ts ./src/__tests__/compile-hint-resolution.test.ts ./src/__tests__/mechanics-reachability.test.ts ./src/__tests__/diag-script-process.test.ts ./src/__tests__/diag-preflight-checks.test.ts`。
 结果为 261 pass / 0 fail / 789 expect / 8 files；`bun run typecheck` 退出 0。
@@ -64,6 +64,8 @@ core 前缀在预算 2 成功；合法两状态循环重复重放只计两个 ha
 报告不是本轮阻塞，不能据此变更依赖或 Git 配置。`docs/notes/index.json` 有并行改动，故未重建；
 新增的 engine note 尚未进入索引，
 依赖索引的 open/warn 列表可能滞后，留待拥有该并行改动的一方刷新。
+
+
 
 
 
@@ -226,7 +228,7 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 用法：跑局类脚本都收 `[局数] [起始局号]`，
 `bun scripts/diag/diag-downed.ts 3 4` = 第 4~6 局，便于分批跑而不重叠。
 
-## 手上还挂着的（22）
+## 手上还挂着的（21）
 
 - ️ 「引擎别再替玩家挪窝」这一步单独做不成立（2026-08-20）
   `docs/notes/engine.md:514`
@@ -270,11 +272,11 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
   `docs/notes/ingest.md:1718`
 - 展示格式渗进输出契约——这是第三次（2026-09-02）
   `docs/notes/ingest.md:1746`
-- 数据化躯体建模等待原始描述（2026-09-06）
-  `docs/notes/world-model.md:56`
 
 ## 最近做了什么
 
+- 9354054 feat: integrate compiled artifacts with GameSession
+- 107c99f feat: project compiler artifacts to ModuleData
 - c0d3cb4 feat: add public compiler artifact API
 - 4c1f08d feat: persist validated compiler artifacts
 - 5095efe feat: add deterministic compiler process simulation
@@ -285,8 +287,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - 038134c fix: align Cthulhu dataset manifest paths
 - 60f7061 test: reject unsupported compile hint kinds
 - abc6747 fix: bind policy substitutions to discovery location
-- 90024ec fix: validate hint declarations before resolution
-- 5e2b721 feat: separate hint declarations from candidates
 
 ## 代码地图
 
