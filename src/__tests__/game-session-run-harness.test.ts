@@ -22,8 +22,6 @@ import { runGameSessionScript, type GameSessionScriptStep } from "../diagnostics
 import { END_NARRATIONS } from "../module/barn-of-premier";
 
 function makeSession(id: string): GameSession {
-  process.env.LLM_API_KEY = "";
-  process.env.OPENAI_API_KEY = "";
   return new GameSession(id, "cosmic-horror", {
     apiKey: "sk-placeholder", baseUrl: "http://localhost:9999", model: "mock", maxTokens: 1024, temperature: 0.7,
   }, undefined, "调查员");
@@ -36,8 +34,6 @@ function makeSession(id: string): GameSession {
  * （实测过，见 pendingConfirm 认人那组用例的注释）。
  */
 function makeMultiPcSession(id: string): GameSession {
-  process.env.LLM_API_KEY = "";
-  process.env.OPENAI_API_KEY = "";
   return new GameSession(id, "cosmic-horror", {
     apiKey: "sk-placeholder", baseUrl: "http://localhost:9999", model: "mock", maxTokens: 1024, temperature: 0.7,
   }, "investigator", "甲");
@@ -47,6 +43,13 @@ const LOAD_MODULE: GameSessionScriptStep = { input: "加载模组 普瑞米尔�
 const OPTS = { seed: 20260830, timeoutMs: 30_000, maxSteps: 100 };
 
 describe("确定性：同 seed+同脚本跑两次，逐回合输出完全相同，draws 也相同", () => {
+  it("构造与脚本运行不修改全局 LLM 环境", async () => {
+    const before = { llm: process.env.LLM_API_KEY, openai: process.env.OPENAI_API_KEY };
+    const result = await runGameSessionScript(makeSession("environment-isolation"), [LOAD_MODULE], OPTS);
+    expect(result.threw).toBe(false);
+    expect({ llm: process.env.LLM_API_KEY, openai: process.env.OPENAI_API_KEY }).toEqual(before);
+  });
+
   it("两次独立会话（各自加载模组+移动+侦查）产生逐字相同的快照序列", async () => {
     const script: GameSessionScriptStep[] = [
       LOAD_MODULE,
@@ -302,7 +305,7 @@ describe("pendingConfirm 认人：compound-move 只认发起的 PC，leave 谁�
       LOAD_MODULE,
       { input: "创建队友 乙 investigator" }, // p2，默认以 p1 身份发出这条指令
       { input: "检查加比的拖车房里的床底和柜子，看有没有藏东西。", pcId: "p1" }, // p1 开门
-      { input: "陈岳跟菲碧打听一下加比最近的近况", pcId: "p2" }, // p2 无关行动
+      { input: "跟菲碧说话", pcId: "p2" }, // p2 无关行动，走已覆盖的 talk parser
       { input: "加比的拖车房", pcId: "p1" }, // p1 回答
     ];
     const r = await runGameSessionScript(session, script, OPTS);
@@ -321,8 +324,10 @@ describe("pendingConfirm 认人：compound-move 只认发起的 PC，leave 谁�
     const p2Sys = p2Step.events.filter((e) => e.speaker === "系统").map((e) => e.content).join("\n");
     expect(p2Sys).toContain("p1");
     expect(p2Sys).toContain("没有回答");
-    const p2Action = p2Step.events.find((e) => e.type === "action" && e.content.includes("菲碧"));
-    expect(p2Action).toBeDefined(); // p2 自己的输入被当成自己的行动记下了
+    expect(r.timedOut).toBe(false);
+    expect(r.hitStepCap).toBe(false);
+    const dialogue = p2Step.events.find((e) => e.type === "dialogue" && e.speaker === "菲碧·特里坎");
+    expect(dialogue).toBeDefined(); // p2 的输入真的走到在场 NPC 对话，不是只记 action 回声
 
     // p1 随后回答仍然生效：真的移动了。
     const answerStep = r.steps[4];

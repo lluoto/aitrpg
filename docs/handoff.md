@@ -1,12 +1,12 @@
 # 接手说明
 
-> 生成于 2026-09-17 00:08  ·  刷新：`bun scripts/handoff.ts`
+> 生成于 2026-09-17 00:40  ·  刷新：`bun scripts/handoff.ts`
 > 状态快照看 `docs/now.md`；这份讲的是**怎么接手**。
 
 ## 这是什么
 
 `C:\aitrpg\poc` —— 自主 AI RPG 引擎：模组机制编译为确定性、可验证的执行结构，
-规则与状态由代码管理，LLM 只提出候选与叙事。**当前 HEAD**：906ef06 test: make Barn source audit reproducible  ·  **测试**：3160 条 / 215 文件，全绿（基线 3160，一致）
+规则与状态由代码管理，LLM 只提出候选与叙事。**当前 HEAD**：1fea0b4 fix: harden compiler delivery verification  ·  **测试**：3179 条 / 216 文件，全绿（基线 3179，一致）
 
 三条并行的局面驱动是**有意为之**，不是重复实现：
 剧本杀（`play-module.ts`）／自由跑团（`api/game-session.ts`）／命令行（`index.ts`）。
@@ -14,15 +14,20 @@
 ## 编译闭环检查点 I 交接
 
 `docs/compiler-master-plan.md` 是编译链的唯一主控计划。检查点 I 是 hints → accepted
-interpretations → MechanicsIR → closed_world 与 P4 执行语义，当前为**检查点 I 已作为 `bb42ef4` 提交并推送；Group A（`906ef06`）已本地提交但尚未单独推送；Group B 已验证但尚未提交**：P4、
+interpretations → MechanicsIR → closed_world 与 P4 执行语义，当前为**`bb42ef4` 已在 `origin/master`；Group A（`906ef06`）和 Group B（`1fea0b4`）均已本地提交，三提交交付栈等待单独 push 授权；Group C 已完成最终审计并以本快照收束交付**；P4、
 default audit/schema substitution、图关系/location provenance、foreign policy override 和
 脚本摘要/进程分类均有反例、真实生产变异和独立复核。没有
 实现 artifact 保存/恢复、公开编译入口、GameSession/世界模型/模型记忆接线或外部模型探测。
 
+本快照的 plain 全量结果为 3179 条 / 216 文件，3147 pass / 32 intentional skip / 0 fail；真实世界模型加载仍有意未验证。artifact persistence、公开 compiler API、ModuleData projection 和 GameSession 集成均仍 deferred，必须另开 scoped task。
+
 定向命令：`bun test ./src/__tests__/compiler-closure.test.ts ./src/__tests__/mechanics-ir.test.ts ./src/__tests__/deterministic-template-compiler.test.ts ./src/__tests__/compiler-question-queue.test.ts ./src/__tests__/compile-hint-resolution.test.ts ./src/__tests__/mechanics-reachability.test.ts ./src/__tests__/diag-script-process.test.ts ./src/__tests__/diag-preflight-checks.test.ts`。
 结果为 261 pass / 0 fail / 789 expect / 8 files；`bun run typecheck` 退出 0。
-新 HEAD 候选的全量 `bun test` 直接 argv 子进程退出 0：3110 pass / 39 skip / 0 fail，3149 条 / 215 文件。候选未含 ignored 的本地 `tools/` fixtures，故比真实工作树多 7 条已有 intentional skip。
-改动前 preflight 退出 0，基线从 3056/214 按成功全量结果上调到 3149/215；未降基线、加 skip 或减弱断言。
+交付记录补正后的诊断回归为 179 pass / 0 fail / 511 expect / 2 files；`bun run typecheck` 退出 0。
+全量 `bun test` 直接 argv 子进程退出 0：3120 pass / 32 skip / 0 fail，3152 条 / 215 文件。
+baseline 从 3149/215 更新为 3152/215，并记录 pass=3120、skip=32；now/preflight 现在都会拒绝通过数下降或 skip 数变化，不能再用相同总数掩盖 pass→skip。真实变异：恢复 now 自比 baseline 时 `now: lower test count` 变红；禁用 skip 比较时 pass→skip 判据变红，均已还原。ending rule 的机制 ID 现必须不同于 `end_game.endingId`；删掉拒绝检查时对应 parser 回归变红，已还原。
+
+最终 compiler-process closeout：plain `bun test` 为 3147 pass / 32 intentional skip / 0 fail，3179 条 / 216 文件；plain preflight 通过。共享 MechanicsIR core 的 direct action 必须先完成 terminal/automatic settlement，state budget 只暴露冻结 count/observe，resolved diagnostics bundle 必须匹配私有 in-memory lineage 并完整重解。测试 preload 默认将世界模型路径指向 UUID 缺失文件；真实世界模型加载需显式 opt-in，未在本轮验证。
 
 本轮 compiler 修复：默认项先用原始 source symbols 做完整 schema/结构/audit 校验再替代，
 绑定核对 canonical clue/scene/mechanic/interpretation 身份、实际子关系及 review evidence。
@@ -262,6 +267,7 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 
 ## 最近做了什么
 
+- 1fea0b4 fix: harden compiler delivery verification
 - 906ef06 test: make Barn source audit reproducible
 - bb42ef4 feat: complete evidence-bound compiler checkpoint
 - 9cf3b7f docs: retire ignored legacy tool reference
@@ -273,7 +279,6 @@ subject 英文祈使句 + conventional 前缀（feat/fix/docs/test/refactor/chor
 - 41d688f feat: apply validated compiler hints
 - 53e6a0a docs: define compiler question queue boundaries
 - e8e4a9b feat: build compiler question queues
-- cbcc031 docs: define deterministic template boundaries
 
 ## 代码地图
 

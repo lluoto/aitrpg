@@ -1,5 +1,6 @@
 # bun test 的预载 —— 见 scripts/test-preload.ts 的说明：
-# 让测试与机器本地的 data/npc.db 隔开，保证「我这儿绿」等于「干净检出也绿」。
+# 让测试与机器本地的 NPC DB、世界模型和 Cthulhu 模型隔开，保证「我这儿绿」
+# 等于「干净检出也绿」。需要真实本机模型时，显式设置 ALLOW_TEST_WORLD_MODEL=1。
 [test]
 preload = ["./scripts/test-preload.ts"]
 

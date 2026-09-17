@@ -149,8 +149,13 @@
             ],
             [
               "src/compiler/mechanics-reachability.ts",
-              "closed-world 状态图：终局优先、自动转换稳定、可选动作、unlock/discovery/failback、失败态相对恢复、终局恢复路径与可回放最短 witness；自动冲突/循环 fail-closed",
+              "closed-world 图搜索与 witness：通过 shared execution core 执行终局优先、自动稳定、可选动作、unlock/discovery/failback 与失败态恢复；自动冲突/循环 fail-closed",
               "analyzeMechanicsReachability, replayMechanicsWitness, validateMechanicsAnalysisInput, mechanicsStateHash"
+            ],
+            [
+              "src/compiler/mechanics-execution.ts / src/diagnostics/compiler-process-simulation.ts",
+              "唯一 MechanicsIR 执行核心与 diagnostics-only 过程证明：prepare -> questions -> hints -> resolve -> caller-prescribed execute；执行前重解完整 lineage，直调动作须先自动稳定；不接入 artifact、HTTP、ModuleData 或运行时",
+              "executeMechanicsAction, settleAutomaticMechanics, prepareCompilerProcessSimulation, resolveCompilerProcessSimulation, executeCompilerProcessSimulation"
             ],
             [
               "src/ingest/document-ir.ts / document-blocks.ts",

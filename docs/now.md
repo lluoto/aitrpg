@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 生成于 2026-09-17 00:08
+> 生成于 2026-09-17 00:41
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,24 +13,26 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 906ef06 test: make Barn source audit reproducible |
-| 测试 | 3160 条 / 215 文件  全绿 |
-| 工作树 | **13 个文件未提交** |
+| HEAD | 1fea0b4 fix: harden compiler delivery verification |
+| 测试 | 3179 条 / 216 文件  全绿 |
+| 工作树 | **15 个文件未提交** |
 
 未提交：
+- `M bunfig.toml`
+- `M docs/architecture.json`
 - `M docs/compiler-master-plan.md`
 - `M docs/handoff.md`
-- `M docs/notes/engine.md`
+- `M docs/mechanics-reachability.md`
 - `M docs/now.md`
 - `M docs/test-baseline.json`
-- `M docs/todo.json`
-- `M scripts/handoff.ts`
-- `M scripts/now.ts`
-- `M src/__tests__/compiler-closure.test.ts`
-- `M src/__tests__/diag-preflight-checks.test.ts`
-- `M src/__tests__/diag-script-process.test.ts`
-- `M src/compiler/compiler-question-queue.ts`
-- `M src/diagnostics/source-scan.ts`
+- `M scripts/test-preload.ts`
+- `M src/__tests__/game-session-run-harness.test.ts`
+- `M src/__tests__/mechanics-reachability.test.ts`
+- `M src/__tests__/no-network-in-tests.test.ts`
+- `M src/compiler/mechanics-reachability.ts`
+- `?? src/__tests__/compiler-process-simulation.test.ts`
+- `?? src/compiler/mechanics-execution.ts`
+- `?? src/diagnostics/compiler-process-simulation.ts`
 
 ## 开工前
 
@@ -133,6 +135,7 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
+- 1fea0b4 fix: harden compiler delivery verification
 - 906ef06 test: make Barn source audit reproducible
 - bb42ef4 feat: complete evidence-bound compiler checkpoint
 - 9cf3b7f docs: retire ignored legacy tool reference
@@ -140,7 +143,6 @@ bun scripts/now.ts           # 收工前刷新这份文件
 - 60f7061 test: reject unsupported compile hint kinds
 - abc6747 fix: bind policy substitutions to discovery location
 - 90024ec fix: validate hint declarations before resolution
-- 5e2b721 feat: separate hint declarations from candidates
 
 ## 找东西
 

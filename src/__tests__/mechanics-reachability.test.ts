@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "fs";
 import { compileMechanics, type MechanicsCandidateSpec, type MechanicsCompilationInput, type MechanicsSymbols } from "../compiler/mechanics-ir";
 import { analyzeMechanicsReachability, mechanicsStateHash, replayMechanicsWitness, type MechanicsAnalysisInput } from "../compiler/mechanics-reachability";
+import { availableMechanicsPlayerActions, createMechanicsStateBudget, executeMechanicsAction, initialMechanicsState, settleAutomaticMechanics } from "../compiler/mechanics-execution";
 import { applyFactInterpretationReviews, buildSourceFactGraph, sourceStatementEvidenceRefId, type FactInterpretationCandidate } from "../compiler/source-fact-graph";
 import { importPointsTo, scanImports } from "../diagnostics/source-scan";
 import { cleanPageWithTrace, joinPagesWithTrace } from "../ingest/clean-text";
@@ -105,6 +106,55 @@ function fixture() {
 }
 
 describe("Mechanics reachability", () => {
+  it("requires terminal-first and automatic settlement before a direct player action", () => {
+    const ir = compileFixture([
+      { kind: "discovery_method", id: "find", clueId: "clue_parent", action: "search", target: "scene", targetId: "scene_foyer", onSuccess: [{ kind: "discover_clue", clueId: "clue_parent" }] },
+      { kind: "state_transition", id: "settle", when: { kind: "state_eq", stateKey: "archive_open", value: false }, effects: [{ kind: "set_state", stateKey: "archive_open", value: true }] },
+    ]);
+    const input: MechanicsAnalysisInput = { entrySceneId: "scene_foyer", initialState: { foundClueIds: [], visitedSceneIds: [], ownedItemIds: [], stateValues: { archive_open: false }, npcStates: {} }, coreClueIds: [], connections: [], discoveryLocations: { find: "scene_foyer" }, maxStates: 10 };
+    const initial = initialMechanicsState(input);
+    expect(availableMechanicsPlayerActions(ir, input, initial).map((action) => action.mechanismId)).toContain("find");
+    expect(() => executeMechanicsAction(ir, input, initial, { mechanismId: "find", outcome: "success" })).toThrow(expect.objectContaining({ code: "action_before_settlement" }));
+    const settled = settleAutomaticMechanics(ir, initial).state;
+    expect(executeMechanicsAction(ir, input, settled, { mechanismId: "find", outcome: "success" }).state.foundClueIds).toEqual(["clue_parent"]);
+
+    const terminal = compileFixture([
+      { kind: "discovery_method", id: "late", clueId: "clue_parent", action: "search", target: "scene", targetId: "scene_foyer", onSuccess: [{ kind: "discover_clue", clueId: "clue_parent" }] },
+      { kind: "ending_rule", id: "finish", priority: 1, when: { kind: "state_eq", stateKey: "archive_open", value: false }, effects: [{ kind: "end_game", endingId: "ending_escape" }] },
+    ]);
+    const terminalInput = { ...input, discoveryLocations: { late: "scene_foyer" } };
+    expect(availableMechanicsPlayerActions(terminal, terminalInput, initial).map((action) => action.mechanismId)).toContain("late");
+    expect(() => executeMechanicsAction(terminal, terminalInput, initial, { mechanismId: "late", outcome: "success" })).toThrow(expect.objectContaining({ code: "action_before_settlement" }));
+    const terminalState = settleAutomaticMechanics(terminal, initial).state;
+    expect(() => executeMechanicsAction(terminal, terminalInput, terminalState, { mechanismId: "late", outcome: "success" })).toThrow(expect.objectContaining({ code: "action_after_terminal" }));
+  });
+
+  it("encapsulates state budgets and action provenance from caller mutation", () => {
+    const { ir, input } = fixture();
+    const budget = createMechanicsStateBudget(2);
+    const state = initialMechanicsState(input);
+    expect(Object.isFrozen(budget)).toBe(true);
+    expect(budget).not.toHaveProperty("hashes");
+    budget.observe(state);
+    budget.observe(state);
+    expect(budget.count).toBe(1);
+    const next = { ...state, stateValues: { ...state.stateValues, archive_open: true } };
+    budget.observe(next);
+    expect(budget.count).toBe(2);
+    expect(() => budget.observe({ ...next, stateValues: { ...next.stateValues, archive_open: false } })).toThrow(expect.objectContaining({ code: "state_limit_exceeded" }));
+
+    const action = availableMechanicsPlayerActions(ir, input, state).find((candidate) => candidate.mechanismId === "discover_parent")!;
+    action.sourceInterpretationIds.push("caller-mutation");
+    expect(ir.discoveryMethods.find((candidate) => candidate.id === "discover_parent")!.sourceInterpretationIds).not.toContain("caller-mutation");
+  });
+
+  it("rejects invalid state-budget bounds at the shared-core constructor", () => {
+    for (const maxStates of [NaN, Infinity, 0, -1, 1.5]) {
+      expect(() => createMechanicsStateBudget(maxStates)).toThrow(expect.objectContaining({ code: "invalid_max_states" }));
+    }
+    expect(createMechanicsStateBudget(1).count).toBe(0);
+  });
+
   it("produces shortest witnesses from entry through core, transition, traverse, and selected ending", () => {
     const { ir, input } = fixture();
     const report = analyzeMechanicsReachability(ir, input);

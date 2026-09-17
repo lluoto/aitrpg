@@ -8,8 +8,8 @@ the current implementation boundary, not a new public compile entry point.
 | Milestone | Status | Verified result |
 | --- | --- | --- |
 | Source structure through draft and question queue | complete | DocumentIR evidence, SourceFactGraph, deterministic marked-item draft, and evidence-bound questions remain separate from runtime module loading. |
-| Checkpoint I: hints through closed-world analysis and P4 execution semantics | committed and pushed | `bb42ef4` is pushed. Group A (`906ef06`) is the committed local, not-yet-pushed parent. The verified Group B delivery-record/baseline follow-up is uncommitted (3160 tests / 215 files; 3128 pass / 32 intentional skip / 0 fail). |
-| Diagnostics process simulation | next overlay, uncommitted | Group C remains diagnostics-only and is not included in this B snapshot. |
+| Checkpoint I: hints through closed-world analysis and P4 execution semantics | committed and pushed | `bb42ef4` is on `origin/master`; Group A (`906ef06`) and Group B (`1fea0b4`) are committed locally in the delivery stack, pending separate push authorization. |
+| Diagnostics process simulation | final-audited, delivery stack closing | Group C is diagnostics-only and final-audited (3179 tests / 216 files; 3147 pass / 32 intentional skip / 0 fail). Its snapshot closes the three-overlay stack pending separate push authorization. |
 | Checkpoint II: local artifact persistence | deferred dependency | A future artifact save/restore format must preserve queue identity, document identity, module scope, accepted interpretation evidence, and the distinct queue/IR/state hash purposes. Not implemented here. |
 | Checkpoint III: public compiler entry end-to-end validation | deferred dependency | A future public compile entry will validate the same chain for in-memory pages/fixtures and real PDFs. It is not implemented in this checkpoint. |
 | Later milestone: runtime consumption | out of scope | GameSession, world-model/model-memory integration, and runtime consumers come after compiler artifacts and public-entry validation. |
@@ -20,7 +20,7 @@ the current implementation boundary, not a new public compile entry point.
   `connections[]`; an empty array is an explicit zero-outgoing declaration.
   Connection IDs are declarations and must be unique across the resolved set.
 - An ending answer contains one or more declarations. Each declaration has a
-  mechanism-rule ID and exactly one separately named `end_game.endingId`.
+  mechanism-rule ID that differs from its exactly one `end_game.endingId`.
 - Named draft clues receive a discovery question with separate clue, location,
   and mechanics-target domains. Explicit discovery requires its location;
   generic prose questions cannot bind an arbitrary clue.
@@ -82,15 +82,41 @@ the same verified clue and location.
 
 ## Acceptance evidence and next action
 
+The diagnostics process simulation keeps source graph, queue, mechanics and
+state hashes under their existing owners. It revalidates snapshots at prepare,
+questions, hints, resolve and execute boundaries, and accepts only a caller
+prescribed mechanism/outcome script. Replay is a postcondition over the produced
+trace, not a substitute for the script. Missing, stale, mismatched or
+non-closed stages return a structured refusal. This slice deliberately excludes
+artifact persistence, public APIs, real PDF ingestion, ModuleData, GameSession,
+items, NPCs, combat, rewards, rulesets, narration, LLM and world-model support.
+
+Hardening keeps direct actions behind terminal/automatic settlement, hides mutable
+state-budget hashes, and copies outgoing provenance. Before execution, the
+diagnostics bundle re-runs resolve against retained graph, draft, queue and hints
+and compares the complete resolved queue, IR, analysis input and report. Test
+preload assigns missing per-process world-model paths by default; real model
+loading requires explicit `ALLOW_TEST_WORLD_MODEL=1` and remains untested here.
+The default paths include a per-process UUID so stale files or PID reuse cannot
+silently re-enable workstation-local model loading.
+
+Final diagnostics closeout evidence: plain `bun test` exits 0 with 3147 pass /
+32 intentional skip / 0 fail, 3179 tests across 216 files; plain preflight
+exits 0. The replay postcondition is directly tested, and explicit network
+opt-in causes all network-test probes to skip fetch calls.
+This is a test-isolation result, not evidence that a real world-model runtime,
+artifact persistence, public compiler entry, ModuleData projection, or
+GameSession integration has been accepted.
+
 Checkpoint I has focused positive and negative coverage for multi/zero
 topology, multi-ending declarations, parent/child discovery, bounded failback,
 unlock gating, ending-ID separation, heading-bound default-policy substitution,
 automatic conflict/cycle handling, terminal-recovery loops, state-relative
 failure-policy risks, and replayable shortest witnesses. The agreed
-policy/provenance and process-summary audit is now verified. Checkpoint I is
-committed and pushed as `bb42ef4`; Group A (`906ef06`) is committed locally but
-not yet pushed separately; Group B is verified but uncommitted. This is not
-artifact/public-entry/runtime acceptance.
+policy/provenance and process-summary audit is now verified. `bb42ef4` is
+pushed; Group A (`906ef06`) and Group B (`1fea0b4`) are committed locally.
+This final Group C snapshot closes the separately-authorized delivery stack; it
+is not artifact/public-entry/runtime acceptance.
 Repository regression evidence is recorded in the active handoff.
 
 Local P4 verification now includes action-specific replay charging, real
@@ -112,8 +138,13 @@ hooks versus errors, and preservation/separation of handwritten checkpoint text.
 Real mutations for every audit family failed their intended assertions and were
 restored. Independent follow-up reviews found no remaining issues in this scope.
 
-Final verification: 261 pass / 789 assertions across eight selected files;
-typecheck exits 0; full tests exit 0 with 3117 pass / 32 intentional skip / 0 fail,
-3149 tests across 215 files. Baseline is reconciled to this successful result.
+Final compiler verification: 261 pass / 789 assertions across eight selected
+files; typecheck exits 0; full tests exit 0 with 3117 pass / 32 intentional skip
+/ 0 fail, 3149 tests across 215 files. A follow-up delivery-record run exits 0
+with 3119 pass / 32 intentional skip / 0 fail, 3151 tests across 215 files.
+The active baseline records tests/files/pass/skip so equal totals cannot conceal
+pass-to-skip regressions. A follow-up parser guard rejects equal ending mechanism
+and ending IDs; that historical full run was 3120 pass / 32 skip / 0 fail,
+3152/215. The current final diagnostics result is recorded above.
 
-Next action: commit this authorized Group B delivery follow-up only. The next uncommitted overlay is Group C diagnostics process simulation. Do not instruct anyone to push `bb42ef4`; artifact persistence, public compiler APIs, ModuleData projection, and runtime/GameSession integration remain deferred pending newly scoped work.
+Next action: after separate authorization pushes the completed A/B/C stack, begin a newly scoped Checkpoint II artifact-persistence task. Real world-model loading remains intentionally unverified; public compiler APIs, ModuleData projection, and GameSession integration remain deferred and require their own scoped tasks.

@@ -16,6 +16,19 @@
 // 留 `||=` 而不是硬写：想拿真实库复现问题时，`NPC_DB_PATH=data/npc.db` 仍然覆盖得了。
 process.env.NPC_DB_PATH ||= ":memory:";
 
+// ── 测试默认不读取工作站世界模型 ──
+//
+// 世界模型和 Cthulhu 模型均可在开发机上指向仓库外的大文件。测试一旦继承
+// 这些环境变量，就会加载机器私有语料、拖慢到超时且不再等价于 clean clone。
+// 默认覆盖两条路径为每进程唯一、保证不存在的临时名；不创建任何文件。
+// 真正的本地集成跑由显式 opt-in 控制，不能由 .env 隐式打开。
+if (process.env.ALLOW_TEST_WORLD_MODEL !== "1") {
+  const root = process.env.TEMP ?? process.env.TMP ?? ".opencode";
+  const nonce = crypto.randomUUID();
+  process.env.WORLD_MODEL_PATH = `${root}/aitrpg-test-world-model-${process.pid}-${nonce}.jsonl`;
+  process.env.CTHULHU_MODEL_PATH = `${root}/aitrpg-test-cthulhu-model-${process.pid}-${nonce}.jsonl`;
+}
+
 // ── 测试默认离线 ──
 //
 // 同一个理由的第二例：**测试不该依赖网络**。
@@ -47,7 +60,8 @@ process.env.LLM_DISABLED ||= "true";
 // 但那只解决「这一个文件」；这一条解决「任何一个」。
 //
 // 只放行本机：测试里连 127.0.0.1 是有意的（用「连不上」来验熔断、验降级）。
-// 要拿真网络复现时，`ALLOW_TEST_NETWORK=1 bun test` 放行。
+// 要拿真网络+LLM 集成复现时，显式设置
+// `ALLOW_TEST_NETWORK=1 LLM_DISABLED=false bun test`；仅打开网络不会启用 LLM。
 if (process.env.ALLOW_TEST_NETWORK !== "1") {
   const realFetch = globalThis.fetch;
   globalThis.fetch = ((input: Parameters<typeof fetch>[0], init?: RequestInit) => {
@@ -56,7 +70,7 @@ if (process.env.ALLOW_TEST_NETWORK !== "1") {
       : (input as { url: string }).url;
     let host = "";
     try { host = new URL(url).hostname; } catch { /* 相对地址交给原实现 */ }
-    const local = host === "" || host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "0.0.0.0";
+    const local = host === "" || host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]" || host === "0.0.0.0";
     if (!local) {
       throw new Error(
         `测试里不许访问外网：${url}\n` +
