@@ -8,7 +8,7 @@
 
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { spawnSync } from "child_process";
-import { judgeProcess, parseTestOutput, judgeTestCount } from "../src/diagnostics/source-scan";
+import { judgeProcess, parseTestOutput, judgeTestCount, type TestBaseline } from "../src/diagnostics/source-scan";
 
 function sh(label: string, command: string, args: string[]): string {
   const result = spawnSync(command, args, { encoding: "utf8" });
@@ -23,7 +23,7 @@ const recent = sh("git history", "git", ["log", "--oneline", "-12"]).split("\n")
 // 基线在 docs/test-baseline.json，preflight 拿它做回归判据。
 // 这里一并打出来 —— 「当前条数」单看没有意义，得有个比较对象。
 const baseline = existsSync("docs/test-baseline.json")
-  ? (JSON.parse(readFileSync("docs/test-baseline.json", "utf8")) as { tests: number; files: number })
+  ? (JSON.parse(readFileSync("docs/test-baseline.json", "utf8")) as TestBaseline)
   : null;
 
 let tests = "（未跑）";

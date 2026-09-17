@@ -1843,5 +1843,14 @@ location provenance 均受证据约束；foreign/domain override 被隔离；脚
 
 上述防线都做过实际生产实现变异并精确恢复。最终八文件定向为 261 pass / 789 expect /
 0 fail；全量为 3117 pass / 32 intentional skip / 0 fail，3149 tests / 215 files；typecheck
-和 preflight 均退出 0。检查点 I 已完成源码级验证但仍未提交。artifact persistence、公开
+和 preflight 均退出 0。检查点 I 已于 2026-09-15 本地提交为 `bb42ef4`，待 GitHub
+连接恢复后推送。artifact persistence、公开
 compile entry、GameSession/runtime 和 world-model 接线仍为 deferred 里程碑。
+
+### 编译闭环检查点 I：机制规则不能与剧情结局共用 ID（2026-09-15）
+
+早期契约称 ending rule 的 mechanism ID 与 `end_game.endingId` 分离，但 parser 只检查
+两个字段都存在且 effect 与 declaration 对齐，仍允许两者取同一个字符串。这会让规则节点、
+witness mechanism 与玩家可见结局重回同一命名空间。现已在 ending hint parser 拒绝相等值；
+删除该拒绝时负例立刻放行，恢复后全量为 3120 pass / 32 skip / 0 fail，3152 tests / 215 files。
+这是 compiler 契约收紧，不代表运行时已经消费编译产物。

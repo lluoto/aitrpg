@@ -29,7 +29,12 @@ if (!noTest) {
   const t = spawnSync("bun", ["test"], { encoding: "utf8" });
   const verdict = judgeProcess("bun test", t);
   const count = parseTestOutput((t.stdout ?? "") + "\n" + (t.stderr ?? ""));
-  const summary = judgeTestCount(count, { tests: count.tests ?? 0, files: count.files ?? 0 });
+  const baseline = existsSync("docs/test-baseline.json")
+    ? JSON.parse(readFileSync("docs/test-baseline.json", "utf8"))
+    : undefined;
+  const summary = baseline
+    ? judgeTestCount(count, baseline)
+    : { problems: ["缺少测试基线 docs/test-baseline.json —— 不能当成通过"], notes: [] };
   testLine = !verdict.ok
     ? `（测试未通过：${verdict.reason}）`
     : summary.problems.length

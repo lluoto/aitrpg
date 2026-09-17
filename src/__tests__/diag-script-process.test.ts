@@ -120,6 +120,11 @@ describe("production summary rendering", () => {
       expect(r.summary).not.toContain("全绿");
       expect(r.summary).toContain("文件数回退");
     });
+    if (script === "now") test("now: lower test count is regression, not green", () => {
+      const r = run("now", { status: 0, stdout: "0 fail\nRan 3055 tests across 214 files" });
+      expect(r.summary).not.toContain("全绿");
+      expect(r.summary).toContain("测试条数回退");
+    });
   }
 });
 
@@ -192,22 +197,22 @@ describe("production preflight process checks", () => {
 describe("authoritative Bun summary lines", () => {
   test("Bun terminal period before timing is accepted", () => {
     expect(diagnostics.parseTestOutput(" 0 fail\nRan 3056 tests across 214 files. [1.00s]"))
-      .toEqual({ tests: 3056, files: 214, failed: 0 });
+      .toEqual({ tests: 3056, files: 214, passed: null, skipped: null, failed: 0 });
   });
   test("decoy failure and count prose ignored", () => {
     expect(diagnostics.parseTestOutput("fixture: 0 failures\nfixture: Ran 9999 tests across 999 files\n 2 fail\nRan 3056 tests across 214 files [1.00s]"))
-      .toEqual({ tests: 3056, files: 214, failed: 2 });
+      .toEqual({ tests: 3056, files: 214, passed: null, skipped: null, failed: 2 });
   });
   for (const newline of ["\n", "\r\n"]) test(`trimmed exact summary ${JSON.stringify(newline)}`, () => {
     expect(diagnostics.parseTestOutput(` 0 fail ${newline} Ran 3056 tests across 214 files [1.00s] `))
-      .toEqual({ tests: 3056, files: 214, failed: 0 });
+      .toEqual({ tests: 3056, files: 214, passed: null, skipped: null, failed: 0 });
   });
   test("absent exact lines stay null", () => {
     expect(diagnostics.parseTestOutput("fixture: 0 failures\nfixture: Ran 3056 tests across 214 files\n0 failures\nRan 3056 tests across 214 files decoy"))
-      .toEqual({ tests: null, files: null, failed: null });
+      .toEqual({ tests: null, files: null, passed: null, skipped: null, failed: null });
   });
   for (const extra of ["\n2 fail", "\nRan 1 tests across 1 files", "\n" + full]) test(`multiple exact evidence fails closed ${JSON.stringify(extra)}`, () => {
-    expect(diagnostics.parseTestOutput(full + extra)).toEqual({ tests: null, files: null, failed: null });
+    expect(diagnostics.parseTestOutput(full + extra)).toEqual({ tests: null, files: null, passed: null, skipped: null, failed: null });
   });
 });
 

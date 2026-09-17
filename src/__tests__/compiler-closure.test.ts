@@ -314,6 +314,20 @@ describe("document structure to closed-world compilation", () => {
     expect(resolved.reachabilityReport?.failbackWitnesses.discover_child_checked?.steps.slice(-3).map((step) => step.outcome)).toEqual(["failure", "failure", "failback"]);
   });
 
+  it("rejects an ending declaration whose mechanism ID collapses into its ending ID", () => {
+    const data = fixture();
+    const question = data.queue.questions.find((question) => question.kind === "ending_rule")!;
+    const sceneId = data.draft.sceneCandidates[0]!.id;
+    expect(() => parseCompilerHintValue(question, { declarations: [{
+      endingId: "ending_same",
+      spec: {
+        kind: "ending_rule", id: "ending_same", priority: 1,
+        when: { kind: "scene_visited", sceneId },
+        effects: [{ kind: "end_game", endingId: "ending_same" }],
+      },
+    }] })).toThrow("must differ");
+  });
+
   it("materializes an own location for an explicit __proto__ discovery method", () => {
     const data = fixture();
     const hints = closureHints(data);

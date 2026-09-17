@@ -8,7 +8,8 @@ the current implementation boundary, not a new public compile entry point.
 | Milestone | Status | Verified result |
 | --- | --- | --- |
 | Source structure through draft and question queue | complete | DocumentIR evidence, SourceFactGraph, deterministic marked-item draft, and evidence-bound questions remain separate from runtime module loading. |
-| Checkpoint I: hints through closed-world analysis and P4 execution semantics | verified, uncommitted | Explicit hints resolve into accepted interpretations, MechanicsIR and replayable witnesses. P4 and the agreed policy/provenance/process-summary audit have regressions, restored production mutations and independent review; final full tests/typecheck pass. |
+| Checkpoint I: hints through closed-world analysis and P4 execution semantics | committed and pushed | `bb42ef4` is pushed. Group A (`906ef06`) is the committed local, not-yet-pushed parent. The verified Group B delivery-record/baseline follow-up is uncommitted (3160 tests / 215 files; 3128 pass / 32 intentional skip / 0 fail). |
+| Diagnostics process simulation | next overlay, uncommitted | Group C remains diagnostics-only and is not included in this B snapshot. |
 | Checkpoint II: local artifact persistence | deferred dependency | A future artifact save/restore format must preserve queue identity, document identity, module scope, accepted interpretation evidence, and the distinct queue/IR/state hash purposes. Not implemented here. |
 | Checkpoint III: public compiler entry end-to-end validation | deferred dependency | A future public compile entry will validate the same chain for in-memory pages/fixtures and real PDFs. It is not implemented in this checkpoint. |
 | Later milestone: runtime consumption | out of scope | GameSession, world-model/model-memory integration, and runtime consumers come after compiler artifacts and public-entry validation. |
@@ -86,8 +87,10 @@ topology, multi-ending declarations, parent/child discovery, bounded failback,
 unlock gating, ending-ID separation, heading-bound default-policy substitution,
 automatic conflict/cycle handling, terminal-recovery loops, state-relative
 failure-policy risks, and replayable shortest witnesses. The agreed
-policy/provenance and process-summary audit is now verified. This is an
-uncommitted implementation result, not artifact/public-entry/runtime acceptance.
+policy/provenance and process-summary audit is now verified. Checkpoint I is
+committed and pushed as `bb42ef4`; Group A (`906ef06`) is committed locally but
+not yet pushed separately; Group B is verified but uncommitted. This is not
+artifact/public-entry/runtime acceptance.
 Repository regression evidence is recorded in the active handoff.
 
 Local P4 verification now includes action-specific replay charging, real
@@ -113,8 +116,4 @@ Final verification: 261 pass / 789 assertions across eight selected files;
 typecheck exits 0; full tests exit 0 with 3117 pass / 32 intentional skip / 0 fail,
 3149 tests across 215 files. Baseline is reconciled to this successful result.
 
-Next action: report the verified uncommitted Checkpoint-I result. Commit/push
-requires user authorization. Further milestones require a new scoped task.
-Do not implement Checkpoint II persistence or Checkpoint III's public
-entry here; do not start runtime wiring, GameSession/world-model integration,
-or later prompt stages without a new scoped task.
+Next action: commit this authorized Group B delivery follow-up only. The next uncommitted overlay is Group C diagnostics process simulation. Do not instruct anyone to push `bb42ef4`; artifact persistence, public compiler APIs, ModuleData projection, and runtime/GameSession integration remain deferred pending newly scoped work.

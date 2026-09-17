@@ -1,7 +1,7 @@
 # 现在在哪
 
 > 每个会话开头读这一份就够。刷新：`bun scripts/now.ts`
-> 状态按本轮实际验证补正；检查点 I 的约定 policy/provenance/process 审计已验证完成，尚未提交，见 handoff。
+> 生成于 2026-09-17 00:08
 >
 > ⚠ 这份文件永远落后自己所在的那个提交一步：流程是先跑这个脚本生成
 > 快照、再把快照本身提交，所以刷新时看到的 HEAD 就是"这次要提交的
@@ -13,9 +13,24 @@
 | | |
 |---|---|
 | 分支 | `master` |
-| HEAD | 9cf3b7f docs: retire ignored legacy tool reference |
-| 测试 | 八文件 261 pass / 789 expect；候选全量退出 0：3110 pass / 39 skip / 0 fail，3149 条 / 215 文件；typecheck 退出 0 |
-| 工作树 | **38 个文件未提交** |
+| HEAD | 906ef06 test: make Barn source audit reproducible |
+| 测试 | 3160 条 / 215 文件  全绿 |
+| 工作树 | **13 个文件未提交** |
+
+未提交：
+- `M docs/compiler-master-plan.md`
+- `M docs/handoff.md`
+- `M docs/notes/engine.md`
+- `M docs/now.md`
+- `M docs/test-baseline.json`
+- `M docs/todo.json`
+- `M scripts/handoff.ts`
+- `M scripts/now.ts`
+- `M src/__tests__/compiler-closure.test.ts`
+- `M src/__tests__/diag-preflight-checks.test.ts`
+- `M src/__tests__/diag-script-process.test.ts`
+- `M src/compiler/compiler-question-queue.ts`
+- `M src/diagnostics/source-scan.ts`
 
 ## 开工前
 
@@ -24,7 +39,7 @@ bun scripts/preflight.ts     # 改动前后各跑一次，机器判据挡住反�
 bun scripts/now.ts           # 收工前刷新这份文件
 ```
 
-## 已定位未修（22）
+## 已定位未修（21）
 
 - ️ 「引擎别再替玩家挪窝」这一步单独做不成立（2026-08-20）
   `docs/notes/engine.md:514`
@@ -68,8 +83,6 @@ bun scripts/now.ts           # 收工前刷新这份文件
   `docs/notes/ingest.md:1718`
 - 展示格式渗进输出契约——这是第三次（2026-09-02）
   `docs/notes/ingest.md:1746`
-- 数据化躯体建模等待原始描述（2026-09-06）
-  `docs/notes/world-model.md:56`
 
 ## 动手前先扫一眼的坑（44）
 
@@ -120,7 +133,14 @@ bun scripts/now.ts           # 收工前刷新这份文件
 
 ## 最近提交
 
-
+- 906ef06 test: make Barn source audit reproducible
+- bb42ef4 feat: complete evidence-bound compiler checkpoint
+- 9cf3b7f docs: retire ignored legacy tool reference
+- 038134c fix: align Cthulhu dataset manifest paths
+- 60f7061 test: reject unsupported compile hint kinds
+- abc6747 fix: bind policy substitutions to discovery location
+- 90024ec fix: validate hint declarations before resolution
+- 5e2b721 feat: separate hint declarations from candidates
 
 ## 找东西
 

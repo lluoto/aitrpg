@@ -222,10 +222,11 @@ export function parseCompilerHintValue(question: CompilerQuestion, value: unknow
           only(declaration, ["endingId", "spec"], `declarations[${index}]`);
           const endingId = identifier(declaration.endingId, "endingId");
           if (endingIds.has(endingId)) throw new CompilerQuestionError("duplicate_declaration", `duplicate ending declaration: ${endingId}`);
-          endingIds.add(endingId);
-          const spec = parseMechanicsCandidateSpec(declaration.spec);
-          if (spec.kind !== "ending_rule") throw new CompilerQuestionError("invalid_hint_value", "ending hint requires EndingRuleSpec");
-          const endGames = spec.effects.filter((effect) => effect.kind === "end_game");
+           endingIds.add(endingId);
+           const spec = parseMechanicsCandidateSpec(declaration.spec);
+           if (spec.kind !== "ending_rule") throw new CompilerQuestionError("invalid_hint_value", "ending hint requires EndingRuleSpec");
+           if (spec.id === endingId) throw new CompilerQuestionError("invalid_declaration", "ending rule mechanism ID must differ from endingId");
+           const endGames = spec.effects.filter((effect) => effect.kind === "end_game");
           if (endGames.length !== 1 || endGames[0]!.endingId !== endingId) throw new CompilerQuestionError("invalid_declaration", "ending declaration must match exactly one end_game effect");
           return { endingId, spec };
         }),

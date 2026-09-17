@@ -858,22 +858,42 @@ export function judgeProcess(label: string, r: SpawnLike): ProcVerdict {
   return { ok: true, reason: "" };
 }
 
-export interface TestBaseline { tests: number; files: number }
-interface TestCount { tests: number | null; files: number | null; failed: number | null }
+export interface TestBaseline {
+  tests: number;
+  files: number;
+  /** Optional so historical count-only baselines remain readable. */
+  passed?: number;
+  skipped?: number;
+}
+export interface TestCount {
+  tests: number | null;
+  files: number | null;
+  passed?: number | null;
+  skipped?: number | null;
+  failed: number | null;
+}
 
 /** 从 `bun test` 的输出里取条数。取不到就是 null —— **不许当成 0 或当成通过** */
 export function parseTestOutput(text: string): TestCount {
   const lines = text.split(/\r?\n/).map((line) => line.trim());
   const runs = lines.map((line) => /^Ran (\d+) tests across (\d+) files\.?(?:\s+\[[^\]]*\])?$/.exec(line)).filter((match) => match !== null);
+  const passes = lines.map((line) => /^(\d+) pass$/.exec(line)).filter((match) => match !== null);
+  const skips = lines.map((line) => /^(\d+) skip$/.exec(line)).filter((match) => match !== null);
   const failures = lines.map((line) => /^(\d+) fail$/.exec(line)).filter((match) => match !== null);
   // Captured stdout/stderr have no shared ordering. Multiple exact summaries are
   // ambiguous, even if identical; never pair counts from different test runs.
-  if (runs.length > 1 || failures.length > 1) return { tests: null, files: null, failed: null };
+  if (runs.length > 1 || passes.length > 1 || skips.length > 1 || failures.length > 1) {
+    return { tests: null, files: null, passed: null, skipped: null, failed: null };
+  }
   const ran = runs[0];
+  const pass = passes[0];
+  const skip = skips[0];
   const fail = failures[0];
   return {
     tests: ran ? Number(ran[1]) : null,
     files: ran ? Number(ran[2]) : null,
+    passed: pass ? Number(pass[1]) : null,
+    skipped: skip ? Number(skip[1]) : null,
     failed: fail ? Number(fail[1]) : null,
   };
 }
@@ -899,6 +919,10 @@ export function judgeTestCount(cur: TestCount, base: TestBaseline): BaselineVerd
   if (cur.files === null) problems.push("没解析到测试文件数 —— 不能当成通过");
   if (cur.failed === null) problems.push("没解析到测试失败数 —— 不能当成通过");
   else if (cur.failed > 0) problems.push(`测试有 ${cur.failed} 条失败`);
+  if (base.passed !== undefined && (cur.passed === null || cur.passed === undefined)) problems.push("没解析到测试通过数 —— 不能当成通过");
+  else if (base.passed !== undefined && cur.passed !== base.passed) problems.push(`测试通过数变化：${cur.passed} ≠ 基线 ${base.passed}`);
+  if (base.skipped !== undefined && (cur.skipped === null || cur.skipped === undefined)) problems.push("没解析到测试跳过数 —— 不能当成通过");
+  else if (base.skipped !== undefined && cur.skipped !== base.skipped) problems.push(`测试跳过数变化：${cur.skipped} ≠ 基线 ${base.skipped}`);
   if (cur.files !== null && cur.files < base.files) {
     problems.push(`测试文件数回退：${cur.files} < 基线 ${base.files}`);
   } else if (cur.files !== null && cur.files > base.files) {

@@ -876,7 +876,7 @@ describe("检查 6 · 测试条数基线", () => {
 
   test("parseTestOutput 取得到条数与失败数", () => {
     const out = " 1341 pass\n 0 fail\nRan 1341 tests across 66 files. [40.30s]";
-    expect(parseTestOutput(out)).toEqual({ tests: 1341, files: 66, failed: 0 });
+    expect(parseTestOutput(out)).toEqual({ tests: 1341, files: 66, passed: 1341, skipped: null, failed: 0 });
   });
 
   test("**应报**：条数比基线少（有测试被删/被跳过）", () => {
@@ -891,7 +891,7 @@ describe("检查 6 · 测试条数基线", () => {
 
   test("**应报**：解析不到条数 —— 不许当成通过", () => {
     // 上一版 `if (ran) notes.push(...)`：解析不到就什么也不做，静默变绿。
-    const v = judgeTestCount({ tests: null, files: null, failed: null }, base);
+    const v = judgeTestCount({ tests: null, files: null, passed: null, skipped: null, failed: null }, base);
     expect(v.problems.length).toBeGreaterThan(0);
   });
 
@@ -904,5 +904,12 @@ describe("检查 6 · 测试条数基线", () => {
     const v = judgeTestCount({ tests: 1400, files: 70, failed: 0 }, base);
     expect(v.problems).toEqual([]);
     expect(v.notes.some((n) => n.includes("更新"))).toBe(true);
+  });
+
+  test("**应报**：通过数变成 skip，不能被相同总数掩盖", () => {
+    const strict = { tests: 1341, files: 66, passed: 1309, skipped: 32 };
+    const v = judgeTestCount({ tests: 1341, files: 66, passed: 1302, skipped: 39, failed: 0 }, strict);
+    expect(v.problems).toContain("测试通过数变化：1302 ≠ 基线 1309");
+    expect(v.problems).toContain("测试跳过数变化：39 ≠ 基线 32");
   });
 });
