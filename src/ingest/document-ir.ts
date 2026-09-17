@@ -92,6 +92,22 @@ export function createSyntheticDocumentIR(rawPages: string[], sourceDescriptor: 
   };
 }
 
+/** Validate a persisted DocumentIR before reusing its evidence-bearing pages. */
+export function validateDocumentIR(document: DocumentIR): void {
+  if (document.schemaVersion !== DOCUMENT_IR_SCHEMA_VERSION) throw new Error(`unsupported DocumentIR schema: ${document.schemaVersion}`);
+  if (document.hashSource !== "pdf_bytes_sha256" && document.hashSource !== "synthetic_fixture") throw new Error("invalid DocumentIR hash source");
+  if (document.hashSource === "pdf_bytes_sha256" && (!document.documentHash || !/^[a-f0-9]{64}$/.test(document.documentHash))) throw new Error("invalid PDF DocumentIR hash");
+  if (document.hashSource === "synthetic_fixture" && document.documentHash !== null) throw new Error("synthetic DocumentIR must not have a document hash");
+  if (document.hashSource === "synthetic_fixture" && !document.sourceDescriptor?.trim()) throw new Error("synthetic DocumentIR requires a source descriptor");
+  const pages = new Set<number>();
+  for (const page of document.pages) {
+    if (!Number.isInteger(page.pageNumber) || page.pageNumber < 1 || pages.has(page.pageNumber)) throw new Error(`invalid DocumentIR page: ${page.pageNumber}`);
+    pages.add(page.pageNumber);
+    if (typeof page.rawText !== "string" || page.rawTextHash !== sha256(page.rawText)) throw new Error(`DocumentIR page hash mismatch: p${page.pageNumber}`);
+    if (page.documentHash !== document.documentHash || page.hashSource !== document.hashSource) throw new Error(`DocumentIR page identity mismatch: p${page.pageNumber}`);
+  }
+}
+
 export function evidenceSpan(page: DocumentPage, rawStart: number, rawEnd: number): EvidenceSpan {
   if (!Number.isInteger(rawStart) || !Number.isInteger(rawEnd) || rawStart < 0 || rawEnd < rawStart || rawEnd > page.rawText.length) {
     throw new Error(`evidence span out of bounds: p${page.pageNumber} [${rawStart},${rawEnd})`);

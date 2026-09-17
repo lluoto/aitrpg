@@ -8,9 +8,9 @@ the current implementation boundary, not a new public compile entry point.
 | Milestone | Status | Verified result |
 | --- | --- | --- |
 | Source structure through draft and question queue | complete | DocumentIR evidence, SourceFactGraph, deterministic marked-item draft, and evidence-bound questions remain separate from runtime module loading. |
-| Checkpoint I: hints through closed-world analysis and P4 execution semantics | committed and pushed | `bb42ef4` is on `origin/master`; Group A (`906ef06`) and Group B (`1fea0b4`) are committed locally in the delivery stack, pending separate push authorization. |
-| Diagnostics process simulation | final-audited, delivery stack closing | Group C is diagnostics-only and final-audited (3179 tests / 216 files; 3147 pass / 32 intentional skip / 0 fail). Its snapshot closes the three-overlay stack pending separate push authorization. |
-| Checkpoint II: local artifact persistence | deferred dependency | A future artifact save/restore format must preserve queue identity, document identity, module scope, accepted interpretation evidence, and the distinct queue/IR/state hash purposes. Not implemented here. |
+| Checkpoint I: hints through closed-world analysis and P4 execution semantics | committed and pushed | The A/B/C delivery stack ending at `5095efe` is on `origin/master`. |
+| Diagnostics process simulation | complete | Diagnostics retain private `WeakMap` lineage; detached process bundles still fail closed. |
+| Checkpoint II: local artifact persistence | implemented, uncommitted | Versioned JSON-safe prepared/resolved envelopes regenerate and compare compiler state on restore, use a distinct canonical artifact identity, and save atomically. No public API or runtime consumer. |
 | Checkpoint III: public compiler entry end-to-end validation | deferred dependency | A future public compile entry will validate the same chain for in-memory pages/fixtures and real PDFs. It is not implemented in this checkpoint. |
 | Later milestone: runtime consumption | out of scope | GameSession, world-model/model-memory integration, and runtime consumers come after compiler artifacts and public-entry validation. |
 
@@ -115,8 +115,8 @@ automatic conflict/cycle handling, terminal-recovery loops, state-relative
 failure-policy risks, and replayable shortest witnesses. The agreed
 policy/provenance and process-summary audit is now verified. `bb42ef4` is
 pushed; Group A (`906ef06`) and Group B (`1fea0b4`) are committed locally.
-This final Group C snapshot closes the separately-authorized delivery stack; it
-is not artifact/public-entry/runtime acceptance.
+The delivery stack is pushed. Checkpoint II now accepts durable artifact
+validation only; it is not public-entry/runtime acceptance.
 Repository regression evidence is recorded in the active handoff.
 
 Local P4 verification now includes action-specific replay charging, real
@@ -147,4 +147,12 @@ pass-to-skip regressions. A follow-up parser guard rejects equal ending mechanis
 and ending IDs; that historical full run was 3120 pass / 32 skip / 0 fail,
 3152/215. The current final diagnostics result is recorded above.
 
-Next action: after separate authorization pushes the completed A/B/C stack, begin a newly scoped Checkpoint II artifact-persistence task. Real world-model loading remains intentionally unverified; public compiler APIs, ModuleData projection, and GameSession integration remain deferred and require their own scoped tasks.
+Checkpoint II artifact evidence: prepared and resolved envelopes retain source
+graph/draft/queue identities, accepted interpretations, hints, MechanicsIR,
+analysis input, and reports. Restore validates component versions and an
+artifact-specific canonical hash, regenerates deterministic queues and complete
+resolution, and requires a mechanically closed terminal report. File storage
+writes a flushed sibling temporary file before replacing the target. Diagnostics
+lineage remains private and unchanged.
+
+Next action: commit the verified Checkpoint II implementation after explicit authorization, then begin the separately scoped Checkpoint III public compiler API task. Real world-model loading remains intentionally unverified; ModuleData projection and GameSession integration remain deferred.
