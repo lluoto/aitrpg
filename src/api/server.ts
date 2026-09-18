@@ -2,7 +2,7 @@
 // 管理 GameSession 实例，暴露 REST 接口供前端调用 //
 // 运行: bun run src/api/server.ts
 
-import { GameSession, type ActionResponse, type SessionSummary } from "./game-session";
+import { GameSession, compiledMechanicsAction, type ActionResponse, type SessionSummary } from "./game-session";
 import { existsSync, rmSync } from "fs";
 import { join } from "path";
 import type { RulesetId } from "../rules/rules-engine";
@@ -477,6 +477,24 @@ export async function handleRequest(
       return respondJson(result.body, result.status);
     }
 
+    // GET /api/sessions/:id/compiled/actions?pcId=p1 — structured executable mechanisms
+    if (method === "GET" && segments[3] === "compiled" && segments[4] === "actions" && segments.length === 5) {
+      const pcId = query.get("pcId");
+      if (!pcId?.trim()) return respondJson({ code: "compiled_single_pc_required", generation: session.getCompiledGeneration() }, 400);
+      if (!session.session.get(pcId)) return respondJson({ code: "unknown_pc", targetId: pcId, generation: session.getCompiledGeneration() }, 404);
+      if (pcId !== "p1") return respondJson({ code: "compiled_single_pc_required", generation: session.getCompiledGeneration() }, 409);
+      if (session.getCompiledGeneration() === null) return respondError("会话不是编译模组会话", 404);
+      try {
+        return respondJson({
+          generation: session.getCompiledGeneration(),
+          actions: session.getCompiledAvailableActions(),
+          compiled: session.getCompiledMechanicsState(),
+        });
+      } catch {
+        return respondJson({ code: "compiled_action_discovery_failed", generation: session.getCompiledGeneration() }, 500);
+      }
+    }
+
     // GET /api/sessions/:id/character — 角色属性
     if (method === "GET" && segments[3] === "character") {
       return respondJson({
@@ -600,35 +618,7 @@ export async function handleRequest(
       for (const pid of listSessionPlayerIds(sessionId)) {
         if (session.session.get(pid)) priorCounts.set(pid, session.getPlayerHistory(pid).total);
       }
-      const result = await runAction(session, body, (snapshot) => {
-        const saved = compiledSnapshots.save(snapshot);
-        if (saved.status === "refused") throw new Error(saved.message);
-      }, (snapshot) => {
-        const restore = () => {
-          const bundle = catalog.loadBundle(snapshot.bundle.id);
-          if (bundle.status === "refused") throw new Error(bundle.message);
-          const replacement = new GameSession(snapshot.sessionId, "cosmic-horror", session.config);
-          const restored = replacement.restoreCompiledSession(snapshot, bundle.value);
-          if (restored.status === "refused") throw new Error(restored.message);
-          sessions.set(snapshot.sessionId, replacement);
-          compiledSessionDiagnostics.delete(snapshot.sessionId);
-          return replacement;
-        };
-        try {
-          return restore();
-        } catch (firstError) {
-          // The persisted generation is authoritative. Remove the fail-stopped old object,
-          // then make one clean-object recovery attempt before reporting unavailability.
-          sessions.delete(snapshot.sessionId);
-          try {
-            return restore();
-          } catch (recoveryError) {
-            const message = recoveryError instanceof Error ? recoveryError.message : "compiled session could not be rehydrated";
-            compiledSessionDiagnostics.set(snapshot.sessionId, { id: snapshot.sessionId, code: "compiled_unavailable", message });
-            throw firstError;
-          }
-        }
-      });
+      const result = await runCompiledActionTransaction(session, body, { catalog, snapshots: compiledSnapshots, sessionRegistry: sessions, diagnostics: compiledSessionDiagnostics, storage });
       if (result.status !== 200) return respondJson(result.body, result.status);
       const ar = result.body as unknown as ActionResponse;
       const liveSession = result.session ?? session;
@@ -642,6 +632,24 @@ export async function handleRequest(
       broadcastActionResult(sessionId, liveSession, priorCounts, ar);
       if (liveSession.getCompiledGeneration() !== null) return respondJson(result.body);
       return respondJson({ ...ar, summary: liveSession.getSummary() });
+    }
+
+    // POST /api/sessions/:id/compiled/actions — structured compiled action execution.
+    if (method === "POST" && segments[3] === "compiled" && segments[4] === "actions" && segments.length === 5) {
+      const body = await readJsonBody(req);
+      const request = parseCompiledActionRequest(body);
+      if (!request) return respondJson({ code: "compiled_action_contract_required", generation: session.getCompiledGeneration() }, 400);
+      if (session.getCompiledGeneration() === null) return respondError("会话不是编译模组会话", 404);
+      if (!session.session.get(request.pcId)) return respondJson({ code: "unknown_pc", targetId: request.pcId, generation: session.getCompiledGeneration() }, 404);
+      if (request.pcId !== "p1") return respondJson({ code: "compiled_single_pc_required", generation: session.getCompiledGeneration() }, 409);
+      let input: string;
+      try {
+        input = compiledMechanicsAction(request.mechanismId);
+      } catch {
+        return respondJson({ code: "compiled_action_required", generation: session.getCompiledGeneration() }, 400);
+      }
+      const result = await runCompiledActionTransaction(session, { input, pcId: request.pcId, actionId: request.actionId, expectedGeneration: request.expectedGeneration }, { catalog, snapshots: compiledSnapshots, sessionRegistry: sessions, diagnostics: compiledSessionDiagnostics, storage });
+      return respondJson(result.body, result.status);
     }
 
     // POST /api/sessions/:id/party — 为队伍新增一个 PC
@@ -894,6 +902,16 @@ function bodyString(body: JsonRecord, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function parseCompiledActionRequest(body: JsonRecord): { mechanismId: string; pcId: string; actionId: string; expectedGeneration: number } | null {
+  if (!Object.keys(body).every((key) => ["mechanismId", "pcId", "actionId", "expectedGeneration"].includes(key))) return null;
+  const mechanismId = bodyString(body, "mechanismId");
+  const pcId = bodyString(body, "pcId");
+  const actionId = bodyString(body, "actionId");
+  const expectedGeneration = body.expectedGeneration;
+  if (!mechanismId || mechanismId.trim() !== mechanismId || !pcId || pcId.trim() !== pcId || !actionId || actionId.trim() !== actionId || !Number.isSafeInteger(expectedGeneration) || (expectedGeneration as number) < 0) return null;
+  return { mechanismId, pcId, actionId, expectedGeneration: expectedGeneration as number };
+}
+
 /** 数字字段兼容字符串写法（前端表单常传字符串），与原先的 parseInt 行为保持一致。 */
 function bodyNumber(body: JsonRecord, key: string): number | undefined {
   const value = body[key];
@@ -983,36 +1001,46 @@ export async function runAction(
 ): Promise<{ status: number; body: Record<string, unknown>; session?: GameSession }> {
   const input = (bodyString(body, "input") ?? "").trim();
   const generation = session.getCompiledGeneration();
-  if (!input) return { status: 400, body: generation === null ? { error: "请输入行动" } : { code: "compiled_action_contract_required", generation } };
   const actingPcId = (bodyString(body, "pcId") ?? "").trim() || undefined;
   if (generation !== null) {
     if (!Object.keys(body).every((key) => ["input", "pcId", "actionId", "expectedGeneration"].includes(key))) {
       return { status: 400, body: { code: "compiled_action_contract_required", generation } };
     }
+    if (!actingPcId) return { status: 400, body: { code: "compiled_single_pc_required", generation } };
+    if (!session.session.get(actingPcId)) return { status: 404, body: { code: "unknown_pc", targetId: actingPcId, generation } };
+    if (actingPcId !== "p1") return { status: 409, body: { code: "compiled_single_pc_required", generation } };
     const actionId = (bodyString(body, "actionId") ?? "").trim();
     const expectedGeneration = body.expectedGeneration;
     if (!actionId || !Number.isSafeInteger(expectedGeneration) || (expectedGeneration as number) < 0) {
       return { status: 400, body: { code: "compiled_action_contract_required", generation } };
     }
-    if (actingPcId !== "p1") return { status: 400, body: { code: "compiled_single_pc_required", generation } };
+    if (!input) return { status: 400, body: { code: "compiled_action_required", generation } };
     const committed = session.commitCompiledAction(input, actionId, expectedGeneration as number, persistCompiledSnapshot ?? (() => { throw new Error("compiled snapshot persistence is unavailable"); }));
     if (committed.status === "refused") {
-      const status = committed.code === "compiled_persistence_failed" ? 500
-        : committed.code === "compiled_generation_conflict" || committed.code === "compiled_idempotency_conflict" ? 409
+      const status = committed.code === "compiled_persistence_failed" || committed.code === "compiled_execution_failed" || committed.code === "compiled_unavailable" ? 500
+        : committed.code === "compiled_action_required" || committed.code === "compiled_action_contract_required" ? 400
           : 409;
-      return { status, body: { code: committed.code, generation: committed.generation } };
+      return {
+        status,
+        body: {
+          code: committed.code,
+          generation: committed.generation,
+          ...(committed.code === "compiled_terminal" ? { compiled: session.getCompiledMechanicsState() } : {}),
+        },
+      };
     }
     if (committed.status === "committed") {
-      if (!committed.snapshot || !installCompiledSnapshot) return { status: 503, body: { code: "compiled_unavailable", generation: committed.generation } };
+      if (!committed.snapshot || !installCompiledSnapshot) return { status: 500, body: { code: "compiled_unavailable", generation: committed.generation } };
       try {
         const replacement = installCompiledSnapshot(committed.snapshot);
         return { status: 200, body: { ...committed.response.action, summary: committed.response.summary, generation: committed.response.generation }, session: replacement };
       } catch {
-        return { status: 503, body: { code: "compiled_unavailable", generation: committed.generation } };
+        return { status: 500, body: { code: "compiled_unavailable", generation: committed.generation } };
       }
     }
     return { status: 200, body: { ...committed.response.action, summary: committed.response.summary, generation: committed.response.generation }, session };
   }
+  if (!input) return { status: 400, body: { error: "请输入行动" } };
   let result: ActionResponse;
   try {
     result = await session.act(input, actingPcId);
@@ -1023,6 +1051,51 @@ export async function runAction(
     return { status: 404, body: { code: result.error.code, targetId: result.error.targetId } };
   }
   return { status: 200, body: { ...result, summary: session.getSummary() } };
+}
+
+interface CompiledActionTransactionOptions {
+  catalog: CompilerArtifactCatalog;
+  snapshots: CompiledSessionSnapshotStore;
+  sessionRegistry: Map<string, GameSession>;
+  diagnostics: Map<string, { id: string; code: string; message: string }>;
+  storage: { careerRoot?: string };
+}
+
+/** Shared durable commit/install transaction for the structured and text-codec routes. */
+export async function runCompiledActionTransaction(
+  session: GameSession,
+  body: JsonRecord,
+  options: CompiledActionTransactionOptions,
+): Promise<{ status: number; body: Record<string, unknown>; session?: GameSession }> {
+  return runAction(session, body, (snapshot) => {
+    const saved = options.snapshots.save(snapshot);
+    if (saved.status === "refused") throw new Error(saved.message);
+  }, (snapshot) => {
+    const restore = () => {
+      const bundle = options.catalog.loadBundle(snapshot.bundle.id);
+      if (bundle.status === "refused") throw new Error(bundle.message);
+      const replacement = new GameSession(snapshot.sessionId, "cosmic-horror", session.config, undefined, undefined, undefined, options.storage);
+      const restored = replacement.restoreCompiledSession(snapshot, bundle.value);
+      if (restored.status === "refused") throw new Error(restored.message);
+      options.sessionRegistry.set(snapshot.sessionId, replacement);
+      options.diagnostics.delete(snapshot.sessionId);
+      return replacement;
+    };
+    try {
+      return restore();
+    } catch (firstError) {
+      // The persisted generation is authoritative. Remove the fail-stopped old object,
+      // then make one clean-object recovery attempt before reporting unavailability.
+      options.sessionRegistry.delete(snapshot.sessionId);
+      try {
+        return restore();
+      } catch (recoveryError) {
+        const message = recoveryError instanceof Error ? recoveryError.message : "compiled session could not be rehydrated";
+        options.diagnostics.set(snapshot.sessionId, { id: snapshot.sessionId, code: "compiled_unavailable", message });
+        throw firstError;
+      }
+    }
+  });
 }
 
 /**

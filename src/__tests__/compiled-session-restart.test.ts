@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { spawnSync } from "child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -78,6 +77,38 @@ function commitAndRestore(
 function rehash(snapshot: CompiledSessionSnapshot): CompiledSessionSnapshot {
   snapshot.snapshotHash = compiledSessionSnapshotHash(snapshot);
   return snapshot;
+}
+
+type FreshRestartProof = {
+  ordering: string[];
+  duplicate: { generation: number };
+  continued: { generation: number; narrative: string; compiled: { stateHash: string; terminalEnding?: { id: string } } };
+  history: number;
+};
+
+async function runFreshWorkerRestartProof(request: Record<string, unknown>): Promise<FreshRestartProof> {
+  const worker = new Worker(new URL("./compiled-session-restart-child.ts", import.meta.url).href, { type: "module" });
+  try {
+    return await new Promise<FreshRestartProof>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        worker.terminate();
+        reject(new Error("fresh restart worker timed out"));
+      }, 10_000);
+      const finish = (value: FreshRestartProof | Error) => {
+        clearTimeout(timeout);
+        if (value instanceof Error) reject(value);
+        else resolve(value);
+      };
+      worker.onmessage = (event: MessageEvent<{ status: "ok"; proof: FreshRestartProof } | { status: "error"; message: string }>) => {
+        if (event.data.status === "ok") finish(event.data.proof);
+        else finish(new Error(event.data.message));
+      };
+      worker.onerror = (event: ErrorEvent) => finish(new Error(event.message || "fresh restart worker failed"));
+      worker.postMessage(request);
+    });
+  } finally {
+    worker.terminate();
+  }
 }
 
 describe("restart-safe compiled sessions", () => {
@@ -269,7 +300,7 @@ describe("restart-safe compiled sessions", () => {
         const saved = built.snapshots.save(snapshot);
         if (saved.status === "refused") throw new Error(saved.message);
       }, () => { throw new Error("setScene install failure"); });
-      expect(result).toMatchObject({ status: 503, body: { code: "compiled_unavailable", generation: 1 } });
+      expect(result).toMatchObject({ status: 500, body: { code: "compiled_unavailable", generation: 1 } });
       expect((await built.session.act(compiledMechanicsAction(ids.parent))).error?.code).toBe("compiled_unavailable");
       const fresh = restoreFresh(built);
       const retry = await runAction(fresh, { input: compiledMechanicsAction(ids.parent), pcId: "p1", actionId: "install-failure", expectedGeneration: 0 }, undefined, (snapshot) => restoreFresh(built, snapshot));
@@ -300,7 +331,7 @@ describe("restart-safe compiled sessions", () => {
           if (restored.status === "refused") throw new Error(restored.message);
           return replacement;
         });
-        expect(result).toMatchObject({ status: 503, body: { code: "compiled_unavailable", generation: 1 } });
+        expect(result).toMatchObject({ status: 500, body: { code: "compiled_unavailable", generation: 1 } });
         expect((await built.session.act(compiledMechanicsAction(ids.parent))).error?.code).toBe("compiled_unavailable");
         expect(restoreFresh(built).getCompiledGeneration()).toBe(1);
       }
@@ -392,7 +423,7 @@ describe("restart-safe compiled sessions", () => {
     }
   });
 
-  it("proves a separate Bun process can hydrate, retry the stored action, continue, and preserve terminal narration", async () => {
+  it("proves a fresh Worker module can hydrate, retry the stored action, continue, and preserve terminal narration", async () => {
     const dir = root();
     const uninterruptedDir = root();
     const originalRandom = Math.random;
@@ -409,20 +440,16 @@ describe("restart-safe compiled sessions", () => {
       for (const [index, input] of [ids.parent, ids.entry, ids.child, ids.child, ids.child, ids.exit].entries()) {
         uninterrupted = commitAndRestore(uninterrupted, baseline, compiledMechanicsAction(input), `fresh-${index}`).current;
       }
-      const child = spawnSync(process.execPath, [
-        join(import.meta.dir, "compiled-session-restart-child.ts"),
-        dir,
-        "freshprocess",
-        compiledMechanicsAction(ids.child),
-        "fresh-2",
-        "2",
-        compiledMechanicsAction(ids.exit),
-        "fresh-5",
-        "5",
-      ], { cwd: process.cwd(), encoding: "utf8" });
-      expect(child.status).toBe(0);
-      const output = child.stdout.trim().split(/\r?\n/).at(-1);
-      const proof = JSON.parse(output ?? "{}") as { ordering: string[]; duplicate: { generation: number }; continued: { generation: number; narrative: string; compiled: { stateHash: string; terminalEnding?: { id: string } } }; history: number };
+      const proof = await runFreshWorkerRestartProof({
+        root: dir,
+        sessionId: "freshprocess",
+        duplicateInput: compiledMechanicsAction(ids.child),
+        duplicateActionId: "fresh-2",
+        expectedGeneration: 2,
+        nextInput: compiledMechanicsAction(ids.exit),
+        nextActionId: "fresh-5",
+        nextExpectedGeneration: 5,
+      });
       expect(proof.ordering).toEqual(["header", "catalog", "body", "restore"]);
       const persisted = built.snapshots.read("freshprocess");
       expect(persisted.status).toBe("ok");

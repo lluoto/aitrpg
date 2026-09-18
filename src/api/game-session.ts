@@ -59,13 +59,14 @@ import {
   executeMechanicsAction,
   initialMechanicsState,
   mechanicsStateHash,
+  nextAutomaticMechanicsStep,
   settleAutomaticMechanics,
   type MechanicsAnalysisInput,
   type MechanicsReachabilityEdge,
   type MechanicsState,
   type MechanicsStateBudget,
 } from "../compiler/mechanics-execution";
-import type { CheckSpec, MechanicsIR } from "../compiler/mechanics-ir";
+import type { CheckSpec, DiscoveryAction, MechanicsIR } from "../compiler/mechanics-ir";
 import {
   canonicalJson,
   cloneJson,
@@ -113,6 +114,19 @@ function parseCompiledMechanicsAction(input: string): string | null {
   return mechanismId && mechanismId.trim() === mechanismId && !/[\r\n]/.test(mechanismId) ? mechanismId : null;
 }
 
+/** Discovery labels deliberately use only declared action vocabulary, never clue metadata. */
+function compiledDiscoveryLabel(action: DiscoveryAction): string {
+  switch (action) {
+    case "observe": return "Observe here";
+    case "search": return "Search here";
+    case "talk": return "Talk here";
+    case "read": return "Read here";
+    case "use_item": return "Use an item";
+    case "move": return "Proceed";
+    case "custom": return "Take action";
+  }
+}
+
 interface LoadedCompiledModule {
   payload: ResolvedCompilerArtifactPayload;
   projection: CompilerModuleDataProjection;
@@ -132,6 +146,19 @@ export interface CompiledMechanicsSessionState {
   trace: MechanicsReachabilityEdge[];
   terminalEnding?: { id: string; name: string; narration: string };
   generation: number;
+}
+
+export type CompiledAvailableActionCheck =
+  | { kind: "skill"; skill: string; difficulty: "regular" | "hard" | "extreme" }
+  | { kind: "attribute"; attribute: "str" | "dex" | "pow" | "con" | "app" | "edu" | "int" | "siz"; difficulty: "regular" | "hard" | "extreme" };
+
+/** Player-safe, executable projection of one currently available compiled mechanism. */
+export interface CompiledAvailableAction {
+  mechanismId: string;
+  kind: "discovery" | "traversal";
+  command: string;
+  label: string;
+  check?: CompiledAvailableActionCheck;
 }
 
 export type CompiledModuleLoadResult =
@@ -733,6 +760,44 @@ export class GameSession {
     return this.compiledModule ? this.compiledGeneration ?? 0 : null;
   }
 
+  /**
+   * Returns only mechanisms the shared execution core can execute from the
+   * already-settled state. Listing never settles or observes the live budget.
+   */
+  getCompiledAvailableActions(): CompiledAvailableAction[] {
+    const compiled = this.compiledModule;
+    if (!compiled) return [];
+    const state = structuredClone(compiled.state);
+    if (nextAutomaticMechanicsStep(compiled.payload.mechanicsIR, state)) {
+      throw new Error("compiled mechanics state is not settled before action discovery");
+    }
+    const actionByMechanism = new Map<string, CompiledAvailableAction>();
+    for (const available of availableMechanicsPlayerActions(compiled.payload.mechanicsIR, compiled.payload.analysisInput, state)) {
+      if (actionByMechanism.has(available.mechanismId)) continue;
+      const discovery = compiled.payload.mechanicsIR.discoveryMethods.find((candidate) => candidate.id === available.mechanismId);
+      if (discovery) {
+        actionByMechanism.set(discovery.id, {
+          mechanismId: discovery.id,
+          kind: "discovery",
+          command: compiledMechanicsAction(discovery.id),
+          label: compiledDiscoveryLabel(discovery.action),
+          ...(discovery.check && discovery.check.kind !== "none" ? { check: structuredClone(discovery.check) } : {}),
+        });
+        continue;
+      }
+      const gate = compiled.payload.mechanicsIR.connections.find((candidate) => candidate.id === available.mechanismId);
+      const connection = gate && compiled.payload.analysisInput.connections.find((candidate) => candidate.id === gate.connectionId);
+      const destination = connection && compiled.projection.module.scenes.find((scene) => scene.id === connection.toSceneId)?.name;
+      actionByMechanism.set(available.mechanismId, {
+        mechanismId: available.mechanismId,
+        kind: "traversal",
+        command: compiledMechanicsAction(available.mechanismId),
+        label: destination ? `Go to ${destination}` : "Go to another area",
+      });
+    }
+    return structuredClone([...actionByMechanism.values()].sort((left, right) => left.mechanismId.localeCompare(right.mechanismId)));
+  }
+
   isDurableCompiledSession(): boolean {
     return !!this.compiledModule?.durableBundle;
   }
@@ -756,7 +821,7 @@ export class GameSession {
   }
 
   private persistedCompiledCharacterSheet(): JsonRecord {
-    const sheet = this.activeCharacter;
+    const sheet = this.characters.get("p1");
     if (!sheet) throw new Error("durable compiled sessions require p1 character data");
     const keys = ["name", "archetypeId", "attributes", "luck", "hp", "maxHp", "ac", "damageBonus", "build", "move", "creditRating", "startingItems", "occupationSkillPoints", "interestSkillPoints", "occupationSkills", "availableSkills", "age", "valid", "warnings", "cthulhuMythos", "skillValues"] as const;
     return cloneJson(Object.fromEntries(keys.map((key) => [key, sheet[key]])) as JsonRecord);
@@ -1041,7 +1106,9 @@ export class GameSession {
   }
 
   private evaluateCompiledCheck(check: Exclude<CheckSpec, { kind: "none" }>): { success: boolean; line: string; dice: { expr: string; total: number; detail?: string }; roll: { skill: string; roll: number; target: number; success: boolean } } {
-    const { label, target } = compiledCheckDescriptor(check, this.activeCharacter);
+    // Durable compiled sessions are deliberately single-p1: never let a stale
+    // active-character pointer select another PC's check values.
+    const { label, target } = compiledCheckDescriptor(check, this.characters.get("p1"));
     const result = CoCEngine.skillCheck(target, check.difficulty);
     const dice = { expr: "d100", total: result.roll, detail: `${label}/${check.difficulty}` };
     const roll = { skill: label, roll: result.roll, target, success: result.isSuccess };
@@ -1088,7 +1155,7 @@ export class GameSession {
       const trace = [...compiled.trace, executed.edge, ...after.steps];
       const ending = this.compiledState(compiled.payload, compiled.projection, after.state, trace, (this.compiledGeneration ?? 0) + 1).terminalEnding;
       const now = Date.now();
-      const messages: AgentMessage[] = [{ speaker: this.activeCharacter?.name ?? "调查员", content: input, type: "action", timestamp: now }];
+      const messages: AgentMessage[] = [{ speaker: this.characters.get("p1")?.name ?? "调查员", content: input, type: "action", timestamp: now }];
       if (selected.checkLine) messages.push({ speaker: "系统", content: selected.checkLine, type: "system", timestamp: now });
       messages.push({ speaker: "系统", content: `编译机制 ${executed.edge.mechanismId}:${executed.edge.outcome}`, type: "system", timestamp: now });
       let narrative: string;
@@ -1105,7 +1172,25 @@ export class GameSession {
   }
 
   private preparedCompiledActionResponse(prepared: PreparedCompiledAction, generation: number): ActionResponse {
-    const state = structuredClone(this.getState());
+    // A durable compiled action is always p1-owned.  The request boundary
+    // rejects other PCs, but a stale live pointer must not make the persisted
+    // response disagree with the p1-only snapshot that will be rehydrated.
+    const p1View = (() => {
+      const activePlayerId = this.activePlayerId;
+      const activeCharacter = this.activeCharacter;
+      const sanity = this.sanity;
+      try {
+        this.activePlayerId = "p1";
+        this.activeCharacter = this.characters.get("p1") ?? activeCharacter;
+        this.sanity = this.sanityEngines.get("p1") ?? sanity;
+        return { state: structuredClone(this.getState()), sanity: this.getSanity() };
+      } finally {
+        this.activePlayerId = activePlayerId;
+        this.activeCharacter = activeCharacter;
+        this.sanity = sanity;
+      }
+    })();
+    const state = p1View.state;
     state.scene = prepared.state.currentSceneId;
     state.bgm = this.sceneBgm[prepared.state.currentSceneId];
     state.round = prepared.round;
@@ -1115,7 +1200,7 @@ export class GameSession {
       events: prepared.messages.map((message) => ({ speaker: message.speaker, content: message.content, type: message.type, ...(message.verbatim ? { verbatim: true as const } : {}) })),
       state,
       dead: this.dead,
-      sanity: this.getSanity(),
+      sanity: p1View.sanity,
       ...(prepared.dice ? { dice: [prepared.dice] } : {}),
       compiled: this.compiledState(compiled.payload, compiled.projection, prepared.state, prepared.trace, generation),
     };
@@ -1432,14 +1517,15 @@ export class GameSession {
     const state = this.world.getCurrentState();
     const msgs = this.session.getActiveHistory();
     const npcCount = Object.values(state.entities).filter(e => e.type === "npc").length;
+    const summaryCharacter = this.compiledModule ? this.characters.get("p1") : this.activeCharacter;
     return {
       id: this.id, round: this.round, ruleset: this.activeRuleset,
       scene: this.sceneDisplayNames[state.scene] ?? state.scene,
-      playerName: this.activeCharacter?.name ?? "调查员",
+      playerName: summaryCharacter?.name ?? "调查员",
       // 两种角色形状的职业字段名不同：CoC 是 archetypeId，D&D 是 archetype（字符串 id）。
       // 原写法统一取 .id —— 对 undefined 和对字符串取 .id 都是 undefined，
       // 因此这个字段一直恒为 null。
-      archetype: this.activeCharacter?.archetypeId ?? this.activeCharacter?.archetype ?? null,
+      archetype: summaryCharacter?.archetypeId ?? summaryCharacter?.archetype ?? null,
       messageCount: msgs.length, npcCount, createdAt: this.createdAt,
       ...(this.compiledModule ? { generation: this.compiledGeneration ?? 0 } : {}),
     };
@@ -2300,6 +2386,7 @@ export class GameSession {
    * 由 server.ts 在路由层翻成 404（同 GET /history?pcId= 的口径）。
    */
   getSuggestions(pcId: string = this.activePlayerId): string[] {
+    if (this.compiledModule) return this.getCompiledAvailableActions().map((action) => action.command);
     const following: string[] = [];
     if (this.combatActive) {
       // 战斗分支是已修回归（npc-fights-back.test.ts）：逐字保持，不能把
